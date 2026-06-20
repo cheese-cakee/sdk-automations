@@ -27,9 +27,8 @@ different places:
    include `pending-review`, `approved`, `discussion`, `notes: spam`, `notes: mentor-duty`,
    `priority: critical`, and the bare `beginner`.
 
-Because the same idea gets written in several files, the Python side has real spelling drift, covered in
-the catalog below. That catalog is the single most useful input for the normalized taxonomy the shared
-app will need.
+Because the same idea is written in several files, the Python side has real spelling drift, cataloged
+below. That catalog is the headline finding on the Python side.
 
 ## Which service touches which label
 
@@ -95,16 +94,15 @@ service that writes them.
 
 | "Label" | What happens |
 |---|---|
-| any label on a linked issue | The Linked Issue Label Sync (compute then apply) copies every label from a PR's linked issue onto the PR, with no allow-list. So `notes:`, `skill:`, and lifecycle labels can all spread from the issue to the PR. When this gets generalized, the lack of namespace gating is a risk to watch. |
+| any label on a linked issue | The Linked Issue Label Sync (compute then apply) copies every label from a PR's linked issue onto the PR, with no allow-list. So `notes:`, `skill:`, and lifecycle labels can all spread from the issue to the PR. With no namespace gating, a label spreads unchecked, which is a fragility in the current design. |
 
 ## The spelling-drift catalog (the headline finding)
 
-There are four drift sets. One thing to clear up first, because it changes how serious these are: GitHub
-Actions `contains()` is case-insensitive (this is in the GitHub expression docs). So when a workflow
-`if:` guard uses a different casing than the label, it still matches at runtime. None of these is a dead
-workflow. The real problem is fragility and ambiguity: the same idea has several accepted spellings,
-defined in scattered places and normalized inconsistently. That is exactly the kind of thing a shared
-taxonomy needs to collapse.
+There are four drift sets. One thing first, because it changes how serious they are: GitHub Actions
+`contains()` is case-insensitive (per the GitHub expression docs), so a workflow `if:` guard with a
+different casing than the label still matches at runtime. None of these is a dead workflow. The real issue
+is fragility: one idea has several accepted spellings, defined in scattered places and normalized
+inconsistently. That inconsistency is the finding.
 
 ### Drift A: the GFI Candidate casing
 | Spelling | Where it appears | How it is matched |
@@ -123,8 +121,7 @@ or renames the label, it breaks quietly.
 | `Priority: Critical` | the second `||` branch of the workflow `if:` |
 
 **How much it matters:** low, and it is tolerated on purpose. The workflow accepts both with `||`, and
-the JS normalizes with `.toLowerCase()`. Still, two label strings exist for one idea with no canonical
-source, so the taxonomy has to pick one.
+the JS normalizes with `.toLowerCase()`. Still, two strings exist for one idea with no canonical source.
 
 ### Drift C: beginner, namespaced versus bare
 | Spelling | Where it appears |
@@ -209,8 +206,8 @@ small differences per guard) skips the checks.
 | `notes: broken markdown links`, `notes: automated` | Cron Broken Links | not created; they are passed to `issues.create({labels})`, so they have to already exist or they get dropped |
 | `notes: spam-list-update`, `notes: automated` | Spam List Maintenance | same; passed to `issues.create`, not created |
 
-Compared with C++: Python does auto-create labels, but only the queue family. The `notes:` tracking
-labels are assumed to already exist. A generalized app needs one consistent ensure-label policy.
+Compared with C++: Python auto-creates labels, but only the queue family; the `notes:` tracking labels
+are assumed to already exist. So the two SDKs differ on label creation, which is the finding here.
 
 ## Labels that are used but never defined in a constants file
 
@@ -234,31 +231,23 @@ inventory.
 
 ## A label-free service that is still in scope: the Workflow Failure Notifier
 
-`pr-check-feedback-all.yml` is easy to file under CI because of its name, but it is a maintainer-automation
-notification service and it belongs in this audit. It writes and reads no label, which is why it has no row
-in the tables above, but that is the only thing it has in common with the CI workflows. It is not a
-non-goal.
+`pr-check-feedback-all.yml` reads like a CI check because of its name, but it is a maintainer-automation
+notification service and belongs in this audit. It writes and reads no label (hence no row above), but
+that is all it shares with the CI workflows. It is not a non-goal.
 
-What it does: on `workflow_run: completed` for 7 named CI checks, when the run concluded in failure, it
-finds the open PR behind that run and posts a single deduplicated comment (keyed by a
-`<!-- workflow-failure-bot -->` marker) that points the author at the DCO, rebase, testing, and Discord
-guides. So it is a real contributor-facing service that turns a red CI run into actionable guidance, the
-same family as the C++ PR-check dashboard, just delivered as a comment instead of labels.
+What it does: on `workflow_run: completed` for 7 named CI checks, if the run failed, it finds the open PR
+behind that run and posts one deduplicated comment (keyed by a `<!-- workflow-failure-bot -->` marker)
+pointing the author at the DCO, rebase, testing, and Discord guides. It turns a red CI run into actionable
+guidance, the same family as the C++ PR-check dashboard, just delivered as a comment instead of labels.
 
-The fragility worth carrying into the shared app: it identifies those 7 workflows by their exact
-display-name strings. Rename any one of those CI workflows and the notifier silently stops firing for it,
-with no error and no label to make the gap visible. A generalized notification feature should key off a
-stable identifier (the workflow file or id), not the human-readable name.
+The fragility worth recording: it identifies those 7 workflows by their exact display-name strings. Rename
+any one and the notifier silently stops firing for it, with no error and no label to surface the gap.
 
 ## Appendix D: out-of-scope workflows (no label contact)
 
-`pr-check-primary-codecov`, `pr-check-primary-codeql`, `pr-check-primary-broken-links`,
-`pr-check-primary-test-files`, `clusterfuzzlite`,
-`pr-check-secondary-{deps-test,examples,tck-test,unit-integration-test}`, `pre-commit`, `publish`,
-`release-pr-coderabbit-gate`, `test-on-review`, and `test-review-sync` all read and write no labels. The
-two `pr-check-primary-{broken-links,test-files}` workflows are per-PR repo-hygiene checks (markdown links
-and test-file naming). They are close to CI and they also touch no labels. All of this is a project
-non-goal (`planning/goals.md`, Non-goals) and is left out of the flow analysis.
-
-One workflow that looks like it belongs in this list does not: `pr-check-feedback-all` writes no labels but
-is in scope as a notification service. See "A label-free service that is still in scope" above.
+The CI, build, security, and release workflows (`pr-check-primary-*`, `pr-check-secondary-*`,
+`clusterfuzzlite`, `pre-commit`, `publish`, `release-pr-coderabbit-gate`, `test-on-review`,
+`test-review-sync`) and the two per-PR repo-hygiene checks (`pr-check-primary-{broken-links,test-files}`)
+were all checked and touch no labels. They are a project non-goal (`planning/goals.md`, Non-goals) and are
+left out of the flow analysis. The one workflow that looks like it belongs here but does not is
+`pr-check-feedback-all`: label-free, but in scope as a notification service (see the section above).
