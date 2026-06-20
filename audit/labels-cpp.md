@@ -15,11 +15,9 @@ Here is the short version: every label string is written down in exactly one pla
 a frozen constant through `helpers/config-loader.js` and `helpers/constants.js`, so the code says
 `LABELS.READY_FOR_DEV`, not the string `status: ready for dev`.
 
-That single source of truth is the property the wider project wants to keep, and it makes this audit
-easy: the 14 labels below are the whole automation surface. There are no surprise variants and no
-spelling drift anywhere. The repository itself carries more labels than this (33 in all), but the
-automation only ever touches these 14. The full repository set, classified by who manages each one, is
-in Appendix D.
+That single source of truth makes this audit easy: the 14 labels below are the whole automation surface,
+with no variants and no spelling drift. The repository itself carries 33 labels in all, but the automation
+only ever touches these 14. The full set, classified by who manages each, is in Appendix D.
 
 The labels come in three families, all shaped `group: value` in lower case:
 
@@ -46,40 +44,35 @@ name starts with `status:` in one sweep (a prefix match), not a single named lab
 | `status: needs review` | `labels.status.needsReview` | PR Open and Update Checks (to swap with the opposite label), Inactivity Reaper (PRs with it are skipped, the clock is paused), `/assign` (the needs-review-PR bypass for the assignment cap) | PR Open Checks (forced), PR Update Checks (conditional), Sibling Conflict Re-check | PR Review Applicator, PR Open and Update Checks, Sibling Conflict Re-check, Post-Merge Cleanup (bulk strip) |
 | `status: needs revision` | `labels.status.needsRevision` | PR Open and Update Checks (to swap with the opposite label), Inactivity Reaper (the clock starts from when this label was applied) | PR Review Applicator (forced, on `changes_requested`), PR Open Checks (forced), PR Update Checks (conditional), Sibling Conflict Re-check | PR Open and Update Checks, Sibling Conflict Re-check, Post-Merge Cleanup (bulk strip) |
 
-> **One `/finalize` dependency that is not a label.** Besides the `awaiting triage` label above, `/finalize`
-> also reads the issue's native GitHub issue type (`issue.type.name`, one of `Bug`, `Feature`, or `Task`)
-> at `commands/finalize.js:99-102,133,167`. It is a validation gate only: the type is set by the issue
-> template frontmatter (`type:` in `bug.yml`, `feature.yml`, `task.yml`), not by any label, and it is not
-> in `hiero-automation.json`. The title and body rewrite is driven by the skill level (`reconstructBody`,
-> `buildNewTitle`), not by the type. It is flagged here because it is a real `/finalize` input that lives
-> outside the label system, so the shared app's `/finalize` feature cannot be modeled from labels alone.
+> **One `/finalize` dependency that is not a label.** Besides `awaiting triage`, `/finalize` reads the
+> issue's native GitHub issue type (`issue.type.name`, one of `Bug`, `Feature`, `Task`) at
+> `commands/finalize.js:99-102,133,167`. It is a validation gate only: the type is set by the issue
+> template frontmatter (`type:` in `bug.yml`, `feature.yml`, `task.yml`), not by a label, and it is not in
+> `hiero-automation.json`. The title and body rewrite is driven by skill level (`reconstructBody`,
+> `buildNewTitle`), not by type. So `/finalize` depends on a native field as well as on labels.
 
 ### `skill:` labels
 
-All four are read-only to the automation. People and issue templates apply them; no bot ever adds or
-removes them. But read-only does not mean low-impact. The skill label is one of the most load-bearing
-inputs in the whole C++ automation, and recommendation (the use its name suggests) is the smallest part
-of what it does. In rough order of weight it drives:
+All four are read-only to the automation: people and issue templates apply them, no bot adds or removes
+them. But read-only is not low-impact. The skill label is one of the most load-bearing inputs in the C++
+automation, and recommendation (what its name suggests) is the smallest of its uses. By weight:
 
 1. **The `/assign` prerequisite ladder.** `checkPrerequisites()` walks `skillPrerequisites` and
-   `skillHierarchy` from the config. To be assigned a `skill: beginner` issue a contributor needs 2 closed
-   `skill: good first issue` issues; `skill: intermediate` needs 3 closed beginner; `skill: advanced` needs
-   3 closed intermediate. `skill: good first issue` has no prerequisite (`requiredCount: 0`).
+   `skillHierarchy` from the config. A `skill: beginner` issue needs 2 closed `skill: good first issue`
+   issues; `skill: intermediate` needs 3 closed beginner; `skill: advanced` needs 3 closed intermediate.
+   `skill: good first issue` has no prerequisite (`requiredCount: 0`).
 2. **The good-first-issue completion cap.** `/assign` blocks anyone who has already closed
-   `maxGfiCompletions` (5) good first issues, to push them up the ladder instead of letting them camp on
-   starter work.
-3. **The `/finalize` title prefix.** The skill label selects the `[Good First Issue]`, `[Beginner]`,
-   `[Intermediate]`, or `[Advanced]` title prefix (`SKILL_TITLE_PREFIXES`).
-4. **The `/finalize` body boilerplate.** `reconstructBody` builds the rewritten issue body from the skill
-   level.
-5. **The `/finalize` exactly-one-skill check.** `/finalize` fails an issue that does not carry exactly one
-   `skill:` label.
-6. **Post-merge recommendation and level-up.** The smallest use, even though the label reads like it is
-   only for this.
+   `maxGfiCompletions` (5) good first issues, pushing them up the ladder.
+3. **The `/finalize` title prefix.** Skill selects the `[Good First Issue]`, `[Beginner]`,
+   `[Intermediate]`, or `[Advanced]` prefix (`SKILL_TITLE_PREFIXES`).
+4. **The `/finalize` body boilerplate.** `reconstructBody` builds the rewritten body from the skill level.
+5. **The `/finalize` exactly-one-skill check.** `/finalize` fails an issue without exactly one `skill:`
+   label.
+6. **Post-merge recommendation and level-up.** The smallest use, despite the name.
 
-So the skill label gates who may take an issue, caps how much starter work one person can take, and
-rewrites the issue's title and body. The shared app should treat skill as an assignment and triage input,
-not just a recommendation hint.
+So skill gates who may take an issue, caps how much starter work one person can take, and rewrites the
+issue's title and body. In this system it is an assignment and triage input, not just a recommendation
+hint.
 
 | Label | Config key | Read by |
 |---|---|---|
@@ -156,13 +149,12 @@ stateDiagram-v2
 | `needs review` | `needs revision` | Sibling Conflict Re-check | another PR merges and introduces a conflict here |
 | any `status:*` | (removed) | Post-Merge Cleanup | the merged PR itself |
 
-**What `force` actually does.** The forced writers (PR Open Checks, PR Review Applicator) only force the
-*add* side: they apply the target label even when the opposite label is not present. PR Update Checks and
-Sibling Conflict Re-check are not forced, so they add the label only when the opposite one is already
-there, which means a PR with no status label is left untouched. In every case the *removal* of the
-opposite label only happens if that label is actually present (a `hasLabel` check). `force` never makes a
-removal unconditional. So, for example, PR Review Applicator always adds `needs revision`, but it only
-removes `needs review` when `needs review` is there.
+**What `force` does.** The forced writers (PR Open Checks, PR Review Applicator) force only the *add*:
+they apply the target label even when the opposite is absent. PR Update Checks and Sibling Conflict
+Re-check are not forced, so they act only when the opposite label is already present, leaving a PR with no
+status label untouched. Removal is always conditional on the label being present (a `hasLabel` check);
+`force` never makes a removal unconditional. So PR Review Applicator always adds `needs revision` but
+removes `needs review` only when it is there.
 
 ## Prefix scans (operations on a whole label family)
 
@@ -173,9 +165,9 @@ removes `needs review` when `needs review` is there.
 | `skill:` | `/finalize` in `commands/finalize.js` | reads all `skill:` labels to check there is exactly one, and to build the title prefix |
 | `priority:` | `/finalize` | reads all `priority:` labels to check there is exactly one |
 
-Why this matters: the two bulk strips are not limited to the six known `status:` strings. Any future
-label that starts with `status:` would also get removed. So when this gets generalized, the shared schema
-needs to treat `status:` as a managed namespace, not a fixed list of six.
+Why this matters: the two bulk strips are not limited to the six known `status:` strings; any label
+starting with `status:` is removed too. So the strip is a namespace operation, not a six-string one, which
+is a property of the current design worth recording (Appendix D has the concrete risk).
 
 ## Labels created at runtime
 
@@ -185,9 +177,9 @@ it auto-creates its queue labels. See `audit/labels-python.md`.)
 
 ## Differences from Phase 1 and from the source
 
-The live source at `a898153` uses exactly the 14 labels above, no more and no fewer. Every label from the
-Phase 1 Appendix B is in `hiero-automation.json` and is used by at least one code path. There is no alias
-drift, no hard-coded label string, and no label created at runtime.
+The live source at `a898153` uses exactly these 14 labels. Every label from the Phase 1 Appendix B is in
+`hiero-automation.json` and used by at least one code path. No alias drift, no hard-coded label string, no
+label created at runtime.
 
 ## Appendix A: config key to label string
 
@@ -227,11 +219,10 @@ C++ automation.
 
 ## Appendix C: out-of-scope workflows (no label contact)
 
-`zxc-build-library.yaml`, `zxc-lint-workflows.yaml`, `zxc-test-bot-scripts.yaml`,
-`flow-pull-request-checks.yaml`, and `on-schedule-builds.yaml` were searched for `label`, `status:`,
-`skill:`, and `priority:`, and none of them match. These are CI, build, lint, and test, which the project
-treats as a non-goal (`planning/goals.md`, Non-goals). They are listed here only so the audit is
-complete, and they are left out of all the flow analysis.
+The CI, build, lint, and test workflows (`zxc-build-library.yaml`, `zxc-lint-workflows.yaml`,
+`zxc-test-bot-scripts.yaml`, `flow-pull-request-checks.yaml`, `on-schedule-builds.yaml`) were searched for
+`label`, `status:`, `skill:`, and `priority:` and match none. They are a project non-goal
+(`planning/goals.md`, Non-goals) and are left out of the flow analysis.
 
 ## Appendix D: the whole repository label set (not just the automated 14)
 
@@ -268,13 +259,12 @@ record, because that gap is where the one real risk below lives.
 | `status: awaiting merge` | a maintainer, by hand | not in the config |
 
 **The one real risk in this appendix.** The two bulk `status:*` strips (Post-Merge Cleanup and the
-Inactivity Reaper, documented above under "Prefix scans") remove every label that starts with `status:`,
-not just the six the config knows. So `status: needs info` and `status: awaiting merge` get stripped on
-merge or on a reaper reset even though no config entry mentions them. A maintainer who sets
-`status: awaiting merge` on a PR will see it silently disappear when the PR merges. For the shared app
-this is the key lesson: a prefix operation acts on a whole namespace, so the schema has to treat
-`status:` as a managed namespace with a known full membership, not as a fixed list of six strings sitting
-next to unknown ones.
+Inactivity Reaper, see "Prefix scans" above) remove every label starting with `status:`, not just the six
+in the config. So `status: needs info` and `status: awaiting merge` are stripped on merge or on a reaper
+reset even though no config entry mentions them: a maintainer who sets `status: awaiting merge` on a PR
+will see it vanish when the PR merges. This is the key coupling and fragility finding in the current C++
+design: a prefix strip acts on the whole namespace, so the `status:` set is implicitly coupled and labels
+the config does not know about are still affected.
 
 ### `scope:` family (11): all manual, automation ignores all of them
 

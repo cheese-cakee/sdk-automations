@@ -1,20 +1,22 @@
 # Cross-SDK Service and Label Architecture
 
-> **This is the Phase 2 synthesis.** It is a cross-SDK view of the maintainer automation: what each SDK
-> offers, how the services group together, how an issue or PR moves through them, and a proposed
-> normalized label taxonomy. It draws on `audit/services-cpp.md`, `audit/services-python.md`,
-> `audit/labels-cpp.md`, and `audit/labels-python.md`. It lines up with `planning/goals.md`
-> (decoupled by function, config-driven, opt-in).
+> **Phase 2 synthesis:** a cross-SDK view of the maintainer automation. It covers what each SDK offers,
+> how the services group together, how an issue or PR moves through them, and a normalized view of the
+> labels that already exist across both SDKs. It draws on the four Phase 1 and Phase 2 audit files and
+> lines up with `planning/goals.md` (decoupled by function, config-driven, opt-in).
 >
-> **Scope:** maintainer automation only. CI, build, release, and security are a project non-goal
-> (`goals.md`, Non-goals), so they appear only in Appendix Z, just so the picture is complete.
+> **This is descriptive, not prescriptive.** It records what the two existing systems do today. What the
+> shared app should build, and what labels should mean, are goals questions decided separately (see the
+> open questions at the end of section 4), not proposals made here.
+>
+> **Scope:** maintainer automation only. CI, build, release, and security are a project non-goal, so they
+> appear only in Appendix Z.
 
 ## 1. The service groups, from the top down
 
-Both SDKs solve the same broad set of problems, but they build them in very different ways. C++ is a hub
-and spoke off one config file. Python is roughly 40 small, focused workflows. If you set the architecture
-aside and group by what the service actually does, the whole surface falls into seven groups. Those groups
-are the natural unit for the per-feature toggles the app is heading toward.
+Both SDKs solve the same broad set of problems in very different ways. C++ is a hub and spoke off one
+config file; Python is roughly 40 small, focused workflows. Grouped by what each service does rather than
+how it is built, the whole surface falls into seven groups.
 
 ```mermaid
 flowchart TB
@@ -61,12 +63,12 @@ flowchart TB
     end
 ```
 
-The repo-hygiene checks (broken links, test-file naming) sit close to CI, so they are deprioritized in
-line with the maintainer's steer.
+The repo-hygiene checks (broken links, test-file naming) sit close to CI and are deprioritized per the
+maintainer's steer.
 
 ## 2. The same capabilities, compared across both SDKs
 
-Each row is one capability, the kind of thing that could become a toggle. The marks show which SDK has it.
+Each row is one capability. The marks show which SDK has it.
 🟢 both · 🔵 C++ only · 🟣 Python only · ⚪ retired.
 
 | Group | Capability | C++ | Python | Status | Notes |
@@ -101,13 +103,11 @@ Each row is one capability, the kind of thing that could become a toggle. The ma
 | 7. Admin | Spam-list maintenance | | ✅ | 🟣 | hourly cron plus a tracking issue |
 | 7. Admin | Slash-command dispatcher (one shared parser) | ✅ | | 🔵 | architectural; Python dispatches per workflow instead |
 | 7. Admin | Repo-hygiene checks (broken links, test naming) | | ✅ | 🟣 | close to CI, so deprioritized |
-| Retired | Merge-conflict bot, auto-draft, draft explainer and reminder, missing or unassigned linked issue, verified commits, conventional title, standalone GFI-notify and mentor | | archived | ⚪ | the 10 files in Python's `workflows/archive/`, to fold in or drop |
+| Retired | Merge-conflict bot, auto-draft, draft explainer and reminder, missing or unassigned linked issue, verified commits, conventional title, standalone GFI-notify and mentor | | archived | ⚪ | the 10 files in Python's `workflows/archive/` |
 
 How to read the table. The 🟢 rows (assignment, `/unassign`, skill gating, limit enforcement, inactivity
-reaping, recommendation) are the common core. Both SDKs implement them, and they only differ in policy and
-shape. These are the strongest candidates for the first version of the app: high value, and already proven
-twice. The 🔵 and 🟣 rows exist in only one SDK, so they become independent opt-in toggles. The ⚪ rows tell
-us what not to carry forward.
+reaping, recommendation) are the common core: both SDKs implement them and differ only in policy and
+shape. The 🔵 and 🟣 rows exist in just one SDK. The ⚪ rows are retired in Python.
 
 ## 3. The end-to-end maintainer-automation flow
 
@@ -139,62 +139,61 @@ flowchart TD
 The label-level state machines behind these stops are written up in `audit/labels-cpp.md` (the issue and
 PR `status:` machines) and `audit/labels-python.md` (the moderation and review-queue machines).
 
-## 4. A proposed normalized label taxonomy
+## 4. A normalized view of the labels that exist today
 
-The shared app needs one authoritative taxonomy that takes in both SDKs and clears up the four Python
-drift sets (detailed in `audit/labels-python.md`). The principles: one canonical string per idea, lower
-case in the shape `group: value`, one config file as the source of truth (the C++ model), and every
-namespace treated as a managed set so that the prefix operations stay safe.
+This lines up the label strings that already exist across the two SDKs so the same idea sits in one row.
+It is a summary and a check-in, **not a proposal**: it shows where the two agree and where they diverge
+(including the four Python drift sets from `audit/labels-python.md`). What each namespace should ultimately
+do is an open question, listed below.
 
-| Namespace | Canonical values | What it takes in and cleans up |
+| Namespace | Values across both SDKs | Where the two SDKs differ |
 |---|---|---|
-| `status:` (work lifecycle) | `awaiting triage`, `ready for dev`, `in progress`, `blocked`, `needs review`, `needs revision`, `ready to merge` | the C++ status set plus Python's `status: ready-to-merge` (note the hyphen becomes a space) |
-| `skill:` (the ladder) | `good first issue`, `beginner`, `intermediate`, `advanced` | removes the bare `beginner` (drift C) and the title-case `Good First Issue` inconsistency (drift D); `Good First Issue Candidate` becomes `skill: good first issue candidate` |
-| `priority:` | `critical`, `high`, `medium`, `low` | removes `Priority: Critical` (drift B) |
-| `queue:` (the optional review-routing feature) | `junior-committer`, `committers`, `maintainers` | Python-only; stays a feature-scoped namespace, kept separate from `status:` |
-| `notes:` (admin and automation bookkeeping) | `automated`, `spam`, `spam-list-update`, `broken markdown links`, `mentor-duty` | pulls Python's inline `notes:` literals into the config |
-| `lifecycle:` (the intake gate) | `pending-review`, `approved` | Python moderation; a candidate to fold into `status:` as `status: pending review` |
-| `meta:` | `open to community review`, `discussion` | Python markers, set by people or bots and otherwise static |
+| `status:` (work lifecycle) | `awaiting triage`, `ready for dev`, `in progress`, `blocked`, `needs review`, `needs revision`, `ready-to-merge` | C++ owns the issue and PR status set; Python adds `status: ready-to-merge` (hyphenated) from its review queue |
+| `skill:` (the ladder) | `good first issue`, `beginner`, `intermediate`, `advanced` | Python also has the bare `beginner` (drift C), the title-case `Good First Issue` (drift D), and `Good First Issue Candidate` |
+| `priority:` | `critical`, `high`, `medium`, `low` | Python also carries `Priority: Critical` (drift B) |
+| `queue:` (review routing) | `junior-committer`, `committers`, `maintainers` | Python-only |
+| `notes:` (bookkeeping) | `automated`, `spam`, `spam-list-update`, `broken markdown links`, `mentor-duty` | Python-only, mostly inline literals |
+| `lifecycle:` (intake gate) | `pending-review`, `approved` | Python-only |
+| `meta:` | `open to community review`, `discussion` | Python-only |
 
-A quick summary of the drift fixes, which is the concrete normalization work the schema has to encode:
+The four drift sets, and where the two spellings diverge:
 
-| Drift | What exists today | The canonical choice |
+| Drift | What exists today | Where they differ |
 |---|---|---|
-| A | `Good First Issue Candidate` and `good first issue candidate` | one cased string, matched without regard to case |
-| B | `priority: critical` and `Priority: Critical` | `priority: critical` |
-| C | `skill: beginner` and bare `beginner` | `skill: beginner` |
-| D | a shared constant and a hand-typed copy of `Good First Issue` | one constant, with no inline copies |
+| A | `Good First Issue Candidate` and `good first issue candidate` | constant and template vs the workflow gate's casing; `contains()` matches either |
+| B | `priority: critical` and `Priority: Critical` | two casings, both accepted via `||` |
+| C | `skill: beginner` and bare `beginner` | namespaced vs bare, in one triage branch |
+| D | shared `GOOD_FIRST_ISSUE_LABEL` and a hand-typed copy | defined once vs duplicated inline |
 
-The big lesson to carry over from C++: because it has one config file and never types a label out by hand,
-it has zero drift. Rebuilding that single-source-of-truth model in the shared schema is what mechanically
-stops Python's drift from coming back.
+The contrast worth noting: C++ has one config file and never types a label by hand, so it has zero drift;
+Python's drift comes from the same idea being written in scattered places. That difference is the finding.
 
-## 5. What to support going forward (a wishlist of toggles)
+**Open questions for a labels goals.md** (for maintainers to decide, not answered here): which
+classifications should be GitHub native tags or fields rather than labels (`priority` already is one,
+`effort` may follow); whether `status:` and the `lifecycle:` intake gate should be one namespace; whether
+`notes:` and `meta:` should be one; and what each label should do for maintainers (drive automation,
+signal to humans, or both).
 
-These are independent, config-gated features, ordered "common core first" in line with `goals.md` Goal 3:
+## 5. Capabilities common across both SDKs (a summary)
 
-1. **Assignment and the skill ladder** (🟢): `/assign`, `/unassign`, the prerequisite gates, and limit
-   enforcement.
-2. **Inactivity reaping** (🟢), using the C++ "warn, give a grace period, then act" policy as the safe
-   default (`goals.md` Goal 5).
-3. **Post-merge recommendation and level-up** (🟢).
-4. **PR quality checks plus review-to-status labeling** (🟢 and 🔵): DCO, GPG, conflict, and issue-link
-   feeding the `status:` labels.
-5. **Intake and triage** (🔵 and 🟣): `/finalize`, moderation and lock, and triage review request, each as
-   its own toggle.
-6. **Review-queue routing** (🟣): the `queue:*` state machine as an opt-in feature namespace.
-7. **Linked-issue sync and enforcement** (🟣): additive sync and close-on-unlinked as two separate toggles.
-8. **Notifications** (🟣): P0 alert, reminders, workflow-failure feedback, and CodeRabbit AI hooks, each
-   one independent.
-9. **Admin** (🟣): spam-list maintenance and mentor rotation.
+Reading section 2 by what the two SDKs already share, the recurring capabilities are:
 
-What to leave out: the repo-hygiene and CI-adjacent checks, and the 10 retired Python workflows. Do not
-port those.
+- **Assignment and the skill ladder** (🟢): `/assign`, `/unassign`, prerequisite gates, limit enforcement.
+- **Inactivity reaping** (🟢): C++ warns then acts; Python acts at 21 days.
+- **Post-merge recommendation and level-up** (🟢).
+- **PR quality checks and review-to-status labeling** (🟢, 🔵): DCO, GPG, conflict, issue-link.
+- **Intake and triage** (🔵, 🟣): `/finalize`, moderation and lock, triage review request.
+- **Review-queue routing** (🟣): the `queue:*` state machine.
+- **Linked-issue sync and enforcement** (🟣).
+- **Notifications** (🟣): P0 alert, reminders, workflow-failure feedback, CodeRabbit AI hooks.
+- **Admin** (🟣): spam-list maintenance, mentor rotation.
+
+The repo-hygiene and CI-adjacent checks and the 10 retired Python workflows are noted only for
+completeness; they sit outside the maintainer-automation surface.
 
 ## Appendix Z: out of scope (a non-goal)
 
-CI, build, release, and security stay as native Actions in each repo, and the app does not absorb them
-(`goals.md`, Non-goals). They are listed once here so the picture is complete. In both SDKs the build,
-test, lint, and publish workflows touch no labels (this was verified; see `audit/labels-cpp.md` Appendix C
-and `audit/labels-python.md` Appendix D). They are left out of all the classification, flow, and taxonomy
-work in this audit.
+CI, build, release, and security stay as native Actions per repo and are a project non-goal
+(`goals.md`, Non-goals). In both SDKs these workflows were verified to touch no labels (see
+`audit/labels-cpp.md` Appendix C and `audit/labels-python.md` Appendix D). They are left out of the
+classification and flow work here.
