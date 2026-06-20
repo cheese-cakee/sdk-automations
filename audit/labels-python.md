@@ -6,10 +6,13 @@
 > **Source state:** `main` at `cbb41d9` (it moved on from Phase 1's `5df93b7`; any differences are noted
 > inline).
 > **Phase:** 2 (Labels and flows). It builds on `audit/services-python.md`.
-> **Left out on purpose:** the CI, build, security, and release workflows (`pr-check-*`, `pre-commit`,
-> `publish`, `release-pr-coderabbit-gate`, `clusterfuzzlite`, `test-*`). They touch no labels.
-> `pr-check-feedback-all.yml` only reads PR data. All of this is excluded from the flow analysis
-> (Appendix D).
+> **Left out on purpose:** the CI, build, security, and release workflows (`pr-check-primary-*`,
+> `pr-check-secondary-*`, `pre-commit`, `publish`, `release-pr-coderabbit-gate`, `clusterfuzzlite`,
+> `test-*`). They touch no labels and are a project non-goal, so they are excluded from the flow analysis
+> (Appendix D). One workflow whose name makes it look like CI is the exception: `pr-check-feedback-all.yml`
+> is an in-scope maintainer notification service that happens to write no labels. It is not CI and it is
+> not a non-goal. It is written up below ("A label-free service that is still in scope") and noted in the
+> appendix.
 
 ## How labels work in the Python SDK
 
@@ -229,13 +232,33 @@ This was re-read at the newer commit. The set of labels and the service-to-label
 Appendix B and C. No labels were added or removed between the two commits in a way that affects this
 inventory.
 
+## A label-free service that is still in scope: the Workflow Failure Notifier
+
+`pr-check-feedback-all.yml` is easy to file under CI because of its name, but it is a maintainer-automation
+notification service and it belongs in this audit. It writes and reads no label, which is why it has no row
+in the tables above, but that is the only thing it has in common with the CI workflows. It is not a
+non-goal.
+
+What it does: on `workflow_run: completed` for 7 named CI checks, when the run concluded in failure, it
+finds the open PR behind that run and posts a single deduplicated comment (keyed by a
+`<!-- workflow-failure-bot -->` marker) that points the author at the DCO, rebase, testing, and Discord
+guides. So it is a real contributor-facing service that turns a red CI run into actionable guidance, the
+same family as the C++ PR-check dashboard, just delivered as a comment instead of labels.
+
+The fragility worth carrying into the shared app: it identifies those 7 workflows by their exact
+display-name strings. Rename any one of those CI workflows and the notifier silently stops firing for it,
+with no error and no label to make the gap visible. A generalized notification feature should key off a
+stable identifier (the workflow file or id), not the human-readable name.
+
 ## Appendix D: out-of-scope workflows (no label contact)
 
 `pr-check-primary-codecov`, `pr-check-primary-codeql`, `pr-check-primary-broken-links`,
 `pr-check-primary-test-files`, `clusterfuzzlite`,
 `pr-check-secondary-{deps-test,examples,tck-test,unit-integration-test}`, `pre-commit`, `publish`,
-`release-pr-coderabbit-gate`, `test-on-review`, `test-review-sync`, and `pr-check-feedback-all` all read
-and write no labels (that last one only reads PR data). The two `pr-check-primary-{broken-links,test-files}`
-workflows are per-PR repo-hygiene checks (markdown links and test-file naming). They are close to CI and
-they also touch no labels. All of this is a project non-goal (`planning/goals.md`, Non-goals) and is left
-out of the flow analysis.
+`release-pr-coderabbit-gate`, `test-on-review`, and `test-review-sync` all read and write no labels. The
+two `pr-check-primary-{broken-links,test-files}` workflows are per-PR repo-hygiene checks (markdown links
+and test-file naming). They are close to CI and they also touch no labels. All of this is a project
+non-goal (`planning/goals.md`, Non-goals) and is left out of the flow analysis.
+
+One workflow that looks like it belongs in this list does not: `pr-check-feedback-all` writes no labels but
+is in scope as a notification service. See "A label-free service that is still in scope" above.

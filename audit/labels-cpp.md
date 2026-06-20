@@ -16,8 +16,10 @@ a frozen constant through `helpers/config-loader.js` and `helpers/constants.js`,
 `LABELS.READY_FOR_DEV`, not the string `status: ready for dev`.
 
 That single source of truth is the property the wider project wants to keep, and it makes this audit
-easy: the 14 labels below are the whole label surface. There are no surprise variants and no spelling
-drift anywhere.
+easy: the 14 labels below are the whole automation surface. There are no surprise variants and no
+spelling drift anywhere. The repository itself carries more labels than this (33 in all), but the
+automation only ever touches these 14. The full repository set, classified by who manages each one, is
+in Appendix D.
 
 The labels come in three families, all shaped `group: value` in lower case:
 
@@ -44,10 +46,40 @@ name starts with `status:` in one sweep (a prefix match), not a single named lab
 | `status: needs review` | `labels.status.needsReview` | PR Open and Update Checks (to swap with the opposite label), Inactivity Reaper (PRs with it are skipped, the clock is paused), `/assign` (the needs-review-PR bypass for the assignment cap) | PR Open Checks (forced), PR Update Checks (conditional), Sibling Conflict Re-check | PR Review Applicator, PR Open and Update Checks, Sibling Conflict Re-check, Post-Merge Cleanup (bulk strip) |
 | `status: needs revision` | `labels.status.needsRevision` | PR Open and Update Checks (to swap with the opposite label), Inactivity Reaper (the clock starts from when this label was applied) | PR Review Applicator (forced, on `changes_requested`), PR Open Checks (forced), PR Update Checks (conditional), Sibling Conflict Re-check | PR Open and Update Checks, Sibling Conflict Re-check, Post-Merge Cleanup (bulk strip) |
 
+> **One `/finalize` dependency that is not a label.** Besides the `awaiting triage` label above, `/finalize`
+> also reads the issue's native GitHub issue type (`issue.type.name`, one of `Bug`, `Feature`, or `Task`)
+> at `commands/finalize.js:99-102,133,167`. It is a validation gate only: the type is set by the issue
+> template frontmatter (`type:` in `bug.yml`, `feature.yml`, `task.yml`), not by any label, and it is not
+> in `hiero-automation.json`. The title and body rewrite is driven by the skill level (`reconstructBody`,
+> `buildNewTitle`), not by the type. It is flagged here because it is a real `/finalize` input that lives
+> outside the label system, so the shared app's `/finalize` feature cannot be modeled from labels alone.
+
 ### `skill:` labels
 
 All four are read-only to the automation. People and issue templates apply them; no bot ever adds or
-removes them. They decide who can be assigned and they drive the recommendations.
+removes them. But read-only does not mean low-impact. The skill label is one of the most load-bearing
+inputs in the whole C++ automation, and recommendation (the use its name suggests) is the smallest part
+of what it does. In rough order of weight it drives:
+
+1. **The `/assign` prerequisite ladder.** `checkPrerequisites()` walks `skillPrerequisites` and
+   `skillHierarchy` from the config. To be assigned a `skill: beginner` issue a contributor needs 2 closed
+   `skill: good first issue` issues; `skill: intermediate` needs 3 closed beginner; `skill: advanced` needs
+   3 closed intermediate. `skill: good first issue` has no prerequisite (`requiredCount: 0`).
+2. **The good-first-issue completion cap.** `/assign` blocks anyone who has already closed
+   `maxGfiCompletions` (5) good first issues, to push them up the ladder instead of letting them camp on
+   starter work.
+3. **The `/finalize` title prefix.** The skill label selects the `[Good First Issue]`, `[Beginner]`,
+   `[Intermediate]`, or `[Advanced]` title prefix (`SKILL_TITLE_PREFIXES`).
+4. **The `/finalize` body boilerplate.** `reconstructBody` builds the rewritten issue body from the skill
+   level.
+5. **The `/finalize` exactly-one-skill check.** `/finalize` fails an issue that does not carry exactly one
+   `skill:` label.
+6. **Post-merge recommendation and level-up.** The smallest use, even though the label reads like it is
+   only for this.
+
+So the skill label gates who may take an issue, caps how much starter work one person can take, and
+rewrites the issue's title and body. The shared app should treat skill as an assignment and triage input,
+not just a recommendation hint.
 
 | Label | Config key | Read by |
 |---|---|---|
@@ -200,3 +232,70 @@ C++ automation.
 `skill:`, and `priority:`, and none of them match. These are CI, build, lint, and test, which the project
 treats as a non-goal (`planning/goals.md`, Non-goals). They are listed here only so the audit is
 complete, and they are left out of all the flow analysis.
+
+## Appendix D: the whole repository label set (not just the automated 14)
+
+The body of this document covers the 14 labels the automation reads or writes. The repository itself has
+33 labels (from `gh label list --repo hiero-ledger/hiero-sdk-cpp`). The other 19 are managed by people,
+by issue templates, by Dependabot, or by campaigns, and the automation never references them. This
+appendix lists all 33 so the gap between "the automation surface" and "the repository surface" is on the
+record, because that gap is where the one real risk below lives.
+
+### Automation-managed (14): defined in `hiero-automation.json`, read or written by the bots
+
+| Label | How the automation uses it | How it gets applied |
+|---|---|---|
+| `status: awaiting triage` | read and removed by `/finalize` | auto-applied by the issue templates on open |
+| `status: ready for dev` | read and written across `/finalize`, `/assign`, `/unassign`, Reaper, Recommendation | by the automation |
+| `status: in progress` | read and written by `/assign`, `/unassign`, Reaper, Post-Merge Cleanup | by the automation |
+| `status: blocked` | read by `/assign` and the Reaper | set and cleared by hand |
+| `status: needs review` | read and written across the PR services | by the automation |
+| `status: needs revision` | read and written across the PR services | by the automation |
+| `skill: good first issue` | read by `/assign`, `/finalize`, Recommendation | applied by hand or by template |
+| `skill: beginner` | read by `/assign`, `/finalize`, Recommendation | applied by hand or by template |
+| `skill: intermediate` | read by `/assign`, `/finalize`, Recommendation | applied by hand or by template |
+| `skill: advanced` | read by `/assign`, `/finalize`, Recommendation | applied by hand or by template |
+| `priority: critical` | read by `/finalize` and Recommendation | applied by hand |
+| `priority: high` | read by `/finalize` and Recommendation | applied by hand |
+| `priority: medium` | read by `/finalize` and Recommendation | applied by hand |
+| `priority: low` | read by `/finalize` and Recommendation | applied by hand |
+
+### Unmanaged `status:` labels (2): manual, and the automation does not know they exist
+
+| Label | Managed by | Note |
+|---|---|---|
+| `status: needs info` | a maintainer, by hand | not in the config |
+| `status: awaiting merge` | a maintainer, by hand | not in the config |
+
+**The one real risk in this appendix.** The two bulk `status:*` strips (Post-Merge Cleanup and the
+Inactivity Reaper, documented above under "Prefix scans") remove every label that starts with `status:`,
+not just the six the config knows. So `status: needs info` and `status: awaiting merge` get stripped on
+merge or on a reaper reset even though no config entry mentions them. A maintainer who sets
+`status: awaiting merge` on a PR will see it silently disappear when the PR merges. For the shared app
+this is the key lesson: a prefix operation acts on a whole namespace, so the schema has to treat
+`status:` as a managed namespace with a known full membership, not as a fixed list of six strings sitting
+next to unknown ones.
+
+### `scope:` family (11): all manual, automation ignores all of them
+
+`scope: api`, `scope: build`, `scope: ci`, `scope: core`, `scope: crypto`, `scope: dependencies`,
+`scope: docs`, `scope: examples`, `scope: network`, `scope: security`, `scope: tests`. These are applied
+by people to classify the area of a change. The automation references none of them. (`scope: ci` is the
+label behind the maintainer's earlier "scope/CI" question: it is a manual classification label, not a CI
+trigger.)
+
+### Dependabot-created (3): applied automatically by Dependabot, not by the automation
+
+`dependencies`, `github_actions`, `vcpkg_package_manager`. These come from `dependabot.yml` (the vcpkg
+package-manager config creates `vcpkg_package_manager`). Note that the bare `dependencies` label here is a
+different label from `scope: dependencies` above.
+
+### Campaign (2) and migration (1)
+
+| Label | Kind |
+|---|---|
+| `hacktoberfest` | Hacktoberfest campaign |
+| `hacktoberfest-accepted` | Hacktoberfest campaign |
+| `Hiero Transfer` | one-off migration label from the move to Hiero |
+
+That is 14 + 2 + 11 + 3 + 2 + 1 = 33, matching the live repository.

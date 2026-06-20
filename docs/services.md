@@ -77,7 +77,7 @@ Each row is one capability, the kind of thing that could become a toggle. The ma
 | 1. Intake | GFI-candidate notification | | ✅ | 🟣 | `bot-gfi-candidate-notification` |
 | 2. Assign | Self-serve `/assign` with eligibility gates | ✅ | ✅ | 🟢 | C++ uses central limits; Python uses per-tier handlers plus the spam list |
 | 2. Assign | `/unassign` | ✅ | ✅ | 🟢 | C++ reverts the status label; Python is assignee-only |
-| 2. Assign | Skill-ladder prerequisite gating | ✅ | ✅ | 🟢 | C++ uses `skillPrerequisites`; Python uses the advanced and intermediate guards, which unassign on a fail |
+| 2. Assign | Skill-ladder prerequisite gating | ✅ | ✅ | 🟢 | C++ uses `skillPrerequisites` (beginner needs 2 closed GFI, intermediate 3 closed beginner, advanced 3 closed intermediate); the same skill label also drives the GFI cap and the `/finalize` title and body rewrite, so it is far more than a recommendation hint; Python uses the advanced and intermediate guards, which unassign on a fail |
 | 2. Assign | Assignment-limit enforcement | ✅ | ✅ | 🟢 | C++ uses `maxOpenAssignments` and `maxGfiCompletions`; Python uses spam-list caps |
 | 2. Assign | Reviewer becomes PR assignee | | ✅ | 🟣 | `on-review` |
 | 2. Assign | Mentor rotation on assignment | | ✅ | 🟣 | chained inside the GFI handler, via `mentor_roster.json` |
@@ -96,7 +96,7 @@ Each row is one capability, the kind of thing that could become a toggle. The ma
 | 5. Prog | Milestone assignment on merge | ✅ | | 🔵 | on the linked issues or the PR |
 | 6. Notify | P0 or critical issue alert | | ✅ | 🟣 | on `priority: critical` |
 | 6. Notify | Community and office-hours reminders | | ✅ | 🟣 | fortnightly crons |
-| 6. Notify | Workflow-failure feedback on a PR | | ✅ | 🟣 | reacts to 7 named checks |
+| 6. Notify | Workflow-failure feedback on a PR | | ✅ | 🟣 | reacts to 7 named CI checks; a notification service, not CI itself; matches the 7 by exact workflow-name string, so a rename silently breaks it |
 | 6. Notify | CodeRabbit AI plan and review triggers | | ✅ | 🟣 | matches the goals.md idea that AI should be complementary |
 | 7. Admin | Spam-list maintenance | | ✅ | 🟣 | hourly cron plus a tracking issue |
 | 7. Admin | Slash-command dispatcher (one shared parser) | ✅ | | 🔵 | architectural; Python dispatches per workflow instead |
