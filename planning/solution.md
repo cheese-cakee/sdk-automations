@@ -1,6 +1,6 @@
 # Solution: Architecture Hypothesis (draft, co-authored)
 
-> This is a draft, meant to be developed together with the maintainer. It is not a finished specification.
+> This is a draft, meant to be developed further. It is not a finished specification.
 > Where a decision still has to be made, the text says so instead of pretending it is settled. This is the
 > central design document that three shorter notes already point toward, and it pulls them together: the
 > solution overview (`planning/solution-overview.md`), the opt-in modules note (`planning/opt-in-modules.md`),
@@ -148,7 +148,7 @@ status-through-the-core answers the label baton, the declared cross-entity read 
 services following the same link in two ways, and the standalone deployment unit answers the bundled files
 and shared queues.
 Working out the exact form this contract takes is the most important open question in this document, and the
-first thing to settle with the maintainer, because everything else depends on it.
+first thing to settle, because everything else depends on it.
 
 ## 7. How turning a service on and off works
 
@@ -166,12 +166,13 @@ idea down as an exact, testable rule is one of the pieces still open.
 ## 8. Why we keep labels to a minimum
 
 The deep dive showed the status labels are the deepest tangle, with `ready for dev` passed between five
-services in turn. The maintainer's point follows from that: every new label is another baton, another thing
+services in turn. The point follows from that: every new label is another baton, another thing
 one service must produce before another can act. So a label is added only when nothing else will carry the
 state. A few positions follow, all still open to confirm. The core, not any service, owns the status labels
 and knows the full set, so no service can invent one or wipe the whole group the way two services do today. A
 proposed new label has to earn its place against the simpler option of the core just holding that state
-without a label. And the bigger question of a full label scheme waits for its own maintainer led goal, so this
+without a label. And the bigger question of a full label scheme waits for its own separate decision about what
+labels are for, so this
 document proposes none and uses placeholders.
 
 ## 9. How we would test it
@@ -201,15 +202,16 @@ schedule. The full label scheme waits for its own goal, as section 8 says. And t
 bots will need reworking, and probably simplifying, to fit a world where a service is a switchable unit on a
 shared core. That is build phase work, noted here only so the cost is on the record.
 
-## 11. What to decide together
+## 11. Open questions
 
-A few things need the maintainer before the design settles, and they are the natural next conversation. The
-first is whether the core, as the owner of status, the resolvers, the safety engine, the shared comment
-records, and the single door to GitHub, is the right line to draw between the shared system and a service.
-The taxonomy is meant to sit in the core too, but it stays deferred behind its own goal, as section 8
-explains. The second is what a service's contract in section 6 must be required to declare so that no service
-can ever come to lean on another. The third is whether status is better kept as labels the core manages, or
-as state the core owns that a label only reflects, since the answer decides how far the label discipline of
-section 8 can go. The fourth is which of the test rules in section 9 are worth building the first test harness
-around. These are written as questions on purpose. At this stage the document is worth more for framing them
-clearly than for answering them early.
+A few things I still need to work through before the design settles. I would rather frame them clearly now
+than answer them too early.
+
+- Is the core, as the owner of status, the resolvers, the safety engine, the shared comment records, and the
+  single door to GitHub, the right line to draw between the shared system and a service? (The taxonomy sits in
+  the core too, but I am keeping it deferred behind its own goal, as section 8 explains.)
+- What does a service's contract in section 6 have to declare so that no service can ever come to lean on
+  another?
+- Should status be kept as labels the core manages, or as state the core owns that a label only reflects,
+  since that answer decides how far the label discipline in section 8 can go?
+- Which of the test rules in section 9 are worth building the first test harness around?
