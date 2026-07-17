@@ -1,37 +1,38 @@
 # Opt-In Modules: the Catalogue and the Interaction Graph
 
-> DRAFT — the module-level companion to `planning/solution.md`, which designs the system these run
+> DRAFT — the module-level companion to `design/architecture.md`, which designs the system these run
 > on. No decision yet on which modules ship: the catalogue is a worked split of the audited
-> capabilities (`docs/services.md`), with placeholder state names pending `taxonomy-draft.md`.
+> capabilities (`audit/services.md`), with placeholder state names pending `design/core/taxonomy.md`.
+> As each module is designed for build, its spec lands in this directory as `<name>.md`.
 
 ## 1. The decoupling rule
 
 **A module never depends on another module — only on the core.** Three parts make it hold, all
-designed in `solution.md` (§4 core, §5 contract, §7 toggle):
+designed in `design/architecture.md` (§4 core, §5 contract, §7 toggle):
 
-1. The core owns every state and every shared computation — the state machine and the resolvers
+1. The core owns every state and every shared computation — the state machines and the resolvers
    exist even if only one module is on.
 2. A module declares its full contract and never names, calls, or imports a sibling.
 3. **Every state has a non-module way in** — a hand-applied label, a config default, a command — so
    an upstream module *automates* an entry point, never *is* the entry point (exact semantics:
-   `manual-edits.md`).
+   `design/core/manual-edits.md`).
 
 Consequence: any single module alone is a functional-but-manual capability; adding its upstream
 automates its inputs; removing it drops back to manual. Nothing breaks, nothing starves — that is
-"dial a feature up or down" from `goals.md`.
+"dial a feature up or down" from `planning/goals.md`.
 
 ## 2. The module catalogue
 
-Each row is one independently togglable unit (never bundled behind a shared trigger — lessons D1).
+Each module is one independently togglable unit (never bundled behind a shared trigger — lessons D1).
 
 | Module | What it does | Consumes (state in) | Produces (state out) | Standalone when its upstream is off |
 |---|---|---|---|---|
-| **intake** | moderate/lock new issues, `/finalize` validate + promote | issue opened | `awaiting triage` → `ready for dev` | n/a — it is the producer; maintainers can also set `ready for dev` by hand |
-| **assignment** | `/assign`, `/unassign`, skill gates, limits | `ready for dev` | `in progress` ↔ `ready for dev` | works whenever `ready for dev` is set — by intake **or** by a maintainer label |
-| **inactivity** | warn → close/unassign stalled work, `/working` reset | `in progress` (assigned) | `ready for dev` (or closed) | acts on any assigned in-progress item, regardless of who assigned it |
-| **pr-quality** | DCO/GPG/conflict/link checks + dashboard | PR opened | `needs review` / `needs revision` | fully self-contained on the PR side |
-| **review-routing** | review → status, queue state machine | `needs review` | `queue:*` / `ready-to-merge` | works whenever `needs review` is set — by pr-quality **or** by hand |
-| **progression** | post-merge recommend, level-up, milestone | PR merged + the `ready for dev` pool | recommendations; strips `status:*` | reads whatever `ready for dev` issues exist; recommends nothing if the pool is empty |
+| **intake** | moderate/lock new issues, `/finalize` validate + promote | issue opened / reopened | `awaiting triage` → `ready for dev` (issue) | n/a — it is the producer; maintainers can also set `ready for dev` by hand |
+| **assignment** | `/assign`, `/unassign`, skill gates, limits | `ready for dev` (issue) | `in progress` ↔ `ready for dev` (issue) | works whenever `ready for dev` is set — by intake **or** by a maintainer label |
+| **inactivity** | warn → reclaim stalled work, `/working` reset | `in progress` (issue, no open PR) · `needs revision` (PR) | `ready for dev` (issue) · closed (PR) | acts on any stalled item, regardless of who assigned it |
+| **pr-quality** | DCO/GPG/conflict/link checks + dashboard | PR opened | `needs review` / `needs revision` (PR) | fully self-contained on the PR side |
+| **review-routing** | review → status, queue state machine | `needs review` (PR) | `queue:*` / `ready to merge` (PR) | works whenever `needs review` is set — by pr-quality **or** by hand |
+| **progression** | post-merge recommend, level-up, milestone | PR merged + the `ready for dev` pool | recommendations only — the old status strip is now the core's close hygiene (`design/core/taxonomy.md` §2.3) | reads whatever `ready for dev` issues exist; recommends nothing if the pool is empty |
 | **notifications** | alerts, reminders, CI-failure feedback, AI hooks | events only | comments only — **no state** | fully standalone; touches no shared label |
 | **admin** | spam-list, mentor rotation | assignment events | `notes:*` bookkeeping | standalone; degrades to no-op without the events it watches |
 
@@ -40,8 +41,8 @@ be set manually"* — that column is the decoupling rule made concrete.
 
 ## 3. The interaction graph
 
-Modules interact only **through the core**, on the three channels `solution.md` §4 defines: shared
-state (the state machine), shared resolvers (`eligibleLevel`, `linkedIssues`, `isBot` — one mechanism
+Modules interact only **through the core**, on the three channels `design/architecture.md` §4 defines: shared
+state (the state machines), shared resolvers (`eligibleLevel`, `linkedIssues`, `isBot` — one mechanism
 per question, lessons B2), and declared cross-entity reads (lessons C1). The dependency graph has
 **no module-to-module edges** — every arrow goes module → state → module:
 
@@ -92,4 +93,4 @@ decoupling.
   Assignment's code is still untouched.
 
 At no level does enabling or disabling a neighbour require editing assignment — the test from
-`goals.md`: "turning a feature off is one config edit and has no side effects on the others."
+`planning/goals.md`: "turning a feature off is one config edit and has no side effects on the others."
