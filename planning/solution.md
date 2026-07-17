@@ -1,243 +1,208 @@
-# Solution: Architecture Hypothesis (draft, co-authored)
+# Solution Architecture
 
-> A draft, meant to be developed further — not a finished specification. This is the second revision;
-> it supersedes the first hypothesis draft, which is preserved in git history. Where a decision is
-> still open, the text says so (§10), and where the design takes a position early it is marked
-> **proposed**, with the reasoning and with what would overturn it. This is the central design document
-> the shorter notes point toward (the repo `README.md` gives the reading order):
-> `planning/opt-in-modules.md` (the modules), `planning/test-architecture.md` (the tests),
-> `planning/manual-edits.md` (the manual-edit semantics), `planning/operations.md` (hosting, rollout,
-> rate limits, failure loudness), `planning/taxonomy-draft.md` and
-> `planning/config-draft.md` (the drafts awaiting ratification). Vision and hard limits:
-> `planning/goals.md`. The coupling this design avoids: `planning/lessons-learned.md` (classes A–E)
-> and `audit/deep-dive-cpp.md` §3. Left for later, on purpose: which services get built, the full
-> config schema, the label taxonomy, and the build order. This document is about the system that holds
-> the services, not the services themselves.
+This document proposes one architecture for the hosted Hiero maintainer-automation app. It combines the useful
+parts of the solution drafts from PRs #15 and #16. The audits explain the problems; the taxonomy and config drafts
+remain proposals until maintainers approve them.
 
-## 1. The problem, and the idea in one picture
+## Decision status
 
-Today the automation services are tangled together — not because the code is messy, but because the
-services *share* things. The audit found four distinct kinds of sharing (`audit/deep-dive-cpp.md` §3):
-
-- **Status labels as a baton.** `status: ready for dev` is produced by one service, consumed by another,
-  reset by a third — moving state that no single service owns, so none can be switched off alone.
-- **The issue↔PR link followed two different ways** (a precise query vs body-text scanning), which can
-  disagree about what is linked to what.
-- **Rendered text and exact names as interfaces.** One service searches another's comment for an exact
-  phrase; two workflows connect only through a name string. Change the wording or the name and nothing
-  reports an error — the behaviour just quietly stops.
-- **Unrelated features bundled** into one workflow file, one permissions block, one hidden queue — so
-  turning one off is a code edit, not a setting.
-
-The answer is one shared thing in the middle: a **core** that owns everything services would otherwise
-pass between themselves, behind one door to GitHub — plus one sentence that holds the design together:
-
-> **The app is a stateless reducer over GitHub's state:** `(GitHub state, event, config) → transitions`.
-> The app itself stores nothing.
-
-```mermaid
-flowchart TB
-    MAINT[["maintainer — labels by hand<br/>(the non-module way in)"]]
-    GH[("GitHub — the database<br/>labels = status · comments = projections · timestamps = clocks")]
-    MAINT --> GH
-
-    subgraph APP["hosted app · one install · issues:write · pull-requests:write · contents:read"]
-        direction TB
-        subgraph SHELL["shell"]
-            WH["webhook intake<br/>(push)"]
-            SW["reconciliation sweeper<br/>(pull, scheduled)"]
-            SER["per-item serializer — keyed queue, one worker per issue/PR"]
-            WH --> SER
-            SW --> SER
-        end
-        REG["registry — validate config (_extends) · project per-module slices · activate declared modules"]
-        MODS["modules (opt-in) — intake · assignment · inactivity · pr-quality · …<br/>each declares: config slice · states in/out · resolvers · cross-entity reads"]
-        subgraph CORE["core — domain vocabulary only, no service-shaped methods"]
-            direction LR
-            SM["state machine<br/>labels are the truth<br/>idempotent transitions"]
-            RES["resolvers<br/>linkedIssues · eligibleLevel<br/>isBot · mayPerform"]
-            SAFE["safety<br/>grace periods<br/>per-item cooldowns"]
-            PROJ["projections<br/>single-writer comments<br/>never an input"]
-        end
-        ADP["GitHub adapter — the one door"]
-        SER --> REG --> MODS -->|request transitions · read state| CORE --> ADP
-    end
-
-    GH -->|events + observed state| SHELL
-    ADP -->|guarded writes| GH
-```
-
-Each tangle is answered structurally below: the baton by §4's single-writer state machine, the two-way
-link by §4's resolvers, the text-and-names interfaces by §4's projections, and the bundling by §5's
-deployment identity.
-
-## 2. The shell
-
-Work arrives two ways and is serialised once:
-
-- **Webhook intake** — GitHub pushes an event; the shell authenticates the installation.
-- **Reconciliation sweeper** — scheduled reads of current state, fed through the same path as events.
-  Webhooks are not guaranteed delivered, and §7's rule means states can be entered with no event at all —
-  so modules react to **state observed, not events assumed**, and a missed webhook heals on the next
-  sweep. (The inactivity service already works this way; the pattern is promoted from one service's trick
-  to a first-class delivery mechanism.)
-- **Per-item serializer** — one worker per issue or PR. The audit removed the accidental mutex (the shared
-  concurrency groups, lessons D2); this is its deliberate replacement. GitHub's API has no
-  compare-and-swap on labels, so races are prevented here and absorbed by idempotent transitions (§4).
-
-## 3. Config and registry
-
-The registry resolves `.github/hiero-automation.json` (+ `_extends` org defaults), validates it **at
-runtime** (the file comes from repositories we do not control), and activates only the declared modules. A
-repository with no config runs on safe defaults — nothing destructive on. Each module receives a
-**projection** of the config: only its declared keys, *cannot see* the rest. That closes the shared-file
-coupling (lessons E1) at runtime, while the contract types (§5) close it at compile time.
-
-## 4. The core
-
-One rule governs all four parts: **the core speaks domain vocabulary, never service vocabulary.**
-Acceptance test: every public core operation must be describable without naming any module. The moment the
-core grows a `markReadyForAssignment()`, the coupling this design removes has moved inside the core and
-been sanctioned there.
-
-One event's life through the core:
-
-```mermaid
-sequenceDiagram
-    participant GH as GitHub
-    participant SH as shell
-    participant M as module
-    participant C as core
-    participant A as adapter
-    GH->>SH: webhook (or sweep observation)
-    SH->>SH: enqueue on the item's key
-    SH->>M: event + config slice
-    M->>C: mayPerform(actor, action)?
-    C-->>M: yes
-    M->>C: request transition(state → state')
-    C->>C: guard: legal? already done? (idempotent)
-    C->>C: safety: destructive? warn · grace · cooldown
-    C->>A: apply label change + render projection
-    A->>GH: the only write path
-```
-
-| Part | Owns | The rule that keeps it safe |
+| ID | Decision | Status |
 |---|---|---|
-| **state machine** | states + legal transitions, defined independently of installed modules | single `status:` writer; idempotent guarded transitions; coupled facts (assignee + status) move in one transition (lessons A1, A3) |
-| **resolvers** | `linkedIssues(pr)` · `eligibleLevel(user)` · `isBot(actor)` · `mayPerform(actor, action)` | one mechanism per question (B2) — authorization included, or two modules will answer it differently |
-| **safety** | grace periods, reversibility, **per-item cooldowns** | generalises the inactivity service's proven warn-then-act pattern; timers *derived* from GitHub timestamps in sweeps, never owned |
-| **projections** | every comment the app writes | rendered *from* state, **never read as input** (A2); any comment-borne metadata is core-private and schema-versioned |
+| `D-001` | Hosted, config-driven GitHub App | Accepted |
+| `D-002` | Strict TypeScript with runtime validation at external boundaries | Proposed |
+| `D-003` | Observation to snapshot to intent to effect pipeline | Proposed |
+| `D-004` | GitHub as the visible source of domain state | Proposed |
+| `D-005` | Durable coordination for multi-worker reliability | Proposed |
+| `D-006` | Separate issue and pull request state machines | Proposed |
+| `D-007` | Exact MVP modules and behavior | Open |
+| `D-008` | Final taxonomy and migration mappings | Open |
+| `D-009` | Permission and webhook manifest | Open |
+| `D-010` | Hosting, storage, secrets, retention, and operations | Open |
+| `D-011` | Legacy structured-comment migration | Open |
+| `D-012` | Pilot repository and rollback thresholds | Open |
 
-### 4.1 Where state lives *(proposed)*
+Concrete examples below explain the proposal; they do not settle an open policy decision.
 
-**GitHub is the database.** Labels are the status store — the core is the app-side exclusive writer, and a
-hand-applied label is ingested as a legitimate transition, which is §7's rule working natively with no
-synchronisation machinery. Comments are projections. Timestamps are the safety engine's clocks. The app is
-stateless per event: trivial hosting, crash-safe, state auditable in GitHub's own UI, and the test fake
-for the core is an in-memory label set. The honest costs: label writes are not transactional (mitigated by
-§2's serializer plus idempotency), and any datum that fits no label rides in core-private comment metadata
-or derives from timestamps. **Overturned by:** a concrete invariant that provably needs an owned store —
-which would then live *behind* the core's interface, changing no module.
+## What the audits taught us
 
-This answers the first draft's open question "labels the core manages, or state a label only reflects":
-that question was really *does the app have a database*, and the proposal is no.
+C++ keeps labels and policy in one configuration, so it has little data drift. However, unrelated capabilities
+share workflows, configuration, labels, and concurrency groups, which makes them difficult to adopt separately.
 
-## 5. What counts as a module
+Python has many smaller workflows, but shared ideas are repeated as strings and labels in several places. That
+makes individual files easy to remove while allowing policy and naming to drift. Recent Python lifecycle work
+shows a better unit: one coherent domain responsibility with one source of truth, dry-run support, conservative
+destructive behavior, isolated failures, and safe reopen handling.
 
-One unit, on or off, talks only to the core. Its contract declares four things — one per tangle in §1:
+The new app should preserve coherent shared rules without making modules depend on one another.
 
-| Declares | Answers | Enforced by |
-|---|---|---|
-| the config slice it reads | shared config (E) | contract types (compile time) + registry projection (runtime) |
-| states consumed / transitions requested | the label baton (A) | the core is the only `status:` writer |
-| cross-entity reads | the two-way link, baked-in writes (B, C) | one core resolver per question |
-| its own trigger, permissions, queue | bundling (D) | deployment identity; only the shell's *item*-scoped queue is shared |
+## The central rule
 
-In TypeScript the contract is a value the type system enforces: the registry hands each module a core
-handle *typed by its declaration* — an undeclared transition is a compile error — and the runtime
-projection (§3) backs the same rule at the boundary. The contract's exact form is the first open item in
-§10; it is what every test layer in `test-architecture.md` mocks against.
+> A module evaluates an immutable snapshot and returns typed intents. It never calls GitHub, storage, or another
+> module.
 
-## 6. The config file, sketched
+Every webhook and scheduled check follows the same path:
 
-Shape now, keys later (§10):
-
-```jsonc
-// .github/hiero-automation.json — illustrative shape only
-{
-  "_extends": "org-repo",           // org defaults, repo overrides win
-  "modules": {
-    "assignment": { "maxOpenAssignments": 2 },   // presence = enabled
-    "inactivity": { "issue": { "warnAfterDays": 7, "unassignAfterDays": 21 } }
-    // absent module = off · no file at all = safe defaults · keys: config-draft.md
-  }
-}
+```text
+GitHub event or reconciliation check
+  -> authenticate and normalize the observation
+  -> load and runtime-validate configuration
+  -> build an immutable domain snapshot
+  -> let enabled modules return typed intents
+  -> refresh the decision under coordination
+  -> authorize, arbitrate, validate transitions, and apply safety
+  -> record one accepted effect plan
+  -> perform narrow GitHub writes through one adapter
+  -> record outcomes and optionally explain them to humans
+  -> reconcile GitHub with the accepted plan
 ```
 
-A module's block is the whole config that module can see (§3), and safe defaults switch on nothing
-destructive.
+For example, an assignment module may request “assign this contributor to issue 42.” It cannot call an assignee
+endpoint or replace labels. The core decides whether the request is authorized, legal, safe, and compatible with
+other intents. The adapter performs only the accepted GitHub operations.
 
-## 7. Turning a module on and off
+## System boundaries
 
-**Every state a module consumes can also be set another way** — a hand-applied label, a config default, a
-command. An upstream module is only ever a shortcut, never the only way in: the light has both a switch
-and a motion sensor, and removing the sensor leaves the switch working. (The state graph with the manual
-entry point drawn is `opt-in-modules.md` §3; the exact semantics of manual edits — the coherence
-classes, the never-revert rule, the newer-fact rule — are `planning/manual-edits.md`.) Two corollaries,
-made explicit:
+### Intake and reconciliation
 
-- Because states enter out-of-band, modules react to **state observed, not events assumed** — the sweeper
-  (§2) is architecture, not optimisation.
-- The rule is a CI gate, not philosophy: for every state in any module's contract, the toggle matrix must
-  contain a passing case where that state is produced *manually* and the consuming module still functions.
+Webhook intake verifies the signature and installation, attaches a correlation ID, and converts the payload into
+a domain observation. It does not make lifecycle decisions.
 
-## 8. Why labels stay minimal
+Reconciliation uses the same decision pipeline to detect missed webhooks, direct maintainer changes, delayed work,
+and partially applied plans. Slow sweeps and safety timers run as bounded scheduled work, not inside a webhook
+response.
 
-Every label is a potential baton — and under §4.1, also a row in the database. The core owns the full set;
-no module invents one; bulk `status:*` prefix-strips are impossible by construction (A1); and a proposed
-new label must beat the alternative of the core *deriving* the fact from assignees, timestamps, or links
-without storing it at all. The taxonomy itself waits for its own decision (§10).
+### Configuration and registry
 
-## 9. How it is tested
+The app reads strict JSON from the default branch and may resolve an explicit `_extends` source. It validates every
+raw source and the final resolved value at runtime. TypeScript types alone are insufficient because repository
+configuration is external data. Missing, invalid, or inaccessible configuration enables no destructive behavior
+and produces an actionable diagnostic.
 
-The design in `planning/test-architecture.md` stands, with three additions this architecture makes cheap
-or necessary: the **fake core is an in-memory label set** plus the transition table (§4.1); two invariants
-become near-tautological and are asserted anyway — *no state outside GitHub*, *no write outside the
-adapter*; and one is new and load-bearing — **concurrent conflicting transitions resolve to exactly one
-winner**, the executable form of §2 plus §4's idempotency, and the regression test for removing the
-accidental mutex. The manual-edit semantics add their own invariants and an incoherence-injection axis to
-the toggle matrix (`planning/manual-edits.md` §6).
+Each module declares its observations, config schema, domain reads, intents, transitions, permissions, scheduled
+work, projection keys, and conflict classes. The registry supplies only that module's validated config slice and
+checks that the installation has the declared capabilities.
 
-## 10. What we still need to decide
+### Snapshots and modules
 
-```mermaid
-flowchart LR
-    T["taxonomy + state machine<br/>(gates everything)"] --> ST["state store —<br/>ratify §4.1"]
-    T --> MVP["MVP module set<br/>+ boundaries"]
-    ST --> CONC["serializer + idempotency<br/>semantics (§2, §9)"]
-    ST --> SAFEQ["safety specifics<br/>(grace · reversal · cooldown)"]
-    MVP --> KNOBS["policy knobs reconciled<br/>across the SDKs"]
-    KNOBS --> SCHEMA["config schema (§6)"]
-    T --> SCHEMA
+A snapshot contains normalized issues, pull requests, links, assignees, reviews, managed labels, actor capability,
+and relevant timestamps. Raw Octokit objects stop at the adapter boundary. Snapshots are immutable during an
+evaluation pass.
+
+A module is deterministic:
+
+```text
+(observation, snapshot, validated module config) -> intents and diagnostics
 ```
 
-- We need the label taxonomy and the state machine first — nothing downstream starts before it.
-- We need to ratify (or refute) §4.1: is GitHub the database? If we can name an invariant that provably
-  needs an owned store, the store enters behind the core's interface and no module changes.
-- We need the manual-edit semantics ratified — what the core does when a hand-applied label conflicts
-  with the state machine. Drafted as `planning/manual-edits.md`: humans edit state (any position, from
-  any position, never reverted), modules request transitions (edge-bound); incoherent observations get
-  five defined classes; plus the newer-fact rule that stops a sweep re-derivation from fighting a
-  human's edit.
-- We need the exact form of the module contract (§5) — it is what every test layer mocks against.
-- We need the serializer and idempotency semantics written down as the one-winner invariant (§2, §9).
-- We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.
-- We need the safety specifics per destructive action: grace period, reversal path, trigger class.
-- The operations questions — who hosts, rollout rings, config-error surfacing, and the rate-limit
-  arithmetic — are drafted in `planning/operations.md`. The one correction it makes here: the budget
-  is **per-organisation**, not per-repo (one installation covers every org repo), enforced entirely
-  at the adapter, with sweep cadence derived from fleet arithmetic rather than configured. Its §7
-  lists the shape-changes it forces on this document's §2 and §4.
+It receives no Octokit client, database handle, clock, environment access, generic service locator, or neighboring
+module. Its result is data, not callbacks or GitHub operations. A follow-up module contract can make the exact
+declarations and common tests normative after this architecture is approved.
 
-Reworking the existing C++ and Python bots into modules on this core is build-phase work, recorded here so
-the cost stays on the record.
+### Core
+
+The core speaks domain vocabulary such as actors, linked work, eligibility, transitions, conflicts, and safety. It
+must not grow service-shaped operations such as `markReadyForAssignment` or `resetAfterReap`.
+
+The core owns:
+
+- actor and intent authorization;
+- canonical resolution of links, eligibility, fields, and bot identity;
+- legal issue and pull request transitions;
+- deterministic arbitration between conflicting intents;
+- invariants that span assignment and lifecycle state;
+- warning, cancellation, grace period, and recovery rules for destructive actions;
+- explicit effect plans and structured decision outcomes.
+
+The core does not render prose, call GitHub, or implement module-specific policy.
+
+### Coordination
+
+GitHub remains the visible source of issue, pull request, assignment, review, and label state. Operational storage
+contains only what is needed to coordinate work: delivery and command identities, accepted-plan claims, leases,
+effect attempts, scheduled actions, retries, projection keys, and reconciliation cursors.
+
+Preliminary evaluation may only discover a conservative set of affected issue or pull request keys. After those
+keys are acquired in canonical order, the app reloads config revisions, actor capability, links, and GitHub state,
+then reruns evaluation and safety. If the affected set expands, it releases coordination and restarts before any
+write. Only this refreshed decision may become an accepted plan.
+
+The coordinator atomically records one accepted plan before external writes begin. A renewable lease grants one
+worker execution authority, but it does not make GitHub calls exactly once. If a result becomes unknown after a
+timeout or lost lease, a recovery worker adopts the same plan, probes GitHub, and reconciles or retries it before a
+conflicting plan can proceed. No database transaction remains open across a GitHub API call.
+
+A deliberately single-replica first deployment is possible only if that limitation is explicit and tested. High
+availability requires durable coordination; an in-process queue alone is not the correctness boundary.
+
+### Effects, outcomes, and human explanations
+
+The effect planner turns an accepted intent into ordered, narrow, idempotent operations. Each effect has a stable
+identity, preconditions, an expected result, and a retry, compensation, or reconciliation path.
+
+Only the GitHub adapter calls GitHub. It owns pagination, API versions, rate limits, and error classification. It
+adds or removes only managed values and never replaces all labels from a stale snapshot.
+
+The executor records what the core decided and what GitHub returned. Examples include `applied`,
+`already_satisfied`, `rejected_unauthorized`, `rejected_illegal_transition`, `blocked_by_human`,
+`delayed_for_safety`, `unknown_external_result`, and `retryable_failure`. A partial plan remains recorded and is
+reconciled; several GitHub calls are never treated as one transaction.
+
+When a maintainer needs an explanation, a projection writer turns the structured outcome into a comment or check.
+It owns stable keys, rendering, update behavior, and noise policy. Modules never parse rendered prose. Publishing
+that explanation is a separate GitHub write through the same adapter, not a repeat of the domain effect.
+
+## State ownership and module independence
+
+Issues and pull requests are separate entities with separate proposed state machines. A linked contribution
+aggregate coordinates operations that must keep them consistent. Exact states, transitions, blocking behavior,
+and migration mappings remain in [`taxonomy-draft.md`](taxonomy-draft.md) until ratified.
+
+The core is the only automated writer of managed lifecycle labels. A direct maintainer change is an external
+transition request. Reconciliation follows an approved policy: accept a legal transition, repair a deterministic
+inconsistency, or quarantine an ambiguous state and explain the required choice.
+
+Every state consumed by a module must also have a manual or native entry path. An upstream module may automate an
+input, but it cannot be the only way a downstream module works. Disabling a module must retire its scheduled work
+without corrupting shared state or disabling another module.
+
+## Reliability rules
+
+- A GitHub delivery ID deduplicates one delivery.
+- A slash command is identified by repository, subject, created-comment ID, command position, and normalized text.
+  Editing an old comment never executes a new command.
+- An intent identity prevents the same semantic request from being reapplied after a retry.
+- Arbitration resolves incompatible intents without depending on module registration order.
+- An atomic plan claim gives one winner when concurrent requests compete for the same capacity.
+- Idempotent writes, result probes, and reconciliation converge GitHub state without claiming exactly-once calls.
+- Refreshed state, not webhook arrival order or timestamps, determines whether a transition is still legal.
+- Records have explicit retention, and logs exclude secrets and unnecessary contributor content.
+
+## Permissions, testing, and rollout
+
+The GitHub App requests the verified union of permissions and events required by the supported modules. Repository
+toggles do not dynamically change the installation manifest. A module stays inactive when an older installation
+lacks a required capability. `contents:write` is forbidden, and optional fields, checks, team membership, or
+organization projects require explicit permission and portability review.
+
+Pure domain tests, shared module-contract tests, adapter fixtures, webhook tests, property tests, concurrency and
+crash tests, reconciliation tests, permission and security checks, and sandbox exercises cover different failure
+boundaries. The existing [`test-architecture.md`](test-architecture.md) is the starting verification model.
+
+Rollout moves through observation with no writes, reversible sandbox writes, a non-destructive pilot, and only then
+destructive behavior after warning, cancellation, recovery, and rollback are demonstrated. During migration, the
+old and new systems never write the same lifecycle state concurrently.
+
+## Decisions still required
+
+Before implementation depends on them, maintainers must decide:
+
+1. The issue and pull request states, manual repair policy, and legacy mappings.
+2. TypeScript and the exact runtime module declaration.
+3. Single-replica or durable distributed coordination for the first deployment.
+4. The MVP modules and resulting permission and webhook manifest.
+5. Whether legacy structured comment markers remain temporarily during migration.
+6. Hosting, operational ownership, retention, privacy, and cost.
+7. The first SDK pilot and its rollback thresholds.
+
+Detailed contracts, evidence notes, security review, quality gates, and implementation sequencing should follow
+these architecture decisions rather than silently settle them.
