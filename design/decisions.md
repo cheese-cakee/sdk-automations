@@ -34,6 +34,7 @@
 | D22 | Replay gate + rings + three-grain kill switches for rollout | `operations/README.md` §3 | — | proposed |
 | D23 | Module contract: five typed declaration fields; required `cause`; `effects` for A3 coupling | `modules/contract.md` | build-time refinement of shapes | proposed |
 | D24 | One-winner semantics: serializer + compare-and-set `expect`; exactly one `applied` | `modules/contract.md` §3 | — | proposed |
+| D25 | Threat model: per-actor command budgets, echo policy + authorship checks, same-org one-level `_extends`, schema floors, safe-to-shed backpressure | `operations/threat-model.md` §3 | red-team findings at ring 0/1 | proposed |
 
 ## Open questions
 
@@ -50,4 +51,5 @@
 | Q9 | Marker/schema format, warning templates, health-issue pinning | build time, before ring 0 | ring 0 |
 | Q10 | Timeline-read + secondary-limit budgets | measured at ring 0 | D9 confirmation |
 | Q11 | Install org-wide with config consenting, or tight repo selection? | TSC governance | install guidance |
+| Q13 | Who builds it — every dash in `build-plan.md`'s Owner column; the baseline-capture row has a deadline (old bots still running) | maintainers / TSC commit names | everything downstream |
 | Q12 | Build-time docs, deliberately deferred with triggers: `modules/authoring.md` (with the first real module), the config JSON Schema (with the registry), the ring-0 sandbox runbook (with ring 0), the kit implementation guide (extracted from the first working harness) | build phase — each written against working code, not before | nothing (deferral is the decision) |

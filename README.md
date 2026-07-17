@@ -20,9 +20,14 @@ directory per component, with each component's design doc beside its code.
    - [`design/core/manual-edits.md`](design/core/manual-edits.md) — what happens when a human edits a status label
    - [`design/config/schema.md`](design/config/schema.md) — the repo config file
    - [`design/operations/README.md`](design/operations/README.md) — hosting, rollout, rate limits, failure loudness
+   - [`design/operations/threat-model.md`](design/operations/threat-model.md) — the adversarial pass: what an attacker touches, and the ceiling that bounds it
 4. [`design/modules/README.md`](design/modules/README.md) — the module catalogue and interaction graph; per-module
    specs land in `design/modules/` as each is designed.
 5. [`design/testing/README.md`](design/testing/README.md) — how the system is tested.
+6. [`design/contributors.md`](design/contributors.md) — the contributor-facing page: what the bot
+   does and won't do, in the bot's own voice.
+7. [`design/build-plan.md`](design/build-plan.md) — names, estimates, and what is actually
+   committed.
 
 ## The evidence underneath
 

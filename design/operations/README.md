@@ -20,6 +20,9 @@ idempotency. Everything follows from it:
   instance would reintroduce the race it exists to kill. **Overturned by:** growth past §4's
   arithmetic, at which point the queue moves behind the shell, changing no module.
 - **Restart is the recovery tool.** There is no state to reconcile.
+- **Safe to shed, too:** the shell's queues are bounded — an event storm (a bulk-label import, 500
+  webhooks at once) is shed past the bound and healed by the next sweep. Correctness never depends
+  on processing any particular event (`threat-model.md` §3.4).
 - **Uninstall is graceful.** Labels, comments, assignees all survive; maintainers continue by hand —
   the light-switch rule (`design/architecture.md` §7) at system level.
 - Deliberately **not** built: HA, clustering, queue infrastructure, per-repo cadence tiers, new
@@ -149,7 +152,9 @@ page nobody (§1); they mark the dashboard and, where §5's table says so, the h
 
 The app stores no repo data at rest; what remains is the two secrets (§2) and logs holding public
 repo metadata, retained for the replay window only *(proposed: 30–90 days)*. Webhook signatures are
-verified at intake before anything runs.
+verified at intake before anything runs. The full adversarial pass — command griefing, content
+injection through the app's voice, config as weapon, compromised accounts and keys — is
+`design/operations/threat-model.md`.
 
 ## 7. The shape-changes this forces
 

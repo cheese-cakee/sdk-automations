@@ -54,7 +54,31 @@ to enforce — not by quietly reading a comment somewhere.
 | **safety warned-at** | the warning's timestamp + schema-versioned metadata | warn-then-act needs durable memory of "warned at T"; no label can carry a timestamp, and the app has no store (`design/architecture.md` §4.1) |
 | **command ack marker** | the 👀 reaction's presence | the processed-marker that lets the sweep find un-acked commands after downtime — commands become durable with no store (`design/operations/README.md` §5) |
 
-## 4. Open
+## 4. Voice: the templates are a product surface
+
+The bot's comments are the entire contributor experience of this system, and the difference between
+a warning that reads as a countdown to punishment and one that reads as a colleague checking in is
+the difference between automation a community tolerates and automation it resents. Every template,
+every kind, follows these rules:
+
+- **Colleague, not cop.** Every message is help: it states a fact and hands over the exits. The
+  remedy is never buried — it is the point of the message.
+- **Facts and exits, never threats.** Not *"WARNING: this issue will be unassigned in 3 days"* but
+  *"No activity here for 7 days — still on it? `/working` keeps it yours. If life happened,
+  `/unassign` sends it back to the pool and it's here when you're back; otherwise I'll do that on
+  the 21st so someone else can pick it up. Your work stays in your fork either way."* Same
+  information, opposite relationship.
+- **No blame, no exclamation marks, no bot-cutesiness.** Plain, warm, brief. Personality is
+  earned through usefulness, not emoji.
+- **Brevity budget:** warnings ≤4 sentences; acks and narrations ≤2. A bot that writes essays
+  trains people to stop reading it — and an unread warning fails `safety.md`'s first rule.
+- **The embarrassment test**, applied at template review: *would a maintainer be embarrassed to
+  have written this to a first-time contributor?* If yes, rewrite.
+
+The contributor-facing summary of all behaviour, written in this voice, is
+`design/contributors.md` — the bot's own comments link to it.
+
+## 5. Open
 
 - Resolved-vs-deleted (§1 rule 5's overturn clause).
 - The exact marker namespace and schema-version format — build-time, fixed before ring 0.

@@ -13,7 +13,9 @@ C++ tested each handler against a mock of **GitHub** — a system the project do
 silent (`planning/lessons-learned.md` B1, mock-fidelity). Here, a module only ever calls **the core**
 (`design/modules/README.md` §3), so it is tested against a **fake core** — an interface the project *owns*: small,
 stable, ours. GitHub-mocking is pushed down to **one** adapter and contract-tested there. The mock-drift
-surface collapses from "every handler re-models GitHub" to "one adapter, modelled once."
+surface collapses from "every handler re-models GitHub" to "one adapter, modelled once." The fake core
+carries an **injectable clock**: the safety engine's warn/grace/cooldown paths and the newer-fact rule
+run in virtual time, so a 21-day reclaim is a unit test, not a wait.
 
 ## The layers
 
