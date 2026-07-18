@@ -99,26 +99,70 @@ Acceptance test: every public core operation must be describable without naming 
 core grows a `markReadyForAssignment()`, the coupling this design removes has moved inside the core and
 been sanctioned there.
 
-One event's life through the core:
+One observation's life through the core, including the external feedback through GitHub:
 
 ```mermaid
 sequenceDiagram
     participant GH as GitHub
     participant SH as shell
-    participant M as module
-    participant C as core
     participant A as adapter
-    GH->>SH: webhook (or sweep observation)
-    SH->>SH: enqueue on the item's key
-    SH->>M: event + config slice
-    M->>C: mayPerform(actor, action)?
-    C-->>M: yes
-    M->>C: request transition(state → state')
-    C->>C: guard: legal? already done? (idempotent)
-    C->>C: safety: destructive? warn · grace · cooldown
-    C->>A: apply label change + render projection
-    A->>GH: the only write path
+    participant C as core
+    participant M as module
+    alt subscribed webhook arrives
+        GH->>SH: webhook
+    else scheduled reconciliation starts
+        SH->>SH: begin sweep
+    end
+    SH->>SH: verify webhook if present, then enqueue item
+    SH->>C: begin observation
+    C->>A: read current facts
+    A->>GH: narrow API reads
+    GH-->>A: current observable state
+    A-->>C: normalized facts
+    C->>C: classify coherence
+    C->>M: observation + config slice
+    M->>C: request domain transition
+    C->>C: authorize, guard, and apply safety
+    C->>A: approved narrow effect
+    A->>GH: GitHub API write
+    Note over GH,M: first processing pass ends at GitHub
+    alt subscribed webhook echoes the write
+        GH->>SH: new external observation
+    else echo is absent or missed
+        SH->>SH: later sweep observes the item
+    end
+    SH->>SH: verify webhook if present, then enqueue item
+    SH->>C: begin a new observation
+    C->>A: reload current facts
+    A->>GH: observable postcondition read
+    GH-->>A: target already satisfied
+    A-->>C: normalized facts
+    C->>C: classify coherence
+    C->>M: observation + config slice
+    M->>C: request same desired transition
+    C-->>M: already — idempotent no-op
 ```
+
+The arrows to and from the adapter are not a recursive call cycle between components. Each processing
+pass ends at GitHub; an app-authored webhook is a new external observation that re-enters the same path.
+Recognising the app's actor can suppress irrelevant policy work, but correctness comes from reloading
+current state and guarding the postcondition. Convergence does not depend on the echo arriving because a
+later sweep performs the same observation.
+
+The adapter is the transport boundary for both GitHub reads and writes: API versions, pagination, rate
+limits, retry classification, narrow mutations, and conversion between API data and normalized facts stay
+there. The diagram shows the core-side read boundary without deciding whether a snapshot builder or
+individual core resolvers invoke those reads.
+If a write response is lost, its result is unknown: the adapter reads the operation's observable
+postcondition before any retry. A satisfied target converges to `already`; otherwise the operation is
+retried only when repeating that particular mutation is safe. Several GitHub calls are not one atomic
+transition. Recovery or compensation for partially applied effects remains open; those scenarios test
+whether the proposed stateless design is sufficient.
+
+Human projections are a separate optional effect. The core renders structured content under a stable
+projection identity and publishes it through the same adapter; identical content produces no write. A
+webhook echo from that publication is still only an observation and must neither request a domain
+transition nor create another copy of the projection.
 
 | Part | Owns | The rule that keeps it safe |
 |---|---|---|
