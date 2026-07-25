@@ -22,7 +22,7 @@ fail — cite the failure), `untested`.
 | Remove label | `DELETE /repos/{o}/{r}/issues/{n}/labels/{name}` | Issues W | 1/call | — | confirmed (200) | `2026-07-23T18-58-46-782Z#3` |
 | Create comment | `POST /repos/{o}/{r}/issues/{n}/comments` | Issues W | 1/call | — | confirmed (201); secondary limit at ~71 writes @ concurrency 20, no `retry-after` | `2026-07-23T19-37-00-198Z#15,19` |
 | Update own comment | `PATCH /repos/{o}/{r}/issues/comments/{id}` | Issues W | 1/call | — | confirmed (200) | `2026-07-23T19-41-18-911Z#4` |
-| List comments | `GET /repos/{o}/{r}/issues/{n}/comments` | Issues R | 1/call | ETag present | confirmed | `2026-07-23T19-41-18-911Z#2` |
+| List comments | `GET /repos/{o}/{r}/issues/{n}/comments` | Issues R | 1/call | ETag present | confirmed. Read-after-write: 25/25 first-read visible after create (6.7) — see `read-after-write.md` for the freshness rule | `2026-07-23T19-41-18-911Z#2`; `2026-07-25T21-00-55-057Z#79` |
 | Read PR | `GET /repos/{o}/{r}/pulls/{n}` | Pull requests R | 1/call | ETag present | confirmed incl. fork-sourced PR (head repo/sha exposed) | `2026-07-23T19-41-18-911Z#3`, `…T20-16-41-190Z#2` |
 | List PR files | `GET /repos/{o}/{r}/pulls/{n}/files` | Pull requests R | 1/call | ETag present | confirmed on fork-sourced PR | `2026-07-23T20-16-41-190Z#7` |
 | Create review | `POST /repos/{o}/{r}/pulls/{n}/reviews` | Pull requests W | 1/call | — | confirmed (REQUEST_CHANGES on fork-sourced PR); **no delivery observed** — App not subscribed to `pull_request_review` | `2026-07-23T20-16-41-190Z#6` |
