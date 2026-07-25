@@ -63,14 +63,14 @@ describe("issue flow (taxonomy.md §4)", () => {
         );
     });
 
-    it("rejects a PR cause on an issue edge", () => {
+    it("rejects a PR cause on an issue edge, coded as the cause mismatch it is", () => {
         expect(
             canTransitionIssue({
                 from: "awaitingTriage",
                 to: "ready",
                 cause: "checksPassed",
-            }).allowed,
-        ).toBe(false);
+            }),
+        ).toMatchObject({ allowed: false, code: "causeNotAccepted" });
     });
 });
 
@@ -142,8 +142,7 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
             { from: "ready", to: "inProgress", cause: "contributorAssigned" },
             canTransitionIssue,
         );
-        expect(verdict.allowed).toBe(false);
-        expect(verdict.allowed || verdict.reason).toMatch(/stale precondition/);
+        expect(verdict).toMatchObject({ allowed: false, code: "stalePrecondition" });
     });
 
     it("a closed item accepts nothing", () => {
@@ -152,6 +151,58 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
             { from: null, to: "awaitingTriage", cause: "intakeObserved" },
             canTransitionIssue,
         );
-        expect(verdict.allowed).toBe(false);
+        expect(verdict).toMatchObject({ allowed: false, code: "itemClosed" });
+    });
+
+    it("the pause is reported before the edge check — a blocked item's code is itemBlocked", () => {
+        const { verdict } = applyTransition(
+            at("ready", { blocked: true }),
+            { from: "ready", to: "inProgress", cause: "contributorAssigned" },
+            canTransitionIssue,
+        );
+        expect(verdict).toMatchObject({ allowed: false, code: "itemBlocked" });
+    });
+
+    // Mutation-testing survivors, now pinned:
+    it("a refused edge leaves the state EXACTLY unchanged — refusal must never apply", () => {
+        const before = at("ready");
+        const { state, verdict } = applyTransition(
+            before,
+            // Precondition matches, but the edge itself is illegal.
+            { from: "ready", to: "awaitingTriage", cause: "triageCompleted" },
+            canTransitionIssue,
+        );
+        expect(verdict).toMatchObject({ allowed: false, code: "noSuchEdge" });
+        expect(state).toEqual(before);
+    });
+
+    it("closing transitions set closed; ordinary moves leave it unset", () => {
+        const closed = applyTransition(
+            at("ready"),
+            { from: "ready", to: null, cause: "humanClosed" },
+            canTransitionIssue,
+        );
+        expect(closed.state).toEqual({ meaning: null, blocked: false, closed: true });
+
+        const moved = applyTransition(
+            at("ready"),
+            { from: "ready", to: "inProgress", cause: "contributorAssigned" },
+            canTransitionIssue,
+        );
+        expect(moved.state).toEqual({ meaning: "inProgress", blocked: false, closed: false });
+    });
+
+    it("every refusal carries a non-empty human reason alongside its code", () => {
+        const refusals = [
+            applyTransition(at("ready", { blocked: true }), { from: "ready", to: "inProgress", cause: "contributorAssigned" }, canTransitionIssue),
+            applyTransition(at(null, { closed: true }), { from: null, to: "awaitingTriage", cause: "intakeObserved" }, canTransitionIssue),
+            applyTransition(at("inProgress"), { from: "ready", to: "inProgress", cause: "contributorAssigned" }, canTransitionIssue),
+            applyTransition(at("ready"), { from: "ready", to: "awaitingTriage", cause: "triageCompleted" }, canTransitionIssue),
+            applyTransition(at("ready"), { from: "ready", to: "inProgress", cause: "checksPassed" }, canTransitionIssue),
+        ];
+        for (const { verdict } of refusals) {
+            expect(verdict.allowed).toBe(false);
+            if (!verdict.allowed) expect(verdict.reason.length).toBeGreaterThan(0);
+        }
     });
 });

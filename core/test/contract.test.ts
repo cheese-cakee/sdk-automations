@@ -127,4 +127,51 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
         expect(result.registry.get("prQuality")?.intents[0]?.idempotencyClass).toBe("nonIdempotent");
         expect(result.registry.get("missing")).toBeUndefined();
     });
+
+    // Mutation-testing survivors, now pinned:
+    it("a live capability appears in activeNames — the positive case, not just retired-absence", () => {
+        const result = createRegistry([prQuality]);
+        if (!result.ok) throw new Error("registry should build");
+        expect(result.registry.activeNames).toEqual(["prQuality"]);
+    });
+
+    it("duplicate registry names are named in the error", () => {
+        const result = createRegistry([prQuality, prQuality]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain('duplicate capability name "prQuality"');
+        }
+    });
+
+    it("permission grants are anchored at BOTH ends — junk around a valid grant is junk", () => {
+        // Without ^, "X issues:write" matches its trailing substring;
+        // without $, "issues:writeEverything" matches its prefix.
+        for (const grant of ["X issues:write", "issues:writeEverything"]) {
+            const errors = validateDeclaration({
+                ...prQuality,
+                permissions: { repository: [grant as never], organization: [] },
+                intents: [],
+            });
+            expect(errors.join()).toContain("scope:level form");
+        }
+    });
+
+    it("errors name the capability they belong to", () => {
+        const errors = validateDeclaration({ ...prQuality, triggers: [] });
+        expect(errors.join()).toContain(`capability "prQuality": at least one trigger`);
+    });
+
+    it("ANY schedule trigger among mixed triggers demands operationalNeeds.schedule", () => {
+        // `some`, not `every`: one schedule trigger alongside event
+        // triggers still requires the declared operational need.
+        const errors = validateDeclaration({
+            ...prQuality,
+            triggers: [
+                { kind: "event", event: "pull_request.opened" },
+                { kind: "schedule", description: "nightly sweep" },
+            ],
+            operationalNeeds: { ...prQuality.operationalNeeds, schedule: false },
+        });
+        expect(errors.join()).toContain("operationalNeeds.schedule is false");
+    });
 });

@@ -4,7 +4,12 @@
  * tested against what GitHub really sent, not paraphrases.
  */
 import { describe, it, expect } from "vitest";
-import { classifyFailure, retryAdvice, type FailureClass } from "../src/failures.js";
+import {
+    classifyFailure,
+    retryAdvice,
+    MAX_RATE_LIMIT_ATTEMPTS,
+    type FailureClass,
+} from "../src/failures.js";
 
 const observed = {
     permissionMissing: {
@@ -54,8 +59,41 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
         expect(classifyFailure({ status: 401, body: observedExpiredBody, headers: {} }).kind).toBe("badCredentials");
     });
 
+    it("an unrecognized 403 admits ignorance instead of fabricating a diagnosis", () => {
+        // A reworded suspension body must NOT be reported as a
+        // permission problem — it degrades into a visible unknown
+        // carrying the evidence verbatim.
+        const reworded = {
+            status: 403,
+            body: "This installation has been suspended by the account owner.",
+            headers: {},
+        };
+        expect(classifyFailure(reworded)).toEqual({
+            kind: "forbiddenUnrecognized",
+            bodySnippet: "This installation has been suspended by the account owner.",
+        });
+        expect(
+            retryAdvice(classifyFailure(reworded), 0, 0),
+        ).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
+    });
+
+    it("the ignorance snippet is bounded — a huge body cannot flood a report", () => {
+        const huge = { status: 403, body: "x".repeat(10_000), headers: {} };
+        const classified = classifyFailure(huge);
+        expect(classified.kind).toBe("forbiddenUnrecognized");
+        if (classified.kind === "forbiddenUnrecognized") {
+            expect(classified.bodySnippet).toHaveLength(200);
+        }
+    });
+
     it("404 is one class on purpose: existence is hidden, not-installed and nonexistent are indistinguishable (6.6 probe)", () => {
         expect(classifyFailure(observed.notInstalled).kind).toBe("notFoundOrNotInstalled");
+    });
+
+    it("unmatched statuses classify as transient — the bounded-retry bucket", () => {
+        for (const status of [500, 502, 503, 429]) {
+            expect(classifyFailure({ status, body: "", headers: {} })).toEqual({ kind: "transient" });
+        }
     });
 
     it("422 with structured errors[] is maintainer-facing", () => {
@@ -74,6 +112,23 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         expect(advice).toEqual({ action: "retryAfterMs", ms: 600_000 });
     });
 
+    it("a rate limit that survives the attempt bound stops waiting and surfaces — pacing is a design problem, not a wait problem", () => {
+        for (const failure of [
+            { kind: "secondaryLimit" },
+            { kind: "primaryExhausted", resetAt: "1000" },
+        ] as const) {
+            // The last allowed attempt still waits…
+            expect(
+                retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS - 1, 0).action,
+            ).toBe("retryAfterMs");
+            // …one past the bound surfaces to the operator.
+            expect(retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS, 0)).toEqual({
+                action: "doNotRetry",
+                surfaceTo: "operator",
+            });
+        }
+    });
+
     it("transient failures back off boundedly, then surface to the operator", () => {
         const waits = [0, 1, 2, 3].map((attempt) => retryAdvice({ kind: "transient" }, attempt, 0));
         expect(waits.slice(0, 3).map((w) => (w.action === "retryAfterMs" ? w.ms : -1))).toEqual([500, 2_000, 8_000]);
@@ -90,6 +145,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             { kind: "badCredentials" },
             { kind: "permissionMissing", acceptedPermissions: "" },
             { kind: "installationSuspended" },
+            { kind: "forbiddenUnrecognized", bodySnippet: "" },
             { kind: "secondaryLimit" },
             { kind: "primaryExhausted", resetAt: undefined },
             { kind: "notFoundOrNotInstalled" },

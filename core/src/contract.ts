@@ -83,9 +83,12 @@ export interface CapabilityDeclaration {
 /**
  * Capability names must be usable as configuration keys
  * (`capabilities.<name>` in schema.md §3), so they share the camelCase
- * shape of the shipped examples (`prQuality`, `assignment`).
+ * shape of the shipped examples (`prQuality`, `assignment`). Exported
+ * because `parseConfig` enforces the same shape on config keys — a key
+ * this pattern rejects can never name a shipped capability, and
+ * rejecting it also closes the `__proto__`-style key hole.
  */
-const NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
+export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
 function duplicates(values: readonly string[]): string[] {
     const seen = new Set<string>();
@@ -102,7 +105,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
     const errors: string[] = [];
     const at = `capability "${d.name}"`;
 
-    if (!NAME_PATTERN.test(d.name)) {
+    if (!CAPABILITY_NAME_PATTERN.test(d.name)) {
         errors.push(`declaration name ${JSON.stringify(d.name)} must be a camelCase configuration key`);
     }
     if (d.triggers.length === 0) {

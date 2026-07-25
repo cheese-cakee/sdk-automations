@@ -8,6 +8,11 @@
  *
  * The adapter owns retry policy explicitly (Octokit's default plugins
  * are disabled — 6.4); `retryAdvice` below is that policy's pure core.
+ *
+ * FINDING(failures-prose-snapshot), D40: body regexes are snapshots of
+ * observed prose, not contracts. Rot degrades into
+ * `forbiddenUnrecognized`; a periodic sandbox re-probe re-validates
+ * the fixtures.
  */
 
 /** The inputs classification needs — transport-agnostic. */
@@ -39,6 +44,12 @@ export type FailureClass =
     | { readonly kind: "secondaryLimit" }
     /** Primary quota exhausted: `x-ratelimit-remaining: 0`. */
     | { readonly kind: "primaryExhausted"; readonly resetAt: string | undefined }
+    /**
+     * A 403 matching NO observed shape — explicit ignorance carrying
+     * the evidence, so a reworded GitHub body surfaces instead of
+     * being misdiagnosed (D40).
+     */
+    | { readonly kind: "forbiddenUnrecognized"; readonly bodySnippet: string }
     /** 404: not found OR App not installed there — GitHub hides existence (6.6 probe), the two are indistinguishable. */
     | { readonly kind: "notFoundOrNotInstalled" }
     /** 422 with structured `errors[]` — maintainer-showable verbatim (6.4). */
@@ -68,9 +79,8 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (/installation is currently suspended/i.test(body)) {
             return { kind: "installationSuspended" };
         }
-        // A 403 matching no observed shape: treat as forbidden-like
-        // permission failure with nothing to name.
-        return { kind: "permissionMissing", acceptedPermissions: "" };
+        // No observed shape matched — say so, carrying the evidence.
+        return { kind: "forbiddenUnrecognized", bodySnippet: body.slice(0, 200) };
     }
     if (o.status === 404) return { kind: "notFoundOrNotInstalled" };
     if (o.status === 422) return { kind: "validationError" };
@@ -84,14 +94,19 @@ export type RetryAdvice =
     | { readonly action: "doNotRetry"; readonly surfaceTo: "maintainer" | "operator" };
 
 /**
+ * A limit that survives this many full waits is a pacing-design
+ * problem for an operator, not a wait problem (6.4).
+ */
+export const MAX_RATE_LIMIT_ATTEMPTS = 3;
+
+/**
  * Bounded, evidence-derived retry policy:
  * - secondary limit: GitHub's documented one-minute floor — no header
- *   exists to trust (6.4);
- * - primary exhaustion: wait for the reset epoch;
+ *   exists to trust (6.4) — for at most MAX_RATE_LIMIT_ATTEMPTS;
+ * - primary exhaustion: wait for the reset epoch, same bound;
  * - transient: bounded exponential backoff, attempt-indexed;
- * - everything else is not a retry problem — it is a diagnosis, and
- *   blind retries after unclear results are exactly what D24's
- *   recovery loop exists to prevent.
+ * - everything else is a diagnosis, not a retry problem (D24).
+ * Deterministic by design; the caller adds jitter if needed.
  */
 export function retryAdvice(
     failure: FailureClass,
@@ -103,8 +118,13 @@ export function retryAdvice(
         case "tokenExpired":
             return { action: "refreshTokenAndRetry" };
         case "secondaryLimit":
-            return { action: "retryAfterMs", ms: 60_000 };
+            return attempt >= MAX_RATE_LIMIT_ATTEMPTS
+                ? { action: "doNotRetry", surfaceTo: "operator" }
+                : { action: "retryAfterMs", ms: 60_000 };
         case "primaryExhausted": {
+            if (attempt >= MAX_RATE_LIMIT_ATTEMPTS) {
+                return { action: "doNotRetry", surfaceTo: "operator" };
+            }
             const reset = Number(failure.resetAt ?? Number.NaN);
             const waitMs = Number.isFinite(reset)
                 ? Math.max(0, reset - nowEpochSeconds) * 1000
@@ -122,6 +142,7 @@ export function retryAdvice(
         case "badCredentials":
         case "permissionMissing":
         case "installationSuspended":
+        case "forbiddenUnrecognized":
         case "notFoundOrNotInstalled":
             return { action: "doNotRetry", surfaceTo: "operator" };
     }

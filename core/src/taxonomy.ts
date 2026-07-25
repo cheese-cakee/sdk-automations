@@ -20,15 +20,11 @@ export const PR_MEANINGS = ["needsReview", "needsRevision", "readyToMerge"] as c
 export type PrMeaning = (typeof PR_MEANINGS)[number];
 
 /**
- * FINDING(taxonomy-blocked): taxonomy.md §2 lists `blocked` as a meaning for
- * either entity, but neither state diagram (§4, §5) contains it as a node,
- * and safety.md §5 describes it as "the platform stops capability writes for
- * that item" — pause semantics, not workflow-position semantics. This module
- * therefore models `blocked` as an orthogonal pause flag on the item, not a
- * state: an item keeps its workflow position while paused. If maintainers
- * instead want `blocked` to be a position (losing the previous position on
- * entry), the state type and both tables change — this is exactly the kind
- * of decision the register should carry before capability contracts freeze.
+ * FINDING(taxonomy-blocked), D28: §2 lists `blocked` as a meaning, but
+ * neither state diagram (§4, §5) contains it, and safety.md §5 gives it
+ * pause semantics. Modelled as an orthogonal pause flag — an item keeps
+ * its position while paused. If maintainers want a position instead,
+ * the state type and both tables change.
  */
 export interface WorkItemState<M> {
     /** Current workflow position, `null` before entry / after close. */
@@ -74,13 +70,10 @@ const ISSUE_EDGES: readonly Edge<IssueMeaning>[] = [
     { from: "ready", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
     { from: "inProgress", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
     /**
-     * FINDING(taxonomy-manual-entry): opt-in-modules' rule "every state has a
-     * non-module way in" implies a maintainer can place an issue directly at
-     * `ready` (repo without intake) or `inProgress`. The §4 diagram has no
-     * such edges — the code adds none. Manual label application is treated
-     * as an *observed reality* the platform reconciles (manual-edits.md),
-     * not a transition a capability may request. If that reading is wrong,
-     * these tables need explicit manual-entry edges.
+     * FINDING(taxonomy-manual-entry), D29: "every state has a
+     * non-module way in" implies manual-entry edges §4 omits. Manual
+     * label application is observed reality to reconcile
+     * (manual-edits.md), not a requestable transition — no edges added.
      */
 ];
 
@@ -107,9 +100,25 @@ export interface TransitionRequest<M> {
     readonly cause: TransitionCause;
 }
 
+/**
+ * Machine-readable refusal cause — the executor, telemetry, and managed
+ * explanations branch on `code`; `reason` is prose for humans only.
+ * Same convention as `FailureClass` in failures.ts.
+ */
+export type TransitionRefusalCode =
+    | "noSuchEdge"
+    | "causeNotAccepted"
+    | "itemClosed"
+    | "itemBlocked"
+    | "stalePrecondition";
+
 export type TransitionVerdict =
     | { readonly allowed: true }
-    | { readonly allowed: false; readonly reason: string };
+    | {
+          readonly allowed: false;
+          readonly code: TransitionRefusalCode;
+          readonly reason: string;
+      };
 
 function evaluate<M>(
     edges: readonly Edge<M>[],
@@ -121,12 +130,14 @@ function evaluate<M>(
     if (!edge) {
         return {
             allowed: false,
+            code: "noSuchEdge",
             reason: `no edge ${String(request.from)} -> ${String(request.to)} in the profile`,
         };
     }
     if (!edge.causes.includes(request.cause)) {
         return {
             allowed: false,
+            code: "causeNotAccepted",
             reason: `edge ${String(request.from)} -> ${String(request.to)} does not accept cause ${request.cause}`,
         };
     }
@@ -162,7 +173,7 @@ export function applyTransition<M>(
     if (state.closed) {
         return {
             state,
-            verdict: { allowed: false, reason: "item is closed" },
+            verdict: { allowed: false, code: "itemClosed", reason: "item is closed" },
         };
     }
     if (state.blocked) {
@@ -170,6 +181,7 @@ export function applyTransition<M>(
             state,
             verdict: {
                 allowed: false,
+                code: "itemBlocked",
                 reason: "item is blocked — capability writes are paused (safety.md §5)",
             },
         };
@@ -179,6 +191,7 @@ export function applyTransition<M>(
             state,
             verdict: {
                 allowed: false,
+                code: "stalePrecondition",
                 reason: `stale precondition: item is at ${String(state.meaning)}, request assumed ${String(request.from)}`,
             },
         };

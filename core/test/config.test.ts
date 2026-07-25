@@ -7,8 +7,14 @@ describe("parseConfig (design/config/schema.md)", () => {
             const result = parseConfig(raw);
             expect(result).toEqual({ ok: true, config: NO_CONFIG });
         }
+        // Assert NO_CONFIG's literal shape, not just against itself —
+        // a mutation of the constant must fail HERE, not vanish into
+        // both sides of the equality above.
         expect(NO_CONFIG.mode).toBe("observe");
         expect(Object.keys(NO_CONFIG.capabilities)).toHaveLength(0);
+        expect(Object.keys(NO_CONFIG.principals)).toHaveLength(0);
+        expect(NO_CONFIG.mappings).toEqual({ labels: {} });
+        expect(NO_CONFIG.schemaVersion).toBe(1);
     });
 
     it("accepts the documented candidate shape (§3)", () => {
@@ -64,8 +70,19 @@ describe("parseConfig (design/config/schema.md)", () => {
             capabilities: { prQuality: { enabled: true } }, // valid
         });
         expect(result.ok).toBe(false);
+        // The message lists the legal modes, readably separated.
+        if (!result.ok) expect(result.errors.join()).toContain("disabled, observe, dry-run, active");
         // No partially-applied config object exists on the failure arm.
         expect("config" in result).toBe(false);
+    });
+
+    it("rejects unknown keys under mappings", () => {
+        const result = parseConfig({
+            schemaVersion: 1,
+            mappings: { fields: {} },
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.errors.join()).toContain('mappings: unknown key "fields"');
     });
 
     it("only boolean true enables a capability — truthiness is not consent (§2.4)", () => {
@@ -96,6 +113,37 @@ describe("parseConfig (design/config/schema.md)", () => {
         });
         expect(result.ok).toBe(false);
     });
+
+    // FINDING(config-label-injectivity)
+    it("rejects two meanings mapped to one label — label→meaning must be unambiguous (§3)", () => {
+        const result = parseConfig({
+            schemaVersion: 1,
+            mappings: {
+                labels: {
+                    ready: "status: wip",
+                    inProgress: "status: wip",
+                },
+            },
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain('"status: wip"');
+            expect(result.errors.join()).toContain("injective");
+        }
+    });
+
+    it("injectivity applies across entities too — the strict reading, pending D34", () => {
+        const result = parseConfig({
+            schemaVersion: 1,
+            mappings: {
+                labels: {
+                    ready: "attention",
+                    needsReview: "attention",
+                },
+            },
+        });
+        expect(result.ok).toBe(false);
+    });
 });
 
 describe("capability registry (FINDING(config-capability-registry-gap), experiment 6.3)", () => {
@@ -110,7 +158,18 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
         if (!result.ok) {
             expect(result.errors.join()).toContain('"checksGate"');
             expect(result.errors.join()).toContain("capability registry");
+            // The registry listing is sorted so maintainers can scan it.
+            expect(result.errors.join()).toContain("assignment, prQuality");
         }
+    });
+
+    it("an empty registry says so — 'none' rather than a blank list", () => {
+        const result = parseConfig(
+            { schemaVersion: 1, capabilities: { prQuality: { enabled: true } } },
+            { knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.errors.join()).toContain("known: none");
     });
 
     it("keeps a disabled unknown capability dormant — removing a shipped capability must not break configs that still mention it", () => {

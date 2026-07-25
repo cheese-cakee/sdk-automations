@@ -1,0 +1,171 @@
+/**
+ * Branch-level tests for the recovery executor: each arm of the
+ * storage-decision flowchart, the two surfaced stops, the claim
+ * lifecycle — and the demonstration of the failure the read-back
+ * exists to prevent.
+ */
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Store } from "@hiero-hackers/automation-store";
+import {
+    RecoveryExecutor,
+    MAX_CALL_ATTEMPTS,
+    type EffectPlan,
+} from "../src/recovery.js";
+import { FakeWorld, CrashingPort, LEASE_MS } from "./harness.js";
+
+const PLAN: EffectPlan = {
+    effectId: "e1",
+    calls: [
+        { seq: 1, intent: "list-comments", idempotencyClass: "idempotent" },
+        { seq: 2, intent: "create-comment", idempotencyClass: "nonIdempotent" },
+        { seq: 3, intent: "add-label", idempotencyClass: "idempotent" },
+    ],
+};
+const T = "2026-07-25T12:00:00.000Z";
+
+let dir: string;
+let path: string;
+beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "executor-test-"));
+    path = join(dir, "store.sqlite");
+});
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+const executor = (store: Store, port: CrashingPort, worker = "w1") =>
+    new RecoveryExecutor(store, port, worker, () => T, LEASE_MS);
+
+describe("flowchart branches", () => {
+    it("neverStarted runs the whole plan once and releases the claim", () => {
+        const store = new Store(path);
+        const world = new FakeWorld();
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port).runEffect(PLAN)).toEqual({ outcome: "complete" });
+        for (const call of PLAN.calls) expect(world.applications(PLAN, call)).toBe(1);
+        // Released: a new worker could claim immediately, no staleness needed.
+        expect(store.claim("e1", "w2", T, "2026-07-25T11:55:00.000Z")).toBe(true);
+        store.close();
+    });
+
+    it("complete is a no-op — redelivery does not re-run a finished effect", () => {
+        const store = new Store(path);
+        const world = new FakeWorld();
+        executor(store, new CrashingPort(world, new Map())).runEffect(PLAN);
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port, "w2").runEffect(PLAN)).toEqual({ outcome: "complete" });
+        expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1); // still once
+        store.close();
+    });
+
+    it("midSequence resumes after the last done call", () => {
+        const store = new Store(path);
+        store.intent("e1", 1, "list-comments", T);
+        store.done("e1", 1);
+        const world = new FakeWorld();
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port).runEffect(PLAN)).toEqual({ outcome: "complete" });
+        expect(world.applications(PLAN, PLAN.calls[0]!)).toBe(0); // not re-run
+        expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
+        expect(world.applications(PLAN, PLAN.calls[2]!)).toBe(1);
+        store.close();
+    });
+
+    it("sentUnknown + present resolves WITHOUT re-performing — the receipt is the read-back", () => {
+        const store = new Store(path);
+        const world = new FakeWorld();
+        // The 6.5 lost-response case: the create landed, the response died.
+        store.intent("e1", 1, "list-comments", T);
+        store.done("e1", 1);
+        store.intent("e1", 2, "create-comment", T);
+        world.apply(PLAN, PLAN.calls[1]!); // landed on GitHub
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port).runEffect(PLAN)).toEqual({ outcome: "complete" });
+        expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1); // NOT duplicated
+        expect(port.readBacks).toEqual(["2:create-comment"]); // resolved, not guessed
+        store.close();
+    });
+
+    it("sentUnknown + absent re-sends that call, incrementing the durable attempt", () => {
+        const store = new Store(path);
+        const world = new FakeWorld();
+        store.intent("e1", 1, "list-comments", T);
+        store.done("e1", 1);
+        store.intent("e1", 2, "create-comment", T); // died before the request left
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port).runEffect(PLAN)).toEqual({ outcome: "complete" });
+        expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
+        store.close();
+        const reopened = new Store(path);
+        expect(reopened.effectState("e1", 3)).toEqual({ state: "complete" });
+        reopened.close();
+    });
+});
+
+describe("surfaced stops", () => {
+    it("a journal row from an old plan revision is unresolved, never remapped", () => {
+        const store = new Store(path);
+        store.intent("e1", 1, "old-intent-name", T);
+        const port = new CrashingPort(new FakeWorld(), new Map());
+        const result = executor(store, port).runEffect(PLAN);
+        expect(result).toMatchObject({ outcome: "unresolved", seq: 1 });
+        if (result.outcome === "unresolved") {
+            expect(result.reason).toContain("old revision");
+        }
+        store.close();
+    });
+
+    it("a call at the attempt bound surfaces instead of retrying forever", () => {
+        const store = new Store(path);
+        for (let i = 0; i < MAX_CALL_ATTEMPTS; i++) {
+            store.intent("e1", 1, "list-comments", T);
+        }
+        const port = new CrashingPort(new FakeWorld(), new Map());
+        const result = executor(store, port).runEffect(PLAN);
+        expect(result).toMatchObject({ outcome: "unresolved", seq: 1 });
+        if (result.outcome === "unresolved") {
+            expect(result.reason).toContain("re-sent");
+        }
+        store.close();
+    });
+
+    it("a live competing claim yields anotherWorker without touching the world", () => {
+        const store = new Store(path);
+        store.claim("e1", "other", T, "2026-07-25T11:55:00.000Z");
+        const world = new FakeWorld();
+        const port = new CrashingPort(world, new Map());
+        expect(executor(store, port).runEffect(PLAN)).toEqual({ outcome: "anotherWorker" });
+        for (const call of PLAN.calls) expect(world.applications(PLAN, call)).toBe(0);
+        store.close();
+    });
+
+    it("a malformed plan (non-contiguous seqs) throws a caller bug", () => {
+        const store = new Store(path);
+        const port = new CrashingPort(new FakeWorld(), new Map());
+        expect(() =>
+            executor(store, port).runEffect({
+                effectId: "bad",
+                calls: [{ seq: 2, intent: "x", idempotencyClass: "idempotent" }],
+            }),
+        ).toThrow(TypeError);
+        store.close();
+    });
+});
+
+describe("why the read-back exists", () => {
+    it("a blind retry after a lost response duplicates the comment — the 6.5 failure, reproduced", () => {
+        // No executor here: this drives the naive protocol directly to
+        // show the world state the recovery loop prevents.
+        const store = new Store(path);
+        const world = new FakeWorld();
+        const call = PLAN.calls[1]!;
+        store.intent("e1", 2, call.intent, T);
+        world.apply(PLAN, call); // landed; response lost
+        // Naive retry: no read-back, just send again.
+        store.intent("e1", 2, call.intent, T);
+        world.apply(PLAN, call);
+        expect(world.applications(PLAN, call)).toBe(2); // the duplicate
+        store.close();
+    });
+});

@@ -1,0 +1,93 @@
+/**
+ * Observed labels to workflow position — the projection step that
+ * `design/core/manual-edits.md` §3 implies but no document owns.
+ *
+ * GitHub's reality is a SET of labels; the state machine's is a scalar
+ * position. The shell maps label strings to meanings via validated
+ * configuration (injective — config.ts) and passes the meanings here.
+ * More than one own-flow position is a conflict, never a repair (§3,
+ * §8 test 3); a conflicted item has no `WorkItemState`, so it can
+ * never reach `applyTransition` — the no-write rule is structural.
+ */
+
+import {
+    ISSUE_MEANINGS,
+    PR_MEANINGS,
+    type IssueMeaning,
+    type PrMeaning,
+    type WorkItemState,
+} from "./taxonomy.js";
+import type { MappableMeaning } from "./config.js";
+
+/** What the shell observed on one issue or pull request. */
+export interface LabelObservation {
+    readonly closed: boolean;
+    /**
+     * The mapped meanings whose labels are present — a set. Unmapped
+     * repository labels never appear here; the platform leaves them
+     * alone entirely (§3 rule 1, §8 test 2).
+     */
+    readonly meanings: readonly MappableMeaning[];
+}
+
+export type ObservationProjection<M> =
+    | {
+          readonly kind: "position";
+          /** Feed this to `applyTransition`; it is the only source of one. */
+          readonly state: WorkItemState<M>;
+          /**
+           * FINDING(observe-cross-entity), D35: the other flow's
+           * position meanings — left alone, reported for diagnostics,
+           * never a conflict.
+           */
+          readonly ignored: readonly MappableMeaning[];
+      }
+    | {
+          /**
+           * More than one own-flow position: no repair, no guessing,
+           * no writes (§3).
+           */
+          readonly kind: "conflict";
+          readonly positions: readonly M[];
+      };
+
+function projectWith<M extends IssueMeaning | PrMeaning>(
+    own: readonly M[],
+    observation: LabelObservation,
+): ObservationProjection<M> {
+    const distinct = [...new Set(observation.meanings)];
+    const ownSet: ReadonlySet<MappableMeaning> = new Set(own);
+    const positions = distinct.filter((m): m is M => ownSet.has(m));
+    if (positions.length > 1) {
+        return { kind: "conflict", positions };
+    }
+    /**
+     * FINDING(observe-blocked-alone) and FINDING(observe-closed-position),
+     * D35: `blocked` with no position is legal — "no position, paused"
+     * (D28); a closed item keeps its position labels unrepaired
+     * (manual-edits.md §6).
+     */
+    return {
+        kind: "position",
+        state: {
+            meaning: positions[0] ?? null,
+            blocked: distinct.includes("blocked"),
+            closed: observation.closed,
+        },
+        ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
+    };
+}
+
+/** Project an issue's observed mapped meanings. Pure. */
+export function projectIssueObservation(
+    observation: LabelObservation,
+): ObservationProjection<IssueMeaning> {
+    return projectWith(ISSUE_MEANINGS, observation);
+}
+
+/** Project a pull request's observed mapped meanings. Pure. */
+export function projectPrObservation(
+    observation: LabelObservation,
+): ObservationProjection<PrMeaning> {
+    return projectWith(PR_MEANINGS, observation);
+}

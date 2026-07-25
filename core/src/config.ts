@@ -10,6 +10,7 @@
  */
 
 import type { RepositoryMode } from "./safety.js";
+import { CAPABILITY_NAME_PATTERN } from "./contract.js";
 
 export const REPOSITORY_MODES = [
     "disabled",
@@ -50,9 +51,9 @@ export interface RepositoryConfig {
 export const NO_CONFIG: RepositoryConfig = {
     schemaVersion: 1,
     mode: "observe",
-    capabilities: {},
+    capabilities: cleanRecord([]),
     mappings: { labels: {} },
-    principals: {},
+    principals: cleanRecord([]),
 };
 
 /**
@@ -91,6 +92,18 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * A null-prototype record: absent-key lookups are always `undefined`.
+ * With a normal prototype, `capabilities["constructor"]` would be
+ * truthy for an unconfigured name — inherited Object.prototype
+ * members must never masquerade as configuration.
+ */
+function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
+    const record: Record<string, V> = Object.create(null);
+    for (const [key, value] of entries) record[key] = value;
+    return record;
+}
+
 const TOP_LEVEL_KEYS = new Set([
     "schemaVersion",
     "mode",
@@ -124,12 +137,24 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
         errors.push(`mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`);
     }
 
-    const capabilities: Record<string, CapabilityConfig> = {};
+    // Entry lists, materialized via cleanRecord at the end: on a
+    // null-prototype target a key like `__proto__` is an ordinary own
+    // property (plain `obj[key] = value` on a normal object both
+    // pollutes the prototype and silently loses the entry).
+    const capabilityEntries: [string, CapabilityConfig][] = [];
     if (raw.capabilities !== undefined) {
         if (!isPlainObject(raw.capabilities)) {
             errors.push("capabilities must be a mapping");
         } else {
             for (const [name, value] of Object.entries(raw.capabilities)) {
+                // A key this pattern rejects can never name a shipped
+                // capability (contract.ts requires the same shape), so
+                // rejecting it loses nothing and closes the hostile-key
+                // hole (`__proto__`, dotted paths, etc.).
+                if (!CAPABILITY_NAME_PATTERN.test(name)) {
+                    errors.push(`capability name ${JSON.stringify(name)} is not a valid configuration key (camelCase)`);
+                    continue;
+                }
                 if (!isPlainObject(value)) {
                     errors.push(`capability "${name}" must be a mapping`);
                     continue;
@@ -160,7 +185,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
                         ` (known: ${[...options.knownCapabilities].sort().join(", ") || "none"})`,
                     );
                 }
-                capabilities[name] = { enabled, settings };
+                capabilityEntries.push([name, { enabled, settings }]);
             }
         }
     }
@@ -177,6 +202,15 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
             if (!isPlainObject(rawLabels)) {
                 errors.push("mappings.labels must be a mapping");
             } else {
+                /**
+                 * FINDING(config-label-injectivity), D34: schema.md §3
+                 * never defines "incompatible", so full injectivity is
+                 * enforced — every meaning its own label; the
+                 * observation projection relies on label→meaning being
+                 * unambiguous. Exact-string comparison; GitHub-side
+                 * case rules are the shell's concern.
+                 */
+                const labelOwner = new Map<string, string>();
                 for (const [meaning, label] of Object.entries(rawLabels)) {
                     if (!MAPPABLE_MEANINGS.includes(meaning as MappableMeaning)) {
                         errors.push(`mappings.labels: "${meaning}" is not a mappable meaning`);
@@ -186,13 +220,22 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
                         errors.push(`mappings.labels.${meaning}: label must be a non-empty string`);
                         continue;
                     }
+                    const owner = labelOwner.get(label);
+                    if (owner !== undefined) {
+                        errors.push(
+                            `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner}" and "${meaning}"` +
+                            ` — label mappings must be injective (schema.md §3)`,
+                        );
+                        continue;
+                    }
+                    labelOwner.set(label, meaning);
                     labels[meaning as MappableMeaning] = label;
                 }
             }
         }
     }
 
-    const principals: Record<string, string> = {};
+    const principalEntries: [string, string][] = [];
     if (raw.principals !== undefined) {
         if (!isPlainObject(raw.principals)) {
             errors.push("principals must be a mapping");
@@ -202,12 +245,19 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
                     errors.push(`principals.${key}: must be a string`);
                     continue;
                 }
-                principals[key] = value;
+                principalEntries.push([key, value]);
             }
         }
     }
 
-    // §2.6 — fail closed: any error yields no configuration at all.
+    /**
+     * §2.6 — fail closed: any error yields no configuration at all.
+     * FINDING(config-fail-closed-granularity), D38: the granularity is
+     * deliberately the WHOLE file — last-known-good and partial
+     * salvage were both rejected (see the register row). Humane only
+     * with the shell's two mitigations: the configuration report and
+     * PR-time validation via this same function.
+     */
     if (errors.length > 0) return { ok: false, errors };
 
     return {
@@ -215,9 +265,9 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
         config: {
             schemaVersion: 1,
             mode: mode as RepositoryMode,
-            capabilities,
+            capabilities: cleanRecord(capabilityEntries),
             mappings: { labels },
-            principals,
+            principals: cleanRecord(principalEntries),
         },
     };
 }

@@ -2,16 +2,26 @@
     "name": "@hiero-hackers/automation-store",
     "version": "0.0.0",
     "private": true,
-    "description": "The owned operational store decided by protocol 6.5 (design/operations/storage-decision.md): four independent tables in one SQLite file. Ratification pending under the stage-four review. Uses node:sqlite — Node 22.5+.",
+    "description": "The owned operational store decided by protocol 6.5 (design/operations/storage-decision.md): four independent tables in one SQLite file. Ratification pending under the stage-four review. Uses node:sqlite — Node 23.4+ (unflagged there; stable in 24).",
     "type": "module",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
     "engines": {
-        "node": ">=22.5"
+        "node": ">=23.4"
     },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest"
     },
+    "dependencies": {
+        "@hiero-hackers/automation-core": "workspace:*"
+    },
     "devDependencies": {
+        "fast-check": "^4.9.0",
         "typescript": "^5.6.0",
         "vitest": "^4.0.0"
     }

@@ -4,11 +4,20 @@
     "private": true,
     "description": "Pure-logic core of the maintainer-automation platform: workflow state machine, safety engine, configuration validation. No I/O, no GitHub — see design/build-plan.md, the parallel track.",
     "type": "module",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest"
     },
     "devDependencies": {
+        "@stryker-mutator/core": "^9.6.1",
+        "@stryker-mutator/vitest-runner": "^9.6.1",
+        "fast-check": "^4.9.0",
         "typescript": "^5.6.0",
         "vitest": "^4.0.0"
     }

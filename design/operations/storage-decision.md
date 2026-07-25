@@ -67,6 +67,7 @@ mode: it duplicated the managed comment on the first attempt.
           string intent "the call about to be made"
           string status "sent or done"
           string at
+          int attempt "durable retry counter - amendment D42"
       }
       EFFECT_CLAIM {
           string effect_id PK
@@ -78,6 +79,7 @@ mode: it duplicated the managed comment on the first attempt.
           string due_at
           string effect "the work to run when due"
           string status
+          string claimed_at "stamped on claim; drives stuck-requeue - amendment D43"
       }
   ```
 
