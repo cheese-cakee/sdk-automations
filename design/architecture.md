@@ -79,7 +79,7 @@ flowchart TB
         SAFE["safety: write and destructive gates"]
         FAILC["failures: classify and bound retries"]
     end
-    subgraph STORE["store - owned state, 42 tests"]
+    subgraph STORE["store - owned state, 43 tests"]
         SEEN["seen_delivery dedup"]
         JRN["effect_journal: intent, done, attempt"]
         CLM["effect_claim: 15 min lease"]

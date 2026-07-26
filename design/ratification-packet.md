@@ -26,7 +26,7 @@ Covered: the implementation-born hypotheses D28–D46, and the storage decision'
 on architecture review.
 
 Evidence base shared by every row: the stage-three experiment records (6.1–6.6, 2026-07-23), and the
-three implementation packages with 221 deterministic tests — including the exhaustive safety sweep,
+three implementation packages with 222 deterministic tests — including the exhaustive safety sweep,
 the projection enumeration, and the executor crash grid (every single crash point, all 64 crash
 pairs, seeded multi-crash histories, converging with non-idempotent calls applied exactly once).
 

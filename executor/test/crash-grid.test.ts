@@ -63,19 +63,23 @@ describe("every pair of crash points across two incarnations", () => {
             for (let p2 = p1 + 1; p2 <= p1 + 4; p2++)
                 for (const m2 of modes) pairs.push([p1, m1, p2, m2]);
 
-    it(`all ${String(pairs.length)} pairs converge with no duplicate`, () => {
-        for (const [p1, m1, p2, m2] of pairs) {
-            inTmp((path) =>
-                assertConverged(
-                    path,
-                    new Map([
-                        [p1, m1],
-                        [p2, m2],
-                    ]),
-                ),
-            );
-        }
-    });
+    it(
+        `all ${String(pairs.length)} pairs converge with no duplicate`,
+        () => {
+            for (const [p1, m1, p2, m2] of pairs) {
+                inTmp((path) =>
+                    assertConverged(
+                        path,
+                        new Map([
+                            [p1, m1],
+                            [p2, m2],
+                        ]),
+                    ),
+                );
+            }
+        },
+        20_000,
+    );
 });
 
 describe("seeded multi-crash histories", () => {

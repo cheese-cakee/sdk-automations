@@ -16,6 +16,7 @@
         "@hiero-hackers/automation-store": "workspace:*"
     },
     "devDependencies": {
+        "@types/node": "^24.0.0",
         "typescript": "^5.6.0",
         "vitest": "^4.0.0"
     }
