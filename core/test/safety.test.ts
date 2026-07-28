@@ -99,6 +99,24 @@ describe("evaluateWrite (safety.md §2)", () => {
         expect(verdict).toEqual({ outcome: "apply" });
     });
 
+    it.each([
+        ["an invalid cause timestamp", request({ causeObservedAt: new Date("invalid") }), context({
+            latestHumanChangeAt: new Date("2026-06-30T23:59:59Z"),
+        })],
+        ["an invalid human-change timestamp", request(), context({
+            latestHumanChangeAt: new Date("invalid"),
+        })],
+    ] as const)("fails closed on %s", (_name, badRequest, badContext) => {
+        const verdict = evaluateWrite(badRequest, badContext);
+        expect(verdict).toMatchObject({
+            outcome: "refuse",
+            code: "invalidTimestamp",
+        });
+        if (verdict.outcome === "refuse") {
+            expect(verdict.reason.length).toBeGreaterThan(0);
+        }
+    });
+
     // FINDING(safety-killswitch-observations)
     it("the kill switch beats everything, including observations", () => {
         const verdict = evaluateWrite(
@@ -168,6 +186,29 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
         },
     );
+
+    it.each([
+        ["a non-finite grace period", Number.NaN, new Date("2026-07-01T00:00:00Z"), afterGrace],
+        ["an invalid warning timestamp", 7, new Date("invalid"), afterGrace],
+        ["an invalid current timestamp", 7, new Date("2026-07-01T00:00:00Z"), new Date("invalid")],
+    ] as const)("fails closed on %s", (_name, gracePeriodDays, warnedAt, now) => {
+        const plan = destructive();
+        const verdict = evaluateDestructive(
+                {
+                    ...plan,
+                    warning: { ...plan.warning!, gracePeriodDays, warnedAt },
+                },
+                context(),
+                now,
+            );
+        expect(verdict).toMatchObject({
+            outcome: "refuse",
+            code: "invalidDestructivePlan",
+        });
+        if (verdict.outcome === "refuse") {
+            expect(verdict.reason.length).toBeGreaterThan(0);
+        }
+    });
 
     // Mutation-testing survivors, now pinned — both boundaries exact:
     it("a grace period exactly at the floor is legal, and acts exactly when it elapses", () => {

@@ -71,8 +71,8 @@ export type ConfigResult =
 
 export interface ParseConfigOptions {
     /**
-     * The platform's registry of shipped capability names. When supplied,
-     * an *enabled* capability outside the registry is a validation error;
+     * The platform's registry of shipped capability names. An *enabled*
+     * capability outside the registry is a validation error;
      * a disabled unknown capability stays dormant (present, inert), so
      * removing a capability from the platform does not break configs that
      * still mention it disabled.
@@ -81,9 +81,9 @@ export interface ParseConfigOptions {
      * this list a configuration enabling a misspelled or unshipped
      * capability passes validation silently — the maintainer believes a
      * behavior is on that does not exist. Callers that have a registry
-     * must pass it; the parameter is optional only because settings are
-     * contractually opaque and some callers (tests, tooling) have no
-     * registry to check against.
+     * must pass it. Omitting the list is fail-closed and means that no
+     * capability is known; tooling that validates a shipped capability
+     * must supply the same registry as the platform.
      */
     readonly knownCapabilities?: readonly string[];
 }
@@ -177,12 +177,11 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): Con
                 const enabled = value.enabled === true;
                 if (
                     enabled &&
-                    options.knownCapabilities !== undefined &&
-                    !options.knownCapabilities.includes(name)
+                    !(options.knownCapabilities ?? []).includes(name)
                 ) {
                     errors.push(
                         `capability "${name}" is enabled but not in the platform's capability registry` +
-                        ` (known: ${[...options.knownCapabilities].sort().join(", ") || "none"})`,
+                        ` (known: ${[...(options.knownCapabilities ?? [])].sort().join(", ") || "none"})`,
                     );
                 }
                 capabilityEntries.push([name, { enabled, settings }]);

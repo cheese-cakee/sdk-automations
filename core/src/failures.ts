@@ -41,7 +41,10 @@ export type FailureClass =
     /** 403, body names suspension, and the permissions header is absent (6.1). */
     | { readonly kind: "installationSuspended" }
     /** 403 secondary limit: body prose only — no `retry-after`, primary quota untouched (6.4, FINDING(secondary-limit-no-wait-signal)). */
-    | { readonly kind: "secondaryLimit" }
+    | {
+          readonly kind: "secondaryLimit";
+          readonly retryAfterSeconds?: number;
+      }
     /** Primary quota exhausted: `x-ratelimit-remaining: 0`. */
     | { readonly kind: "primaryExhausted"; readonly resetAt: string | undefined }
     /**
@@ -67,8 +70,17 @@ export function classifyFailure(o: FailureObservation): FailureClass {
             ? { kind: "tokenExpired" }
             : { kind: "badCredentials" };
     }
-    if (o.status === 403) {
-        if (/secondary rate limit/i.test(body)) return { kind: "secondaryLimit" };
+    if (o.status === 403 || o.status === 429) {
+        const retryAfter = Number(o.headers["retry-after"]);
+        const retryAfterSeconds =
+            Number.isFinite(retryAfter) && retryAfter >= 0
+                ? retryAfter
+                : undefined;
+        if (/secondary rate limit/i.test(body) || o.status === 429) {
+            return retryAfterSeconds === undefined
+                ? { kind: "secondaryLimit" }
+                : { kind: "secondaryLimit", retryAfterSeconds };
+        }
         if (o.headers["x-ratelimit-remaining"] === "0") {
             return { kind: "primaryExhausted", resetAt: o.headers["x-ratelimit-reset"] };
         }
@@ -116,11 +128,19 @@ export function retryAdvice(
     const BACKOFF_MS = [500, 2_000, 8_000] as const;
     switch (failure.kind) {
         case "tokenExpired":
-            return { action: "refreshTokenAndRetry" };
+            return attempt >= MAX_RATE_LIMIT_ATTEMPTS
+                ? { action: "doNotRetry", surfaceTo: "operator" }
+                : { action: "refreshTokenAndRetry" };
         case "secondaryLimit":
             return attempt >= MAX_RATE_LIMIT_ATTEMPTS
                 ? { action: "doNotRetry", surfaceTo: "operator" }
-                : { action: "retryAfterMs", ms: 60_000 };
+                : {
+                      action: "retryAfterMs",
+                      ms: Math.max(
+                          60_000,
+                          (failure.retryAfterSeconds ?? 0) * 1000,
+                      ),
+                  };
         case "primaryExhausted": {
             if (attempt >= MAX_RATE_LIMIT_ATTEMPTS) {
                 return { action: "doNotRetry", surfaceTo: "operator" };

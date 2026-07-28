@@ -138,7 +138,12 @@ describe("retryAdvice: bounded for every class and attempt", () => {
             }
             // Past the bound, no advised-wait class waits forever.
             const late = retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS + 1, 0);
-            if (failure.kind === "secondaryLimit" || failure.kind === "primaryExhausted" || failure.kind === "transient") {
+            if (
+                failure.kind === "tokenExpired" ||
+                failure.kind === "secondaryLimit" ||
+                failure.kind === "primaryExhausted" ||
+                failure.kind === "transient"
+            ) {
                 expect(late.action).toBe("doNotRetry");
             }
         }

@@ -69,9 +69,11 @@ export type SafetyRefusalCode =
     | "itemBlocked"
     | "preconditionStale"
     | "newerHumanChange"
+    | "invalidTimestamp"
     | "modeDisabled"
     | "wrongActionClass"
     | "noWarning"
+    | "invalidDestructivePlan"
     | "graceBelowFloor"
     | "graceRunning"
     | "activityCancelled";
@@ -156,6 +158,17 @@ export function evaluateWrite(
             reason: "the rechecked precondition no longer holds (rule 4)",
         };
     }
+    if (
+        !Number.isFinite(request.causeObservedAt.getTime()) ||
+        (context.latestHumanChangeAt !== null &&
+            !Number.isFinite(context.latestHumanChangeAt.getTime()))
+    ) {
+        return {
+            outcome: "refuse",
+            code: "invalidTimestamp",
+            reason: "the write request contains an invalid observation or human-change timestamp",
+        };
+    }
     /**
      * FINDING(safety-human-tie), D33: ties go to the human (`>=`) —
      * GitHub timestamps have second granularity, so exact ties happen.
@@ -236,6 +249,17 @@ export function evaluateDestructive(
             outcome: "refuse",
             code: "noWarning",
             reason: "no recorded warning — a destructive action never occurs on first observation (§3)",
+        };
+    }
+    if (
+        !Number.isFinite(plan.warning.gracePeriodDays) ||
+        !Number.isFinite(plan.warning.warnedAt.getTime()) ||
+        !Number.isFinite(now.getTime())
+    ) {
+        return {
+            outcome: "refuse",
+            code: "invalidDestructivePlan",
+            reason: "the destructive plan contains a non-finite grace period or invalid timestamp",
         };
     }
     if (plan.warning.gracePeriodDays < MIN_GRACE_DAYS) {

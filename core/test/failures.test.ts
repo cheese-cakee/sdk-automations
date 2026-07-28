@@ -91,9 +91,40 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
     });
 
     it("unmatched statuses classify as transient — the bounded-retry bucket", () => {
-        for (const status of [500, 502, 503, 429]) {
+        for (const status of [500, 502, 503]) {
             expect(classifyFailure({ status, body: "", headers: {} })).toEqual({ kind: "transient" });
         }
+    });
+
+    it("429 is rate-limited and preserves Retry-After instead of retrying as a 500", () => {
+        const failure = classifyFailure({
+            status: 429,
+            body: "rate limited",
+            headers: { "retry-after": "120" },
+        });
+        expect(failure).toEqual({
+            kind: "secondaryLimit",
+            retryAfterSeconds: 120,
+        });
+        expect(retryAdvice(failure, 0, 0)).toEqual({
+            action: "retryAfterMs",
+            ms: 120_000,
+        });
+    });
+
+    it.each([
+        [undefined, { kind: "secondaryLimit" }],
+        ["-1", { kind: "secondaryLimit" }],
+        ["not-a-number", { kind: "secondaryLimit" }],
+        ["0", { kind: "secondaryLimit", retryAfterSeconds: 0 }],
+    ] as const)("handles Retry-After boundary %s explicitly", (value, expected) => {
+        expect(
+            classifyFailure({
+                status: 429,
+                body: "rate limited",
+                headers: { "retry-after": value },
+            }),
+        ).toEqual(expected);
     });
 
     it("422 with structured errors[] is maintainer-facing", () => {
@@ -135,8 +166,11 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         expect(waits[3]).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
     });
 
-    it("expired tokens are refresh-and-retry, never surfaced as errors", () => {
+    it("expired tokens refresh within the shared bound, then surface", () => {
         expect(retryAdvice({ kind: "tokenExpired" }, 0, 0)).toEqual({ action: "refreshTokenAndRetry" });
+        expect(
+            retryAdvice({ kind: "tokenExpired" }, MAX_RATE_LIMIT_ATTEMPTS, 0),
+        ).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
     });
 
     it("every failure class has advice — the switch is exhaustive by type", () => {

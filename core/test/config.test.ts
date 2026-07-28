@@ -18,24 +18,27 @@ describe("parseConfig (design/config/schema.md)", () => {
     });
 
     it("accepts the documented candidate shape (§3)", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mode: "observe",
-            capabilities: {
-                prQuality: {
-                    enabled: true,
-                    settings: { checks: { dco: true, mergeConflict: true } },
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "observe",
+                capabilities: {
+                    prQuality: {
+                        enabled: true,
+                        settings: { checks: { dco: true, mergeConflict: true } },
+                    },
+                    assignment: { enabled: false, settings: { maxOpenAssignments: 2 } },
                 },
-                assignment: { enabled: false, settings: { maxOpenAssignments: 2 } },
-            },
-            mappings: {
-                labels: {
-                    ready: "status: ready for dev",
-                    inProgress: "status: in progress",
+                mappings: {
+                    labels: {
+                        ready: "status: ready for dev",
+                        inProgress: "status: in progress",
+                    },
                 },
+                principals: { maintainerTeam: "hiero-sdk-cpp-maintainers" },
             },
-            principals: { maintainerTeam: "hiero-sdk-cpp-maintainers" },
-        });
+            { knownCapabilities: ["prQuality", "assignment"] },
+        );
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.config.capabilities.prQuality?.enabled).toBe(true);
@@ -181,12 +184,13 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
         if (result.ok) expect(result.config.capabilities.retired?.enabled).toBe(false);
     });
 
-    it("without a registry the 6.3-observed contract is unchanged: unknown enabled capabilities pass", () => {
+    it("without a registry, enabled capabilities fail closed instead of bypassing the authority boundary", () => {
         const result = parseConfig({
             schemaVersion: 1,
             capabilities: { checksGate: { enabled: true } },
         });
-        expect(result.ok).toBe(true);
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.errors.join()).toContain("(known: none)");
     });
 
     it("a registry rejection fails closed like every other error (§2.6)", () => {

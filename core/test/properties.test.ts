@@ -10,7 +10,7 @@ import fc from "fast-check";
 import {
     parseConfig,
     classifyFailure,
-    asDeliveryId,
+    asDeliveryRecordId,
     MAPPABLE_MEANINGS,
     REPOSITORY_MODES,
 } from "../src/index.js";
@@ -71,7 +71,9 @@ describe("parseConfig properties", () => {
     it("valid-by-construction configs parse ok", () => {
         fc.assert(
             fc.property(validConfig, (raw) => {
-                const result = parseConfig(raw);
+                const result = parseConfig(raw, {
+                    knownCapabilities: Object.keys(raw.capabilities ?? {}),
+                });
                 if (!result.ok) throw new Error(result.errors.join("; "));
             }),
             { seed: SEED, numRuns: 300 },
@@ -83,9 +85,12 @@ describe("parseConfig properties", () => {
         // outputs must be exactly what it would output again.
         fc.assert(
             fc.property(validConfig, (raw) => {
-                const first = parseConfig(raw);
+                const knownCapabilities = Object.keys(raw.capabilities ?? {});
+                const first = parseConfig(raw, { knownCapabilities });
                 if (!first.ok) return; // covered by the property above
-                const second = parseConfig(first.config as unknown);
+                const second = parseConfig(first.config as unknown, {
+                    knownCapabilities,
+                });
                 expect(second.ok).toBe(true);
                 if (second.ok) expect(second.config).toEqual(first.config);
             }),
@@ -136,11 +141,11 @@ describe("classifyFailure properties", () => {
     });
 });
 
-describe("asDeliveryId properties", () => {
+describe("asDeliveryRecordId properties", () => {
     it("accepts exactly digit strings, and accepted values round-trip unchanged", () => {
         fc.assert(
             fc.property(fc.string({ maxLength: 40 }), (s) => {
-                const id = asDeliveryId(s);
+                const id = asDeliveryRecordId(s);
                 expect(id !== undefined).toBe(/^\d+$/.test(s));
                 if (id !== undefined) expect(id).toBe(s); // opaque: never normalized
             }),
@@ -149,7 +154,7 @@ describe("asDeliveryId properties", () => {
         // And digit strings beyond 2^53 — the whole point — are preserved.
         fc.assert(
             fc.property(fc.stringMatching(/^[1-9]\d{18,24}$/), (s) => {
-                expect(asDeliveryId(s)).toBe(s);
+                expect(asDeliveryRecordId(s)).toBe(s);
             }),
             { seed: SEED, numRuns: 200 },
         );

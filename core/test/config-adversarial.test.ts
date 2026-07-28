@@ -60,11 +60,14 @@ describe("hostile keys (the __proto__ hole)", () => {
     });
 
     it("returned records are null-prototype — nothing inherited, ever", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: { prQuality: { enabled: true } },
-            principals: { maintainerTeam: "t" },
-        });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { prQuality: { enabled: true } },
+                principals: { maintainerTeam: "t" },
+            },
+            { knownCapabilities: ["prQuality"] },
+        );
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(Object.getPrototypeOf(result.config.capabilities)).toBe(null);
@@ -118,6 +121,19 @@ describe("never throws, for any already-parsed shape", () => {
         ),
     ];
 
+    it("rejects null nested mappings instead of treating them as objects", () => {
+        const result = parseConfig({
+            schemaVersion: 1,
+            capabilities: { assignment: null },
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain(
+                'capability "assignment" must be a mapping',
+            );
+        }
+    });
+
     it.each(hostile.map((value, i) => [i, value]))(
         "shape #%i returns a verdict instead of throwing",
         (_i, value) => {
@@ -153,14 +169,17 @@ describe("never throws, for any already-parsed shape", () => {
     });
 
     it("accepted entries are exactly the validated entries — nothing vanishes, nothing appears", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: {
-                prQuality: { enabled: true },
-                assignment: { enabled: false },
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: {
+                    prQuality: { enabled: true },
+                    assignment: { enabled: false },
+                },
+                principals: { a: "x", b: "y" },
             },
-            principals: { a: "x", b: "y" },
-        });
+            { knownCapabilities: ["prQuality", "assignment"] },
+        );
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(Object.keys(result.config.capabilities).sort()).toEqual(["assignment", "prQuality"]);
