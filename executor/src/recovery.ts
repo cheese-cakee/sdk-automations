@@ -22,6 +22,8 @@ export interface PlannedCall {
 
 export interface EffectPlan {
     readonly effectId: string;
+    /** Immutable default-branch configuration revision/effective hash. */
+    readonly revision: string;
     readonly calls: readonly PlannedCall[];
 }
 
@@ -41,8 +43,11 @@ export interface EffectPlan {
  * stage-five sandbox work.
  */
 export interface EffectPort {
-    perform(plan: EffectPlan, call: PlannedCall): void;
-    readBack(plan: EffectPlan, call: PlannedCall): "present" | "absent";
+    perform(plan: EffectPlan, call: PlannedCall): Promise<void>;
+    readBack(
+        plan: EffectPlan,
+        call: PlannedCall,
+    ): Promise<"present" | "absent">;
 }
 
 export type RunResult =
@@ -79,7 +84,7 @@ export class RecoveryExecutor {
      * that is the crash model: a dead process releases nothing, and
      * D41's lease takeover is what unblocks the effect afterwards.
      */
-    runEffect(plan: EffectPlan): RunResult {
+    async runEffect(plan: EffectPlan): Promise<RunResult> {
         plan.calls.forEach((call, i) => {
             if (call.seq !== i + 1) {
                 throw new TypeError(
@@ -92,15 +97,28 @@ export class RecoveryExecutor {
         if (!this.store.claim(plan.effectId, this.worker, now, staleBefore)) {
             return { outcome: "anotherWorker" };
         }
-        const result = this.drive(plan);
+        const result = await this.drive(plan);
         this.store.release(plan.effectId, this.worker);
         return result;
     }
 
     /** The storage-decision flowchart, one branch per journal answer. */
-    private drive(plan: EffectPlan): RunResult {
+    private async drive(plan: EffectPlan): Promise<RunResult> {
         const planLength = plan.calls.length;
         const state = this.store.effectState(plan.effectId, planLength);
+        if (
+            state.state !== "neverStarted" &&
+            state.revision !== plan.revision
+        ) {
+            return {
+                outcome: "unresolved",
+                seq:
+                    state.state === "sentUnknown"
+                        ? state.seq
+                        : state.lastDoneSeq,
+                reason: "journaled effect revision does not match the current default-branch configuration revision",
+            };
+        }
         let startSeq: number;
         switch (state.state) {
             case "complete":
@@ -129,18 +147,18 @@ export class RecoveryExecutor {
                         reason: "open journal row does not match the current plan — intents from an old revision are not resumable (manual-edits.md §9)",
                     };
                 }
-                if (state.attempt >= MAX_CALL_ATTEMPTS) {
-                    return {
-                        outcome: "unresolved",
-                        seq: state.seq,
-                        reason: `call re-sent ${String(state.attempt)} times without a confirmed outcome — surfacing instead of retrying (FINDING(executor-attempt-bound))`,
-                    };
-                }
                 // Journal detects; GitHub resolves.
-                if (this.port.readBack(plan, call) === "present") {
-                    this.store.done(plan.effectId, state.seq);
+                if ((await this.port.readBack(plan, call)) === "present") {
+                    this.store.done(plan.effectId, state.seq, this.now());
                     startSeq = state.seq + 1;
                 } else {
+                    if (state.attempt >= MAX_CALL_ATTEMPTS) {
+                        return {
+                            outcome: "unresolved",
+                            seq: state.seq,
+                            reason: `call re-sent ${String(state.attempt)} times and remains absent — surfacing instead of retrying (FINDING(executor-attempt-bound))`,
+                        };
+                    }
                     // Absent. The read-back that just happened is what
                     // makes re-sending safe for BOTH classes — a blind
                     // retry of a nonIdempotent call is the demonstrated
@@ -154,9 +172,15 @@ export class RecoveryExecutor {
         }
         for (let seq = startSeq; seq <= planLength; seq++) {
             const call = plan.calls[seq - 1]!;
-            this.store.intent(plan.effectId, seq, call.intent, this.now());
-            this.port.perform(plan, call); // a throw here IS the crash
-            this.store.done(plan.effectId, seq);
+            this.store.intent(
+                plan.effectId,
+                seq,
+                call.intent,
+                this.now(),
+                plan.revision,
+            );
+            await this.port.perform(plan, call); // a throw here IS the crash
+            this.store.done(plan.effectId, seq, this.now());
         }
         return { outcome: "complete" };
     }

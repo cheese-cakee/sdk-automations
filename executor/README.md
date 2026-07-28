@@ -10,14 +10,19 @@ tests are the design's own crash grid, automated.
 
 | Piece | Implements | Source of truth |
 |---|---|---|
-| `src/recovery.ts` | The recovery flowchart: neverStarted / midSequence / sentUnknown → read-back → class-ruled retry; claim/release lifecycle; the two surfaced stops | storage-decision.md §"The recovery loop the grid decided"; `manual-edits.md` §9 (stale plans) |
+| `src/recovery.ts` | Async recovery flow: neverStarted / midSequence / sentUnknown → read-back → bounded retry; revision check; claim/release lifecycle; surfaced stops | storage-decision.md §"The recovery loop the grid decided"; `manual-edits.md` §9 (stale plans) |
 | `test/harness.ts` | The adversarial world: crash-by-invocation port, application-counting fake GitHub, restart-with-lease-takeover runner | protocol 6.5's kill-point method |
-| `test/crash-grid.test.ts` | Every single crash point, all 64 crash pairs, seeded multi-crash histories — all must converge with the non-idempotent call applied exactly once | the 6.5 sandbox grid, exhaustive |
+| `test/crash-grid.test.ts` | Reachable perform crashes, 64 scheduled two-point histories, and seeded histories converge under a serialized, consistent fake; the test reports how many scheduled crashes actually fire | the 6.5 sandbox grid, bounded local evidence |
 | `test/recovery.test.ts` | Each flowchart branch; the surfaced stops; the reproduced 6.5 blind-retry duplication the read-back exists to prevent | storage-decision.md; D41–D43 |
 
-A `perform` throw IS the crash model: the engine never catches it and
+A rejected `perform` promise IS the harness crash model: the engine never catches it and
 never releases the claim on the way down — a dead process releases
 nothing, and D41's lease takeover is what unblocks the effect.
+
+The harness does not prove that taking a lease from a still-live worker
+is safe. An in-flight non-idempotent request cannot be fenced by SQLite;
+D41 is reopened pending an adapter deadline/renewal design and an
+overlapping-worker oracle.
 
 Findings for the decision register:
 

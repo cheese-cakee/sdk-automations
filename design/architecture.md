@@ -71,7 +71,7 @@ flowchart TB
         PORT["EffectPort adapter: endpoint-matrix operations, freshness rule - D46"]
         OPS["operator surface and config report"]
     end
-    subgraph CORE["core - pure logic, 152 tests"]
+    subgraph CORE["core - pure logic, 165 tests"]
         CFG["config: strict validation, fail closed"]
         REG["contract: registry, idempotency classes"]
         OBS["observe: labels to position or conflict"]
@@ -79,13 +79,13 @@ flowchart TB
         SAFE["safety: write and destructive gates"]
         FAILC["failures: classify and bound retries"]
     end
-    subgraph STORE["store - owned state, 43 tests"]
+    subgraph STORE["store - owned state, 46 tests"]
         SEEN["seen_delivery dedup"]
         JRN["effect_journal: intent, done, attempt"]
         CLM["effect_claim: 15 min lease"]
         SCH["schedule: claimed_at, requeue"]
     end
-    subgraph EXECP["executor - 27 tests incl. crash grid"]
+    subgraph EXECP["executor - 29 tests incl. crash grid"]
         LOOP["recovery loop: claim, journal, perform, resolve, class-ruled retry"]
     end
     GH --> IN --> SEEN
@@ -104,8 +104,10 @@ flowchart TB
 Two properties of this shape carry the safety argument: a conflicted observation produces no state object,
 so it structurally cannot reach the transition or write layers; and the recovery loop is the only
 component that touches both the journal and the port, so every retry is mediated by a read-back — the
-crash grid (every single crash point, all 64 crash pairs, seeded histories) is evidence for the composed
-pipeline, not for any one box.
+crash grid (every reachable perform crash, 64 scheduled two-point histories, seeded histories) is evidence
+for serialized crash-and-restart recovery, not for live lease overlap. Of the 64 scheduled histories, 18
+trigger both requested crashes, 30 trigger one, and 16 complete before either scheduled invocation; the
+suite now asserts that distribution instead of describing all 64 as exercised crash pairs.
 
 ## 3. What the shared platform owns
 

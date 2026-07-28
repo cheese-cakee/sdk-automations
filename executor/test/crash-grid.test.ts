@@ -1,6 +1,6 @@
 /**
- * The crash grid: every single crash point, every pair of crash
- * points, and seeded multi-crash histories — all must converge to the
+ * The crash grid: every single reachable perform crash, 64 scheduled
+ * two-point histories, and seeded multi-crash histories — all must converge to the
  * same terminal state: effect complete, every call applied, the
  * non-idempotent call applied EXACTLY once. This is 6.5's hand-run
  * sandbox grid, exhaustive and repeatable.
@@ -15,6 +15,7 @@ import { runToConvergence, prng, type CrashMode } from "./harness.js";
 
 const PLAN: EffectPlan = {
     effectId: "assign-issue-7",
+    revision: "config-sha-1",
     calls: [
         { seq: 1, intent: "list-comments", idempotencyClass: "idempotent" },
         { seq: 2, intent: "create-comment", idempotencyClass: "nonIdempotent" },
@@ -22,17 +23,24 @@ const PLAN: EffectPlan = {
     ],
 };
 
-function inTmp<T>(fn: (path: string) => T): T {
+async function inTmp<T>(fn: (path: string) => Promise<T>): Promise<T> {
     const dir = mkdtempSync(join(tmpdir(), "executor-grid-"));
     try {
-        return fn(join(dir, "store.sqlite"));
+        return await fn(join(dir, "store.sqlite"));
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
 }
 
-function assertConverged(path: string, schedule: ReadonlyMap<number, CrashMode>): void {
-    const { result, world } = runToConvergence(path, PLAN, schedule);
+async function assertConverged(
+    path: string,
+    schedule: ReadonlyMap<number, CrashMode>,
+): Promise<number> {
+    const { result, world, triggeredCrashes } = await runToConvergence(
+        path,
+        PLAN,
+        schedule,
+    );
     expect(result).toEqual({ outcome: "complete" });
     for (const call of PLAN.calls) {
         expect(world.applications(PLAN, call)).toBeGreaterThanOrEqual(1);
@@ -42,20 +50,21 @@ function assertConverged(path: string, schedule: ReadonlyMap<number, CrashMode>)
     expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
     // And the journal agrees the effect is closed.
     const store = new Store(path);
-    expect(store.effectState(PLAN.effectId, PLAN.calls.length)).toEqual({ state: "complete" });
+    expect(store.effectState(PLAN.effectId, PLAN.calls.length)).toMatchObject({ state: "complete" });
     store.close();
+    return triggeredCrashes.length;
 }
 
 describe("single crash at every point", () => {
     const modes: CrashMode[] = ["beforeApply", "afterApply"];
     it.each(
         [1, 2, 3].flatMap((p) => modes.map((m) => [p, m] as const)),
-    )("crash %i/%s converges with no duplicate", (invocation, mode) => {
-        inTmp((path) => assertConverged(path, new Map([[invocation, mode]])));
+    )("crash %i/%s converges with no duplicate", async (invocation, mode) => {
+        await inTmp((path) => assertConverged(path, new Map([[invocation, mode]])));
     });
 });
 
-describe("every pair of crash points across two incarnations", () => {
+describe("64 scheduled two-point histories across incarnations", () => {
     const modes: CrashMode[] = ["beforeApply", "afterApply"];
     const pairs: [number, CrashMode, number, CrashMode][] = [];
     for (let p1 = 1; p1 <= 4; p1++)
@@ -65,9 +74,10 @@ describe("every pair of crash points across two incarnations", () => {
 
     it(
         `all ${String(pairs.length)} pairs converge with no duplicate`,
-        () => {
+        async () => {
+            const triggeredCounts = new Map<number, number>();
             for (const [p1, m1, p2, m2] of pairs) {
-                inTmp((path) =>
+                const triggered = await inTmp((path) =>
                     assertConverged(
                         path,
                         new Map([
@@ -76,7 +86,20 @@ describe("every pair of crash points across two incarnations", () => {
                         ]),
                     ),
                 );
+                triggeredCounts.set(
+                    triggered,
+                    (triggeredCounts.get(triggered) ?? 0) + 1,
+                );
             }
+            // The old test called all 64 schedules "crash pairs", but
+            // many later invocation numbers are unreachable after the
+            // effect completes. Preserve all cases while making the
+            // actual exercised evidence explicit.
+            expect(Object.fromEntries(triggeredCounts)).toEqual({
+                0: 16,
+                1: 30,
+                2: 18,
+            });
         },
         20_000,
     );
@@ -85,7 +108,7 @@ describe("every pair of crash points across two incarnations", () => {
 describe("seeded multi-crash histories", () => {
     it.each(Array.from({ length: 10 }, (_, i) => i + 1))(
         "seed %i — random crash schedule converges with no duplicate",
-        (seed) => {
+        async (seed) => {
             const rand = prng(seed);
             // Each of the first 12 perform-invocations may crash.
             const schedule = new Map<number, CrashMode>();
@@ -96,7 +119,7 @@ describe("seeded multi-crash histories", () => {
                     crashes += 1;
                 }
             }
-            inTmp((path) => assertConverged(path, schedule));
+            await inTmp((path) => assertConverged(path, schedule));
         },
     );
 });

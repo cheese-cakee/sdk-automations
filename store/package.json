@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-store",
     "version": "0.0.0",
     "private": true,
-    "description": "The owned operational store decided by protocol 6.5 (design/operations/storage-decision.md): four independent tables in one SQLite file. Ratification pending under the stage-four review. Uses node:sqlite — Node 23.4+ (unflagged there; stable in 24).",
+    "description": "The owned operational store decided by protocol 6.5 (design/operations/storage-decision.md): four independent tables in one SQLite file. Ratification pending under the stage-four review. Uses node:sqlite on Node 23.4+ and still emits an ExperimentalWarning on Node 24.11.1.",
     "type": "module",
     "exports": {
         ".": {

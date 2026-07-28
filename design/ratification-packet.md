@@ -26,9 +26,10 @@ Covered: the implementation-born hypotheses D28–D46, and the storage decision'
 on architecture review.
 
 Evidence base shared by every row: the stage-three experiment records (6.1–6.6, 2026-07-23), and the
-three implementation packages with 222 deterministic tests — including the exhaustive safety sweep,
-the projection enumeration, and the executor crash grid (every single crash point, all 64 crash
-pairs, seeded multi-crash histories, converging with non-idempotent calls applied exactly once).
+three implementation packages with 240 deterministic tests — including the exhaustive safety sweep,
+the projection enumeration, and the executor crash grid (every reachable perform crash, 64 scheduled
+two-point histories, and seeded multi-crash histories). The grid proves serialized crash-and-restart
+convergence under its consistent fake; it does not prove live lease takeover is safe.
 
 ## 2. Storage and recovery agenda
 

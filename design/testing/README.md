@@ -122,10 +122,11 @@ after.
    parsers never throw and are fixed points; identifiers round-trip unchanged; timestamp order is
    chronological order. Found the mixed-precision ordering bug that examples missed.
 4. **Model-based interleaving** covers stateful components: a reference model beside the real component,
-   hundreds of seeded random operation interleavings, equality asserted at every step. The store's claim
-   and schedule tests and the executor's crash grid are the standing patterns; the executor grid is the
-   template for every future multi-call effect (enumerate single failure points, all failure pairs, seeded
-   multi-failure histories; assert convergence and exactly-once for non-idempotent calls).
+   hundreds of seeded random operation interleavings, equality asserted at every step. The current store
+   operations are sequential, not simultaneous, and the executor's 64 scheduled histories are not 64
+   exercised crash pairs (18 trigger both crashes, 30 one, 16 none). Future multi-call effects must
+   enumerate reachable failure points, assert every requested fault fired, add live overlap, and assert
+   convergence plus non-duplication.
 5. **Mutation audits** (Stryker, one-off — not per-PR) measure whether the suite actually observes the
    code, run at milestones where "the tests are the spec" is the claim under review: before stage-four
    ratification and before each pilot ring. Surviving mutants are triaged to a new test, or documented as

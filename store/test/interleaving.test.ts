@@ -89,13 +89,23 @@ describe("schedules under random interleaving: fire exactly once unless requeued
             const start = Date.parse("2026-07-25T00:00:00.000Z");
             let now = start;
 
-            type Row = { status: "pending" | "running" | "done"; dueMs: number; claimedMs: number | null };
+            type Row = {
+                status: "pending" | "running" | "done";
+                dueMs: number;
+                claimedMs: number | null;
+                claimToken: string | null;
+            };
             const model = new Map<string, Row>();
             for (let i = 0; i < 8; i++) {
                 const id = `s${String(i)}`;
                 const dueMs = start + Math.floor(rand() * 60 * MINUTE);
                 a.schedule(id, iso(dueMs), "work");
-                model.set(id, { status: "pending", dueMs, claimedMs: null });
+                model.set(id, {
+                    status: "pending",
+                    dueMs,
+                    claimedMs: null,
+                    claimToken: null,
+                });
             }
             const ids = [...model.keys()];
             const fireCounts = new Map(ids.map((id) => [id, 0]));
@@ -114,12 +124,15 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                             return row.status === "pending" && row.dueMs <= now;
                         })
                         .sort();
-                    const fired = store.claimDue(iso(now)).map((r) => r.scheduleId).sort();
+                    const claimed = store.claimDue(iso(now));
+                    const fired = claimed.map((r) => r.scheduleId).sort();
                     expect(fired).toEqual(expected);
-                    for (const id of fired) {
+                    for (const claimedRow of claimed) {
+                        const id = claimedRow.scheduleId;
                         const row = model.get(id)!;
                         row.status = "running";
                         row.claimedMs = now;
+                        row.claimToken = claimedRow.claimToken;
                         fireCounts.set(id, fireCounts.get(id)! + 1);
                     }
                 } else if (roll < 0.75) {
@@ -127,8 +140,10 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                     const running = ids.filter((id) => model.get(id)!.status === "running");
                     const id = running[Math.floor(rand() * running.length)];
                     if (id !== undefined) {
-                        store.scheduleDone(id);
+                        const token = model.get(id)!.claimToken!;
+                        expect(store.scheduleDone(id, token)).toBe(true);
                         model.get(id)!.status = "done";
+                        model.get(id)!.claimToken = null;
                     }
                 } else {
                     // The sweep requeues exactly the model's stuck set.
@@ -145,6 +160,7 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                         const row = model.get(id)!;
                         row.status = "pending";
                         row.claimedMs = null;
+                        row.claimToken = null;
                         requeueCounts.set(id, requeueCounts.get(id)! + 1);
                     }
                 }

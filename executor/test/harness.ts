@@ -56,21 +56,31 @@ export class FakeWorld {
 export class CrashingPort implements EffectPort {
     private performInvocations = 0;
     readonly readBacks: string[] = [];
+    readonly triggeredCrashes: number[] = [];
 
     constructor(
         private readonly world: FakeWorld,
         private readonly schedule: ReadonlyMap<number, CrashMode>,
     ) {}
 
-    perform(plan: EffectPlan, call: PlannedCall): void {
+    async perform(plan: EffectPlan, call: PlannedCall): Promise<void> {
         this.performInvocations += 1;
         const mode = this.schedule.get(this.performInvocations);
-        if (mode === "beforeApply") throw new Crash();
+        if (mode === "beforeApply") {
+            this.triggeredCrashes.push(this.performInvocations);
+            throw new Crash();
+        }
         this.world.apply(plan, call);
-        if (mode === "afterApply") throw new Crash();
+        if (mode === "afterApply") {
+            this.triggeredCrashes.push(this.performInvocations);
+            throw new Crash();
+        }
     }
 
-    readBack(plan: EffectPlan, call: PlannedCall): "present" | "absent" {
+    async readBack(
+        plan: EffectPlan,
+        call: PlannedCall,
+    ): Promise<"present" | "absent"> {
         this.readBacks.push(`${String(call.seq)}:${call.intent}`);
         return this.world.present(plan, call) ? "present" : "absent";
     }
@@ -83,6 +93,7 @@ export interface Convergence {
     readonly result: RunResult;
     readonly world: FakeWorld;
     readonly restarts: number;
+    readonly triggeredCrashes: readonly number[];
 }
 
 /**
@@ -91,12 +102,12 @@ export interface Convergence {
  * worker identity, clock advanced past the lease so D41's takeover
  * unblocks the crashed claim.
  */
-export function runToConvergence(
+export async function runToConvergence(
     path: string,
     plan: EffectPlan,
     schedule: ReadonlyMap<number, CrashMode>,
     maxRestarts = 20,
-): Convergence {
+): Promise<Convergence> {
     const world = new FakeWorld();
     const port = new CrashingPort(world, schedule);
     let clockMs = T0;
@@ -111,9 +122,14 @@ export function runToConvergence(
             LEASE_MS,
         );
         try {
-            const result = executor.runEffect(plan);
+            const result = await executor.runEffect(plan);
             store.close();
-            return { result, world, restarts };
+            return {
+                result,
+                world,
+                restarts,
+                triggeredCrashes: [...port.triggeredCrashes],
+            };
         } catch (error) {
             store.close();
             if (!(error instanceof Crash)) throw error;

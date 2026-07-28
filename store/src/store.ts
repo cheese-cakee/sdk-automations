@@ -19,12 +19,20 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import type { DeliveryId } from "@hiero-hackers/automation-core";
+import type { DeliveryGuid } from "@hiero-hackers/automation-core";
 
 export type EffectState =
     | { readonly state: "neverStarted" }
-    | { readonly state: "complete" }
-    | { readonly state: "midSequence"; readonly lastDoneSeq: number }
+    | {
+          readonly state: "complete";
+          readonly lastDoneSeq: number;
+          readonly revision: string;
+      }
+    | {
+          readonly state: "midSequence";
+          readonly lastDoneSeq: number;
+          readonly revision: string;
+      }
     | {
           readonly state: "sentUnknown";
           readonly seq: number;
@@ -36,12 +44,18 @@ export type EffectState =
            * at zero.
            */
           readonly attempt: number;
+          readonly revision: string;
       };
 
 export interface ScheduleRow {
     readonly scheduleId: string;
     readonly dueAt: string;
     readonly effect: string;
+}
+
+export interface ClaimedScheduleRow extends ScheduleRow {
+    /** Unique to this firing; required to complete it. */
+    readonly claimToken: string;
 }
 
 /** One unresolved `sent` journal row — the sweep's unit of work. */
@@ -67,7 +81,12 @@ const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /** Exported so the shell can validate before a store call. */
 export function assertUtcInstant(value: string, param: string): void {
-    if (!UTC_INSTANT.test(value)) {
+    const epochMs = Date.parse(value);
+    if (
+        !UTC_INSTANT.test(value) ||
+        !Number.isFinite(epochMs) ||
+        new Date(epochMs).toISOString() !== value
+    ) {
         throw new TypeError(
             `${param} must be a millisecond-precision UTC instant, exactly Date.toISOString() form (got ${JSON.stringify(value)})`,
         );
@@ -102,6 +121,7 @@ export class Store {
                 status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
                 at        TEXT NOT NULL,
                 attempt   INTEGER NOT NULL,
+                revision  TEXT NOT NULL,
                 PRIMARY KEY (effect_id, call_seq)
             );
             CREATE TABLE IF NOT EXISTS effect_claim (
@@ -114,7 +134,8 @@ export class Store {
                 due_at      TEXT NOT NULL,
                 effect      TEXT NOT NULL,
                 status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
-                claimed_at  TEXT
+                claimed_at  TEXT,
+                claim_token TEXT
             );
             -- The journal has no retention policy yet (D43), so the
             -- sweep's openIntents scan must not grow with all history
@@ -130,10 +151,10 @@ export class Store {
 
     /**
      * Record a delivery id; returns true iff never seen before. Keys
-     * on the guid because redeliveries reuse it (6.2); branded string
-     * because the raw ids exceed 2^53.
+     * on the GUID because redeliveries reuse it (6.2); the distinct
+     * numeric REST delivery-record id is not a deduplication key.
      */
-    firstSeen(deliveryId: DeliveryId, at: string): boolean {
+    firstSeen(deliveryId: DeliveryGuid, at: string): boolean {
         assertUtcInstant(at, "at");
         const result = this.db
             .prepare("INSERT OR IGNORE INTO seen_delivery VALUES (?, ?)")
@@ -151,16 +172,25 @@ export class Store {
      * FINDING(store-journal-attempts), D42. Pre-ratification store
      * files are not migrated.
      */
-    intent(effectId: string, seq: number, intent: string, at: string): void {
+    intent(
+        effectId: string,
+        seq: number,
+        intent: string,
+        at: string,
+        revision: string = "unversioned",
+    ): void {
         assertUtcInstant(at, "at");
         this.db
             .prepare(`
-                INSERT INTO effect_journal VALUES (?, ?, ?, 'sent', ?, 1)
+                INSERT INTO effect_journal VALUES (?, ?, ?, 'sent', ?, 1, ?)
                 ON CONFLICT(effect_id, call_seq) DO UPDATE
-                    SET attempt = attempt + 1, at = excluded.at, intent = excluded.intent
+                    SET attempt = attempt + 1,
+                        at = excluded.at,
+                        intent = excluded.intent,
+                        revision = excluded.revision
                     WHERE effect_journal.status != 'done'
             `)
-            .run(effectId, seq, intent, at);
+            .run(effectId, seq, intent, at, revision);
     }
 
     /**
@@ -168,10 +198,11 @@ export class Store {
      * `false` means no such intent row exists, which is a caller bug
      * worth noticing, not a state the store absorbs silently.
      */
-    done(effectId: string, seq: number): boolean {
+    done(effectId: string, seq: number, at: string): boolean {
+        assertUtcInstant(at, "at");
         const result = this.db
-            .prepare("UPDATE effect_journal SET status = 'done' WHERE effect_id = ? AND call_seq = ?")
-            .run(effectId, seq);
+            .prepare("UPDATE effect_journal SET status = 'done', at = ? WHERE effect_id = ? AND call_seq = ?")
+            .run(at, effectId, seq);
         return result.changes === 1;
     }
 
@@ -188,8 +219,8 @@ export class Store {
      */
     effectState(effectId: string, planLength: number): EffectState {
         const rows = this.db
-            .prepare("SELECT call_seq, intent, status, attempt FROM effect_journal WHERE effect_id = ? ORDER BY call_seq DESC LIMIT 1")
-            .all(effectId) as { call_seq: number; intent: string; status: string; attempt: number }[];
+            .prepare("SELECT call_seq, intent, status, attempt, revision FROM effect_journal WHERE effect_id = ? ORDER BY call_seq DESC LIMIT 1")
+            .all(effectId) as { call_seq: number; intent: string; status: string; attempt: number; revision: string }[];
         const last = rows[0];
         if (last === undefined) return { state: "neverStarted" };
         if (last.status === "sent") {
@@ -198,10 +229,21 @@ export class Store {
                 seq: last.call_seq,
                 intent: last.intent,
                 attempt: last.attempt,
+                revision: last.revision,
             };
         }
-        if (last.call_seq >= planLength) return { state: "complete" };
-        return { state: "midSequence", lastDoneSeq: last.call_seq };
+        if (last.call_seq >= planLength) {
+            return {
+                state: "complete",
+                lastDoneSeq: last.call_seq,
+                revision: last.revision,
+            };
+        }
+        return {
+            state: "midSequence",
+            lastDoneSeq: last.call_seq,
+            revision: last.revision,
+        };
     }
 
     /**
@@ -274,7 +316,7 @@ export class Store {
     schedule(scheduleId: string, dueAt: string, effect: string): void {
         assertUtcInstant(dueAt, "dueAt");
         this.db
-            .prepare("INSERT OR IGNORE INTO schedule VALUES (?, ?, ?, 'pending', NULL)")
+            .prepare("INSERT OR IGNORE INTO schedule VALUES (?, ?, ?, 'pending', NULL, NULL)")
             .run(scheduleId, dueAt, effect);
     }
 
@@ -286,16 +328,24 @@ export class Store {
      * stuck `running` rows is `requeueStuck`, driven by the
      * reconciliation sweep, deliberately not this method.
      */
-    claimDue(now: string): ScheduleRow[] {
+    claimDue(now: string): ClaimedScheduleRow[] {
         assertUtcInstant(now, "now");
         const rows = this.db
             .prepare(`
-                UPDATE schedule SET status = 'running', claimed_at = ?
+                UPDATE schedule
+                SET status = 'running',
+                    claimed_at = ?,
+                    claim_token = lower(hex(randomblob(16)))
                 WHERE status = 'pending' AND due_at <= ?
-                RETURNING schedule_id, due_at, effect
+                RETURNING schedule_id, due_at, effect, claim_token
             `)
-            .all(now, now) as { schedule_id: string; due_at: string; effect: string }[];
-        return rows.map((r) => ({ scheduleId: r.schedule_id, dueAt: r.due_at, effect: r.effect }));
+            .all(now, now) as { schedule_id: string; due_at: string; effect: string; claim_token: string }[];
+        return rows.map((r) => ({
+            scheduleId: r.schedule_id,
+            dueAt: r.due_at,
+            effect: r.effect,
+            claimToken: r.claim_token,
+        }));
     }
 
     /**
@@ -311,18 +361,28 @@ export class Store {
         assertUtcInstant(claimedBefore, "claimedBefore");
         const rows = this.db
             .prepare(`
-                UPDATE schedule SET status = 'pending', claimed_at = NULL
+                UPDATE schedule
+                SET status = 'pending', claimed_at = NULL, claim_token = NULL
                 WHERE status = 'running' AND claimed_at <= ?
                 RETURNING schedule_id, due_at, effect
             `)
             .all(claimedBefore) as { schedule_id: string; due_at: string; effect: string }[];
-        return rows.map((r) => ({ scheduleId: r.schedule_id, dueAt: r.due_at, effect: r.effect }));
+        return rows.map((r) => ({
+            scheduleId: r.schedule_id,
+            dueAt: r.due_at,
+            effect: r.effect,
+        }));
     }
 
-    scheduleDone(scheduleId: string): void {
-        this.db
-            .prepare("UPDATE schedule SET status = 'done' WHERE schedule_id = ?")
-            .run(scheduleId);
+    scheduleDone(scheduleId: string, claimToken: string): boolean {
+        const result = this.db
+            .prepare(`
+                UPDATE schedule
+                SET status = 'done', claimed_at = NULL, claim_token = NULL
+                WHERE schedule_id = ? AND status = 'running' AND claim_token = ?
+            `)
+            .run(scheduleId, claimToken);
+        return result.changes === 1;
     }
 
     // ── Retention (the sweep's pruning half — D43's adopted windows) ─

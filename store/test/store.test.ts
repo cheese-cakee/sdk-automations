@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/store.js";
-import { asDeliveryId } from "@hiero-hackers/automation-core";
+import { asDeliveryGuid } from "@hiero-hackers/automation-core";
 
 let dir: string;
 let path: string;
@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const id = (raw: string) => {
-    const v = asDeliveryId(raw);
+    const v = asDeliveryGuid(raw);
     if (v === undefined) throw new Error("test id invalid");
     return v;
 };
@@ -44,11 +44,12 @@ describe("durability configuration — the crash model, pinned", () => {
 describe("delivery deduplication (6.2: redeliveries reuse the guid)", () => {
     it("first sight is true, every repeat — including after a restart — is false", () => {
         const a = new Store(path);
-        expect(a.firstSeen(id("3832900504397021184"), "2026-07-23T10:00:00.000Z")).toBe(true);
-        expect(a.firstSeen(id("3832900504397021184"), "2026-07-23T10:00:01.000Z")).toBe(false);
+        const guid = "0b989ba4-242f-11e5-81e1-c7b6966d2516";
+        expect(a.firstSeen(id(guid), "2026-07-23T10:00:00.000Z")).toBe(true);
+        expect(a.firstSeen(id(guid), "2026-07-23T10:00:01.000Z")).toBe(false);
         a.close();
         const restarted = new Store(path);
-        expect(restarted.firstSeen(id("3832900504397021184"), "2026-07-23T10:05:00.000Z")).toBe(false);
+        expect(restarted.firstSeen(id(guid), "2026-07-23T10:05:00.000Z")).toBe(false);
         restarted.close();
     });
 });
@@ -61,7 +62,9 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         expect(() => s.schedule("x", "2026-07-24T00:00:00+01:00", "sweep")).toThrow(TypeError);
         expect(() => s.claimDue("24 Jul 2026 12:00")).toThrow(TypeError);
         expect(() => s.intent("e1", 1, "read", "2026-07-23")).toThrow(TypeError);
-        expect(() => s.firstSeen(id("1"), "")).toThrow(TypeError);
+        expect(() =>
+            s.firstSeen(id("00000000-0000-0000-0000-000000000001"), ""),
+        ).toThrow(TypeError);
         expect(() => s.claim("e1", "w1", "2026-07-23T12:00:00.000Z", "not-a-time")).toThrow(TypeError);
         // Seconds-only Z is ALSO rejected: mixed precision breaks
         // lexicographic ordering ("…00Z" > "…00.500Z" as strings but
@@ -70,29 +73,40 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         s.schedule("ok", "2026-07-24T00:00:00.123Z", "sweep");
         s.close();
     });
+
+    it("rejects canonical-looking strings that are not real calendar instants", () => {
+        const s = new Store(path);
+        expect(() =>
+            s.schedule("impossible", "2026-02-31T00:00:00.000Z", "sweep"),
+        ).toThrow(TypeError);
+        expect(() =>
+            s.intent("e1", 1, "read", "2026-99-99T99:99:99.999Z"),
+        ).toThrow(TypeError);
+        s.close();
+    });
 });
 
 describe("effect journal — the 6.5 crash grid, restated as instance reopening", () => {
     it("kill after call 1 (read done, write never sent) → midSequence: provably safe to resume", () => {
         const before = new Store(path);
         before.intent("e1", 1, "list-comments", "2026-07-23T10:00:00.000Z");
-        before.done("e1", 1);
+        before.done("e1", 1, "2026-07-23T10:00:00.001Z");
         before.close(); // crash at kill point e1-after-call-1
 
         const recovered = new Store(path);
-        expect(recovered.effectState("e1", 2)).toEqual({ state: "midSequence", lastDoneSeq: 1 });
+        expect(recovered.effectState("e1", 2)).toMatchObject({ state: "midSequence", lastDoneSeq: 1 });
         recovered.close();
     });
 
     it("lost response (intent written, nothing else) → sentUnknown: the journal alone cannot say", () => {
         const before = new Store(path);
         before.intent("e1", 1, "list-comments", "2026-07-23T10:00:00.000Z");
-        before.done("e1", 1);
+        before.done("e1", 1, "2026-07-23T10:00:00.001Z");
         before.intent("e1", 2, "create-comment", "2026-07-23T10:00:02.000Z"); // write sent, response discarded, crash
         before.close();
 
         const recovered = new Store(path);
-        expect(recovered.effectState("e1", 2)).toEqual({
+        expect(recovered.effectState("e1", 2)).toMatchObject({
             state: "sentUnknown",
             seq: 2,
             intent: "create-comment",
@@ -110,7 +124,7 @@ describe("effect journal — the 6.5 crash grid, restated as instance reopening"
 
         const recovered = new Store(path);
         recovered.intent("e1", 1, "create-comment", "2026-07-23T10:07:00.000Z"); // attempt 3, after restart
-        expect(recovered.effectState("e1", 1)).toEqual({
+        expect(recovered.effectState("e1", 1)).toMatchObject({
             state: "sentUnknown",
             seq: 1,
             intent: "create-comment",
@@ -122,30 +136,30 @@ describe("effect journal — the 6.5 crash grid, restated as instance reopening"
     it("a done row is immutable to intent — acknowledged history never regresses to sent", () => {
         const s = new Store(path);
         s.intent("e1", 1, "add-label", "2026-07-23T10:00:00.000Z");
-        s.done("e1", 1);
+        s.done("e1", 1, "2026-07-23T10:00:00.001Z");
         // A buggy or duplicate-delivery-driven caller re-declares the
         // same call. The receipt must survive.
         s.intent("e1", 1, "add-label", "2026-07-23T10:02:00.000Z");
-        expect(s.effectState("e1", 1)).toEqual({ state: "complete" });
+        expect(s.effectState("e1", 1)).toMatchObject({ state: "complete" });
         s.close();
     });
 
     it("done on a row that was never declared reports the caller bug", () => {
         const s = new Store(path);
         s.intent("e1", 1, "read", "2026-07-23T10:00:00.000Z");
-        expect(s.done("e1", 1)).toBe(true);
-        expect(s.done("e1", 7)).toBe(false); // no such call
-        expect(s.done("ghost", 1)).toBe(false); // no such effect
+        expect(s.done("e1", 1, "2026-07-23T10:00:00.001Z")).toBe(true);
+        expect(s.done("e1", 7, "2026-07-23T10:00:00.002Z")).toBe(false); // no such call
+        expect(s.done("ghost", 1, "2026-07-23T10:00:00.003Z")).toBe(false); // no such effect
         s.close();
     });
 
     it("full run → complete; untouched effect → neverStarted", () => {
         const s = new Store(path);
         s.intent("e1", 1, "read", "2026-07-23T10:00:00.000Z");
-        s.done("e1", 1);
+        s.done("e1", 1, "2026-07-23T10:00:00.001Z");
         s.intent("e1", 2, "write", "2026-07-23T10:00:01.000Z");
-        s.done("e1", 2);
-        expect(s.effectState("e1", 2)).toEqual({ state: "complete" });
+        s.done("e1", 2, "2026-07-23T10:00:01.001Z");
+        expect(s.effectState("e1", 2)).toMatchObject({ state: "complete" });
         expect(s.effectState("ghost", 2)).toEqual({ state: "neverStarted" });
         s.close();
     });
@@ -154,28 +168,39 @@ describe("effect journal — the 6.5 crash grid, restated as instance reopening"
 describe("retention pruning (D43's adopted windows)", () => {
     it("prunes old dedup rows and done journal rows, but NEVER an open sent row", () => {
         const s = new Store(path);
-        s.firstSeen(id("111"), "2026-04-01T00:00:00.000Z"); // old
-        s.firstSeen(id("222"), "2026-07-20T00:00:00.000Z"); // recent
+        const oldGuid = "00000000-0000-0000-0000-000000000111";
+        const recentGuid = "00000000-0000-0000-0000-000000000222";
+        s.firstSeen(id(oldGuid), "2026-04-01T00:00:00.000Z"); // old
+        s.firstSeen(id(recentGuid), "2026-07-20T00:00:00.000Z"); // recent
         s.intent("old-done", 1, "add-label", "2026-04-01T00:00:00.000Z");
-        s.done("old-done", 1);
+        s.done("old-done", 1, "2026-04-01T00:00:00.001Z");
         s.intent("old-open", 1, "create-comment", "2026-04-01T00:00:00.000Z"); // unresolved, ancient
         s.intent("new-done", 1, "add-label", "2026-07-20T00:00:00.000Z");
-        s.done("new-done", 1);
+        s.done("new-done", 1, "2026-07-20T00:00:00.001Z");
 
         const cutoff = "2026-04-27T00:00:00.000Z"; // ~90 days before "today"
         expect(s.pruneSeen(cutoff)).toBe(1);
         expect(s.pruneDoneJournal(cutoff)).toBe(1);
 
         // The recent dedup row still deduplicates.
-        expect(s.firstSeen(id("222"), "2026-07-25T00:00:00.000Z")).toBe(false);
+        expect(s.firstSeen(id(recentGuid), "2026-07-25T00:00:00.000Z")).toBe(false);
         // The pruned one is forgotten — a redelivery would look new.
-        expect(s.firstSeen(id("111"), "2026-07-25T00:00:00.000Z")).toBe(true);
+        expect(s.firstSeen(id(oldGuid), "2026-07-25T00:00:00.000Z")).toBe(true);
         // The ancient OPEN intent survives pruning — still the sweep's problem.
         expect(s.openIntents("2026-07-25T00:00:00.000Z")).toMatchObject([
             { effectId: "old-open", seq: 1 },
         ]);
         // The recent done row survives.
-        expect(s.effectState("new-done", 1)).toEqual({ state: "complete" });
+        expect(s.effectState("new-done", 1)).toMatchObject({ state: "complete" });
+        s.close();
+    });
+
+    it("retains a newly resolved intent from its completion time, not its stale send time", () => {
+        const s = new Store(path);
+        s.intent("resolved-now", 1, "create-comment", "2026-01-01T00:00:00.000Z");
+        expect(s.done("resolved-now", 1, "2026-07-01T00:00:00.000Z")).toBe(true);
+        expect(s.pruneDoneJournal("2026-04-01T00:00:00.000Z")).toBe(0);
+        expect(s.effectState("resolved-now", 1)).toMatchObject({ state: "complete" });
         s.close();
     });
 });
@@ -186,7 +211,7 @@ describe("openIntents — the sweep's journal worklist", () => {
         s.intent("e2", 1, "create-comment", "2026-07-23T10:05:00.000Z"); // unresolved
         s.intent("e1", 1, "add-label", "2026-07-23T10:00:00.000Z"); // will resolve
         s.intent("e3", 1, "add-assignee", "2026-07-23T11:00:00.000Z"); // too new for the sweep window
-        s.done("e1", 1);
+        s.done("e1", 1, "2026-07-23T10:00:00.001Z");
 
         const open = s.openIntents("2026-07-23T10:30:00.000Z");
         expect(open).toEqual([
@@ -313,10 +338,23 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
     it("requeue never touches pending or done rows — only stuck running ones", () => {
         const s = new Store(path);
         s.schedule("done-one", "2026-07-23T10:00:00.000Z", "a");
-        s.claimDue("2026-07-23T10:30:00.000Z");
-        s.scheduleDone("done-one");
+        const doneClaim = s.claimDue("2026-07-23T10:30:00.000Z")[0]!;
+        expect(s.scheduleDone("done-one", doneClaim.claimToken)).toBe(true);
         s.schedule("still-pending", "2026-07-30T00:00:00.000Z", "b");
         expect(s.requeueStuck("2026-07-24T00:00:00.000Z")).toHaveLength(0);
+        s.close();
+    });
+
+    it("a stale handler cannot complete a later claim of the same schedule", () => {
+        const s = new Store(path);
+        s.schedule("job", "2026-07-23T10:00:00.000Z", "work");
+        const first = s.claimDue("2026-07-23T10:00:00.000Z")[0]!;
+        s.requeueStuck("2026-07-23T10:00:00.000Z");
+        const second = s.claimDue("2026-07-23T10:01:00.000Z")[0]!;
+        expect(second.scheduleId).toBe(first.scheduleId);
+
+        expect(s.scheduleDone(first.scheduleId, first.claimToken)).toBe(false);
+        expect(s.requeueStuck("2026-07-23T10:01:00.000Z")).toHaveLength(1);
         s.close();
     });
 
@@ -328,7 +366,7 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
         const fired = s.claimDue("2026-07-24T01:00:00.000Z");
         expect(fired).toHaveLength(1);
         expect(fired[0]?.dueAt).toBe("2026-07-24T00:00:00.000Z");
-        s.scheduleDone("later");
+        expect(s.scheduleDone("later", fired[0]!.claimToken)).toBe(true);
         expect(s.claimDue("2026-07-25T00:00:00.000Z")).toHaveLength(0);
         s.close();
     });
