@@ -8,8 +8,10 @@ import {
     classifyFailure,
     retryAdvice,
     MAX_RATE_LIMIT_ATTEMPTS,
+    MAX_TOKEN_REFRESH_ATTEMPTS,
     type FailureClass,
 } from "../src/failures.js";
+import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS } from "../src/rate-limits.js";
 
 const observed = {
     permissionMissing: {
@@ -112,10 +114,28 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
         });
     });
 
+    it("a primary exhaustion arriving as 429 still follows the reset header", () => {
+        const failure = classifyFailure({
+            status: 429,
+            body: "API rate limit exceeded",
+            headers: {
+                "retry-after": "120",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "1000",
+            },
+        });
+        expect(failure).toEqual({
+            kind: "primaryExhausted",
+            resetAt: "1000",
+        });
+        expect(retryAdvice(failure, 0, 400)).toEqual({
+            action: "retryAfterMs",
+            ms: 600_000,
+        });
+    });
+
     it.each([
         [undefined, { kind: "secondaryLimit" }],
-        ["-1", { kind: "secondaryLimit" }],
-        ["not-a-number", { kind: "secondaryLimit" }],
         ["0", { kind: "secondaryLimit", retryAfterSeconds: 0 }],
     ] as const)("handles Retry-After boundary %s explicitly", (value, expected) => {
         expect(
@@ -125,6 +145,66 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
                 headers: { "retry-after": value },
             }),
         ).toEqual(expected);
+    });
+
+    it.each(["", "-1", "not-a-number", "1.5"])(
+        "fails closed for malformed Retry-After value %j",
+        (value) => {
+            const failure = classifyFailure({
+                status: 429,
+                body: "rate limited",
+                headers: { "retry-after": value },
+            });
+            expect(failure).toEqual({
+                kind: "rateLimitResponseUnusable",
+                headerName: "retry-after",
+                headerValue: value,
+                reason: "invalid",
+            });
+            expect(retryAdvice(failure, 0, 0)).toEqual({
+                action: "doNotRetry",
+                surfaceTo: "operator",
+            });
+        },
+    );
+
+    it("surfaces Retry-After values beyond the automatic-wait bound instead of shortening them", () => {
+        const value = String(MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS + 1);
+        const failure = classifyFailure({
+            status: 429,
+            body: "rate limited",
+            headers: { "retry-after": value },
+        });
+        expect(failure).toEqual({
+            kind: "rateLimitResponseUnusable",
+            headerName: "retry-after",
+            headerValue: value,
+            reason: "aboveAutomaticLimit",
+        });
+        expect(retryAdvice(failure, 0, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
+    });
+
+    it("accepts the exact automatic Retry-After boundary", () => {
+        const failure = classifyFailure({
+            status: 429,
+            body: "rate limited",
+            headers: {
+                "retry-after": String(
+                    MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
+                ),
+            },
+        });
+        expect(failure).toEqual({
+            kind: "secondaryLimit",
+            retryAfterSeconds: MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
+        });
+        expect(retryAdvice(failure, 0, 0)).toEqual({
+            action: "retryAfterMs",
+            ms: MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS * 1000,
+        });
     });
 
     it("422 with structured errors[] is maintainer-facing", () => {
@@ -138,9 +218,67 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         expect(retryAdvice({ kind: "secondaryLimit" }, 0, 0)).toEqual({ action: "retryAfterMs", ms: 60_000 });
     });
 
+    it("Retry-After zero still observes the one-minute secondary-limit floor", () => {
+        expect(
+            retryAdvice(
+                { kind: "secondaryLimit", retryAfterSeconds: 0 },
+                0,
+                0,
+            ),
+        ).toEqual({ action: "retryAfterMs", ms: 60_000 });
+    });
+
     it("primary exhaustion waits for the reset epoch", () => {
         const advice = retryAdvice({ kind: "primaryExhausted", resetAt: "1000" }, 0, 400);
         expect(advice).toEqual({ action: "retryAfterMs", ms: 600_000 });
+    });
+
+    it.each([undefined, "", "not-a-number"])(
+        "fails closed when the primary reset header is unusable: %j",
+        (resetAt) => {
+            expect(
+                retryAdvice({ kind: "primaryExhausted", resetAt }, 0, 0),
+            ).toEqual({
+                action: "doNotRetry",
+                surfaceTo: "operator",
+            });
+        },
+    );
+
+    it("surfaces a primary reset beyond the automatic-wait bound", () => {
+        expect(
+            retryAdvice(
+                {
+                    kind: "primaryExhausted",
+                    resetAt: String(
+                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS + 1,
+                    ),
+                },
+                0,
+                0,
+            ),
+        ).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
+    });
+
+    it("accepts a primary reset at the exact automatic-wait boundary", () => {
+        expect(
+            retryAdvice(
+                {
+                    kind: "primaryExhausted",
+                    resetAt: String(
+                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
+                    ),
+                },
+                0,
+                0,
+            ),
+        ).toEqual({
+            action: "retryAfterMs",
+            ms: MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS * 1000,
+        });
     });
 
     it("a rate limit that survives the attempt bound stops waiting and surfaces — pacing is a design problem, not a wait problem", () => {
@@ -166,10 +304,14 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         expect(waits[3]).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
     });
 
-    it("expired tokens refresh within the shared bound, then surface", () => {
+    it("expired tokens refresh within their own bound, then surface", () => {
         expect(retryAdvice({ kind: "tokenExpired" }, 0, 0)).toEqual({ action: "refreshTokenAndRetry" });
         expect(
-            retryAdvice({ kind: "tokenExpired" }, MAX_RATE_LIMIT_ATTEMPTS, 0),
+            retryAdvice(
+                { kind: "tokenExpired" },
+                MAX_TOKEN_REFRESH_ATTEMPTS,
+                0,
+            ),
         ).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
     });
 
@@ -180,6 +322,12 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             { kind: "permissionMissing", acceptedPermissions: "" },
             { kind: "installationSuspended" },
             { kind: "forbiddenUnrecognized", bodySnippet: "" },
+            {
+                kind: "rateLimitResponseUnusable",
+                headerName: "retry-after",
+                headerValue: "",
+                reason: "invalid",
+            },
             { kind: "secondaryLimit" },
             { kind: "primaryExhausted", resetAt: undefined },
             { kind: "notFoundOrNotInstalled" },

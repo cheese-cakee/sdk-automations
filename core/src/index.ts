@@ -5,3 +5,4 @@ export * from "./config.js";
 export * from "./ids.js";
 export * from "./contract.js";
 export * from "./failures.js";
+export * from "./rate-limits.js";

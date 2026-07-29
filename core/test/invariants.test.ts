@@ -10,6 +10,7 @@ import {
     evaluateWrite,
     retryAdvice,
     MAX_RATE_LIMIT_ATTEMPTS,
+    MAX_TOKEN_REFRESH_ATTEMPTS,
     projectIssueObservation,
     projectPrObservation,
     MAPPABLE_MEANINGS,
@@ -119,6 +120,12 @@ describe("retryAdvice: bounded for every class and attempt", () => {
         { kind: "permissionMissing", acceptedPermissions: "" },
         { kind: "installationSuspended" },
         { kind: "forbiddenUnrecognized", bodySnippet: "" },
+        {
+            kind: "rateLimitResponseUnusable",
+            headerName: "retry-after",
+            headerValue: "",
+            reason: "invalid",
+        },
         { kind: "secondaryLimit" },
         { kind: "primaryExhausted", resetAt: "1000" },
         { kind: "primaryExhausted", resetAt: undefined },
@@ -137,7 +144,14 @@ describe("retryAdvice: bounded for every class and attempt", () => {
                 }
             }
             // Past the bound, no advised-wait class waits forever.
-            const late = retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS + 1, 0);
+            const late = retryAdvice(
+                failure,
+                Math.max(
+                    MAX_RATE_LIMIT_ATTEMPTS,
+                    MAX_TOKEN_REFRESH_ATTEMPTS,
+                ) + 1,
+                0,
+            );
             if (
                 failure.kind === "tokenExpired" ||
                 failure.kind === "secondaryLimit" ||

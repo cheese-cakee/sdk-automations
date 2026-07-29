@@ -112,10 +112,11 @@ describe("classifyFailure properties", () => {
         { requiredKeys: ["status", "body", "headers"] },
     );
 
-    it("is total, and every 403 lands in exactly the five 403 classes with evidence", () => {
+    it("is total, and every 403 lands in a documented 403 class with evidence", () => {
         const FORBIDDEN_KINDS = new Set([
             "secondaryLimit",
             "primaryExhausted",
+            "rateLimitResponseUnusable",
             "permissionMissing",
             "installationSuspended",
             "forbiddenUnrecognized",

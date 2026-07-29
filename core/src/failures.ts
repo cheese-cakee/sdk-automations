@@ -15,6 +15,11 @@
  * the fixtures.
  */
 
+import {
+    MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
+    parseSecondsHeader,
+} from "./rate-limits.js";
+
 /** The inputs classification needs — transport-agnostic. */
 export interface FailureObservation {
     readonly status: number;
@@ -47,6 +52,13 @@ export type FailureClass =
       }
     /** Primary quota exhausted: `x-ratelimit-remaining: 0`. */
     | { readonly kind: "primaryExhausted"; readonly resetAt: string | undefined }
+    /** A rate-limit response carried a malformed or unsupported wait signal. */
+    | {
+          readonly kind: "rateLimitResponseUnusable";
+          readonly headerName: "retry-after";
+          readonly headerValue: string;
+          readonly reason: "invalid" | "aboveAutomaticLimit";
+      }
     /**
      * A 403 matching NO observed shape — explicit ignorance carrying
      * the evidence, so a reworded GitHub body surfaces instead of
@@ -71,18 +83,38 @@ export function classifyFailure(o: FailureObservation): FailureClass {
             : { kind: "badCredentials" };
     }
     if (o.status === 403 || o.status === 429) {
-        const retryAfter = Number(o.headers["retry-after"]);
-        const retryAfterSeconds =
-            Number.isFinite(retryAfter) && retryAfter >= 0
-                ? retryAfter
-                : undefined;
-        if (/secondary rate limit/i.test(body) || o.status === 429) {
-            return retryAfterSeconds === undefined
-                ? { kind: "secondaryLimit" }
-                : { kind: "secondaryLimit", retryAfterSeconds };
-        }
+        // Both primary and secondary exhaustion can arrive as 403 or
+        // 429. GitHub's documented primary signal therefore takes
+        // precedence over status alone.
         if (o.headers["x-ratelimit-remaining"] === "0") {
             return { kind: "primaryExhausted", resetAt: o.headers["x-ratelimit-reset"] };
+        }
+        if (/secondary rate limit/i.test(body) || o.status === 429) {
+            const retryAfter = parseSecondsHeader(o.headers["retry-after"]);
+            switch (retryAfter.kind) {
+                case "missing":
+                    return { kind: "secondaryLimit" };
+                case "invalid":
+                    return {
+                        kind: "rateLimitResponseUnusable",
+                        headerName: "retry-after",
+                        headerValue: retryAfter.rawValue,
+                        reason: "invalid",
+                    };
+                case "valid":
+                    return retryAfter.seconds >
+                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS
+                        ? {
+                              kind: "rateLimitResponseUnusable",
+                              headerName: "retry-after",
+                              headerValue: String(retryAfter.seconds),
+                              reason: "aboveAutomaticLimit",
+                          }
+                        : {
+                              kind: "secondaryLimit",
+                              retryAfterSeconds: retryAfter.seconds,
+                          };
+            }
         }
         const accepted = o.headers["x-accepted-github-permissions"];
         if (accepted !== undefined) {
@@ -111,11 +143,16 @@ export type RetryAdvice =
  */
 export const MAX_RATE_LIMIT_ATTEMPTS = 3;
 
+/** Token minting is an authentication concern, not a pacing concern. */
+export const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
+
 /**
  * Bounded, evidence-derived retry policy:
  * - secondary limit: GitHub's documented one-minute floor — no header
  *   exists to trust (6.4) — for at most MAX_RATE_LIMIT_ATTEMPTS;
  * - primary exhaustion: wait for the reset epoch, same bound;
+ * - malformed or excessive wait signals: surface instead of guessing;
+ * - expired token: refresh within its independent authentication bound;
  * - transient: bounded exponential backoff, attempt-indexed;
  * - everything else is a diagnosis, not a retry problem (D24).
  * Deterministic by design; the caller adds jitter if needed.
@@ -128,7 +165,7 @@ export function retryAdvice(
     const BACKOFF_MS = [500, 2_000, 8_000] as const;
     switch (failure.kind) {
         case "tokenExpired":
-            return attempt >= MAX_RATE_LIMIT_ATTEMPTS
+            return attempt >= MAX_TOKEN_REFRESH_ATTEMPTS
                 ? { action: "doNotRetry", surfaceTo: "operator" }
                 : { action: "refreshTokenAndRetry" };
         case "secondaryLimit":
@@ -145,11 +182,17 @@ export function retryAdvice(
             if (attempt >= MAX_RATE_LIMIT_ATTEMPTS) {
                 return { action: "doNotRetry", surfaceTo: "operator" };
             }
-            const reset = Number(failure.resetAt ?? Number.NaN);
-            const waitMs = Number.isFinite(reset)
-                ? Math.max(0, reset - nowEpochSeconds) * 1000
-                : 60_000;
-            return { action: "retryAfterMs", ms: waitMs };
+            const reset = parseSecondsHeader(failure.resetAt);
+            if (
+                reset.kind !== "valid" ||
+                !Number.isFinite(nowEpochSeconds)
+            ) {
+                return { action: "doNotRetry", surfaceTo: "operator" };
+            }
+            const waitSeconds = Math.max(0, reset.seconds - nowEpochSeconds);
+            return waitSeconds > MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS
+                ? { action: "doNotRetry", surfaceTo: "operator" }
+                : { action: "retryAfterMs", ms: waitSeconds * 1000 };
         }
         case "transient": {
             const ms = BACKOFF_MS[attempt];
@@ -163,6 +206,7 @@ export function retryAdvice(
         case "permissionMissing":
         case "installationSuspended":
         case "forbiddenUnrecognized":
+        case "rateLimitResponseUnusable":
         case "notFoundOrNotInstalled":
             return { action: "doNotRetry", surfaceTo: "operator" };
     }
