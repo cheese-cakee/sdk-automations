@@ -4,9 +4,13 @@ Design work for a hosted, configuration-driven GitHub App that replaces repeated
 A repository enables only the capabilities it wants and maps them to its own workflow. The shared platform
 handles GitHub access, configuration, safety, recovery, and audit information.
 
-There is no implementation code here yet. The repository contains an audit of existing Hiero automation and
-drafts for the system that may replace it. The module documents are candidates based on that audit. They are
-not a committed product list.
+The repository contains an audit of existing Hiero automation and drafts for the system that may replace
+it. The module documents are candidates based on that audit. They are not a committed product list. Three
+implementation packages exist as the parallel track the stage gates do not block (a pnpm workspace):
+[`core/`](core/README.md), the pure-logic state machine, safety engine, and validators;
+[`store/`](store/README.md), the owned operational store; and [`executor/`](executor/README.md), the
+recovery-loop engine with its automated crash grid — all pending stage-four ratification of the decisions
+they encode.
 
 ## Reading order
 

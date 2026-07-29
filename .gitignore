@@ -1,0 +1,4 @@
+experiments/
+node_modules/
+.stryker-tmp/
+reports/

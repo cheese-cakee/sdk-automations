@@ -55,6 +55,60 @@ The main boundaries are as follows.
    immediately clear.
 7. The adapter is the only component that understands GitHub REST or GraphQL details.
 
+### As-built view (2026-07-25)
+
+The diagram above is the product story and remains valid. The implementation packages have since given
+the middle of it a concrete, tested shape — the view below separates what exists (solid, with its test
+count) from the stage-five shell that wraps it (dashed). Every write flows through one pipeline; there is
+no second path to GitHub.
+
+```mermaid
+flowchart TB
+    GH["GitHub"]
+    subgraph SHELL["stage-five shell - pending"]
+        IN["intake: verify, durably accept, then ack - P9"]
+        CFGF["config fetch: default branch pinned, PR-time check - D38"]
+        PORT["EffectPort adapter: endpoint-matrix operations, freshness rule - D46"]
+        OPS["operator surface and config report"]
+    end
+    subgraph CORE["core - pure logic, 198 tests"]
+        CFG["config: strict validation, fail closed"]
+        REG["contract: registry, idempotency classes"]
+        OBS["observe: labels to position or conflict"]
+        TX["taxonomy: transition tables"]
+        SAFE["safety: write and destructive gates"]
+        FAILC["failures: classify and bound retries"]
+    end
+    subgraph STORE["store - owned state, 46 tests"]
+        SEEN["seen_delivery dedup"]
+        JRN["effect_journal: intent, done, attempt"]
+        CLM["effect_claim: 15 min lease"]
+        SCH["schedule: claimed_at, requeue"]
+    end
+    subgraph EXECP["executor - 31 tests incl. crash grid"]
+        LOOP["recovery loop: claim, journal, perform, resolve, class-ruled retry"]
+    end
+    GH --> IN --> SEEN
+    IN --> OBS
+    CFGF --> CFG --> REG
+    OBS --> TX --> SAFE --> LOOP
+    LOOP --> JRN
+    LOOP --> CLM
+    LOOP --> SCH
+    LOOP --> PORT --> GH
+    FAILC --> PORT
+    LOOP --> OPS
+    style SHELL stroke-dasharray: 5 5
+```
+
+Two properties of this shape carry the safety argument: a conflicted observation produces no state object,
+so it structurally cannot reach the transition or write layers; and the recovery loop is the only
+component that touches both the journal and the port, so every retry is mediated by a read-back — the
+crash grid (every reachable perform crash, 64 scheduled two-point histories, seeded histories) is evidence
+for serialized crash-and-restart recovery, not for live lease overlap. Of the 64 scheduled histories, 18
+trigger both requested crashes, 30 trigger one, and 16 complete before either scheduled invocation; the
+suite now asserts that distribution instead of describing all 64 as exercised crash pairs.
+
 ## 3. What the shared platform owns
 
 The shared platform may own the following technical responsibilities.
@@ -174,9 +228,10 @@ open or closed state. The system may still need owned operational storage for we
 pending effects, retries, schedules, and coordination.
 
 Comment metadata is one recovery option for comment-related work. It is not the approved database for all
-operations. A personal-sandbox experiment must compare reconstruction from GitHub, App-authored comment
-metadata, and a small owned store. The experiment will decide the minimum durable state required for safe
-recovery.
+operations. The personal-sandbox comparison has now run (protocol 6.5, 2026-07-23): recovery requires a
+small owned store as the detector and lock, with GitHub state as the resolver, and comment metadata serving
+as effect identity and receipt only. The decided minimum durable state is recorded in
+`design/operations/storage-decision.md`; ratification is pending under the stage-four review.
 
 ## 9. Permissions
 
@@ -238,16 +293,31 @@ The following principles are strong enough to guide the next work.
   strings.
 - Real repository writes wait for personal-sandbox evidence and explicit approval.
 
+The 2026-07-25 adoption record (`design/decisions.md` §3) adds three architectural commitments as working
+architecture, encoded and tested in the implementation packages (`core/`, `store/`, `executor/`):
+
+- **One write path.** Every capability effect is a sequenced plan with declared idempotency classes,
+  driven claim → journal-intent → perform → journal-done, with the recovery loop (journal detects, GitHub
+  resolves, class rules the retry) as the only retry mechanism. No component writes outside it.
+- **Owned operational state is required infrastructure.** The four-table single-file SQLite store (with
+  the D42/D43 amendments) underpins deduplication, recovery, coordination, and schedules. Hosting must
+  therefore provide a persistent single-writer disk; a stateless or multi-writer deployment shape would
+  reopen the storage decision.
+- **`active` mode is gated** on two stage-five deliverables: the read-after-write staleness measurement
+  (D46) and PR-time configuration validation (D38).
+
 The following questions remain open.
 
 - The exact YAML path, schema migration rules, and rollback behavior remain open. Configuration inheritance
   is deferred from the first version.
 - The exact capability list and first user-facing capability remain open.
 - The workflow profiles that Hiero repositories want remain open.
-- Durable production webhook intake is required, while the additional operational records and storage
-  technology remain open.
-- The deployment model, hosting provider, and operator remain open.
-- The final adapter interface remains open until endpoint experiments are complete.
+- Durable production webhook intake is required; the operational records and storage technology are now
+  adopted (the four-table SQLite store), with formal ratification at stage four.
+- The deployment model, hosting provider, and operator remain open — narrowed by the adopted storage
+  model to shapes with a persistent single-writer disk.
+- The adapter's operation list is fixed by the endpoint and permission matrix (Q16); the port's
+  freshness rule awaits the D46 staleness measurement.
 - The App permission manifest remains open until the first capability is selected.
 - The first pilot repository and rollout dates remain open.
 
