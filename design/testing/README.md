@@ -107,7 +107,37 @@ tested with the development App before the corresponding capability is offered.
 | Hiero Hackers sandbox | Observe, dry-run, reversible-write, kill-switch, and clean-soak evidence must pass. |
 | Volunteer pilot | Maintainer approval, shadow comparison, rollback rehearsal, and an agreed clean observation period are required. |
 
-## 9. Questions that remain open
+## 9. Verification tiers within a layer
+
+The implementation packages established a progression of techniques, each proven to find defects the
+previous tier could not (2026-07-25: three real bugs and roughly twenty test blind spots across `core/` and
+`store/`). New platform code — the stage-five shell above all — applies the tiers as it is written, not
+after.
+
+1. **Example tests** state the specification case by case. They are the floor, not the goal.
+2. **Exhaustive enumeration** replaces examples wherever the input space is finite and small: every safety
+   context, every meaning subset, every transition triple. Enumeration is strictly stronger than sampling
+   and removes the question "did we pick the right examples?".
+3. **Property-based tests** (fast-check, fixed seeds) cover the unbounded spaces with stated invariants:
+   parsers never throw and are fixed points; identifiers round-trip unchanged; timestamp order is
+   chronological order. Found the mixed-precision ordering bug that examples missed.
+4. **Model-based interleaving** covers stateful components: a reference model beside the real component,
+   hundreds of seeded random operation interleavings, equality asserted at every step. The current store
+   operations are sequential, not simultaneous, and the executor's 64 scheduled histories are not 64
+   exercised crash pairs (18 trigger both crashes, 30 one, 16 none). Future multi-call effects must
+   enumerate reachable failure points, assert every requested fault fired, add live overlap, and assert
+   convergence plus non-duplication.
+5. **Mutation audits** (Stryker, one-off — not per-PR) measure whether the suite actually observes the
+   code, run at milestones where "the tests are the spec" is the claim under review: before stage-four
+   ratification and before each pilot ring. Surviving mutants are triaged to a new test, or documented as
+   provably equivalent.
+
+Two standing rules from the same evidence: a fake used by tiers 2–4 must state where it is kinder than the
+real dependency (see D46 — the crash grid's world answers reads with perfect consistency; GitHub does
+not), and a test that compares a constant against itself proves nothing (assert literal shapes, not
+self-equality).
+
+## 10. Questions that remain open
 
 - The implementation must choose the test frameworks and fixture storage format.
 - The project must define how sandbox records are sanitized and retained.

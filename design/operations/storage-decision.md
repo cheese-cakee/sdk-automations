@@ -67,6 +67,8 @@ mode: it duplicated the managed comment on the first attempt.
           string intent "the call about to be made"
           string status "sent or done"
           string at
+          int attempt "durable retry counter - amendment D42"
+          string revision "default-branch config revision/effective hash"
       }
       EFFECT_CLAIM {
           string effect_id PK
@@ -78,6 +80,8 @@ mode: it duplicated the managed comment on the first attempt.
           string due_at
           string effect "the work to run when due"
           string status
+          string claimed_at "stamped on claim; drives stuck-requeue - amendment D43"
+          string claim_token "per-firing token; fences stale completion"
       }
   ```
 
@@ -109,3 +113,12 @@ mode: it duplicated the managed comment on the first attempt.
   - Q15 → answered: the minimum is the four-table single-file store
     above.
 - **Approving review:** _(names, date — per the ratification rule)_
+
+## Risk-review amendment (2026-07-28)
+
+The local store can fence a stale schedule completion with a per-firing
+claim token, and journal rows now retain the configuration revision and
+completion time. It cannot fence a GitHub request already in flight when
+an effect lease is stolen. D41 is therefore reopened: the serialized
+crash grid remains useful restart evidence, but it is not evidence that
+live lease takeover preserves a non-idempotent exactly-once outcome.

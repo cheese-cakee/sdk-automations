@@ -1,0 +1,119 @@
+import { describe, it, expect } from "vitest";
+import {
+    projectIssueObservation,
+    projectPrObservation,
+    type LabelObservation,
+} from "../src/observe.js";
+import { ISSUE_MEANINGS, PR_MEANINGS, type ClosureReason } from "../src/taxonomy.js";
+import type { MappableMeaning } from "../src/config.js";
+
+const observed = (
+    meanings: readonly MappableMeaning[],
+    closedBy: ClosureReason | null = null,
+): LabelObservation => ({ closedBy, meanings });
+
+describe("observation projection (manual-edits.md §3, §8)", () => {
+    it.each(ISSUE_MEANINGS)("a single issue position %s projects to that position", (m) => {
+        expect(projectIssueObservation(observed([m]))).toEqual({
+            kind: "position",
+            state: { meaning: m, blocked: false, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    it.each(PR_MEANINGS)("a single PR position %s projects to that position", (m) => {
+        expect(projectPrObservation(observed([m]))).toEqual({
+            kind: "position",
+            state: { meaning: m, blocked: false, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    it("no mapped meanings projects to no position", () => {
+        expect(projectIssueObservation(observed([]))).toEqual({
+            kind: "position",
+            state: { meaning: null, blocked: false, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    it("two own-flow positions are a conflict, never a repair (§8 test 3)", () => {
+        const projection = projectIssueObservation(observed(["ready", "inProgress"]));
+        expect(projection).toEqual({
+            kind: "conflict",
+            positions: ["ready", "inProgress"],
+        });
+    });
+
+    it("all three own-flow positions conflict with all three reported", () => {
+        const projection = projectPrObservation(
+            observed(["needsReview", "needsRevision", "readyToMerge"]),
+        );
+        expect(projection.kind).toBe("conflict");
+        if (projection.kind === "conflict") {
+            expect(projection.positions).toHaveLength(3);
+        }
+    });
+
+    it("blocked does not rescue a conflict", () => {
+        expect(
+            projectIssueObservation(observed(["ready", "inProgress", "blocked"])).kind,
+        ).toBe("conflict");
+    });
+
+    it("duplicate observations of one meaning are one position, not a conflict", () => {
+        expect(projectIssueObservation(observed(["ready", "ready"]))).toEqual({
+            kind: "position",
+            state: { meaning: "ready", blocked: false, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    // FINDING(observe-cross-entity)
+    it.each(PR_MEANINGS)(
+        "PR meaning %s on an issue is ignored, not a position or conflict",
+        (m) => {
+            expect(projectIssueObservation(observed([m]))).toEqual({
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: null },
+                ignored: [m],
+            });
+        },
+    );
+
+    it("a cross-entity meaning coexists with an own position without conflict", () => {
+        expect(
+            projectPrObservation(observed(["needsReview", "inProgress"])),
+        ).toEqual({
+            kind: "position",
+            state: { meaning: "needsReview", blocked: false, closedBy: null },
+            ignored: ["inProgress"],
+        });
+    });
+
+    // FINDING(observe-blocked-alone)
+    it("blocked with no position is legal: no position, paused (D28)", () => {
+        expect(projectIssueObservation(observed(["blocked"]))).toEqual({
+            kind: "position",
+            state: { meaning: null, blocked: true, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    it("blocked alongside a position keeps the position and sets the flag", () => {
+        expect(projectPrObservation(observed(["blocked", "needsRevision"]))).toEqual({
+            kind: "position",
+            state: { meaning: "needsRevision", blocked: true, closedBy: null },
+            ignored: [],
+        });
+    });
+
+    // FINDING(observe-closed-position)
+    it("a closed item keeps its position labels unchanged", () => {
+        expect(projectIssueObservation(observed(["inProgress"], "closedByHuman"))).toEqual({
+            kind: "position",
+            state: { meaning: "inProgress", blocked: false, closedBy: "closedByHuman" },
+            ignored: [],
+        });
+    });
+});

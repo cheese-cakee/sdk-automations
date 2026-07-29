@@ -153,6 +153,18 @@ The first implementation will include the following technical path.
 7. The system records operator-visible dry-run intents without applying repository writes.
 8. The test harness uses recorded GitHub fixtures at the adapter boundary and owned fakes above that boundary.
 
+The parallel track has pre-built the decision layers of this list: validation, registry, policy, safety,
+projection (`core/`), the operational store (`store/`), and the recovery loop with its automated crash
+grid (`executor/`). Stage five is therefore mostly the shell around them, plus the deliverables the
+2026-07-25 adoption record added:
+
+- the adapter port implementing the endpoint matrix's operation list, including the **read-after-write
+  staleness measurement** and the resulting freshness rule for the resolver read (D46 — gates `active`);
+- **PR-time configuration validation** as a check run powered by `parseConfig` (D38 — gates `active`);
+- the **configuration report** managed comment (D38's second mitigation);
+- a minimal **operator surface** for surfaced unresolved effects and exhausted retries (D44/D45);
+- the **quarterly failure-fixture re-probe** as a standing operational task with a named owner (D40).
+
 **Exit gate:** The platform handles real sandbox webhooks in observe and dry-run modes, survives a restart,
 and explains every proposed effect without changing repository workflow state.
 

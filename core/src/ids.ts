@@ -1,25 +1,39 @@
 /**
- * Identifier types whose misuse must be unrepresentable.
+ * GitHub exposes two different webhook-delivery identifiers:
  *
- * FINDING(delivery-id-precision), experiment 6.2: GitHub webhook delivery
- * ids exceed 2^53, and a naive `JSON.parse` silently corrupted the
- * trailing digits — a redelivery by the corrupted id would 404. Any
- * component that stores, compares, or redelivers by delivery id must
- * treat it as an opaque string; the branded type below makes a numeric
- * delivery id a compile error rather than a code-review catch.
+ * - `X-GitHub-Delivery` and a delivery record's `guid` identify the
+ *   delivered event and are the deduplication key.
+ * - a delivery record's numeric `id` identifies the REST resource used
+ *   by get/redeliver endpoints. These values exceed 2^53.
+ *
+ * Keeping separate brands prevents the intake deduper from receiving a
+ * REST record id and prevents redelivery code from receiving a GUID.
  */
 
-declare const deliveryIdBrand: unique symbol;
+declare const deliveryGuidBrand: unique symbol;
+declare const deliveryRecordIdBrand: unique symbol;
 
-/** An opaque GitHub webhook delivery id. Never a number. */
-export type DeliveryId = string & { readonly [deliveryIdBrand]: true };
+/** The GUID carried by `X-GitHub-Delivery`; the durable deduplication key. */
+export type DeliveryGuid = string & { readonly [deliveryGuidBrand]: true };
 
-/**
- * Validate a raw string as a delivery id. Returns `undefined` for
- * anything that is not a non-empty digit string — including the
- * scientific-notation and rounded forms that number round-trips
- * produce, which is exactly the corruption this type exists to stop.
- */
-export function asDeliveryId(raw: string): DeliveryId | undefined {
-    return /^\d+$/.test(raw) ? (raw as DeliveryId) : undefined;
+/** The decimal REST delivery-record id; never convert it to a number. */
+export type DeliveryRecordId = string & {
+    readonly [deliveryRecordIdBrand]: true;
+};
+
+const GUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function asDeliveryGuid(raw: string): DeliveryGuid | undefined {
+    return typeof raw === "string" && GUID_PATTERN.test(raw)
+        ? (raw as DeliveryGuid)
+        : undefined;
+}
+
+export function asDeliveryRecordId(
+    raw: string,
+): DeliveryRecordId | undefined {
+    return typeof raw === "string" && /^\d+$/.test(raw)
+        ? (raw as DeliveryRecordId)
+        : undefined;
 }

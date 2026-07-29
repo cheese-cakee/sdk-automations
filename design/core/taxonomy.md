@@ -29,6 +29,14 @@ The profile currently needs the following internal meanings.
 
 These names are internal identifiers. They are not required GitHub label strings.
 
+Two facts about an item are deliberately **not** meanings, because the App reads them from GitHub's own
+fields and never writes them as labels: whether the item is **closed** and, if so, **why**. Closure is
+recorded as a reason — `merged` (a pull request's `merged_at` is set), `closedByHuman`, or
+`completedByLinkedMerge` (an issue closed by a linked pull request merging) — alongside the position,
+never instead of it. See §5.1. Modelling them as meanings would make them mappable, and a merged pull
+request that still carries `status: needs review` would read as two positions and therefore as a
+conflict, which would silence observation on exactly the items most worth reporting on.
+
 ## 3. Example Hiero mappings
 
 The following mappings preserve the current C++ spelling and are useful defaults for repositories that want
@@ -61,8 +69,8 @@ stateDiagram-v2
     ready --> inProgress: A contributor is assigned.
     inProgress --> ready: The last contributor unassigns or an approved reclaim completes.
     awaitingTriage --> [*]: A human closes the issue.
-    ready --> [*]: A human or linked merge closes the issue.
-    inProgress --> [*]: A human or linked merge closes the issue.
+    ready --> [*]: A human closes the issue or a linked merge completes it.
+    inProgress --> [*]: A human closes the issue or a linked merge completes it.
 ```
 
 This state diagram describes the candidate Hiero profile. A repository that enables assignment without
@@ -78,17 +86,53 @@ behavior for multiple assignees remains a policy question for the assignment spe
 stateDiagram-v2
     [*] --> needsReview: Enabled checks pass.
     [*] --> needsRevision: An enabled check fails.
-    needsReview --> needsRevision: New evidence requires contributor action.
+    needsReview --> needsRevision: A check fails or a review requests changes.
     needsRevision --> needsReview: New evidence shows that the problem is resolved.
     needsReview --> readyToMerge: The repository's review policy is satisfied.
-    readyToMerge --> needsReview: New commits invalidate the earlier approval state.
-    needsReview --> [*]: The pull request closes or merges.
-    needsRevision --> [*]: The pull request closes or merges.
-    readyToMerge --> [*]: The pull request closes or merges.
+    readyToMerge --> needsReview: The approval stops counting.
+    readyToMerge --> needsRevision: A check fails after approval.
+    needsReview --> [*]: The pull request merges or a person closes it.
+    needsRevision --> [*]: The pull request merges or a person closes it.
+    readyToMerge --> [*]: The pull request merges or a person closes it.
 ```
 
 The repository may choose a smaller policy. For example, a repository may enable a pull request dashboard
 without mapping or writing any workflow label.
+
+Three arrows above were corrected on 2026-07-29 after the tables were read against the audit; the register
+records them as D48.
+
+- **`readyToMerge → needsRevision` was missing entirely.** An approved pull request whose checks break had
+  no path to `needsRevision`, so the only way out asserted that new commits had arrived. Checks break with
+  no push at all: the audited Sibling Conflict Re-check re-reads every open pull request's `mergeable`
+  state whenever a *different* pull request merges, and swaps its status label
+  (`audit/services-cpp.md`).
+- **`needsReview → needsRevision` needs a review cause, not only a failing check.** The audited PR Review
+  Label Applicator performs exactly this move on a `changes_requested` review. Observing it requires the
+  `pull_request_review` subscription the App currently lacks (experiment 6.6), so the cause exists in the
+  profile before the subscription that feeds it.
+- **`readyToMerge → needsReview` is caused by the approval no longer counting**, not specifically by new
+  commits. Dismissal, withdrawal, and a changed base all produce it; naming the trigger instead of the
+  consequence made those unexpressible.
+
+### 5.1 Closure and reopening
+
+Closing is not a position and reopening is not a transition.
+
+Closing records **why** (§2: `merged`, `closedByHuman`, `completedByLinkedMerge`) and leaves every position
+label untouched, because the App does not clean up labels on close — see `manual-edits.md` §3 and the
+`status:*` strip that the audit found removing human-set `status: blocked` labels as a side effect
+(`audit/labels-cpp.md`). Downstream policy needs the reason: contributor progression credits a merged
+linked pull request and not an abandoned one (`design/modules/progression.md`), and the audited post-merge
+cleanup is gated on `merged == true`.
+
+Reopening therefore **clears the closure and restores nothing else** — the position labels were never
+removed, so the item comes back exactly where it was. One invariant falls out of the reason: a **merged
+pull request can never reopen**, which GitHub enforces and the profile refuses rather than omits.
+
+An automation-initiated close (an inactivity capability retiring a stale pull request) has no cause of its
+own yet. It must not borrow `closedByHuman`; the cause belongs to that capability's specification, under the
+destructive-action gate in `safety.md` §3.
 
 ## 6. Issue and pull request links
 
@@ -142,7 +186,13 @@ an enabled profile requires and validates that namespace.
 - The project must decide which internal meanings belong in the first capability contracts.
 - The configuration design must define mapping validation and migration.
 - Assignment maintainers must decide the multiple-assignee behavior.
-- Review maintainers must decide whether `readyToMerge` is stored or derived.
+- Review maintainers must decide whether `readyToMerge` is stored or derived. This is the largest open
+  lever in §5: if it is derived from approval count, check status, and policy, it is a projection rather
+  than a position, and most of §5's edges collapse into that derivation. The D48 corrections above assume
+  it is stored, which is the weaker assumption — they are wasted work if the answer is "derived", not
+  wrong work.
+- The first version has no cause for an automation-initiated close (§5.1); the inactivity capability's
+  specification must supply one.
 - Repositories that want a skill ladder must decide its scope and completion policy.
 - The first version requires repositories to provision mapped labels. A later explicit setup operation may
   be considered separately.

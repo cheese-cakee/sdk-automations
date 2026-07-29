@@ -40,16 +40,58 @@ export interface WriteContext {
     readonly killSwitchActive: boolean;
     /** The item carries the mapped `blocked` meaning (safety.md §5). */
     readonly itemBlocked: boolean;
-    /** Precondition recheck: does current state still match the request's assumption? */
+    /**
+     * Shell attestation, not a fact the core can verify — the
+     * precondition's shape is capability-specific. Executor tests own
+     * this boundary; the workflow-state case is verified by
+     * `applyTransition`'s stale-precondition guard.
+     */
     readonly preconditionHolds: boolean;
-    /** A human change newer than `causeObservedAt` exists on the touched state. */
-    readonly newerHumanChange: boolean;
+    /**
+     * When the newest HUMAN change on the touched state was made,
+     * `null` if none. The core compares this against `causeObservedAt`
+     * (rule 5). The shell must exclude the causing event itself when
+     * computing it — a human edit that triggers the request is the
+     * cause, not a conflict.
+     */
+    readonly latestHumanChangeAt: Date | null;
 }
+
+/**
+ * Machine-readable verdict causes — the executor, telemetry, the config
+ * report, and managed explanations branch on `code`; `reason` is prose
+ * for humans only. Same convention as `FailureClass` in failures.ts.
+ */
+export type SafetyRefusalCode =
+    | "killSwitch"
+    | "capabilityDisabled"
+    | "permissionMissing"
+    | "itemBlocked"
+    | "preconditionStale"
+    | "newerHumanChange"
+    | "invalidTimestamp"
+    | "modeDisabled"
+    | "wrongActionClass"
+    | "noWarning"
+    | "invalidDestructivePlan"
+    | "graceBelowFloor"
+    | "graceRunning"
+    | "activityCancelled";
+
+export type RecordOnlyCode = "observation" | "modeRecordsOnly";
 
 export type SafetyVerdict =
     | { readonly outcome: "apply" }
-    | { readonly outcome: "record-only"; readonly reason: string }
-    | { readonly outcome: "refuse"; readonly reason: string };
+    | {
+          readonly outcome: "record-only";
+          readonly code: RecordOnlyCode;
+          readonly reason: string;
+      }
+    | {
+          readonly outcome: "refuse";
+          readonly code: SafetyRefusalCode;
+          readonly reason: string;
+      };
 
 /**
  * safety.md §2 — the mechanically checkable subset of the ten rules.
@@ -57,54 +99,101 @@ export type SafetyVerdict =
  * tested rollback, dry-run-before-active rollout) are executor and process
  * obligations; they cannot be decided from a single request and live with
  * the effect executor when it exists.
+ *
+ * Check precedence is policy: kill switch → observation → consent
+ * (rule 1) → authority (rule 2) → pause (§5) → staleness (rule 4) →
+ * human conflict (rule 5) → mode. Only the kill-switch step changes an
+ * outcome (FINDING below); otherwise order decides which `code` is
+ * reported, frozen by the tests.
  */
 export function evaluateWrite(
     request: WriteRequest,
     context: WriteContext,
 ): SafetyVerdict {
+    /**
+     * FINDING(safety-killswitch-observations), D39: checked before the
+     * observation short-circuit — an active kill switch refuses even
+     * pure observations. "Stop" stops reading-and-recording too.
+     */
     if (context.killSwitchActive) {
-        return { outcome: "refuse", reason: "a kill switch is active" };
+        return {
+            outcome: "refuse",
+            code: "killSwitch",
+            reason: "a kill switch is active",
+        };
     }
     if (request.actionClass === "observation") {
         // Observations need no write permission and are always recordable.
-        return { outcome: "record-only", reason: "observation records a finding" };
+        return {
+            outcome: "record-only",
+            code: "observation",
+            reason: "observation records a finding",
+        };
     }
     if (!context.capabilityEnabled) {
         return {
             outcome: "refuse",
+            code: "capabilityDisabled",
             reason: "the repository did not enable this capability (rule 1)",
         };
     }
     if (!context.installationHasPermission) {
         return {
             outcome: "refuse",
+            code: "permissionMissing",
             reason: "the installation lacks the required permission (rule 2)",
         };
     }
     if (context.itemBlocked) {
         return {
             outcome: "refuse",
+            code: "itemBlocked",
             reason: "the item is blocked — capability writes are paused (§5)",
         };
     }
     if (!context.preconditionHolds) {
         return {
             outcome: "refuse",
+            code: "preconditionStale",
             reason: "the rechecked precondition no longer holds (rule 4)",
         };
     }
-    if (context.newerHumanChange) {
+    if (
+        !Number.isFinite(request.causeObservedAt.getTime()) ||
+        (context.latestHumanChangeAt !== null &&
+            !Number.isFinite(context.latestHumanChangeAt.getTime()))
+    ) {
         return {
             outcome: "refuse",
-            reason: "a newer human change conflicts; human edits are authoritative (rule 5)",
+            code: "invalidTimestamp",
+            reason: "the write request contains an invalid observation or human-change timestamp",
+        };
+    }
+    /**
+     * FINDING(safety-human-tie), D33: ties go to the human (`>=`) —
+     * GitHub timestamps have second granularity, so exact ties happen.
+     */
+    if (
+        context.latestHumanChangeAt !== null &&
+        context.latestHumanChangeAt.getTime() >= request.causeObservedAt.getTime()
+    ) {
+        return {
+            outcome: "refuse",
+            code: "newerHumanChange",
+            reason: "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",
         };
     }
     if (context.mode === "disabled") {
-        return { outcome: "refuse", reason: "the repository mode is disabled" };
+        return {
+            outcome: "refuse",
+            code: "modeDisabled",
+            reason: "the repository mode is disabled",
+        };
     }
     if (context.mode === "observe" || context.mode === "dry-run") {
         return {
             outcome: "record-only",
+            code: "modeRecordsOnly",
             reason: `repository mode is ${context.mode}; the effect is recorded, not applied (rule 10)`,
         };
     }
@@ -151,18 +240,32 @@ export function evaluateDestructive(
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
         return {
             outcome: "refuse",
+            code: "wrongActionClass",
             reason: "evaluateDestructive only accepts clock-triggered destructive requests",
         };
     }
     if (plan.warning === null) {
         return {
             outcome: "refuse",
+            code: "noWarning",
             reason: "no recorded warning — a destructive action never occurs on first observation (§3)",
+        };
+    }
+    if (
+        !Number.isFinite(plan.warning.gracePeriodDays) ||
+        !Number.isFinite(plan.warning.warnedAt.getTime()) ||
+        !Number.isFinite(now.getTime())
+    ) {
+        return {
+            outcome: "refuse",
+            code: "invalidDestructivePlan",
+            reason: "the destructive plan contains a non-finite grace period or invalid timestamp",
         };
     }
     if (plan.warning.gracePeriodDays < MIN_GRACE_DAYS) {
         return {
             outcome: "refuse",
+            code: "graceBelowFloor",
             reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (§4)`,
         };
     }
@@ -170,12 +273,14 @@ export function evaluateDestructive(
     if (elapsedMs < plan.warning.gracePeriodDays * DAY_MS) {
         return {
             outcome: "refuse",
+            code: "graceRunning",
             reason: "the grace period has not fully elapsed (§3)",
         };
     }
     if (plan.qualifyingActivitySinceWarning) {
         return {
             outcome: "refuse",
+            code: "activityCancelled",
             reason: "the affected person provided qualifying activity during the grace period (§3)",
         };
     }

@@ -111,11 +111,11 @@ adapter must own, from 6.4:
 - ETag caching on every read path — 304s are free and steady-state
   sweep cost then tracks changed issues only (this is the Q10 budget
   answer);
-- delivery ids handled only as the branded opaque-string type
-  (`core/src/ids.ts`, `DeliveryId`) — ids exceed 2^53 and numeric
-  round-trips corrupt them; the type makes the 6.2 finding a compile
-  error instead of an operational trap (maintainer amendment,
-  implemented 2026-07-23).
+- delivery identifiers use two branded opaque-string types
+  (`core/src/ids.ts`): `DeliveryGuid` for the `X-GitHub-Delivery`
+  deduplication key, and `DeliveryRecordId` for the numeric REST
+  get/redeliver resource id. REST ids exceed 2^53, so numeric
+  round-trips remain a compile-time and runtime rejection.
 
 **Flips:** Q16, D20 → ratified.
 
