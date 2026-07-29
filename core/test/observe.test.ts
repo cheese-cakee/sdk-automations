@@ -42,6 +42,8 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
         expect(projection).toEqual({
             kind: "conflict",
             positions: ["ready", "inProgress"],
+            blocked: false,
+            closedBy: null,
         });
     });
 
@@ -114,6 +116,35 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
             kind: "position",
             state: { meaning: "inProgress", blocked: false, closedBy: "closedByHuman" },
             ignored: [],
+        });
+    });
+});
+
+// D59 — a conflict verdict carries the same orthogonal facts as a
+// position verdict; a reporting surface needs "conflicted AND closed"
+// to judge whether the conflict is worth anyone's attention.
+describe("conflict verdicts carry blocked and closedBy (D59)", () => {
+    it("reports the pause alongside the conflict", () => {
+        expect(
+            projectIssueObservation(observed(["ready", "inProgress", "blocked"])),
+        ).toEqual({
+            kind: "conflict",
+            positions: ["ready", "inProgress"],
+            blocked: true,
+            closedBy: null,
+        });
+    });
+
+    it("reports the closure alongside the conflict", () => {
+        expect(
+            projectPrObservation(
+                observed(["needsReview", "readyToMerge"], "merged"),
+            ),
+        ).toEqual({
+            kind: "conflict",
+            positions: ["needsReview", "readyToMerge"],
+            blocked: false,
+            closedBy: "merged",
         });
     });
 });

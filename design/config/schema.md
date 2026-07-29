@@ -134,7 +134,9 @@ meanings to its actual labels.
 The validator must check the following conditions before a capability becomes active.
 
 - Every required meaning has exactly one supported mapping.
-- Two incompatible meanings do not map to the same label or field.
+- Two incompatible meanings do not map to the same label or field. Sameness is judged the way GitHub
+  judges it — case-insensitively, ignoring surrounding space — so `status: ready` and `Status: Ready` are
+  one label and cannot carry two meanings (D55). The configured spelling is preserved for writes.
 - The configured label or field exists when the platform requires pre-provisioning.
 - The installation has permission to read or write the mapped representation.
 - A mapping change has a clear migration and rollback path when existing items still use the old value.

@@ -93,6 +93,7 @@ describe("the assignment story, end to end in pure logic", () => {
             },
             {
                 mode: config.mode,
+                capability: "assignment",
                 capabilityEnabled: config.capabilities.assignment?.enabled === true,
                 installationHasPermission: true, // shell fact, from the App's grants
                 killSwitchActive: false,
@@ -131,6 +132,7 @@ describe("the assignment story, end to end in pure logic", () => {
             },
             {
                 mode: config.mode,
+                capability: "assignment",
                 capabilityEnabled: true,
                 installationHasPermission: true,
                 killSwitchActive: false,
@@ -173,6 +175,7 @@ describe("the assignment story, end to end in pure logic", () => {
             },
             {
                 mode: dryConfig.config.mode,
+                capability: "assignment",
                 capabilityEnabled: true,
                 installationHasPermission: true,
                 killSwitchActive: false,

@@ -126,7 +126,19 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
         }
     }
 
-    const declaredRepo = new Set(d.permissions.repository);
+    /**
+     * FINDING(contract-intent-org-permissions), D57: the declared set is
+     * repository AND organization grants. It used to be repository only,
+     * so an intent requiring a grant the capability legitimately declared
+     * under `organization` was rejected with "which the capability does
+     * not declare" — a false failure, and one that would have blocked
+     * any org-scoped capability (`progression` needs org-wide data by
+     * its own module document).
+     */
+    const declared = new Set<string>([
+        ...d.permissions.repository,
+        ...d.permissions.organization,
+    ]);
     for (const grant of [...d.permissions.repository, ...d.permissions.organization]) {
         if (!PERMISSION_PATTERN.test(grant)) {
             errors.push(`${at}: permission "${grant}" is not in scope:level form`);
@@ -134,7 +146,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
     }
     for (const intent of d.intents) {
         for (const grant of intent.requiredPermissions) {
-            if (!declaredRepo.has(grant)) {
+            if (!declared.has(grant)) {
                 errors.push(
                     `${at}: intent "${intent.name}" requires "${grant}" which the capability does not declare — ` +
                     `an intent cannot exceed its capability's permissions`,
@@ -155,7 +167,23 @@ export interface CapabilityRegistry {
     readonly names: readonly string[];
     /** Names that may actually activate — retired ones excluded. */
     readonly activeNames: readonly string[];
+    /**
+     * Every declaration, retired included — for the effective-config
+     * report, which must NAME a retired capability rather than pretend
+     * it never existed. Not an activation path: use `getActive`.
+     */
     get(name: string): CapabilityDeclaration | undefined;
+    /**
+     * The activation path: `undefined` for a retired or unknown name.
+     *
+     * FINDING(contract-retired-enforcement), D58: the tombstone rule
+     * ("a retired capability's name stays valid but it never activates")
+     * was documentation only — `activeNames` existed but nothing obliged
+     * a caller to consult it, and `get` handed back a retired
+     * declaration ready to run. Now the two readings have two functions,
+     * so reaching for the wrong one is visible at the call site.
+     */
+    getActive(name: string): CapabilityDeclaration | undefined;
 }
 
 export type RegistryResult =
@@ -182,6 +210,10 @@ export function createRegistry(declarations: readonly CapabilityDeclaration[]): 
             names: declarations.map((d) => d.name),
             activeNames: declarations.filter((d) => d.retired !== true).map((d) => d.name),
             get: (name) => byName.get(name),
+            getActive: (name) => {
+                const found = byName.get(name);
+                return found?.retired === true ? undefined : found;
+            },
         },
     };
 }

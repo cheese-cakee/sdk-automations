@@ -214,3 +214,54 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
         expect("config" in result).toBe(false);
     });
 });
+
+describe("audit findings, pinned (D55-D56)", () => {
+    /**
+     * D55 — GitHub treats label names case-insensitively for uniqueness,
+     * so exact-string injectivity let two meanings share ONE real label,
+     * reintroducing the label→meaning ambiguity D34 exists to prevent.
+     */
+    it.each([
+        ["case", "status: ready", "Status: Ready"],
+        ["surrounding space", "status: ready", "  status: ready  "],
+        ["both", "Status: Ready", " status: ready "],
+    ])("rejects two meanings whose labels differ only in %s", (_name, a, b) => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: { labels: { ready: a, needsReview: b } },
+            },
+            { knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain("injective");
+            expect(result.errors.join()).toContain("GitHub treats as the same label");
+        }
+    });
+
+    it("genuinely distinct labels still pass, with their spelling preserved", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: { labels: { ready: "Status: Ready", needsReview: "status: needs review" } },
+            },
+            { knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(true);
+        // The original casing is what the App must write to GitHub.
+        if (result.ok) expect(result.config.mappings.labels.ready).toBe("Status: Ready");
+    });
+
+    // D56 — absent defaults; present-but-empty is an error.
+    it("an absent mode defaults to observe", () => {
+        const result = parseConfig({ schemaVersion: 1 }, { knownCapabilities: [] });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.mode).toBe("observe");
+    });
+
+    it.each([null, ""])("a present but empty mode (%s) is rejected, not silently chosen", (mode) => {
+        const result = parseConfig({ schemaVersion: 1, mode }, { knownCapabilities: [] });
+        expect(result.ok).toBe(false);
+    });
+});

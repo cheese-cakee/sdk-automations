@@ -71,7 +71,7 @@ flowchart TB
         PORT["EffectPort adapter: endpoint-matrix operations, freshness rule - D46"]
         OPS["operator surface and config report"]
     end
-    subgraph CORE["core - pure logic, 198 tests"]
+    subgraph CORE["core - pure logic, 217 tests"]
         CFG["config: strict validation, fail closed"]
         REG["contract: registry, idempotency classes"]
         OBS["observe: labels to position or conflict"]

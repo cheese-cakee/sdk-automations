@@ -117,7 +117,11 @@ after.
 1. **Example tests** state the specification case by case. They are the floor, not the goal.
 2. **Exhaustive enumeration** replaces examples wherever the input space is finite and small: every safety
    context, every meaning subset, every transition triple. Enumeration is strictly stronger than sampling
-   and removes the question "did we pick the right examples?".
+   and removes the question "did we pick the right examples?" — but only for the dimensions it actually
+   enumerates, so a sweep must NAME them. The safety sweep advertised itself as exhaustive over 384 contexts
+   while holding the action class fixed at one of five values; the omitted dimension is exactly where D52
+   lived, and 152 passing tests did not see it. A sweep that fixes an input is an example test wearing a
+   sweep's name.
 3. **Property-based tests** (fast-check, fixed seeds) cover the unbounded spaces with stated invariants:
    parsers never throw and are fixed points; identifiers round-trip unchanged; timestamp order is
    chronological order. Found the mixed-precision ordering bug that examples missed.

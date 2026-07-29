@@ -9,7 +9,20 @@
  * milliseconds, without a GitHub App existing yet.
  */
 
-/** safety.md §1 — action classes, ordered by increasing risk. */
+/**
+ * safety.md §1 — action classes, ordered by increasing risk.
+ *
+ * `clockTriggeredDestructive` is the only class this module refuses to
+ * judge from `evaluateWrite` alone; it has its own entry point, because
+ * §3's warning and grace gates cannot be decided from a single request.
+ *
+ * `immediatePreventive` (safety.md §1's issue-lock row) carries no
+ * dedicated logic yet — it is currently evaluated exactly like a
+ * reversible change, which is WEAKER than §1's "explains the action
+ * immediately and provides a simple maintainer reversal" requires.
+ * Recorded as D54 rather than silently deleted: the class is real
+ * design, it just has no capability requesting it yet.
+ */
 export type ActionClass =
     | "observation"
     | "humanFacingOutput"
@@ -31,9 +44,34 @@ export interface WriteRequest {
     readonly target: { readonly item: string; readonly change: string };
 }
 
+/**
+ * Ordering evidence for rule 5. A `Date` is the newest human change;
+ * `null` means the shell CHECKED and found none; `"unknown"` means it
+ * could not establish ordering at all.
+ *
+ * FINDING(safety-ordering-unknown), D51: the two cases used to collapse
+ * into `null`, so unavailable evidence read as "no conflict" and the
+ * write APPLIED. `manual-edits.md` §2 requires the opposite — "if
+ * reliable ordering evidence is unavailable, the safe default is to
+ * return a conflict and do nothing" — and D9 records that timestamp
+ * reliability is still open, so unknown ordering is an expected state,
+ * not a hypothetical.
+ */
+export type HumanChangeOrdering = Date | null | "unknown";
+
 /** The facts the platform rechecked immediately before the write. */
 export interface WriteContext {
     readonly mode: RepositoryMode;
+    /**
+     * The capability the enablement flag below refers to. Compared
+     * against `request.capability` — FINDING(safety-capability-link),
+     * D53: the request named a capability and the context asserted a
+     * bare boolean about "the" capability, with nothing tying them
+     * together, so a shell could answer the enablement question about a
+     * different capability entirely. Cheap to check, so no longer an
+     * attestation.
+     */
+    readonly capability: string;
     readonly capabilityEnabled: boolean;
     readonly installationHasPermission: boolean;
     /** Kill switches: global / installation / repository / capability (safety.md §5). */
@@ -49,12 +87,13 @@ export interface WriteContext {
     readonly preconditionHolds: boolean;
     /**
      * When the newest HUMAN change on the touched state was made,
-     * `null` if none. The core compares this against `causeObservedAt`
-     * (rule 5). The shell must exclude the causing event itself when
-     * computing it — a human edit that triggers the request is the
-     * cause, not a conflict.
+     * `null` if the shell checked and found none, `"unknown"` if it
+     * could not establish ordering. The core compares this against
+     * `causeObservedAt` (rule 5). The shell must exclude the causing
+     * event itself when computing it — a human edit that triggers the
+     * request is the cause, not a conflict.
      */
-    readonly latestHumanChangeAt: Date | null;
+    readonly latestHumanChangeAt: HumanChangeOrdering;
 }
 
 /**
@@ -64,11 +103,14 @@ export interface WriteContext {
  */
 export type SafetyRefusalCode =
     | "killSwitch"
+    | "wrongEntryPoint"
+    | "capabilityMismatch"
     | "capabilityDisabled"
     | "permissionMissing"
     | "itemBlocked"
     | "preconditionStale"
     | "newerHumanChange"
+    | "humanOrderingUnknown"
     | "invalidTimestamp"
     | "modeDisabled"
     | "wrongActionClass"
@@ -106,7 +148,7 @@ export type SafetyVerdict =
  * outcome (FINDING below); otherwise order decides which `code` is
  * reported, frozen by the tests.
  */
-export function evaluateWrite(
+function evaluateGeneralRules(
     request: WriteRequest,
     context: WriteContext,
 ): SafetyVerdict {
@@ -120,6 +162,13 @@ export function evaluateWrite(
             outcome: "refuse",
             code: "killSwitch",
             reason: "a kill switch is active",
+        };
+    }
+    if (request.capability !== context.capability) {
+        return {
+            outcome: "refuse",
+            code: "capabilityMismatch",
+            reason: `the request is from "${request.capability}" but the rechecked context describes "${context.capability}"`,
         };
     }
     if (request.actionClass === "observation") {
@@ -156,6 +205,19 @@ export function evaluateWrite(
             outcome: "refuse",
             code: "preconditionStale",
             reason: "the rechecked precondition no longer holds (rule 4)",
+        };
+    }
+    /**
+     * FINDING(safety-ordering-unknown), D51: unestablished ordering is a
+     * conflict, never an absence — `manual-edits.md` §2's safe default.
+     * Checked before the comparison below, because there is nothing to
+     * compare against.
+     */
+    if (context.latestHumanChangeAt === "unknown") {
+        return {
+            outcome: "refuse",
+            code: "humanOrderingUnknown",
+            reason: "ordering evidence for the newest human change is unavailable; the safe default is a conflict (manual-edits.md §2)",
         };
     }
     if (
@@ -200,6 +262,34 @@ export function evaluateWrite(
     return { outcome: "apply" };
 }
 
+/**
+ * The public entry point for every action class EXCEPT
+ * `clockTriggeredDestructive`.
+ *
+ * FINDING(safety-destructive-entry-point), D52: this used to accept a
+ * destructive request and answer `apply`, so §3's warning and grace
+ * gates were enforced only by the caller happening to choose
+ * `evaluateDestructive`. The module's headline claim — a destructive
+ * action cannot fire without a recorded warning and an elapsed grace
+ * period — was therefore a calling convention, not a property. Refusing
+ * here makes the wrong entry point a verdict rather than a bypass, in
+ * the same spirit as `ids.ts` making a numeric delivery id a compile
+ * error.
+ */
+export function evaluateWrite(
+    request: WriteRequest,
+    context: WriteContext,
+): SafetyVerdict {
+    if (request.actionClass === "clockTriggeredDestructive") {
+        return {
+            outcome: "refuse",
+            code: "wrongEntryPoint",
+            reason: "a clock-triggered destructive action must be evaluated by evaluateDestructive, which alone enforces the §3 warning and grace gates",
+        };
+    }
+    return evaluateGeneralRules(request, context);
+}
+
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
 
 /**
@@ -237,6 +327,21 @@ export function evaluateDestructive(
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
+    /**
+     * FINDING(safety-killswitch-order), D52: the kill switch used to be
+     * reached only via `evaluateGeneralRules` at the very END of this
+     * function, so an operator who had pulled the emergency brake was
+     * told "no recorded warning" instead. The outcome was always a
+     * refusal, but D39 freezes the verdict CODES as contract and claims
+     * kill-switch-first, so the reported code contradicted the register.
+     */
+    if (context.killSwitchActive) {
+        return {
+            outcome: "refuse",
+            code: "killSwitch",
+            reason: "a kill switch is active",
+        };
+    }
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
         return {
             outcome: "refuse",
@@ -284,6 +389,8 @@ export function evaluateDestructive(
             reason: "the affected person provided qualifying activity during the grace period (§3)",
         };
     }
-    // All destructive-specific gates passed; the general write rules decide.
-    return evaluateWrite(plan.request, context);
+    // All destructive-specific gates passed; the general write rules
+    // decide. Calls the shared internal path, not the public
+    // `evaluateWrite`, which now refuses this action class outright (D52).
+    return evaluateGeneralRules(plan.request, context);
 }

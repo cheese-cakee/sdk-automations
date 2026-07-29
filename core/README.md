@@ -9,7 +9,7 @@ GitHub, no platform — `pnpm test` runs the whole thing in under a second.
 |---|---|---|
 | `src/taxonomy.ts` | Both workflow state diagrams as transition tables (entity-scoped causes); the blocked-pause and stale-precondition invariants; closure reasons and reopening | `design/core/taxonomy.md` §2–§5, §5.1 |
 | `src/observe.ts` | The observed-labels → position projection: a set of mapped meanings in, one position or an explicit conflict out — no repair, no guessing | `design/core/manual-edits.md` §3, §8 tests 2–3 |
-| `src/safety.ts` | The action classes, the mechanically checkable write rules, the clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
+| `src/safety.ts` | The action classes, the mechanically checkable write rules, the inescapable clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
 | `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; optional capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
 | `src/contract.ts` | Capability declarations with per-intent idempotency class; registry that feeds `parseConfig` | `design/modules/contract.md` §1 + the D23 amendments (experiments 6.3, 6.5) |
 | `src/ids.ts` | Separate branded webhook GUID and REST delivery-record id strings | `FINDING(delivery-id-precision)`, experiment 6.2 |
@@ -53,11 +53,14 @@ the stage-five executor:
 
 - **Some inputs arrive by attestation.** `WriteContext` mixes facts the
   core compares itself (`latestHumanChangeAt` against the request's
-  `causeObservedAt`) with attestations it must trust
-  (`preconditionHolds` — the precondition's shape is capability-specific,
-  so the comparison cannot live in capability-agnostic code). A shell that
-  supplies a wrong attestation gets a wrong verdict; executor tests own
-  that boundary.
+  `causeObservedAt`; `capability` against the request's, since D53) with
+  attestations it must trust (`preconditionHolds` — the precondition's
+  shape is capability-specific, so the comparison cannot live in
+  capability-agnostic code). A shell that supplies a wrong attestation
+  gets a wrong verdict; executor tests own that boundary. D51 narrows
+  this further: the shell must now distinguish "no human change" from
+  "could not establish ordering", and reporting `null` for a failed
+  lookup silently restores the unsafe behaviour.
 - **Verdicts are advisory until the write lands.** The recheck happens
   before the verdict and the GitHub write after it — the usual
   time-of-check/time-of-use window. Closing it is executor work
@@ -65,7 +68,13 @@ the stage-five executor:
   reconciliation), not more pure logic.
 
 Green tests here mean the rules are consistent — not that the system is
-safe.
+safe. The 2026-07-30 audit is the evidence: 152 tests were green, the
+safety sweep called itself exhaustive, and `evaluateWrite` would still
+answer `apply` to a clock-triggered destructive request in an otherwise
+permissive active context (D52). The sweep enumerated seven of its eight
+input dimensions and the eighth was where the defect lived. Suites prove
+what they enumerate; naming what they do NOT enumerate is the part that
+has to be written down.
 
 ## Findings for the decision register
 
@@ -113,6 +122,27 @@ code as its evidence:
 - `FINDING(taxonomy-entity-scoped-causes)` → **D50** — issue and
   pull-request causes are separate types, so a cross-flow cause is a
   compile error rather than a runtime refusal.
+- `FINDING(safety-ordering-unknown)` → **D51** — ordering evidence is
+  three-valued; `"unknown"` is a conflict, not an absence of one.
+- `FINDING(safety-destructive-entry-point)`, `(safety-killswitch-order)`
+  → **D52** — `evaluateWrite` refuses `clockTriggeredDestructive`
+  outright, so §3's gates cannot be skipped by calling the wrong
+  function; the kill switch is reported first on that path too.
+- `FINDING(safety-capability-link)` → **D53** — the context names the
+  capability its enablement flag describes, and a mismatch refuses.
+- `immediatePreventive` → **D54** — the class has no gate yet and is
+  evaluated as a reversible change; kept so the requirement is not lost.
+- `FINDING(config-label-case)` → **D55** — label uniqueness is folded
+  for case and edge space, as GitHub folds it.
+- `FINDING(config-null-mode)` → **D56** — an absent mode defaults; a
+  present but empty one is an error.
+- `FINDING(contract-intent-org-permissions)` → **D57** — an intent may
+  require any grant its capability declares, org-scoped included.
+- `FINDING(contract-retired-enforcement)` → **D58** — `getActive` is
+  the activation path; `get` remains the reporting path.
+- `FINDING(observe-conflict-context)` → **D59** — a conflict verdict
+  carries `blocked` and `closedBy`, so a report can say whether it
+  matters.
 
 ## Keeping code and prose aligned
 

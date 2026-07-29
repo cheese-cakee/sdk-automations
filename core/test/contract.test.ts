@@ -175,3 +175,83 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
         expect(errors.join()).toContain("operationalNeeds.schedule is false");
     });
 });
+
+describe("audit findings, pinned (D57-D58)", () => {
+    const base = {
+        triggers: [{ kind: "event", event: "issues.opened" }],
+        configKeys: [],
+        observations: [],
+        resolvers: [],
+        operationalNeeds: {
+            schedule: false,
+            durableState: "none",
+            crossItemCoordination: false,
+            externalDelivery: false,
+        },
+    } as const;
+
+    /**
+     * D57 — the declared set is repository AND organization grants. It
+     * used to be repository only, so an org-scoped intent was rejected
+     * with "which the capability does not declare" even though the
+     * capability declared it. `progression` needs org-wide data, so this
+     * would have blocked a real capability.
+     */
+    it("an intent may require a grant declared under organization", () => {
+        const declaration = {
+            ...base,
+            name: "progression",
+            intents: [
+                {
+                    name: "creditContributor",
+                    idempotencyClass: "idempotent",
+                    requiredPermissions: ["members:read"],
+                },
+            ],
+            permissions: { repository: ["issues:write"], organization: ["members:read"] },
+        } as CapabilityDeclaration;
+        expect(validateDeclaration(declaration)).toEqual([]);
+    });
+
+    it("an intent still cannot require a grant declared NOWHERE", () => {
+        const declaration = {
+            ...base,
+            name: "overreach",
+            intents: [
+                {
+                    name: "doTooMuch",
+                    idempotencyClass: "idempotent",
+                    requiredPermissions: ["administration:write"],
+                },
+            ],
+            permissions: { repository: ["issues:write"], organization: ["members:read"] },
+        } as CapabilityDeclaration;
+        expect(validateDeclaration(declaration).join()).toContain("does not declare");
+    });
+
+    /**
+     * D58 — the tombstone rule was documentation only: `get` returned a
+     * retired declaration ready to run. Now the reporting path and the
+     * activation path are different functions.
+     */
+    it("getActive hides a retired capability while get still reports it", () => {
+        const result = createRegistry([
+            { ...base, name: "live", intents: [], permissions: { repository: [], organization: [] } },
+            { ...base, name: "old", retired: true, intents: [], permissions: { repository: [], organization: [] } },
+        ] as CapabilityDeclaration[]);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const { registry } = result;
+
+        // Configuration validity is unchanged — retirement is not breaking.
+        expect(registry.names).toContain("old");
+        expect(registry.activeNames).not.toContain("old");
+
+        // The reporting path can still name it...
+        expect(registry.get("old")?.name).toBe("old");
+        // ...but the activation path refuses to hand it over.
+        expect(registry.getActive("old")).toBeUndefined();
+        expect(registry.getActive("live")?.name).toBe("live");
+        expect(registry.getActive("neverExisted")).toBeUndefined();
+    });
+});

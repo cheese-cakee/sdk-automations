@@ -135,7 +135,17 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         errors.push(`schemaVersion must be 1, got ${JSON.stringify(raw.schemaVersion)}`);
     }
 
-    const mode = raw.mode ?? "observe";
+    /**
+     * An ABSENT `mode` defaults to `observe` (§2.4, defaults are off);
+     * a PRESENT but empty one is an error.
+     *
+     * FINDING(config-null-mode), D56: `raw.mode ?? "observe"` silently
+     * accepted `mode:` with no value — YAML parses that to null — and
+     * chose a mode on the maintainer's behalf. The chosen mode was the
+     * safe one, but silently interpreting malformed input is the exact
+     * pattern §2.7 and D38 reject everywhere else in this file.
+     */
+    const mode = "mode" in raw ? raw.mode : "observe";
     if (!REPOSITORY_MODES.includes(mode as RepositoryMode)) {
         errors.push(`mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`);
     }
@@ -209,10 +219,19 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
                  * never defines "incompatible", so full injectivity is
                  * enforced — every meaning its own label; the
                  * observation projection relies on label→meaning being
-                 * unambiguous. Exact-string comparison; GitHub-side
-                 * case rules are the shell's concern.
+                 * unambiguous.
+                 *
+                 * FINDING(config-label-case), D55: the comparison is
+                 * case- and edge-whitespace-insensitive, because GitHub
+                 * treats label names case-insensitively for UNIQUENESS.
+                 * Exact-string comparison accepted `status: ready` and
+                 * `Status: Ready` as two mappings, which is one label on
+                 * GitHub — reintroducing exactly the label→meaning
+                 * ambiguity D34 exists to prevent. The original spelling
+                 * is preserved for writes; only the uniqueness key is
+                 * folded.
                  */
-                const labelOwner = new Map<string, string>();
+                const labelOwner = new Map<string, { meaning: string; label: string }>();
                 for (const [meaning, label] of Object.entries(rawLabels)) {
                     if (!MAPPABLE_MEANINGS.includes(meaning as MappableMeaning)) {
                         errors.push(`mappings.labels: "${meaning}" is not a mappable meaning`);
@@ -222,15 +241,20 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
                         errors.push(`mappings.labels.${meaning}: label must be a non-empty string`);
                         continue;
                     }
-                    const owner = labelOwner.get(label);
+                    const key = label.trim().toLowerCase();
+                    const owner = labelOwner.get(key);
                     if (owner !== undefined) {
+                        const sameSpelling = owner.label === label;
                         errors.push(
-                            `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner}" and "${meaning}"` +
+                            `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner.meaning}" and "${meaning}"` +
+                            (sameSpelling
+                                ? ""
+                                : ` (differing only in case or surrounding space from ${JSON.stringify(owner.label)}, which GitHub treats as the same label)`) +
                             ` — label mappings must be injective (schema.md §3)`,
                         );
                         continue;
                     }
-                    labelOwner.set(label, meaning);
+                    labelOwner.set(key, { meaning, label });
                     labels[meaning as MappableMeaning] = label;
                 }
             }

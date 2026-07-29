@@ -7,6 +7,7 @@ import {
     type WriteContext,
     type DestructivePlan,
 } from "../src/safety.js";
+import { REPOSITORY_MODES } from "../src/config.js";
 
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",
@@ -19,6 +20,7 @@ const request = (over?: Partial<WriteRequest>): WriteRequest => ({
 
 const context = (over?: Partial<WriteContext>): WriteContext => ({
     mode: "active",
+    capability: "assignment", // must match request().capability — D53
     capabilityEnabled: true,
     installationHasPermission: true,
     killSwitchActive: false,
@@ -127,7 +129,93 @@ describe("evaluateWrite (safety.md §2)", () => {
     });
 });
 
+describe("audit findings, pinned (D51-D53)", () => {
+    /**
+     * D52 — the headline: the §3 gates must be inescapable, not a
+     * calling convention. Before this, the same call answered `apply`.
+     */
+    it("evaluateWrite refuses a destructive request instead of applying it", () => {
+        const verdict = evaluateWrite(
+            request({ actionClass: "clockTriggeredDestructive", capability: "assignment" }),
+            context(),
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "wrongEntryPoint" });
+    });
+
+    it("no context can make evaluateWrite apply a destructive request", () => {
+        for (const mode of REPOSITORY_MODES) {
+            expect(
+                evaluateWrite(
+                    request({ actionClass: "clockTriggeredDestructive" }),
+                    context({ mode }),
+                ).outcome,
+            ).toBe("refuse");
+        }
+    });
+
+    // D51 — unknown ordering is a conflict, not an absence.
+    it("unestablished human-change ordering refuses (manual-edits.md §2)", () => {
+        expect(
+            evaluateWrite(request(), context({ latestHumanChangeAt: "unknown" })),
+        ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
+    });
+
+    it("null still means CHECKED-and-none, and still applies", () => {
+        expect(
+            evaluateWrite(request(), context({ latestHumanChangeAt: null })),
+        ).toEqual({ outcome: "apply" });
+    });
+
+    it("unknown ordering also stops a fully-warranted destructive action", () => {
+        const plan: DestructivePlan = {
+            request: request({
+                actionClass: "clockTriggeredDestructive",
+                capability: "inactivity",
+            }),
+            warning: {
+                warnedAt: new Date("2026-07-01T00:00:00Z"),
+                gracePeriodDays: 7,
+                cancelledBy: "any comment",
+            },
+            qualifyingActivitySinceWarning: false,
+        };
+        expect(
+            evaluateDestructive(
+                plan,
+                context({ capability: "inactivity", latestHumanChangeAt: "unknown" }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
+    });
+
+    // D52 — the kill switch is reported FIRST on the destructive path too.
+    it("an active kill switch is reported as killSwitch, not noWarning", () => {
+        expect(
+            evaluateDestructive(
+                {
+                    request: request({
+                        actionClass: "clockTriggeredDestructive",
+                        capability: "inactivity",
+                    }),
+                    warning: null,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ capability: "inactivity", killSwitchActive: true }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
+    });
+});
+
 describe("evaluateDestructive (safety.md §3–§4)", () => {
+    /**
+     * These plans are from the `inactivity` capability, so the rechecked
+     * context must describe that same capability — D53's link check
+     * refuses a context about a different one.
+     */
+    const dContext = (over?: Partial<WriteContext>): WriteContext =>
+        context({ capability: "inactivity", ...over });
+
     const destructive = (over?: Partial<DestructivePlan>): DestructivePlan => ({
         request: request({
             actionClass: "clockTriggeredDestructive",
@@ -149,7 +237,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("never acts on first observation — a missing warning refuses", () => {
         const verdict = evaluateDestructive(
             destructive({ warning: null }),
-            context(),
+            dContext(),
             afterGrace,
         );
         expect(verdict).toMatchObject({ outcome: "refuse", code: "noWarning" });
@@ -157,7 +245,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
 
     it("refuses while the grace period is running", () => {
         expect(
-            evaluateDestructive(destructive(), context(), duringGrace),
+            evaluateDestructive(destructive(), dContext(), duringGrace),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
@@ -165,7 +253,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 destructive({ qualifyingActivitySinceWarning: true }),
-                context(),
+                dContext(),
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "activityCancelled" });
@@ -180,7 +268,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                     ...plan,
                     warning: { ...plan.warning!, gracePeriodDays: days },
                 },
-                context(),
+                dContext(),
                 afterGrace,
             );
             expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
@@ -198,7 +286,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                     ...plan,
                     warning: { ...plan.warning!, gracePeriodDays, warnedAt },
                 },
-                context(),
+                dContext(),
                 now,
             );
         expect(verdict).toMatchObject({
@@ -220,20 +308,20 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_DAYS days:
         // the grace has fully elapsed at this instant, not one ms later.
         expect(
-            evaluateDestructive(atFloor, context(), new Date("2026-07-02T00:00:00Z")).outcome,
+            evaluateDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome,
         ).toBe("apply");
         expect(
-            evaluateDestructive(atFloor, context(), new Date("2026-07-01T23:59:59.999Z")),
+            evaluateDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
     it("a warned, elapsed, quiet, unblocked plan still respects repository mode", () => {
         expect(
-            evaluateDestructive(destructive(), context({ mode: "dry-run" }), afterGrace)
+            evaluateDestructive(destructive(), dContext({ mode: "dry-run" }), afterGrace)
                 .outcome,
         ).toBe("record-only");
         expect(
-            evaluateDestructive(destructive(), context(), afterGrace).outcome,
+            evaluateDestructive(destructive(), dContext(), afterGrace).outcome,
         ).toBe("apply");
     });
 
@@ -241,7 +329,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 destructive(),
-                context({ latestHumanChangeAt: new Date("2026-07-05T12:00:00Z") }),
+                dContext({ latestHumanChangeAt: new Date("2026-07-05T12:00:00Z") }),
                 afterGrace,
             ).outcome,
         ).toBe("refuse");
@@ -250,17 +338,22 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("every destructive refusal carries a non-empty human reason", () => {
         const plan = destructive();
         const refusals = [
-            evaluateDestructive(destructive({ warning: null }), context(), afterGrace),
-            evaluateDestructive(destructive(), context(), duringGrace),
-            evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), context(), afterGrace),
-            evaluateDestructive({ ...plan, warning: { ...plan.warning!, gracePeriodDays: 0 } }, context(), afterGrace),
-            evaluateDestructive({ ...plan, request: request() }, context(), afterGrace),
+            evaluateDestructive(destructive({ warning: null }), dContext(), afterGrace),
+            evaluateDestructive(destructive(), dContext(), duringGrace),
+            evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
+            evaluateDestructive({ ...plan, warning: { ...plan.warning!, gracePeriodDays: 0 } }, dContext(), afterGrace),
+            evaluateDestructive({ ...plan, request: request() }, dContext(), afterGrace),
         ];
         for (const verdict of refusals) {
             expect(verdict.outcome).toBe("refuse");
             if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
         }
         // And the observation record-only verdict explains itself too.
+        // `context()` here, not `dContext()`: `request()` defaults to the
+        // `assignment` capability, and D53's link check runs BEFORE the
+        // observation short-circuit — a request and context describing
+        // different capabilities is malformed input, not a policy
+        // question, so no action class is exempt from it.
         const observed = evaluateWrite(request({ actionClass: "observation" }), context());
         expect(observed).toMatchObject({ outcome: "record-only" });
         if (observed.outcome === "record-only") expect(observed.reason.length).toBeGreaterThan(0);
@@ -271,7 +364,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 { ...plan, request: request() },
-                context(),
+                dContext(),
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });
