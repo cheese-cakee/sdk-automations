@@ -51,10 +51,11 @@ newer human action cancelled the plan.
 The warning states the observed inactivity, the earliest action time, the command or action that cancels the
 plan, and the action that reverses it later.
 
-The recorded warning is bound to an immutable snapshot of the exact request it authorizes: action class,
-capability, dated cause, item, and change. The final evaluator rejects a warning from another request and
-rejects a warning recorded before its causal observation or with an earliest action time shorter than the
-full grace period (D60).
+The warning factory copies the exact request it authorizes into a frozen primitive snapshot: action class,
+capability, dated-cause timestamp, item, and change. It retains no request, target, or `Date` reference that
+later mutation could change. The final evaluator rejects a warning from another request and rejects a warning
+recorded before its causal observation or with an earliest action time shorter than the full grace period
+(D60).
 
 ## 4. Candidate Hiero profile actions
 

@@ -311,6 +311,26 @@ export function evaluateWrite(
  * A recorded warning, the precondition of every destructive action:
  * "a clock-triggered action never occurs on its first stale observation."
  */
+const DESTRUCTIVE_WARNING_BRAND: unique symbol = Symbol("DestructiveWarning");
+
+interface DestructiveRequestSnapshot {
+    readonly actionClass: ActionClass;
+    readonly capability: string;
+    readonly causeObservedAtMs: number;
+    readonly cause: string;
+    readonly item: string;
+    readonly change: string;
+}
+
+export interface DestructiveWarningInput {
+    readonly request: WriteRequest;
+    readonly warnedAt: Date;
+    readonly gracePeriodDays: number;
+    readonly earliestActionAt: Date;
+    readonly cancelledBy: string;
+    readonly reversesWith: string;
+}
+
 export interface DestructiveWarning {
     /**
      * FINDING(safety-warning-binding), D60: a warning is authority for
@@ -318,16 +338,44 @@ export interface DestructiveWarning {
      * snapshot prevents warning reuse across capabilities, items,
      * changes, or causal observations.
      */
-    /** Immutable snapshot of the exact request this warning authorizes. */
-    readonly request: WriteRequest;
-    readonly warnedAt: Date;
+    /** Only `createDestructiveWarning` can construct a typed warning. */
+    readonly [DESTRUCTIVE_WARNING_BRAND]: true;
+    /** Copied primitives, never a reference to the caller's request. */
+    readonly requestSnapshot: DestructiveRequestSnapshot;
+    readonly warnedAtMs: number;
     readonly gracePeriodDays: number;
     /** Stated in the warning; may be later than the configured grace floor. */
-    readonly earliestActionAt: Date;
+    readonly earliestActionAtMs: number;
     /** What cancels the plan, stated in the warning (safety.md §3). */
     readonly cancelledBy: string;
     /** How a maintainer reverses the action after it occurs. */
     readonly reversesWith: string;
+}
+
+/**
+ * Capture authority at warning time. Numeric timestamps and copied strings
+ * avoid aliases to mutable request targets and mutable Date internal state.
+ */
+export function createDestructiveWarning(
+    input: DestructiveWarningInput,
+): DestructiveWarning {
+    const requestSnapshot: DestructiveRequestSnapshot = Object.freeze({
+        actionClass: input.request.actionClass,
+        capability: input.request.capability,
+        causeObservedAtMs: input.request.causeObservedAt.getTime(),
+        cause: input.request.cause,
+        item: input.request.target.item,
+        change: input.request.target.change,
+    });
+    return Object.freeze({
+        [DESTRUCTIVE_WARNING_BRAND]: true as const,
+        requestSnapshot,
+        warnedAtMs: input.warnedAt.getTime(),
+        gracePeriodDays: input.gracePeriodDays,
+        earliestActionAtMs: input.earliestActionAt.getTime(),
+        cancelledBy: input.cancelledBy,
+        reversesWith: input.reversesWith,
+    });
 }
 
 export interface DestructivePlan {
@@ -349,16 +397,16 @@ export const MIN_GRACE_DAYS = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function warningMatchesRequest(
-    warned: WriteRequest,
+    warned: DestructiveRequestSnapshot,
     requested: WriteRequest,
 ): boolean {
     return (
         warned.actionClass === requested.actionClass &&
         warned.capability === requested.capability &&
-        warned.causeObservedAt.getTime() === requested.causeObservedAt.getTime() &&
+        warned.causeObservedAtMs === requested.causeObservedAt.getTime() &&
         warned.cause === requested.cause &&
-        warned.target.item === requested.target.item &&
-        warned.target.change === requested.target.change
+        warned.item === requested.target.item &&
+        warned.change === requested.target.change
     );
 }
 
@@ -392,7 +440,7 @@ export function evaluateDestructive(
             reason: "no recorded warning — a destructive action never occurs on first observation (§3)",
         };
     }
-    if (!warningMatchesRequest(plan.warning.request, plan.request)) {
+    if (!warningMatchesRequest(plan.warning.requestSnapshot, plan.request)) {
         return {
             outcome: "refuse",
             code: "warningRequestMismatch",
@@ -401,9 +449,9 @@ export function evaluateDestructive(
     }
     if (
         !Number.isFinite(plan.warning.gracePeriodDays) ||
-        !Number.isFinite(plan.warning.warnedAt.getTime()) ||
-        !Number.isFinite(plan.warning.earliestActionAt.getTime()) ||
-        !Number.isFinite(plan.warning.request.causeObservedAt.getTime()) ||
+        !Number.isFinite(plan.warning.warnedAtMs) ||
+        !Number.isFinite(plan.warning.earliestActionAtMs) ||
+        !Number.isFinite(plan.warning.requestSnapshot.causeObservedAtMs) ||
         plan.warning.cancelledBy.trim() === "" ||
         plan.warning.reversesWith.trim() === "" ||
         !Number.isFinite(now.getTime())
@@ -422,11 +470,11 @@ export function evaluateDestructive(
         };
     }
     const minimumActionAt =
-        plan.warning.warnedAt.getTime() + plan.warning.gracePeriodDays * DAY_MS;
+        plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
     if (
-        plan.warning.warnedAt.getTime() <
-            plan.warning.request.causeObservedAt.getTime() ||
-        plan.warning.earliestActionAt.getTime() < minimumActionAt
+        plan.warning.warnedAtMs <
+            plan.warning.requestSnapshot.causeObservedAtMs ||
+        plan.warning.earliestActionAtMs < minimumActionAt
     ) {
         return {
             outcome: "refuse",
@@ -434,7 +482,7 @@ export function evaluateDestructive(
             reason: "the warning predates its observation or states an action time before the full grace period",
         };
     }
-    if (now.getTime() < plan.warning.earliestActionAt.getTime()) {
+    if (now.getTime() < plan.warning.earliestActionAtMs) {
         return {
             outcome: "refuse",
             code: "graceRunning",

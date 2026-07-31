@@ -10,7 +10,7 @@ GitHub, no platform — `pnpm test` runs the whole thing in under a second.
 | `src/taxonomy.ts` | Both workflow state diagrams as transition tables (entity-scoped causes); the blocked-pause and stale-precondition invariants; closure reasons and reopening | `design/core/taxonomy.md` §2–§5, §5.1 |
 | `src/observe.ts` | The observed-labels → position projection: a set of mapped meanings in, one position or an explicit conflict out — no repair, no guessing | `design/core/manual-edits.md` §3, §8 tests 2–3 |
 | `src/safety.ts` | The action classes, the mechanically checkable write rules, the inescapable clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
-| `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; optional capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
+| `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; required capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
 | `src/contract.ts` | Capability declarations with per-intent idempotency class; registry that feeds `parseConfig` | `design/modules/contract.md` §1 + the D23 amendments (experiments 6.3, 6.5) |
 | `src/ids.ts` | Separate branded webhook GUID and REST delivery-record id strings | `FINDING(delivery-id-precision)`, experiment 6.2 |
 | `src/failures.ts` | The failure catalogue as classification plus bounded retry advice, tested against observed response bodies | failure table in `design/operations/endpoint-permission-matrix.md` |

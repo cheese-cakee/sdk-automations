@@ -29,7 +29,7 @@ mechanical hardening carrying no maintainer choice. D54 (the unimplemented `imme
 covered in §4.
 
 Evidence base shared by every row: the stage-three experiment records (6.1–6.6, 2026-07-23), and the
-three implementation packages with 300 deterministic tests — including the exhaustive safety sweep,
+three implementation packages with 301 deterministic tests — including the exhaustive safety sweep,
 the projection enumeration, and the executor crash grid (every reachable perform crash, 64 scheduled
 two-point histories, and seeded multi-crash histories). The grid proves serialized crash-and-restart
 convergence under its consistent fake; it does not prove live lease takeover is safe.
