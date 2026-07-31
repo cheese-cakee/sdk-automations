@@ -44,6 +44,21 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
             positions: ["ready", "inProgress"],
             blocked: false,
             closedBy: null,
+            ignored: [],
+        });
+    });
+
+    it("a conflict still reports cross-entity meanings as ignored", () => {
+        expect(
+            projectPrObservation(
+                observed(["needsReview", "needsRevision", "ready", "blocked"]),
+            ),
+        ).toEqual({
+            kind: "conflict",
+            positions: ["needsReview", "needsRevision"],
+            blocked: true,
+            closedBy: null,
+            ignored: ["ready"],
         });
     });
 
@@ -132,6 +147,7 @@ describe("conflict verdicts carry blocked and closedBy (D59)", () => {
             positions: ["ready", "inProgress"],
             blocked: true,
             closedBy: null,
+            ignored: [],
         });
     });
 
@@ -145,6 +161,7 @@ describe("conflict verdicts carry blocked and closedBy (D59)", () => {
             positions: ["needsReview", "readyToMerge"],
             blocked: false,
             closedBy: "merged",
+            ignored: [],
         });
     });
 });

@@ -91,7 +91,8 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
 
                                         const actionMayApply =
                                             actionClass !== "observation" &&
-                                            actionClass !== "clockTriggeredDestructive";
+                                            actionClass !== "clockTriggeredDestructive" &&
+                                            actionClass !== "immediatePreventive";
                                         const humanOrderingAllowsWrite =
                                             latestHumanChangeAt === null ||
                                             (latestHumanChangeAt !== "unknown" &&
@@ -129,9 +130,10 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         }
                                         }
         expect(checked).toBe(5_120); // 5 classes × 2^5 flags × 2 capability links × 4 orderings × 4 modes
-        // 3 non-observation, non-destructive classes × active mode ×
-        // {null, older} ordering = 6.
-        expect(applies).toBe(6);
+        // 2 currently authorized write classes × active mode ×
+        // {null, older} ordering = 4. Immediate preventive actions stay
+        // fail-closed until their explanation/reversal gate exists.
+        expect(applies).toBe(4);
     });
 
     it("a mismatched capability refuses regardless of enablement (D53)", () => {
@@ -170,6 +172,11 @@ describe("projection: total and exclusive over every meaning subset", () => {
                 expect(projection.kind).toBe("conflict");
                 if (projection.kind === "conflict") {
                     expect([...projection.positions].sort()).toEqual([...ownPositions].sort());
+                    expect([...projection.ignored].sort()).toEqual(
+                        meanings
+                            .filter((m) => !ownSet.has(m) && m !== "blocked")
+                            .sort(),
+                    );
                 }
             } else {
                 expect(projection.kind).toBe("position");

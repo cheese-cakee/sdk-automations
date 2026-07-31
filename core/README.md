@@ -131,7 +131,7 @@ code as its evidence:
 - `FINDING(safety-capability-link)` → **D53** — the context names the
   capability its enablement flag describes, and a mismatch refuses.
 - `immediatePreventive` → **D54** — the class has no gate yet and is
-  evaluated as a reversible change; kept so the requirement is not lost.
+  refused until its immediate-explanation and simple-reversal gate exists.
 - `FINDING(config-label-case)` → **D55** — label uniqueness is folded
   for case and edge space, as GitHub folds it.
 - `FINDING(config-null-mode)` → **D56** — an absent mode defaults; a
@@ -141,8 +141,11 @@ code as its evidence:
 - `FINDING(contract-retired-enforcement)` → **D58** — `get` is the
   fail-closed activation lookup; `describe` returns report-only metadata.
 - `FINDING(observe-conflict-context)` → **D59** — a conflict verdict
-  carries `blocked` and `closedBy`, so a report can say whether it
-  matters.
+  carries `blocked`, `closedBy`, and ignored cross-entity meanings, so a
+  report retains the same diagnostic facts as an ordinary projection.
+- `FINDING(safety-warning-binding)` → **D60** — a destructive warning is
+  an immutable snapshot of the exact request it authorizes and cannot be
+  reused across capabilities, items, changes, or causal observations.
 
 ## Keeping code and prose aligned
 

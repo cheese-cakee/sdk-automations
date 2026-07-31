@@ -18,9 +18,9 @@ The platform classifies an action by its effect on repository participants.
 A clock-triggered destructive change is evaluated by its own entry point. The general write rules alone
 never authorise one: the warning and grace gates in §3 cannot be decided from a single request, so a
 request of that class presented to the general path is refused rather than judged (D52). The immediate
-preventive class in the table above has no dedicated logic yet and is currently treated as a reversible
-change, which is weaker than its stated minimum requirement — recorded as D54, pending the first
-capability that requests it.
+preventive class in the table above has no dedicated logic yet, so the general path also refuses it rather
+than silently applying weaker reversible-change rules (D54). The first capability that requests it must add
+and test the immediate-explanation and simple-reversal gate before the class can apply.
 
 ## 2. Rules for every write
 
@@ -50,6 +50,11 @@ newer human action cancelled the plan.
 
 The warning states the observed inactivity, the earliest action time, the command or action that cancels the
 plan, and the action that reverses it later.
+
+The recorded warning is bound to an immutable snapshot of the exact request it authorizes: action class,
+capability, dated cause, item, and change. The final evaluator rejects a warning from another request and
+rejects a warning recorded before its causal observation or with an earliest action time shorter than the
+full grace period (D60).
 
 ## 4. Candidate Hiero profile actions
 

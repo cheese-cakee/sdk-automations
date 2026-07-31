@@ -67,6 +67,8 @@ export type ObservationProjection<M> =
            */
           readonly blocked: boolean;
           readonly closedBy: ClosureReason | null;
+          /** Other-flow meanings remain visible for diagnostics (D35). */
+          readonly ignored: readonly MappableMeaning[];
       };
 
 function projectWith<M extends IssueMeaning | PrMeaning>(
@@ -82,6 +84,7 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
             positions,
             blocked: distinct.includes("blocked"),
             closedBy: observation.closedBy,
+            ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
         };
     }
     /**

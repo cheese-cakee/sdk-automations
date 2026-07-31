@@ -337,7 +337,9 @@ export function applyTransition<M, C extends TransitionCause>(
     if (!verdict.allowed) return { state, verdict };
     return {
         state: {
-            meaning: request.to,
+            // Closure is orthogonal to position: closing records why the
+            // item closed but preserves the mapped position for reopen.
+            meaning: request.to === null ? state.meaning : request.to,
             blocked: state.blocked,
             // Only a closure cause can reach `to: null` — pinned by the
             // edge-table invariant test, so this is never null here.

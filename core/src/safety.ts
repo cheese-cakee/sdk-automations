@@ -16,12 +16,9 @@
  * judge from `evaluateWrite` alone; it has its own entry point, because
  * §3's warning and grace gates cannot be decided from a single request.
  *
- * `immediatePreventive` (safety.md §1's issue-lock row) carries no
- * dedicated logic yet — it is currently evaluated exactly like a
- * reversible change, which is WEAKER than §1's "explains the action
- * immediately and provides a simple maintainer reversal" requires.
- * Recorded as D54 rather than silently deleted: the class is real
- * design, it just has no capability requesting it yet.
+ * `immediatePreventive` (safety.md §1's issue-lock row) remains a real
+ * design class, but fails closed until its request can prove the
+ * immediate explanation and simple maintainer reversal §1 requires.
  */
 export type ActionClass =
     | "observation"
@@ -104,6 +101,7 @@ export interface WriteContext {
 export type SafetyRefusalCode =
     | "killSwitch"
     | "wrongEntryPoint"
+    | "preventiveGateUnavailable"
     | "capabilityMismatch"
     | "capabilityDisabled"
     | "permissionMissing"
@@ -115,6 +113,7 @@ export type SafetyRefusalCode =
     | "modeDisabled"
     | "wrongActionClass"
     | "noWarning"
+    | "warningRequestMismatch"
     | "invalidDestructivePlan"
     | "graceBelowFloor"
     | "graceRunning"
@@ -296,6 +295,13 @@ export function evaluateWrite(
             reason: "a clock-triggered destructive action must be evaluated by evaluateDestructive, which alone enforces the §3 warning and grace gates",
         };
     }
+    if (request.actionClass === "immediatePreventive") {
+        return {
+            outcome: "refuse",
+            code: "preventiveGateUnavailable",
+            reason: "immediate preventive actions are disabled until the request proves an immediate explanation and a simple maintainer reversal (safety.md §1)",
+        };
+    }
     return evaluateGeneralRulesAfterPreflight(request, context);
 }
 
@@ -306,10 +312,22 @@ export function evaluateWrite(
  * "a clock-triggered action never occurs on its first stale observation."
  */
 export interface DestructiveWarning {
+    /**
+     * FINDING(safety-warning-binding), D60: a warning is authority for
+     * one request, not a reusable timestamp. The immutable request
+     * snapshot prevents warning reuse across capabilities, items,
+     * changes, or causal observations.
+     */
+    /** Immutable snapshot of the exact request this warning authorizes. */
+    readonly request: WriteRequest;
     readonly warnedAt: Date;
     readonly gracePeriodDays: number;
+    /** Stated in the warning; may be later than the configured grace floor. */
+    readonly earliestActionAt: Date;
     /** What cancels the plan, stated in the warning (safety.md §3). */
     readonly cancelledBy: string;
+    /** How a maintainer reverses the action after it occurs. */
+    readonly reversesWith: string;
 }
 
 export interface DestructivePlan {
@@ -329,6 +347,20 @@ export interface DestructivePlan {
 export const MIN_GRACE_DAYS = 1;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function warningMatchesRequest(
+    warned: WriteRequest,
+    requested: WriteRequest,
+): boolean {
+    return (
+        warned.actionClass === requested.actionClass &&
+        warned.capability === requested.capability &&
+        warned.causeObservedAt.getTime() === requested.causeObservedAt.getTime() &&
+        warned.cause === requested.cause &&
+        warned.target.item === requested.target.item &&
+        warned.target.change === requested.target.change
+    );
+}
 
 /** safety.md §3 — every condition the executor confirms before acting. */
 export function evaluateDestructive(
@@ -360,9 +392,20 @@ export function evaluateDestructive(
             reason: "no recorded warning — a destructive action never occurs on first observation (§3)",
         };
     }
+    if (!warningMatchesRequest(plan.warning.request, plan.request)) {
+        return {
+            outcome: "refuse",
+            code: "warningRequestMismatch",
+            reason: "the recorded warning does not authorize this exact capability, target, change, and causal observation",
+        };
+    }
     if (
         !Number.isFinite(plan.warning.gracePeriodDays) ||
         !Number.isFinite(plan.warning.warnedAt.getTime()) ||
+        !Number.isFinite(plan.warning.earliestActionAt.getTime()) ||
+        !Number.isFinite(plan.warning.request.causeObservedAt.getTime()) ||
+        plan.warning.cancelledBy.trim() === "" ||
+        plan.warning.reversesWith.trim() === "" ||
         !Number.isFinite(now.getTime())
     ) {
         return {
@@ -378,8 +421,20 @@ export function evaluateDestructive(
             reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (§4)`,
         };
     }
-    const elapsedMs = now.getTime() - plan.warning.warnedAt.getTime();
-    if (elapsedMs < plan.warning.gracePeriodDays * DAY_MS) {
+    const minimumActionAt =
+        plan.warning.warnedAt.getTime() + plan.warning.gracePeriodDays * DAY_MS;
+    if (
+        plan.warning.warnedAt.getTime() <
+            plan.warning.request.causeObservedAt.getTime() ||
+        plan.warning.earliestActionAt.getTime() < minimumActionAt
+    ) {
+        return {
+            outcome: "refuse",
+            code: "invalidDestructivePlan",
+            reason: "the warning predates its observation or states an action time before the full grace period",
+        };
+    }
+    if (now.getTime() < plan.warning.earliestActionAt.getTime()) {
         return {
             outcome: "refuse",
             code: "graceRunning",
