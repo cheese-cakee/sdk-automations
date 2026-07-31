@@ -2,11 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
     evaluateWrite,
     evaluateDestructive,
+    createDestructiveWarning,
     MIN_GRACE_DAYS,
     type WriteRequest,
     type WriteContext,
     type DestructivePlan,
+    type DestructiveWarning,
+    type DestructiveWarningInput,
 } from "../src/safety.js";
+import { REPOSITORY_MODES } from "../src/config.js";
 
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",
@@ -19,6 +23,7 @@ const request = (over?: Partial<WriteRequest>): WriteRequest => ({
 
 const context = (over?: Partial<WriteContext>): WriteContext => ({
     mode: "active",
+    capability: "assignment", // must match request().capability — D53
     capabilityEnabled: true,
     installationHasPermission: true,
     killSwitchActive: false,
@@ -27,6 +32,20 @@ const context = (over?: Partial<WriteContext>): WriteContext => ({
     latestHumanChangeAt: null,
     ...over,
 });
+
+const warningFor = (
+    warnedRequest: WriteRequest,
+    over?: Partial<Omit<DestructiveWarningInput, "request">>,
+): DestructiveWarning =>
+    createDestructiveWarning({
+        request: warnedRequest,
+        warnedAt: new Date("2026-07-01T00:00:00Z"),
+        gracePeriodDays: 7,
+        earliestActionAt: new Date("2026-07-08T00:00:00Z"),
+        cancelledBy: "any comment or commit by the assignee",
+        reversesWith: "a maintainer or author restores the previous state",
+        ...over,
+    });
 
 describe("evaluateWrite (safety.md §2)", () => {
     it("applies only when every rule passes in active mode", () => {
@@ -127,21 +146,133 @@ describe("evaluateWrite (safety.md §2)", () => {
     });
 });
 
+describe("audit findings, pinned (D51-D53)", () => {
+    /**
+     * D52 — the headline: the §3 gates must be inescapable, not a
+     * calling convention. Before this, the same call answered `apply`.
+     */
+    it("evaluateWrite refuses a destructive request instead of applying it", () => {
+        const verdict = evaluateWrite(
+            request({ actionClass: "clockTriggeredDestructive", capability: "assignment" }),
+            context(),
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "wrongEntryPoint" });
+    });
+
+    it("no context can make evaluateWrite apply a destructive request", () => {
+        for (const mode of REPOSITORY_MODES) {
+            expect(
+                evaluateWrite(
+                    request({ actionClass: "clockTriggeredDestructive" }),
+                    context({ mode }),
+                ).outcome,
+            ).toBe("refuse");
+        }
+    });
+
+    // D51 — unknown ordering is a conflict, not an absence.
+    it("unestablished human-change ordering refuses (manual-edits.md §2)", () => {
+        expect(
+            evaluateWrite(request(), context({ latestHumanChangeAt: "unknown" })),
+        ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
+    });
+
+    it("null still means CHECKED-and-none, and still applies", () => {
+        expect(
+            evaluateWrite(request(), context({ latestHumanChangeAt: null })),
+        ).toEqual({ outcome: "apply" });
+    });
+
+    it("unknown ordering also stops a fully-warranted destructive action", () => {
+        const destructiveRequest = request({
+            actionClass: "clockTriggeredDestructive",
+            capability: "inactivity",
+        });
+        const plan: DestructivePlan = {
+            request: destructiveRequest,
+            warning: warningFor(destructiveRequest),
+            qualifyingActivitySinceWarning: false,
+        };
+        expect(
+            evaluateDestructive(
+                plan,
+                context({ capability: "inactivity", latestHumanChangeAt: "unknown" }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
+    });
+
+    // D52 — the kill switch is reported FIRST on the destructive path too.
+    it("an active kill switch is reported as killSwitch, not noWarning", () => {
+        expect(
+            evaluateDestructive(
+                {
+                    request: request({
+                        actionClass: "clockTriggeredDestructive",
+                        capability: "inactivity",
+                    }),
+                    warning: null,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ capability: "inactivity", killSwitchActive: true }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
+    });
+
+    it("refuses immediate preventive actions until their explanation and reversal gate exists", () => {
+        expect(
+            evaluateWrite(
+                request({
+                    actionClass: "immediatePreventive",
+                    capability: "intake",
+                    target: { item: "issue #42", change: "lock pending moderation" },
+                }),
+                context({ capability: "intake" }),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "preventiveGateUnavailable" });
+    });
+
+    it("a destructive capability mismatch is reported before plan policy", () => {
+        expect(
+            evaluateDestructive(
+                {
+                    request: request({
+                        actionClass: "clockTriggeredDestructive",
+                        capability: "inactivity",
+                    }),
+                    warning: null,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ capability: "assignment" }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "capabilityMismatch" });
+    });
+});
+
 describe("evaluateDestructive (safety.md §3–§4)", () => {
-    const destructive = (over?: Partial<DestructivePlan>): DestructivePlan => ({
-        request: request({
+    /**
+     * These plans are from the `inactivity` capability, so the rechecked
+     * context must describe that same capability — D53's link check
+     * refuses a context about a different one.
+     */
+    const dContext = (over?: Partial<WriteContext>): WriteContext =>
+        context({ capability: "inactivity", ...over });
+
+    const destructive = (over?: Partial<DestructivePlan>): DestructivePlan => {
+        const destructiveRequest = request({
             actionClass: "clockTriggeredDestructive",
             capability: "inactivity",
             cause: "no qualifying activity for 21 days",
-        }),
-        warning: {
-            warnedAt: new Date("2026-07-01T00:00:00Z"),
-            gracePeriodDays: 7,
-            cancelledBy: "any comment or commit by the assignee",
-        },
-        qualifyingActivitySinceWarning: false,
-        ...over,
-    });
+        });
+        return {
+            request: destructiveRequest,
+            warning: warningFor(destructiveRequest),
+            qualifyingActivitySinceWarning: false,
+            ...over,
+        };
+    };
 
     const afterGrace = new Date("2026-07-09T00:00:00Z"); // 8 days later
     const duringGrace = new Date("2026-07-05T00:00:00Z"); // 4 days later
@@ -149,7 +280,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("never acts on first observation — a missing warning refuses", () => {
         const verdict = evaluateDestructive(
             destructive({ warning: null }),
-            context(),
+            dContext(),
             afterGrace,
         );
         expect(verdict).toMatchObject({ outcome: "refuse", code: "noWarning" });
@@ -157,7 +288,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
 
     it("refuses while the grace period is running", () => {
         expect(
-            evaluateDestructive(destructive(), context(), duringGrace),
+            evaluateDestructive(destructive(), dContext(), duringGrace),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
@@ -165,10 +296,110 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 destructive({ qualifyingActivitySinceWarning: true }),
-                context(),
+                dContext(),
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "activityCancelled" });
+    });
+
+    it("refuses warning reuse across capabilities, targets, and causes", () => {
+        const plan = destructive();
+        const mismatches: readonly [WriteRequest, WriteContext][] = [
+            [
+                { ...plan.request, target: { ...plan.request.target, item: "issue #999" } },
+                dContext(),
+            ],
+            [
+                { ...plan.request, target: { ...plan.request.target, change: "unassign" } },
+                dContext(),
+            ],
+            [{ ...plan.request, cause: "a different inactivity observation" }, dContext()],
+            [
+                { ...plan.request, causeObservedAt: new Date("2026-07-01T00:00:01Z") },
+                dContext(),
+            ],
+            [{ ...plan.request, capability: "anotherCapability" }, dContext({ capability: "anotherCapability" })],
+        ];
+        for (const [mismatchedRequest, matchingContext] of mismatches) {
+            const verdict = evaluateDestructive(
+                { ...plan, request: mismatchedRequest },
+                matchingContext,
+                afterGrace,
+            );
+            expect(verdict).toMatchObject({ outcome: "refuse", code: "warningRequestMismatch" });
+            if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
+        }
+
+        const wrongClass = evaluateDestructive(
+            {
+                ...plan,
+                warning: warningFor({
+                    ...plan.request,
+                    actionClass: "reversibleStateChange",
+                }),
+            },
+            dContext(),
+            afterGrace,
+        );
+        expect(wrongClass).toMatchObject({ outcome: "refuse", code: "warningRequestMismatch" });
+    });
+
+    it("warning issuance copies primitives so later request mutation cannot change its authority", () => {
+        const aliasedRequest = request({
+            actionClass: "clockTriggeredDestructive",
+            capability: "inactivity",
+            target: { item: "issue #1", change: "unassign alice" },
+        });
+        const warning = warningFor(aliasedRequest);
+        expect(Object.isFrozen(warning)).toBe(true);
+        expect(Object.isFrozen(warning.requestSnapshot)).toBe(true);
+
+        const mutableTarget = aliasedRequest.target as { item: string; change: string };
+        mutableTarget.item = "issue #999";
+        mutableTarget.change = "close issue";
+        aliasedRequest.causeObservedAt.setTime(
+            new Date("2026-07-01T00:00:01Z").getTime(),
+        );
+
+        expect(
+            evaluateDestructive(
+                {
+                    request: aliasedRequest,
+                    warning,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ capability: "inactivity" }),
+                new Date("2026-07-09T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "warningRequestMismatch" });
+        expect(warning.requestSnapshot).toMatchObject({
+            item: "issue #1",
+            change: "unassign alice",
+            causeObservedAtMs: new Date("2026-07-01T00:00:00Z").getTime(),
+        });
+    });
+
+    it("refuses inconsistent or incomplete warning metadata", () => {
+        const plan = destructive();
+        const invalidWarnings: readonly DestructiveWarning[] = [
+            warningFor(plan.request, {
+                warnedAt: new Date("2026-06-30T23:59:59Z"),
+            }),
+            warningFor(plan.request, {
+                earliestActionAt: new Date("2026-07-07T23:59:59Z"),
+            }),
+            warningFor(plan.request, { cancelledBy: "   " }),
+            warningFor(plan.request, { reversesWith: "   " }),
+        ];
+        for (const warning of invalidWarnings) {
+            const verdict = evaluateDestructive(
+                { ...plan, warning },
+                dContext(),
+                afterGrace,
+            );
+            expect(verdict).toMatchObject({ outcome: "refuse", code: "invalidDestructivePlan" });
+            if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
+        }
     });
 
     it.each([0, -1, MIN_GRACE_DAYS - 1])(
@@ -178,9 +409,9 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             const verdict = evaluateDestructive(
                 {
                     ...plan,
-                    warning: { ...plan.warning!, gracePeriodDays: days },
+                    warning: warningFor(plan.request, { gracePeriodDays: days }),
                 },
-                context(),
+                dContext(),
                 afterGrace,
             );
             expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
@@ -196,9 +427,9 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         const verdict = evaluateDestructive(
                 {
                     ...plan,
-                    warning: { ...plan.warning!, gracePeriodDays, warnedAt },
+                    warning: warningFor(plan.request, { gracePeriodDays, warnedAt }),
                 },
-                context(),
+                dContext(),
                 now,
             );
         expect(verdict).toMatchObject({
@@ -215,25 +446,28 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         const plan = destructive();
         const atFloor = {
             ...plan,
-            warning: { ...plan.warning!, gracePeriodDays: MIN_GRACE_DAYS },
+            warning: warningFor(plan.request, {
+                gracePeriodDays: MIN_GRACE_DAYS,
+                earliestActionAt: new Date("2026-07-02T00:00:00Z"),
+            }),
         };
         // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_DAYS days:
         // the grace has fully elapsed at this instant, not one ms later.
         expect(
-            evaluateDestructive(atFloor, context(), new Date("2026-07-02T00:00:00Z")).outcome,
+            evaluateDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome,
         ).toBe("apply");
         expect(
-            evaluateDestructive(atFloor, context(), new Date("2026-07-01T23:59:59.999Z")),
+            evaluateDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
     it("a warned, elapsed, quiet, unblocked plan still respects repository mode", () => {
         expect(
-            evaluateDestructive(destructive(), context({ mode: "dry-run" }), afterGrace)
+            evaluateDestructive(destructive(), dContext({ mode: "dry-run" }), afterGrace)
                 .outcome,
         ).toBe("record-only");
         expect(
-            evaluateDestructive(destructive(), context(), afterGrace).outcome,
+            evaluateDestructive(destructive(), dContext(), afterGrace).outcome,
         ).toBe("apply");
     });
 
@@ -241,7 +475,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 destructive(),
-                context({ latestHumanChangeAt: new Date("2026-07-05T12:00:00Z") }),
+                dContext({ latestHumanChangeAt: new Date("2026-07-05T12:00:00Z") }),
                 afterGrace,
             ).outcome,
         ).toBe("refuse");
@@ -250,10 +484,10 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("every destructive refusal carries a non-empty human reason", () => {
         const plan = destructive();
         const refusals = [
-            evaluateDestructive(destructive({ warning: null }), context(), afterGrace),
-            evaluateDestructive(destructive(), context(), duringGrace),
-            evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), context(), afterGrace),
-            evaluateDestructive({ ...plan, warning: { ...plan.warning!, gracePeriodDays: 0 } }, context(), afterGrace),
+            evaluateDestructive(destructive({ warning: null }), dContext(), afterGrace),
+            evaluateDestructive(destructive(), dContext(), duringGrace),
+            evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
+            evaluateDestructive({ ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) }, dContext(), afterGrace),
             evaluateDestructive({ ...plan, request: request() }, context(), afterGrace),
         ];
         for (const verdict of refusals) {
@@ -261,6 +495,11 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
         }
         // And the observation record-only verdict explains itself too.
+        // `context()` here, not `dContext()`: `request()` defaults to the
+        // `assignment` capability, and D53's link check runs BEFORE the
+        // observation short-circuit — a request and context describing
+        // different capabilities is malformed input, not a policy
+        // question, so no action class is exempt from it.
         const observed = evaluateWrite(request({ actionClass: "observation" }), context());
         expect(observed).toMatchObject({ outcome: "record-only" });
         if (observed.outcome === "record-only") expect(observed.reason.length).toBeGreaterThan(0);

@@ -24,10 +24,12 @@ sub-question (D22) and the formal stage-four close-out of the storage trio.
 Covered: the implementation-born hypotheses D28–D46, the audit-born workflow rows D47–D49 (added
 2026-07-29, after §0's adoption record and therefore not covered by it), and the storage decision's
 pending closures (D1, D13, D24, D27, Q15). Not covered (§8): earlier hypotheses that wait on capability
-selection, not on architecture review, and D50, which is mechanical.
+selection, not on architecture review, and D50 plus D51–D53 and D55–D60, which are defect repairs or
+mechanical hardening carrying no maintainer choice. D54 (the unimplemented `immediatePreventive` gate) is
+covered in §4.
 
 Evidence base shared by every row: the stage-three experiment records (6.1–6.6, 2026-07-23), and the
-three implementation packages with 275 deterministic tests — including the exhaustive safety sweep,
+three implementation packages with 301 deterministic tests — including the exhaustive safety sweep,
 the projection enumeration, and the executor crash grid (every reachable perform crash, 64 scheduled
 two-point histories, and seeded multi-crash histories). The grid proves serialized crash-and-restart
 convergence under its consistent fake; it does not prove live lease takeover is safe.
@@ -65,12 +67,13 @@ meaning subsets).
 ## 4. Safety-policy agenda
 
 **Venue:** maintainer review attached to D10 (destructive actions), D7 (human-edit precedence), and
-D22 (kill switches). **Evidence:** `core/src/safety.ts`, the 384-context sweep, boundary tests.
+D22 (kill switches). **Evidence:** `core/src/safety.ts`, the 5,120-context sweep, boundary tests.
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |
 |---|---|---|---|
 | D30 | Grace periods have a 1-day floor. | Is one day the right minimum for the first destructive capability? | Keep 1 day as the *schema* floor; individual capabilities may demand more. |
 | D33 | Human-edit ties go to the human (`>=`); the causing event is excluded from the comparison. | Accept the tie-break and the exclusion rule? | Accept — GitHub timestamps are second-granularity, ties are real, and the human should win them. |
+| D54 | `immediatePreventive` has no dedicated gate and therefore fails closed with `preventiveGateUnavailable`. | Accept that no capability may request an immediate preventive action until the class has its own gate? | Accept as a precondition on the first such capability (the `intake` moderation row in safety.md §4). The class stays in the model, but cannot apply under weaker reversible-change rules. |
 | D39 | An active kill switch refuses even pure observations. | Does "stop" stop reading too? And are operator alerts/security controls exempt (as they are from item-level blocks)? | Total stop for capabilities; **the security-control exemption is a genuine open sub-question for D22's review** — the code does not model it yet. |
 
 ## 5. Configuration agenda

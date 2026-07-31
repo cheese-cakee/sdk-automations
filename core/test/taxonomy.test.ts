@@ -348,9 +348,14 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
             canTransitionIssue,
         );
         expect(closed.state).toEqual({
-            meaning: null,
+            meaning: "ready",
             blocked: false,
             closedBy: "closedByHuman",
+        });
+
+        expect(applyReopen(closed.state)).toEqual({
+            state: { meaning: "ready", blocked: false, closedBy: null },
+            verdict: { allowed: true },
         });
 
         const linked = applyTransition(

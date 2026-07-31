@@ -57,6 +57,18 @@ export type ObservationProjection<M> =
            */
           readonly kind: "conflict";
           readonly positions: readonly M[];
+          /**
+           * FINDING(observe-conflict-context), D59: the conflict verdict
+           * used to carry positions ONLY, so a reporting surface could
+           * say "this item is conflicted" but not "and it is also paused
+           * / already closed" — which is what tells an operator whether
+           * the conflict is worth their attention. Same facts as the
+           * `position` branch, minus a position to put them on.
+           */
+          readonly blocked: boolean;
+          readonly closedBy: ClosureReason | null;
+          /** Other-flow meanings remain visible for diagnostics (D35). */
+          readonly ignored: readonly MappableMeaning[];
       };
 
 function projectWith<M extends IssueMeaning | PrMeaning>(
@@ -67,7 +79,13 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
     const ownSet: ReadonlySet<MappableMeaning> = new Set(own);
     const positions = distinct.filter((m): m is M => ownSet.has(m));
     if (positions.length > 1) {
-        return { kind: "conflict", positions };
+        return {
+            kind: "conflict",
+            positions,
+            blocked: distinct.includes("blocked"),
+            closedBy: observation.closedBy,
+            ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
+        };
     }
     /**
      * FINDING(observe-blocked-alone) and FINDING(observe-closed-position),

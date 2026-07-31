@@ -15,6 +15,13 @@ The platform classifies an action by its effect on repository participants.
 | Clock-triggered destructive change | The App unassigns a stalled issue or closes a stalled pull request. | The App warns first, observes a full grace period, rechecks current state, and provides a simple reversal. |
 | Immediate preventive change | The App locks a new issue under an approved moderation policy. | The App explains the action immediately and provides a simple maintainer reversal. |
 
+A clock-triggered destructive change is evaluated by its own entry point. The general write rules alone
+never authorise one: the warning and grace gates in §3 cannot be decided from a single request, so a
+request of that class presented to the general path is refused rather than judged (D52). The immediate
+preventive class in the table above has no dedicated logic yet, so the general path also refuses it rather
+than silently applying weaker reversible-change rules (D54). The first capability that requests it must add
+and test the immediate-explanation and simple-reversal gate before the class can apply.
+
 ## 2. Rules for every write
 
 Every repository write must satisfy all of the following rules.
@@ -23,7 +30,9 @@ Every repository write must satisfy all of the following rules.
 2. The installation has the required permission.
 3. The capability supplied a dated cause and expected current state.
 4. The platform rechecked mutable preconditions before the write.
-5. A newer human change causes a conflict instead of an automatic reversal.
+5. A newer human change causes a conflict instead of an automatic reversal. Ordering evidence that cannot
+   be established is itself a conflict, never an absence of one (`manual-edits.md` §2, D51): "no human
+   change" and "cannot tell" are different answers and only the first permits a write.
 6. The adapter names the exact item and value that it may change.
 7. The adapter verifies the requested postcondition after the write.
 8. The executor records an unclear outcome and reconciles it instead of retrying blindly.
@@ -41,6 +50,12 @@ newer human action cancelled the plan.
 
 The warning states the observed inactivity, the earliest action time, the command or action that cancels the
 plan, and the action that reverses it later.
+
+The warning factory copies the exact request it authorizes into a frozen primitive snapshot: action class,
+capability, dated-cause timestamp, item, and change. It retains no request, target, or `Date` reference that
+later mutation could change. The final evaluator rejects a warning from another request and rejects a warning
+recorded before its causal observation or with an earliest action time shorter than the full grace period
+(D60).
 
 ## 4. Candidate Hiero profile actions
 

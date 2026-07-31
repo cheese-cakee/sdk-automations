@@ -1,7 +1,9 @@
 /**
  * Exhaustive invariant sweeps — where the other suites check examples,
  * these enumerate the full input space and assert the PROPERTY:
- *  - `apply` happens exactly when every safety rule passes (384 combos);
+ *  - `apply` happens exactly when every safety rule passes, swept over
+ *    EVERY action class and capability-link state as well as every
+ *    remaining context dimension (5,120 combos);
  *  - the projection is total and exclusive over all meaning subsets;
  *  - retryAdvice always terminates in bounded advice.
  */
@@ -17,64 +19,138 @@ import {
     ISSUE_MEANINGS,
     PR_MEANINGS,
     REPOSITORY_MODES,
+    type ActionClass,
+    type HumanChangeOrdering,
     type WriteContext,
     type MappableMeaning,
     type FailureClass,
 } from "../src/index.js";
 
 const CAUSE_AT = new Date("2026-07-01T00:00:00Z");
-const request = {
-    actionClass: "reversibleStateChange",
-    capability: "assignment",
+const CAPABILITY = "assignment";
+const requestFor = (actionClass: ActionClass) => ({
+    actionClass,
+    capability: CAPABILITY,
     causeObservedAt: CAUSE_AT,
     cause: "sweep",
     target: { item: "issue #1", change: "label" },
-} as const;
+});
+const ACTION_CLASSES: ActionClass[] = [
+    "observation",
+    "humanFacingOutput",
+    "reversibleStateChange",
+    "clockTriggeredDestructive",
+    "immediatePreventive",
+];
 
 describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
     const bools = [false, true];
-    const humanChanges: (Date | null)[] = [
+    const humanChanges: HumanChangeOrdering[] = [
         null,
+        "unknown", // ordering could not be established — D51
         new Date("2026-06-30T00:00:00Z"), // older than the cause
         new Date("2026-07-02T00:00:00Z"), // newer than the cause
     ];
 
-    it("384 contexts: the verdict is apply exactly when nothing refuses and mode is active", () => {
+    /**
+     * The action class is now a swept DIMENSION, not a fixed value.
+     * D52 exists because it was fixed at `reversibleStateChange`: the
+     * sweep was exhaustive in seven of eight input dimensions, and the
+     * missing one was exactly where `clockTriggeredDestructive` slipped
+     * through `evaluateWrite` and answered `apply`.
+     */
+    it("5,120 (class × context) combinations: apply exactly when nothing refuses and mode is active", () => {
         let applies = 0;
-        for (const killSwitchActive of bools)
-            for (const capabilityEnabled of bools)
-                for (const installationHasPermission of bools)
-                    for (const itemBlocked of bools)
-                        for (const preconditionHolds of bools)
-                            for (const latestHumanChangeAt of humanChanges)
-                                for (const mode of REPOSITORY_MODES) {
-                                    const context: WriteContext = {
-                                        mode,
-                                        capabilityEnabled,
-                                        installationHasPermission,
-                                        killSwitchActive,
-                                        itemBlocked,
-                                        preconditionHolds,
-                                        latestHumanChangeAt,
-                                    };
-                                    const verdict = evaluateWrite(request, context);
-                                    // Every non-apply carries prose for humans.
-                                    if (verdict.outcome !== "apply") {
-                                        expect(verdict.reason.length).toBeGreaterThan(0);
-                                    }
-                                    const everyRulePasses =
-                                        !killSwitchActive &&
-                                        capabilityEnabled &&
-                                        installationHasPermission &&
-                                        !itemBlocked &&
-                                        preconditionHolds &&
-                                        (latestHumanChangeAt === null ||
-                                            latestHumanChangeAt.getTime() < CAUSE_AT.getTime()) &&
-                                        mode === "active";
-                                    expect(verdict.outcome === "apply").toBe(everyRulePasses);
-                                    if (verdict.outcome === "apply") applies++;
-                                }
-        expect(applies).toBe(2); // active mode × {null, older} human change
+        let checked = 0;
+        for (const actionClass of ACTION_CLASSES)
+            for (const killSwitchActive of bools)
+                for (const capabilityEnabled of bools)
+                    for (const installationHasPermission of bools)
+                        for (const itemBlocked of bools)
+                            for (const preconditionHolds of bools)
+                                for (const capabilityMatches of bools)
+                                    for (const latestHumanChangeAt of humanChanges)
+                                        for (const mode of REPOSITORY_MODES) {
+                                        const context: WriteContext = {
+                                            mode,
+                                            capability: capabilityMatches ? CAPABILITY : "somethingElse",
+                                            capabilityEnabled,
+                                            installationHasPermission,
+                                            killSwitchActive,
+                                            itemBlocked,
+                                            preconditionHolds,
+                                            latestHumanChangeAt,
+                                        };
+                                        const verdict = evaluateWrite(requestFor(actionClass), context);
+                                        checked += 1;
+                                        // Every non-apply carries prose for humans.
+                                        if (verdict.outcome !== "apply") {
+                                            expect(verdict.reason.length).toBeGreaterThan(0);
+                                        }
+                                        if (verdict.outcome === "apply") applies += 1;
+
+                                        const actionMayApply =
+                                            actionClass !== "observation" &&
+                                            actionClass !== "clockTriggeredDestructive" &&
+                                            actionClass !== "immediatePreventive";
+                                        const humanOrderingAllowsWrite =
+                                            latestHumanChangeAt === null ||
+                                            (latestHumanChangeAt !== "unknown" &&
+                                                latestHumanChangeAt.getTime() < CAUSE_AT.getTime());
+                                        const everyRulePasses =
+                                            actionMayApply &&
+                                            !killSwitchActive &&
+                                            capabilityMatches &&
+                                            capabilityEnabled &&
+                                            installationHasPermission &&
+                                            !itemBlocked &&
+                                            preconditionHolds &&
+                                            humanOrderingAllowsWrite &&
+                                            mode === "active";
+                                        expect(verdict.outcome === "apply").toBe(everyRulePasses);
+
+                                        // A destructive request can NEVER apply here,
+                                        // whatever the context (D52).
+                                        if (
+                                            actionClass === "clockTriggeredDestructive" &&
+                                            !killSwitchActive &&
+                                            capabilityMatches
+                                        ) {
+                                            expect(verdict).toMatchObject({
+                                                outcome: "refuse",
+                                                code: "wrongEntryPoint",
+                                            });
+                                        }
+                                        // Unestablished ordering can never apply (D51).
+                                        if (
+                                            latestHumanChangeAt === "unknown" &&
+                                            actionClass !== "observation"
+                                        ) {
+                                            expect(verdict.outcome).not.toBe("apply");
+                                        }
+                                        }
+        expect(checked).toBe(5_120); // 5 classes × 2^5 flags × 2 capability links × 4 orderings × 4 modes
+        // 2 currently authorized write classes × active mode ×
+        // {null, older} ordering = 4. Immediate preventive actions stay
+        // fail-closed until their explanation/reversal gate exists.
+        expect(applies).toBe(4);
+    });
+
+    it("a mismatched capability refuses regardless of enablement (D53)", () => {
+        for (const capabilityEnabled of [false, true]) {
+            expect(
+                evaluateWrite(requestFor("reversibleStateChange"), {
+                    mode: "active",
+                    capability: "somethingElse",
+                    capabilityEnabled,
+                    installationHasPermission: true,
+                    killSwitchActive: false,
+                    itemBlocked: false,
+                    preconditionHolds: true,
+                    latestHumanChangeAt: null,
+                }),
+            ).toMatchObject({ outcome: "refuse", code: "capabilityMismatch" });
+        }
     });
 });
 
@@ -96,6 +172,11 @@ describe("projection: total and exclusive over every meaning subset", () => {
                 expect(projection.kind).toBe("conflict");
                 if (projection.kind === "conflict") {
                     expect([...projection.positions].sort()).toEqual([...ownPositions].sort());
+                    expect([...projection.ignored].sort()).toEqual(
+                        meanings
+                            .filter((m) => !ownSet.has(m) && m !== "blocked")
+                            .sort(),
+                    );
                 }
             } else {
                 expect(projection.kind).toBe("position");

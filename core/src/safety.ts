@@ -9,7 +9,17 @@
  * milliseconds, without a GitHub App existing yet.
  */
 
-/** safety.md §1 — action classes, ordered by increasing risk. */
+/**
+ * safety.md §1 — action classes, ordered by increasing risk.
+ *
+ * `clockTriggeredDestructive` is the only class this module refuses to
+ * judge from `evaluateWrite` alone; it has its own entry point, because
+ * §3's warning and grace gates cannot be decided from a single request.
+ *
+ * `immediatePreventive` (safety.md §1's issue-lock row) remains a real
+ * design class, but fails closed until its request can prove the
+ * immediate explanation and simple maintainer reversal §1 requires.
+ */
 export type ActionClass =
     | "observation"
     | "humanFacingOutput"
@@ -31,9 +41,34 @@ export interface WriteRequest {
     readonly target: { readonly item: string; readonly change: string };
 }
 
+/**
+ * Ordering evidence for rule 5. A `Date` is the newest human change;
+ * `null` means the shell CHECKED and found none; `"unknown"` means it
+ * could not establish ordering at all.
+ *
+ * FINDING(safety-ordering-unknown), D51: the two cases used to collapse
+ * into `null`, so unavailable evidence read as "no conflict" and the
+ * write APPLIED. `manual-edits.md` §2 requires the opposite — "if
+ * reliable ordering evidence is unavailable, the safe default is to
+ * return a conflict and do nothing" — and D9 records that timestamp
+ * reliability is still open, so unknown ordering is an expected state,
+ * not a hypothetical.
+ */
+export type HumanChangeOrdering = Date | null | "unknown";
+
 /** The facts the platform rechecked immediately before the write. */
 export interface WriteContext {
     readonly mode: RepositoryMode;
+    /**
+     * The capability the enablement flag below refers to. Compared
+     * against `request.capability` — FINDING(safety-capability-link),
+     * D53: the request named a capability and the context asserted a
+     * bare boolean about "the" capability, with nothing tying them
+     * together, so a shell could answer the enablement question about a
+     * different capability entirely. Cheap to check, so no longer an
+     * attestation.
+     */
+    readonly capability: string;
     readonly capabilityEnabled: boolean;
     readonly installationHasPermission: boolean;
     /** Kill switches: global / installation / repository / capability (safety.md §5). */
@@ -49,12 +84,13 @@ export interface WriteContext {
     readonly preconditionHolds: boolean;
     /**
      * When the newest HUMAN change on the touched state was made,
-     * `null` if none. The core compares this against `causeObservedAt`
-     * (rule 5). The shell must exclude the causing event itself when
-     * computing it — a human edit that triggers the request is the
-     * cause, not a conflict.
+     * `null` if the shell checked and found none, `"unknown"` if it
+     * could not establish ordering. The core compares this against
+     * `causeObservedAt` (rule 5). The shell must exclude the causing
+     * event itself when computing it — a human edit that triggers the
+     * request is the cause, not a conflict.
      */
-    readonly latestHumanChangeAt: Date | null;
+    readonly latestHumanChangeAt: HumanChangeOrdering;
 }
 
 /**
@@ -64,15 +100,20 @@ export interface WriteContext {
  */
 export type SafetyRefusalCode =
     | "killSwitch"
+    | "wrongEntryPoint"
+    | "preventiveGateUnavailable"
+    | "capabilityMismatch"
     | "capabilityDisabled"
     | "permissionMissing"
     | "itemBlocked"
     | "preconditionStale"
     | "newerHumanChange"
+    | "humanOrderingUnknown"
     | "invalidTimestamp"
     | "modeDisabled"
     | "wrongActionClass"
     | "noWarning"
+    | "warningRequestMismatch"
     | "invalidDestructivePlan"
     | "graceBelowFloor"
     | "graceRunning"
@@ -106,10 +147,10 @@ export type SafetyVerdict =
  * outcome (FINDING below); otherwise order decides which `code` is
  * reported, frozen by the tests.
  */
-export function evaluateWrite(
+function evaluatePreflight(
     request: WriteRequest,
     context: WriteContext,
-): SafetyVerdict {
+): SafetyVerdict | null {
     /**
      * FINDING(safety-killswitch-observations), D39: checked before the
      * observation short-circuit — an active kill switch refuses even
@@ -122,6 +163,20 @@ export function evaluateWrite(
             reason: "a kill switch is active",
         };
     }
+    if (request.capability !== context.capability) {
+        return {
+            outcome: "refuse",
+            code: "capabilityMismatch",
+            reason: `the request is from "${request.capability}" but the rechecked context describes "${context.capability}"`,
+        };
+    }
+    return null;
+}
+
+function evaluateGeneralRulesAfterPreflight(
+    request: WriteRequest,
+    context: WriteContext,
+): SafetyVerdict {
     if (request.actionClass === "observation") {
         // Observations need no write permission and are always recordable.
         return {
@@ -156,6 +211,19 @@ export function evaluateWrite(
             outcome: "refuse",
             code: "preconditionStale",
             reason: "the rechecked precondition no longer holds (rule 4)",
+        };
+    }
+    /**
+     * FINDING(safety-ordering-unknown), D51: unestablished ordering is a
+     * conflict, never an absence — `manual-edits.md` §2's safe default.
+     * Checked before the comparison below, because there is nothing to
+     * compare against.
+     */
+    if (context.latestHumanChangeAt === "unknown") {
+        return {
+            outcome: "refuse",
+            code: "humanOrderingUnknown",
+            reason: "ordering evidence for the newest human change is unavailable; the safe default is a conflict (manual-edits.md §2)",
         };
     }
     if (
@@ -200,17 +268,114 @@ export function evaluateWrite(
     return { outcome: "apply" };
 }
 
+/**
+ * The public entry point for every action class EXCEPT
+ * `clockTriggeredDestructive`.
+ *
+ * FINDING(safety-destructive-entry-point), D52: this used to accept a
+ * destructive request and answer `apply`, so §3's warning and grace
+ * gates were enforced only by the caller happening to choose
+ * `evaluateDestructive`. The module's headline claim — a destructive
+ * action cannot fire without a recorded warning and an elapsed grace
+ * period — was therefore a calling convention, not a property. Refusing
+ * here makes the wrong entry point a verdict rather than a bypass, in
+ * the same spirit as `ids.ts` making a numeric delivery id a compile
+ * error.
+ */
+export function evaluateWrite(
+    request: WriteRequest,
+    context: WriteContext,
+): SafetyVerdict {
+    const preflight = evaluatePreflight(request, context);
+    if (preflight !== null) return preflight;
+    if (request.actionClass === "clockTriggeredDestructive") {
+        return {
+            outcome: "refuse",
+            code: "wrongEntryPoint",
+            reason: "a clock-triggered destructive action must be evaluated by evaluateDestructive, which alone enforces the §3 warning and grace gates",
+        };
+    }
+    if (request.actionClass === "immediatePreventive") {
+        return {
+            outcome: "refuse",
+            code: "preventiveGateUnavailable",
+            reason: "immediate preventive actions are disabled until the request proves an immediate explanation and a simple maintainer reversal (safety.md §1)",
+        };
+    }
+    return evaluateGeneralRulesAfterPreflight(request, context);
+}
+
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
 
 /**
  * A recorded warning, the precondition of every destructive action:
  * "a clock-triggered action never occurs on its first stale observation."
  */
-export interface DestructiveWarning {
+const DESTRUCTIVE_WARNING_BRAND: unique symbol = Symbol("DestructiveWarning");
+
+interface DestructiveRequestSnapshot {
+    readonly actionClass: ActionClass;
+    readonly capability: string;
+    readonly causeObservedAtMs: number;
+    readonly cause: string;
+    readonly item: string;
+    readonly change: string;
+}
+
+export interface DestructiveWarningInput {
+    readonly request: WriteRequest;
     readonly warnedAt: Date;
     readonly gracePeriodDays: number;
+    readonly earliestActionAt: Date;
+    readonly cancelledBy: string;
+    readonly reversesWith: string;
+}
+
+export interface DestructiveWarning {
+    /**
+     * FINDING(safety-warning-binding), D60: a warning is authority for
+     * one request, not a reusable timestamp. The immutable request
+     * snapshot prevents warning reuse across capabilities, items,
+     * changes, or causal observations.
+     */
+    /** Only `createDestructiveWarning` can construct a typed warning. */
+    readonly [DESTRUCTIVE_WARNING_BRAND]: true;
+    /** Copied primitives, never a reference to the caller's request. */
+    readonly requestSnapshot: DestructiveRequestSnapshot;
+    readonly warnedAtMs: number;
+    readonly gracePeriodDays: number;
+    /** Stated in the warning; may be later than the configured grace floor. */
+    readonly earliestActionAtMs: number;
     /** What cancels the plan, stated in the warning (safety.md §3). */
     readonly cancelledBy: string;
+    /** How a maintainer reverses the action after it occurs. */
+    readonly reversesWith: string;
+}
+
+/**
+ * Capture authority at warning time. Numeric timestamps and copied strings
+ * avoid aliases to mutable request targets and mutable Date internal state.
+ */
+export function createDestructiveWarning(
+    input: DestructiveWarningInput,
+): DestructiveWarning {
+    const requestSnapshot: DestructiveRequestSnapshot = Object.freeze({
+        actionClass: input.request.actionClass,
+        capability: input.request.capability,
+        causeObservedAtMs: input.request.causeObservedAt.getTime(),
+        cause: input.request.cause,
+        item: input.request.target.item,
+        change: input.request.target.change,
+    });
+    return Object.freeze({
+        [DESTRUCTIVE_WARNING_BRAND]: true as const,
+        requestSnapshot,
+        warnedAtMs: input.warnedAt.getTime(),
+        gracePeriodDays: input.gracePeriodDays,
+        earliestActionAtMs: input.earliestActionAt.getTime(),
+        cancelledBy: input.cancelledBy,
+        reversesWith: input.reversesWith,
+    });
 }
 
 export interface DestructivePlan {
@@ -231,12 +396,36 @@ export const MIN_GRACE_DAYS = 1;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function warningMatchesRequest(
+    warned: DestructiveRequestSnapshot,
+    requested: WriteRequest,
+): boolean {
+    return (
+        warned.actionClass === requested.actionClass &&
+        warned.capability === requested.capability &&
+        warned.causeObservedAtMs === requested.causeObservedAt.getTime() &&
+        warned.cause === requested.cause &&
+        warned.item === requested.target.item &&
+        warned.change === requested.target.change
+    );
+}
+
 /** safety.md §3 — every condition the executor confirms before acting. */
 export function evaluateDestructive(
     plan: DestructivePlan,
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
+    /**
+     * FINDING(safety-killswitch-order), D52: the kill switch used to be
+     * reached only via the general rules at the very END of this
+     * function, so an operator who had pulled the emergency brake was
+     * told "no recorded warning" instead. The outcome was always a
+     * refusal, but D39 freezes the verdict CODES as contract and claims
+     * kill-switch-first, so the reported code contradicted the register.
+     */
+    const preflight = evaluatePreflight(plan.request, context);
+    if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
         return {
             outcome: "refuse",
@@ -251,9 +440,20 @@ export function evaluateDestructive(
             reason: "no recorded warning — a destructive action never occurs on first observation (§3)",
         };
     }
+    if (!warningMatchesRequest(plan.warning.requestSnapshot, plan.request)) {
+        return {
+            outcome: "refuse",
+            code: "warningRequestMismatch",
+            reason: "the recorded warning does not authorize this exact capability, target, change, and causal observation",
+        };
+    }
     if (
         !Number.isFinite(plan.warning.gracePeriodDays) ||
-        !Number.isFinite(plan.warning.warnedAt.getTime()) ||
+        !Number.isFinite(plan.warning.warnedAtMs) ||
+        !Number.isFinite(plan.warning.earliestActionAtMs) ||
+        !Number.isFinite(plan.warning.requestSnapshot.causeObservedAtMs) ||
+        plan.warning.cancelledBy.trim() === "" ||
+        plan.warning.reversesWith.trim() === "" ||
         !Number.isFinite(now.getTime())
     ) {
         return {
@@ -269,8 +469,20 @@ export function evaluateDestructive(
             reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (§4)`,
         };
     }
-    const elapsedMs = now.getTime() - plan.warning.warnedAt.getTime();
-    if (elapsedMs < plan.warning.gracePeriodDays * DAY_MS) {
+    const minimumActionAt =
+        plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
+    if (
+        plan.warning.warnedAtMs <
+            plan.warning.requestSnapshot.causeObservedAtMs ||
+        plan.warning.earliestActionAtMs < minimumActionAt
+    ) {
+        return {
+            outcome: "refuse",
+            code: "invalidDestructivePlan",
+            reason: "the warning predates its observation or states an action time before the full grace period",
+        };
+    }
+    if (now.getTime() < plan.warning.earliestActionAtMs) {
         return {
             outcome: "refuse",
             code: "graceRunning",
@@ -284,6 +496,8 @@ export function evaluateDestructive(
             reason: "the affected person provided qualifying activity during the grace period (§3)",
         };
     }
-    // All destructive-specific gates passed; the general write rules decide.
-    return evaluateWrite(plan.request, context);
+    // All destructive-specific gates passed; the general write rules
+    // decide. Calls the shared internal path, not the public
+    // `evaluateWrite`, which now refuses this action class outright (D52).
+    return evaluateGeneralRulesAfterPreflight(plan.request, context);
 }

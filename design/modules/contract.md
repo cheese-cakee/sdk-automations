@@ -29,7 +29,12 @@ interface CapabilityDeclaration {
 ```
 
 The declaration must be available to configuration validation, permission diagnostics, test generation, and
-operator reporting. A capability cannot request an undeclared resolver or intent.
+operator reporting. A capability cannot request an undeclared resolver or intent. An intent may require any
+grant the capability declares, whether repository- or organization-scoped (D57).
+
+The registry separates reporting from activation: `describe` returns only a capability's name and retirement
+status, while `get` is the sole declaration lookup and refuses to return a retired capability. Report-only
+data therefore cannot be mistaken for an activatable declaration (D58).
 
 > Implemented (declaration layer only) in `core/src/contract.ts`, 2026-07-23, with two deliberate
 > divergences from the sketch above, both driven by stage-three evidence: `intents` upgraded from a name
