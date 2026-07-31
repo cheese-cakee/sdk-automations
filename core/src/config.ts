@@ -92,7 +92,9 @@ export interface ParseConfigOptions {
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
+    if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+    const prototype = Object.getPrototypeOf(v);
+    return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -145,7 +147,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
      * safe one, but silently interpreting malformed input is the exact
      * pattern §2.7 and D38 reject everywhere else in this file.
      */
-    const mode = "mode" in raw ? raw.mode : "observe";
+    const mode = Object.hasOwn(raw, "mode") ? raw.mode : "observe";
     if (!REPOSITORY_MODES.includes(mode as RepositoryMode)) {
         errors.push(`mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`);
     }

@@ -264,4 +264,10 @@ describe("audit findings, pinned (D55-D56)", () => {
         const result = parseConfig({ schemaVersion: 1, mode }, { knownCapabilities: [] });
         expect(result.ok).toBe(false);
     });
+
+    it("rejects inherited configuration properties instead of activating them", () => {
+        const raw = Object.assign(Object.create({ mode: "active" }), { schemaVersion: 1 });
+        const result = parseConfig(raw, { knownCapabilities: [] });
+        expect(result).toEqual({ ok: false, errors: ["configuration must be a mapping"] });
+    });
 });

@@ -138,8 +138,8 @@ code as its evidence:
   present but empty one is an error.
 - `FINDING(contract-intent-org-permissions)` → **D57** — an intent may
   require any grant its capability declares, org-scoped included.
-- `FINDING(contract-retired-enforcement)` → **D58** — `getActive` is
-  the activation path; `get` remains the reporting path.
+- `FINDING(contract-retired-enforcement)` → **D58** — `get` is the
+  fail-closed activation lookup; `describe` returns report-only metadata.
 - `FINDING(observe-conflict-context)` → **D59** — a conflict verdict
   carries `blocked` and `closedBy`, so a report can say whether it
   matters.

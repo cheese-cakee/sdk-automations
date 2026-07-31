@@ -148,10 +148,10 @@ export type SafetyVerdict =
  * outcome (FINDING below); otherwise order decides which `code` is
  * reported, frozen by the tests.
  */
-function evaluateGeneralRules(
+function evaluatePreflight(
     request: WriteRequest,
     context: WriteContext,
-): SafetyVerdict {
+): SafetyVerdict | null {
     /**
      * FINDING(safety-killswitch-observations), D39: checked before the
      * observation short-circuit — an active kill switch refuses even
@@ -171,6 +171,13 @@ function evaluateGeneralRules(
             reason: `the request is from "${request.capability}" but the rechecked context describes "${context.capability}"`,
         };
     }
+    return null;
+}
+
+function evaluateGeneralRulesAfterPreflight(
+    request: WriteRequest,
+    context: WriteContext,
+): SafetyVerdict {
     if (request.actionClass === "observation") {
         // Observations need no write permission and are always recordable.
         return {
@@ -280,6 +287,8 @@ export function evaluateWrite(
     request: WriteRequest,
     context: WriteContext,
 ): SafetyVerdict {
+    const preflight = evaluatePreflight(request, context);
+    if (preflight !== null) return preflight;
     if (request.actionClass === "clockTriggeredDestructive") {
         return {
             outcome: "refuse",
@@ -287,7 +296,7 @@ export function evaluateWrite(
             reason: "a clock-triggered destructive action must be evaluated by evaluateDestructive, which alone enforces the §3 warning and grace gates",
         };
     }
-    return evaluateGeneralRules(request, context);
+    return evaluateGeneralRulesAfterPreflight(request, context);
 }
 
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
@@ -329,19 +338,14 @@ export function evaluateDestructive(
 ): SafetyVerdict {
     /**
      * FINDING(safety-killswitch-order), D52: the kill switch used to be
-     * reached only via `evaluateGeneralRules` at the very END of this
+     * reached only via the general rules at the very END of this
      * function, so an operator who had pulled the emergency brake was
      * told "no recorded warning" instead. The outcome was always a
      * refusal, but D39 freezes the verdict CODES as contract and claims
      * kill-switch-first, so the reported code contradicted the register.
      */
-    if (context.killSwitchActive) {
-        return {
-            outcome: "refuse",
-            code: "killSwitch",
-            reason: "a kill switch is active",
-        };
-    }
+    const preflight = evaluatePreflight(plan.request, context);
+    if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
         return {
             outcome: "refuse",
@@ -392,5 +396,5 @@ export function evaluateDestructive(
     // All destructive-specific gates passed; the general write rules
     // decide. Calls the shared internal path, not the public
     // `evaluateWrite`, which now refuses this action class outright (D52).
-    return evaluateGeneralRules(plan.request, context);
+    return evaluateGeneralRulesAfterPreflight(plan.request, context);
 }

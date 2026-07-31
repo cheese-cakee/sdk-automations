@@ -168,23 +168,33 @@ export interface CapabilityRegistry {
     /** Names that may actually activate — retired ones excluded. */
     readonly activeNames: readonly string[];
     /**
-     * Every declaration, retired included — for the effective-config
-     * report, which must NAME a retired capability rather than pretend
-     * it never existed. Not an activation path: use `getActive`.
+     * Report-only metadata for every declaration, retired included.
+     * Deliberately omits triggers, intents, and permissions so this
+     * value cannot be mistaken for an activatable declaration.
      */
-    get(name: string): CapabilityDeclaration | undefined;
+    describe(name: string): CapabilityDescriptor | undefined;
     /**
-     * The activation path: `undefined` for a retired or unknown name.
+     * The only declaration lookup: `undefined` for a retired or unknown
+     * name. Its return type cannot carry `retired: true`.
      *
      * FINDING(contract-retired-enforcement), D58: the tombstone rule
      * ("a retired capability's name stays valid but it never activates")
      * was documentation only — `activeNames` existed but nothing obliged
-     * a caller to consult it, and `get` handed back a retired
-     * declaration ready to run. Now the two readings have two functions,
-     * so reaching for the wrong one is visible at the call site.
+     * a caller to consult it, and `get` handed back a retired declaration
+     * ready to run. Reporting now receives metadata only; executable
+     * declaration lookup is fail-closed.
      */
-    getActive(name: string): CapabilityDeclaration | undefined;
+    get(name: string): ActiveCapabilityDeclaration | undefined;
 }
+
+export interface CapabilityDescriptor {
+    readonly name: string;
+    readonly retired: boolean;
+}
+
+export type ActiveCapabilityDeclaration = CapabilityDeclaration & {
+    readonly retired?: false;
+};
 
 export type RegistryResult =
     | { readonly ok: true; readonly registry: CapabilityRegistry }
@@ -209,10 +219,17 @@ export function createRegistry(declarations: readonly CapabilityDeclaration[]): 
         registry: {
             names: declarations.map((d) => d.name),
             activeNames: declarations.filter((d) => d.retired !== true).map((d) => d.name),
-            get: (name) => byName.get(name),
-            getActive: (name) => {
+            describe: (name) => {
                 const found = byName.get(name);
-                return found?.retired === true ? undefined : found;
+                return found === undefined
+                    ? undefined
+                    : { name: found.name, retired: found.retired === true };
+            },
+            get: (name) => {
+                const found = byName.get(name);
+                return found?.retired === true
+                    ? undefined
+                    : found as ActiveCapabilityDeclaration | undefined;
             },
         },
     };

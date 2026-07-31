@@ -2,7 +2,8 @@
  * Exhaustive invariant sweeps — where the other suites check examples,
  * these enumerate the full input space and assert the PROPERTY:
  *  - `apply` happens exactly when every safety rule passes, swept over
- *    EVERY action class as well as every context (2,560 combos);
+ *    EVERY action class and capability-link state as well as every
+ *    remaining context dimension (5,120 combos);
  *  - the projection is total and exclusive over all meaning subsets;
  *  - retryAdvice always terminates in bounded advice.
  */
@@ -58,7 +59,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
      * missing one was exactly where `clockTriggeredDestructive` slipped
      * through `evaluateWrite` and answered `apply`.
      */
-    it("2,560 (class × context) combinations: apply exactly when nothing refuses and mode is active", () => {
+    it("5,120 (class × context) combinations: apply exactly when nothing refuses and mode is active", () => {
         let applies = 0;
         let checked = 0;
         for (const actionClass of ACTION_CLASSES)
@@ -67,11 +68,12 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                     for (const installationHasPermission of bools)
                         for (const itemBlocked of bools)
                             for (const preconditionHolds of bools)
-                                for (const latestHumanChangeAt of humanChanges)
-                                    for (const mode of REPOSITORY_MODES) {
+                                for (const capabilityMatches of bools)
+                                    for (const latestHumanChangeAt of humanChanges)
+                                        for (const mode of REPOSITORY_MODES) {
                                         const context: WriteContext = {
                                             mode,
-                                            capability: CAPABILITY,
+                                            capability: capabilityMatches ? CAPABILITY : "somethingElse",
                                             capabilityEnabled,
                                             installationHasPermission,
                                             killSwitchActive,
@@ -87,9 +89,32 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         }
                                         if (verdict.outcome === "apply") applies += 1;
 
+                                        const actionMayApply =
+                                            actionClass !== "observation" &&
+                                            actionClass !== "clockTriggeredDestructive";
+                                        const humanOrderingAllowsWrite =
+                                            latestHumanChangeAt === null ||
+                                            (latestHumanChangeAt !== "unknown" &&
+                                                latestHumanChangeAt.getTime() < CAUSE_AT.getTime());
+                                        const everyRulePasses =
+                                            actionMayApply &&
+                                            !killSwitchActive &&
+                                            capabilityMatches &&
+                                            capabilityEnabled &&
+                                            installationHasPermission &&
+                                            !itemBlocked &&
+                                            preconditionHolds &&
+                                            humanOrderingAllowsWrite &&
+                                            mode === "active";
+                                        expect(verdict.outcome === "apply").toBe(everyRulePasses);
+
                                         // A destructive request can NEVER apply here,
                                         // whatever the context (D52).
-                                        if (actionClass === "clockTriggeredDestructive") {
+                                        if (
+                                            actionClass === "clockTriggeredDestructive" &&
+                                            !killSwitchActive &&
+                                            capabilityMatches
+                                        ) {
                                             expect(verdict).toMatchObject({
                                                 outcome: "refuse",
                                                 code: "wrongEntryPoint",
@@ -102,8 +127,8 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         ) {
                                             expect(verdict.outcome).not.toBe("apply");
                                         }
-                                    }
-        expect(checked).toBe(2_560); // 5 classes × 2^5 flags × 4 orderings × 4 modes
+                                        }
+        expect(checked).toBe(5_120); // 5 classes × 2^5 flags × 2 capability links × 4 orderings × 4 modes
         // 3 non-observation, non-destructive classes × active mode ×
         // {null, older} ordering = 6.
         expect(applies).toBe(6);

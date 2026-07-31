@@ -205,6 +205,23 @@ describe("audit findings, pinned (D51-D53)", () => {
             ),
         ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
     });
+
+    it("a destructive capability mismatch is reported before plan policy", () => {
+        expect(
+            evaluateDestructive(
+                {
+                    request: request({
+                        actionClass: "clockTriggeredDestructive",
+                        capability: "inactivity",
+                    }),
+                    warning: null,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ capability: "assignment" }),
+                new Date("2026-08-01T00:00:00Z"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "capabilityMismatch" });
+    });
 });
 
 describe("evaluateDestructive (safety.md §3–§4)", () => {
@@ -342,7 +359,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             evaluateDestructive(destructive(), dContext(), duringGrace),
             evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
             evaluateDestructive({ ...plan, warning: { ...plan.warning!, gracePeriodDays: 0 } }, dContext(), afterGrace),
-            evaluateDestructive({ ...plan, request: request() }, dContext(), afterGrace),
+            evaluateDestructive({ ...plan, request: request() }, context(), afterGrace),
         ];
         for (const verdict of refusals) {
             expect(verdict.outcome).toBe("refuse");
@@ -364,7 +381,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         expect(
             evaluateDestructive(
                 { ...plan, request: request() },
-                dContext(),
+                context(),
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });

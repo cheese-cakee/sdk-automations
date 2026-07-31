@@ -26,7 +26,7 @@ const DOC = new URL("../../design/core/taxonomy.md", import.meta.url);
 
 /** Every ```mermaid fence in the document, body only. */
 function mermaidBlocks(markdown: string): string[] {
-    return [...markdown.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1] ?? "");
+    return [...markdown.matchAll(/```mermaid\r?\n([\s\S]*?)```/g)].map((m) => m[1] ?? "");
 }
 
 /**
@@ -35,7 +35,7 @@ function mermaidBlocks(markdown: string): string[] {
  */
 function edgePairs(diagram: string): Set<string> {
     const pairs = new Set<string>();
-    for (const line of diagram.split("\n")) {
+    for (const line of diagram.split(/\r?\n/)) {
         const match = /^\s*(\[\*\]|\w+)\s*-->\s*(\[\*\]|\w+)\s*(?::|$)/.exec(line);
         if (match === null) continue;
         const from = match[1] === "[*]" ? "null" : match[1];

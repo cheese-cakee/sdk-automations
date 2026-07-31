@@ -231,10 +231,10 @@ describe("audit findings, pinned (D57-D58)", () => {
 
     /**
      * D58 — the tombstone rule was documentation only: `get` returned a
-     * retired declaration ready to run. Now the reporting path and the
-     * activation path are different functions.
+     * retired declaration ready to run. Now reporting returns metadata
+     * only and the sole declaration lookup fails closed.
      */
-    it("getActive hides a retired capability while get still reports it", () => {
+    it("get hides a retired capability while describe reports metadata only", () => {
         const result = createRegistry([
             { ...base, name: "live", intents: [], permissions: { repository: [], organization: [] } },
             { ...base, name: "old", retired: true, intents: [], permissions: { repository: [], organization: [] } },
@@ -247,11 +247,12 @@ describe("audit findings, pinned (D57-D58)", () => {
         expect(registry.names).toContain("old");
         expect(registry.activeNames).not.toContain("old");
 
-        // The reporting path can still name it...
-        expect(registry.get("old")?.name).toBe("old");
-        // ...but the activation path refuses to hand it over.
-        expect(registry.getActive("old")).toBeUndefined();
-        expect(registry.getActive("live")?.name).toBe("live");
-        expect(registry.getActive("neverExisted")).toBeUndefined();
+        // The reporting path can name it but cannot expose an activatable declaration.
+        expect(registry.describe("old")).toEqual({ name: "old", retired: true });
+        expect(registry.describe("neverExisted")).toBeUndefined();
+        // The only declaration lookup refuses to hand a retired capability over.
+        expect(registry.get("old")).toBeUndefined();
+        expect(registry.get("live")?.name).toBe("live");
+        expect(registry.get("neverExisted")).toBeUndefined();
     });
 });
