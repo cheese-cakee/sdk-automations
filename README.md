@@ -7,10 +7,12 @@ handles GitHub access, configuration, safety, recovery, and audit information.
 The repository contains an audit of existing Hiero automation and drafts for the system that may replace
 it. The module documents are candidates based on that audit. They are not a committed product list. Three
 implementation packages exist as the parallel track the stage gates do not block (a pnpm workspace):
-[`core/`](core/README.md), the pure-logic state machine, safety engine, and validators;
-[`store/`](store/README.md), the owned operational store; and [`executor/`](executor/README.md), the
-recovery-loop engine with its automated crash grid — all pending stage-four ratification of the decisions
-they encode.
+[`core/`](core/README.md), the pure-logic state machine, safety engine, validators, and the capability
+runtime boundary; [`store/`](store/README.md), the owned operational store; and
+[`executor/`](executor/README.md), the recovery-loop engine with its automated crash grid and the
+intent-to-plan translator — all pending stage-four ratification of the decisions they encode. A fourth
+package, [`probes/`](probes/README.md), is **disposable**: three deliberately dissimilar capability stubs
+that load-test the seam between the other three and give P3 its first run in code.
 
 ## Reading order
 

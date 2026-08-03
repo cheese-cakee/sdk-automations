@@ -1,15 +1,9 @@
 {
-    "name": "@hiero-hackers/automation-executor",
+    "name": "@hiero-hackers/automation-probes",
     "version": "0.0.0",
     "private": true,
-    "description": "The recovery-loop executor decided by protocol 6.5 (design/operations/storage-decision.md): journal detects, GitHub resolves, idempotency class decides the retry. Candidate implementation pending stage-four ratification. Built alongside its crash-grid harness.",
+    "description": "DISPOSABLE. Three deliberately different capability stubs that exist to test the runtime boundary, the intent-to-plan seam, and P3 isolation — not to ship. Deleted when stage four names the first real capability. See README.md.",
     "type": "module",
-    "exports": {
-        ".": {
-            "types": "./src/index.ts",
-            "default": "./src/index.ts"
-        }
-    },
     "engines": {
         "node": ">=23.4"
     },
@@ -19,6 +13,7 @@
     },
     "dependencies": {
         "@hiero-hackers/automation-core": "workspace:*",
+        "@hiero-hackers/automation-executor": "workspace:*",
         "@hiero-hackers/automation-store": "workspace:*"
     },
     "devDependencies": {

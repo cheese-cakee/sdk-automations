@@ -19,6 +19,11 @@ close-out, the D46 gate on `active`), D29/D33 as encoded, and D40 at quarterly c
 D34, D35, D38, D39 — carried into the stage-two conversations via §7, plus D39's security-control
 sub-question (D22) and the formal stage-four close-out of the storage trio.
 
+**Amended 2026-08-03.** The sentence above is no longer complete: §2b adds twelve engineering rows
+(D61–D72) that postdate the adoption record and have never been reviewed. They are not maintainer taste
+— they are architecture, and two of them are safety rows — so they belong to the stage-four session, not
+the stage-two conversations. Only D69 reaches into §7, as a gate on the first-capability choice.
+
 ## 1. Scope
 
 Covered: the implementation-born hypotheses D28–D46, the audit-born workflow rows D47–D49 (added
@@ -28,11 +33,17 @@ selection, not on architecture review, and D50 plus D51–D53 and D55–D60, whi
 mechanical hardening carrying no maintainer choice. D54 (the unimplemented `immediatePreventive` gate) is
 covered in §4.
 
+The seam-born rows D61–D72 (added 2026-08-03) are covered, in §2b. They are listed separately from the
+2026-07-30 audit rows because they are not the same kind of thing: those were defect repairs inside
+`core/`, these are boundary decisions between packages, and two of them (D62, D64) change how the storage
+decision's retry and destructive rules are fed.
+
 Evidence base shared by every row: the stage-three experiment records (6.1–6.6, 2026-07-23), and the
-three implementation packages with 301 deterministic tests — including the exhaustive safety sweep,
-the projection enumeration, and the executor crash grid (every reachable perform crash, 64 scheduled
-two-point histories, and seeded multi-crash histories). The grid proves serialized crash-and-restart
-convergence under its consistent fake; it does not prove live lease takeover is safe.
+four implementation packages with 331 deterministic tests — including the exhaustive safety sweep,
+the projection enumeration, the executor crash grid (every reachable perform crash, 64 scheduled
+two-point histories, and seeded multi-crash histories), and the capability toggle matrix. The grid
+proves serialized crash-and-restart convergence under its consistent fake; it does not prove live
+lease takeover is safe.
 
 ## 2. Storage and recovery agenda
 
@@ -48,6 +59,44 @@ and interleaving suites.
 | D43 | The sweep API: `claimed_at`, `requeueStuck`, `openIntents`. | Accept the amendment, and **set the requeue threshold and retention windows** (`seen_delivery`, done journal rows). | Accept; propose requeue threshold = 2× lease; retention 90 days for both tables pending an audit-obligation check. |
 | D44 | `MAX_CALL_ATTEMPTS = 5` — a call re-sent five times surfaces to the operator. | Confirm the bound value. | Accept 5; any value ≥ 2 preserves the property, the exact number is operator taste. |
 | D46 | Exactly-once is proven **relative to a consistent read-back**; real GitHub reads lag writes. | Accept the stated precondition, and commission the stage-five staleness measurement (starting with list-comments after create-comment). | Accept; the row cannot ratify until the measurement exists — the ask today is agreeing it gates `active` mode. |
+
+## 2b. Capability-boundary and seam agenda
+
+**Venue:** the stage-four architecture review, alongside §2 — same session, because two of these rows
+change how the storage decision's retry rules are fed. **Evidence:** `core/src/runtime.ts`,
+`executor/src/planner.ts`, and the three disposable probe capabilities with their boundary, toggle-matrix,
+and composition suites (`probes/`, 29 tests).
+
+Numbered `2b` deliberately: the packet's later section numbers are referenced from `decisions.md` and
+`planning/stage-four-review-packet.md`, so renumbering would break citations for no gain.
+
+These rows come from a source the packet did not previously have — building the seam BETWEEN the
+finished packages rather than any one of them. Each package was individually correct and individually
+tested, which is exactly why these gaps were invisible until a capability decision was
+carried through to an effect for the first time.
+
+**Two of them are safety rows and should be read first (D62, D64).** Both are cases where the safety
+engine and the capability contract were written against each other and did not meet.
+
+| Row | Decision to confirm | The question for reviewers | Recommended answer |
+|---|---|---|---|
+| **D62** | The platform owns an operation's idempotency class; a capability's declaration is a redundant statement that must match, checked at registry build. | Accept that the catalogue, not the declaration, is authoritative? | **Accept.** The alternative is already demonstrated harm: a capability declaring `postManagedComment` as `idempotent` routes a lost response down the blind-retry path and reproduces 6.5's comment duplication. Fold `checkAgainstCatalogue` into the platform's registry build so no shipped declaration can skip it. |
+| **D64** | A destructive intent carries its own warning record; a warning on a non-destructive intent is an error. | Accept the warning riding on the intent rather than being fetched by the planner? | **Accept.** The capability decides an item is stale, so it must show its warning; a planner that looked the record up could pair a warning with an intent that was never about it. The reverse check matters more — a warning on a non-destructive intent reads as a grace period no gate will consult. |
+| D61 | Observations, resolvers, and intents are closed platform catalogues; capabilities choose from them and cannot extend them. | Is the catalogue the right closure point? This answers contract.md §9's first open question. | Accept. Per-capability intent shapes are unimplementable at the adapter, which would need an executor for a type it has never seen. A capability needing a new operation extends the catalogue by review — the intended cost, not a workaround. |
+| D63 | `ActionClass` enters through the intent, with a per-operation floor; stricter is allowed, laxer refused. | Confirm the floor value for each catalogue operation. | Accept the mechanism; the encoded floors are the weakest defensible reading, in the same spirit as `MIN_GRACE_DAYS`. Review is confirming numbers, not design. |
+| D65 | One derivation for `idempotencyKey`: capability, repository, item, operation, and the dated cause — deliberately not the desired payload. | Is the cause timestamp the right occasion boundary? | Accept. Flagged risk: a capability whose cause is not event-shaped (a sweep with no per-item event) may need a different occasion key. `inactivity` is the first candidate that would hit this. |
+| D66 | One intent produces one plan. | Accept independent plans over grouped ones? | Accept. Grouping can be added later; ungrouping a shared plan after the fact cannot. No candidate capability needs atomic multi-effect ordering. |
+| D67 | The reviewed configuration's mode is authoritative; a planner whose rechecked context disagrees refuses rather than picking a winner. | Accept refusal over silent override? | **Accept**, and make it a stage-five shell requirement: the context's mode is sourced from `parseConfig` output and nowhere else. Found by a failing test, not by reasoning — before the guard, a `dry-run` repository produced an `active` plan and every test passed. |
+| D68 | Dry-run and observe stop at planning, before a plan exists. | Accept that rule 10 is a planning decision, not an execution one? | Accept. A journalled plan for a write that will never be attempted becomes an open intent the recovery loop must resolve — manufactured operator work out of a mode whose promise is that nothing happens. |
+| D69 | The single declared idempotency class holds only while every operation is single-call. | No decision today — **a gate on §7's first-capability choice.** | If the ratified capability has any multi-call effect, resolve this before the effect is built: the class moves from the intent declaration onto the call, or plans retry under the wrong rule. |
+| D70 | P3 is now tested in code: all eight subsets of three dissimilar capabilities, with a negative control. | Does this discharge build-plan §12's post-November commitment? | Accept as discharging the *principle*; the post-November work becomes substituting the first ratified capability for its probe and re-running the matrix — a substitution, not a workstream. |
+| D71 | A capability sees which meanings are mapped, never the repository's label strings. | Is availability-only enough for a capability that wants to explain itself in the repository's own words? | Accept the projection. The managed comment is rendered by the platform, which does have the mapping — so the capability never needs the string. |
+
+| D72 | A destructive warning is rebuilt at act time from the stored warned cause, never from the current request. | Is plain-data persistence plus rebuild the intended reading of D60, or a weakening of it? | Accept as the intended reading. The brand is a within-process guarantee; the store is the trust boundary. Rebuilding from the current request would make D60's snapshot check compare a value with itself — the tempting fix and the one that voids the row. |
+
+**What this agenda does not settle.** Nothing here touches GitHub: the composition suite fakes the port
+with the same declared read-after-write kindness as the crash grid (D46), and its crash test restarts a
+dead process rather than racing a live one — so **D41 remains untouched and still `reopened`**.
 
 ## 3. Workflow-profile agenda
 
