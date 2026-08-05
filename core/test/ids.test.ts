@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     asDeliveryGuid,
     asDeliveryRecordId,
-} from "../src/ids.js";
+} from "../src/github/ids.js";
 
 describe("delivery identifier separation (experiment 6.2)", () => {
     it("accepts the X-GitHub-Delivery GUID used to deduplicate webhook deliveries", () => {

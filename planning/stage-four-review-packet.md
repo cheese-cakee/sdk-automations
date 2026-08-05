@@ -112,7 +112,7 @@ adapter must own, from 6.4:
   sweep cost then tracks changed issues only (this is the Q10 budget
   answer);
 - delivery identifiers use two branded opaque-string types
-  (`core/src/ids.ts`): `DeliveryGuid` for the `X-GitHub-Delivery`
+  (`core/src/github/ids.ts`): `DeliveryGuid` for the `X-GitHub-Delivery`
   deduplication key, and `DeliveryRecordId` for the numeric REST
   get/redeliver resource id. REST ids exceed 2^53, so numeric
   round-trips remain a compile-time and runtime rejection.
@@ -199,7 +199,7 @@ this packet was written:
   built, or the plan retries under the wrong rule. **Ask the call count
   as part of ranking**, not after ratification.
 
-The twelve boundary rows themselves (D61–D72) are architecture, not
+The thirteen boundary rows themselves (D61–D73) are architecture, not
 capability choice, and sit in
 [`ratification-packet.md`](../design/ratification-packet.md) §2b.
 
