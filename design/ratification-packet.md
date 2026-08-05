@@ -19,8 +19,8 @@ close-out, the D46 gate on `active`), D29/D33 as encoded, and D40 at quarterly c
 D34, D35, D38, D39 — carried into the stage-two conversations via §7, plus D39's security-control
 sub-question (D22) and the formal stage-four close-out of the storage trio.
 
-**Amended 2026-08-05.** The sentence above is no longer complete: §2b adds thirteen engineering rows
-(D61–D73) that postdate the adoption record and have never been reviewed. They are not maintainer taste
+**Amended 2026-08-05.** The sentence above is no longer complete: §2b and §2c add fifteen engineering rows
+(D61–D75) that postdate the adoption record and have never been reviewed. They are not maintainer taste
 — they are architecture, and two of them are safety rows — so they belong to the stage-four session, not
 the stage-two conversations. Only D69 reaches into §7, as a gate on the first-capability choice.
 
@@ -33,7 +33,8 @@ selection, not on architecture review, and D50 plus D51–D53 and D55–D60, whi
 mechanical hardening carrying no maintainer choice. D54 (the unimplemented `immediatePreventive` gate) is
 covered in §4.
 
-The seam-born rows D61–D73 (added 2026-08-05) are covered, in §2b. They are listed separately from the
+The seam-born rows D61–D73 (added 2026-08-05) are covered, in §2b; the cross-cutting simplification
+rows D73–D75 are covered in §2c. They are listed separately from the
 2026-07-30 audit rows because they are not the same kind of thing: those were defect repairs inside
 `core/`, these are boundary decisions between packages, and two of them (D62, D64) change how the storage
 decision's retry and destructive rules are fed.
@@ -54,11 +55,25 @@ and interleaving suites.
 | Row | Decision to confirm | The question for reviewers | Recommended answer |
 |---|---|---|---|
 | D1, D13, D24, D27, Q15 | Close the storage decision: four-table single-file SQLite store; GitHub keeps outcomes; markers are identity/receipt, not state. | Does the 6.5 evidence plus the automated crash grid satisfy §5's ratification rule? | Close all four as the storage decision states; record names and date. |
-| D41 | Claims are leases with atomic stale takeover; `release` on completion. | Accept lease semantics, and **set the lease duration** (must exceed the longest plausible effect). | Accept; propose 15 minutes as the starting lease, revisited when the first capability's longest effect is measured. |
+| D41 | Claims are leases with atomic stale takeover; `release` on completion. **Reframed 2026-08-05** — see the note below the table. | Accept lease semantics, accept the stated PRECONDITION, and agree that the row gates `active` mode. | Accept as a precondition, not a closure. 15 minutes remains the working lease, revisited when the first capability's longest effect is measured. |
 | D42 | Journal rows carry a durable `attempt` counter; `done` rows are immutable to `intent`. | Accept the one-column amendment to the decided schema? | Accept — it implements the grid's own "bounded history" cell. |
 | D43 | The sweep API: `claimed_at`, `requeueStuck`, `openIntents`. | Accept the amendment, and **set the requeue threshold and retention windows** (`seen_delivery`, done journal rows). | Accept; propose requeue threshold = 2× lease; retention 90 days for both tables pending an audit-obligation check. |
 | D44 | `MAX_CALL_ATTEMPTS = 5` — a call re-sent five times surfaces to the operator. | Confirm the bound value. | Accept 5; any value ≥ 2 preserves the property, the exact number is operator taste. |
 | D46 | Exactly-once is proven **relative to a consistent read-back**; real GitHub reads lag writes. | Accept the stated precondition, and commission the stage-five staleness measurement (starting with list-comments after create-comment). | Accept; the row cannot ratify until the measurement exists — the ask today is agreeing it gates `active` mode. |
+
+**D41, reframed (2026-08-05).** The row asks for "renewal and adapter deadlines shorter than the lease" and
+"takeover delayed beyond the maximum in-flight lifetime" — every one of those is a property of an adapter
+that does not exist, so the row cannot close at this review however long it is discussed. It is also not a
+blocker for the storage decision above: D41 concerns the executor's claim SEMANTICS, not the four-table
+schema, and the grid's crash-and-restart results are unaffected by it.
+
+The ask is therefore the same shape D46 already established and this project already accepted: **state the
+precondition, commission the measurement, gate `active` mode.** Exactly-once holds under single-worker
+execution; live overlap is fenced by a contract whose parameters are measured at stage five alongside the
+adapter; `observe` and `dry-run` are unaffected, because D68 stops those at planning and nothing is ever
+journalled. A deterministic overlapping-worker oracle remains required — built with the adapter it tests,
+rather than against numbers that would have to be invented today.
+
 
 ## 2b. Capability-boundary and seam agenda
 
@@ -99,6 +114,36 @@ engine and the capability contract were written against each other and did not m
 **What this agenda does not settle.** Nothing here touches GitHub: the composition suite fakes the port
 with the same declared read-after-write kindness as the crash grid (D46), and its crash test restarts a
 dead process rather than racing a live one — so **D41 remains untouched and still `reopened`**.
+
+## 2c. Core simplification agenda
+
+**Venue:** the stage-four architecture review, after §2 and §2b. **Evidence:** a cross-cutting read of
+`core/` on 2026-08-05, recorded as D73, D74 and D75.
+
+Three proposals that share one shape, and one reason for being asked NOW rather than after the review.
+
+The shape: each is a place where every individual choice is locally defensible and the aggregate costs
+something at every seam. None is a defect — the code is correct today. They are the difference between a
+package a maintainer can hold in their head and one they cannot.
+
+The reason for asking first: **two of them retire rows this same review is being asked to ratify.**
+Proposal 1 deletes D53's and D67's guards. Ratifying those guards and then unpicking them a month later
+wastes the review's own decision, so the choice belongs here, in front of the people making it.
+
+| Row | Proposal | The question for reviewers | Recommended answer |
+|---|---|---|---|
+| **D73** | Derive `WriteContext` from the parsed configuration and the declaration, instead of assembling it by hand. | Close the consent gap with a fifth comparison, or remove the class of gap entirely? | **Derive.** The same fact stored twice, free to disagree, has now been patched four times — D53 (capability name), D62 (idempotency class), D67 (mode), and D73, which was never patched at all: a shell can assert consent for a capability the reviewed configuration disables, and D53's check passes because the *names* match. Deriving retires two guards, two refusal codes, and makes the fourth state unrepresentable rather than merely checked. |
+| **D74** | One internal instant representation — epoch milliseconds — converted only at GitHub-in and SQLite-out. | Accept a single representation, and delete the store's defensive timestamp validator? | **Accept.** Three encodings cross one seam today (`Date`, `…Ms` numbers, canonical ISO strings), and the store validates format precisely because it cannot trust what it is handed. Milliseconds satisfy D60's immutability requirement by type instead of by convention. |
+| **D75** | One failure discriminant, and a machine-readable `code` on configuration errors. | Is prose-only configuration error reporting acceptable, given that D38 rests on the config report and the PR-time check? | **Not acceptable — add codes.** D38's fail-closed granularity was accepted *conditional on those two mitigations*, and both can currently only echo strings, because configuration errors carry no code to group, count or link by. Every other refusal in core has one. The prose stays prose: assert `reason` is present, never its wording. |
+
+**What a "no" costs, stated plainly.** Nothing breaks. The code is correct as it stands, and every row can
+be deferred to a later simplification pass. The only irreversible part is Proposal 1: if D53's and D67's
+guards are *ratified* rather than deferred, retiring them later reopens ratified rows, which §5 makes
+deliberately expensive. A reviewer who wants more time should defer those two rows rather than ratify them.
+
+**What none of these are.** They are not the capability ranking, they touch no maintainer policy, and they
+change no behaviour a repository could observe. A reviewer with no opinion can safely say "defer" to all
+three.
 
 ## 3. Workflow-profile agenda
 
