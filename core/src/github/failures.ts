@@ -67,6 +67,38 @@ export type FailureClass =
     /** 5xx and everything else worth one bounded retry. */
     | { readonly kind: "transient" };
 
+/**
+ * The PERISHABLE SURFACE — every place this module reads GitHub's prose.
+ *
+ * Two patterns, and D40's quarterly re-probe is entirely about these: the
+ * rest of this file is logic over status codes and headers, which do not
+ * reword themselves. They are lifted out of `classifyFailure` because the
+ * re-probe is a specific editing task — find the pattern, compare it against
+ * what GitHub says now, change it — and it should not require reading a
+ * classifier at nesting depth five to perform.
+ *
+ * `observed` is the text the pattern was written against. It is not
+ * decoration: `failures.test.ts` asserts every pattern still matches its own
+ * sample, so editing one without the other fails rather than drifting
+ * silently — which is the whole failure mode of `FINDING(failures-prose-snapshot)`.
+ */
+export const BODY_PATTERNS = {
+    secondaryRateLimit: {
+        pattern: /secondary rate limit/i,
+        observed:
+            "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+        probedAt: "2026-07-23",
+        experiment: "6.4",
+    },
+    installationSuspended: {
+        pattern: /installation is currently suspended/i,
+        observed:
+            "This installation is currently suspended. Please contact an organization owner.",
+        probedAt: "2026-07-23",
+        experiment: "6.1",
+    },
+} as const;
+
 export function classifyFailure(o: FailureObservation): FailureClass {
     const body = o.body;
     if (o.status === 401) {
@@ -84,7 +116,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (o.headers["x-ratelimit-remaining"] === "0") {
             return { kind: "primaryExhausted", resetAt: o.headers["x-ratelimit-reset"] };
         }
-        if (/secondary rate limit/i.test(body) || o.status === 429) {
+        if (BODY_PATTERNS.secondaryRateLimit.pattern.test(body) || o.status === 429) {
             const retryAfter = parseSecondsHeader(o.headers["retry-after"]);
             switch (retryAfter.kind) {
                 case "missing":
@@ -115,7 +147,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (accepted !== undefined) {
             return { kind: "permissionMissing", acceptedPermissions: accepted };
         }
-        if (/installation is currently suspended/i.test(body)) {
+        if (BODY_PATTERNS.installationSuspended.pattern.test(body)) {
             return { kind: "installationSuspended" };
         }
         // No observed shape matched — say so, carrying the evidence.
