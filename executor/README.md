@@ -11,6 +11,7 @@ tests are the design's own crash grid, automated.
 | Piece | Implements | Source of truth |
 |---|---|---|
 | `src/recovery.ts` | Async recovery flow: neverStarted / midSequence / sentUnknown → read-back → bounded retry; revision check; claim/release lifecycle; surfaced stops | storage-decision.md §"The recovery loop the grid decided"; `manual-edits.md` §9 (stale plans) |
+| `src/planner.ts` | The seam contract.md left unowned: capability intents → safety gate → `EffectPlan`. One intent, one plan; dry-run stops here rather than at the port | `design/modules/contract.md` §3, §5; D65–D69 |
 | `test/harness.ts` | The adversarial world: crash-by-invocation port, application-counting fake GitHub, restart-with-lease-takeover runner | protocol 6.5's kill-point method |
 | `test/crash-grid.test.ts` | Reachable perform crashes, 64 scheduled two-point histories, and seeded histories converge under a serialized, consistent fake; the test reports how many scheduled crashes actually fire | the 6.5 sandbox grid, bounded local evidence |
 | `test/recovery.test.ts` | Each flowchart branch; the surfaced stops; the reproduced 6.5 blind-retry duplication the read-back exists to prevent | storage-decision.md; D41–D43 |

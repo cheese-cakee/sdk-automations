@@ -226,12 +226,19 @@ The following work requires later approval and is not promised by November.
 - The roadmap does not permit two automation systems to write the same managed state during migration.
 - The roadmap does not permit destructive or cross-repository writes without a separate review and rollback
   rehearsal.
-- The roadmap does not test the capability-boundary principle (register P3). One capability cannot violate
-  "a capability does not call or import another capability", so the November result proves the platform and
-  the safety gates, not the decoupling. The first work after November is therefore defined now: a second
-  capability plus a toggle-matrix run — each capability alone, then both together — with the assertion that
-  enabling or disabling one does not change the behavior of the other. P3 stays a supported principle on
-  paper and an untested claim in code until that run passes.
+- The roadmap does not test the capability-boundary principle (register P3) *with shipped capabilities*.
+  One capability cannot violate "a capability does not call or import another capability", so the November
+  result proves the platform and the safety gates, not the decoupling. The first work after November is
+  therefore defined now: a second capability plus a toggle-matrix run — each capability alone, then both
+  together — with the assertion that enabling or disabling one does not change the behavior of the other.
+
+  **Amended 2026-08-03 (D70).** The reasoning above is right about the arithmetic and wrong about the
+  prerequisite. P3 is a *structural* property, so disposable stubs test it exactly as well as shipped
+  capabilities would, and the run no longer waits for November: `probes/test/toggle-matrix.test.ts` covers
+  all eight subsets of three deliberately dissimilar capability stubs (D70). P3 is now a tested claim in code
+  against the boundary in `core/src/runtime.ts`; what remains for after November is re-running the matrix
+  with the first ratified capability substituted for its probe, which is a substitution rather than a new
+  workstream.
 
 ## 13. Parallel work the gates do not block
 

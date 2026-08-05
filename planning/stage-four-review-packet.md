@@ -180,6 +180,29 @@ whichever candidate wins:
   chose. Implemented in `core/src/contract.ts` (`retired`,
   `activeNames`).
 
+**Two further constraints on the winner (added 2026-08-03).** The
+capability runtime boundary now exists (`core/src/runtime.ts`), which
+gives the ranking conversation a feasibility check it did not have when
+this packet was written:
+
+- **Catalogue fit.** Observations, resolvers, and intent operations are
+  a closed platform vocabulary (D61). A ranked capability whose triggers
+  or effects fall outside it extends the catalogue by review — a real
+  and now *visible* cost, to be priced before the choice, not after.
+  `review-routing` is the known case: it needs both new catalogue
+  entries and the `pull_request_review` subscription 6.6 found missing.
+- **Call count per effect (D69).** The declared idempotency class is
+  per-intent while the executor's is per-call, and a multi-call plan
+  mixes them. Every catalogue operation is single-call today, so the
+  question is dormant — but if the winner has any effect needing more
+  than one GitHub call, D69 must be resolved before that effect is
+  built, or the plan retries under the wrong rule. **Ask the call count
+  as part of ranking**, not after ratification.
+
+The twelve boundary rows themselves (D61–D72) are architecture, not
+capability choice, and sit in
+[`ratification-packet.md`](../design/ratification-packet.md) §2b.
+
 ## Known gaps the review should see
 
 Recorded so ratification is made with eyes open; none blocks the gate:
