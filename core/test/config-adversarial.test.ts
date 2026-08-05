@@ -8,7 +8,7 @@
  *    both pollutes the prototype and loses the entry).
  */
 import { describe, it, expect } from "vitest";
-import { parseConfig } from "../src/config.js";
+import { parseConfig } from "../src/config/index.js";
 
 describe("hostile keys (the __proto__ hole)", () => {
     it("rejects a capability named __proto__ instead of losing it after validation", () => {

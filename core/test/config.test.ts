@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseConfig, NO_CONFIG } from "../src/config.js";
+import { parseConfig, NO_CONFIG } from "../src/config/index.js";
 
 describe("parseConfig (design/config/schema.md)", () => {
     it("no configuration yields the safe default — observe mode, nothing enabled (§2.2)", () => {

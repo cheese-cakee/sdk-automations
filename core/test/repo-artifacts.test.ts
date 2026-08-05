@@ -272,6 +272,6 @@ describe("documents cite files that exist", () => {
         const found = [...fake.matchAll(PATH)].map((m) => m[1]);
         expect(found).toEqual(["core/src/nonexistent.ts"]);
         expect(existsSync(join(repoRoot, found[0]!))).toBe(false);
-        expect(existsSync(join(repoRoot, "core/src/config.ts"))).toBe(true);
+        expect(existsSync(join(repoRoot, "core/src/index.ts"))).toBe(true);
     });
 });

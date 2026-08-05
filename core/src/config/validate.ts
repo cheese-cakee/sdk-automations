@@ -1,124 +1,27 @@
 /**
- * Repository configuration validation as pure logic —
- * `design/config/schema.md` §2–§4 as a strict, dependency-free validator.
+ * The section validators — one per thing a configuration document has.
  *
- * The input is a plain object (the YAML parse happens in the app shell,
- * which owns dependencies); this module owns the rules: unknown keys are
- * rejected (schema.md §2.7), everything defaults to off (§2.4), invalid
- * configuration fails closed (§2.6). Failing closed here means returning
- * errors and NO configuration object — there is no partially-valid config.
+ * Every validator is total and independent: none throws, none short-circuits
+ * another, and each returns the value it contributes alongside the problems
+ * it found. A maintainer with three mistakes is told about all three rather
+ * than made to fix them one push at a time, which is the humane half of
+ * D38's whole-file fail-closed rule.
  */
 
-import { CAPABILITY_NAME_PATTERN } from "./contract.js";
+import { CAPABILITY_NAME_PATTERN } from "../contract.js";
+import {
+    MAPPABLE_MEANINGS,
+    REPOSITORY_MODES,
+    type CapabilityConfig,
+    type MappableMeaning,
+    cleanRecord,
+    type RepositoryMode,
+} from "./schema.js";
 
-export const REPOSITORY_MODES = [
-    "disabled",
-    "observe",
-    "dry-run",
-    "active",
-] as const;
-
-/**
- * Derived, never restated. `MAPPABLE_MEANINGS` two declarations below has
- * always done this; the mode did not, and kept its union hand-written in
- * `safety.ts` — the same four strings in two files with nothing linking
- * them, and a `value as RepositoryMode` cast in this file quietly covering
- * the seam. Adding a mode to the array alone would have let `parseConfig`
- * accept a value the safety engine's type had never heard of.
- *
- * FINDING(config-mode-union-derived), D76 — the fifth sighting of one fact
- * stored twice, after D53, D62, D67 and D73.
- */
-export type RepositoryMode = (typeof REPOSITORY_MODES)[number];
-
-/** The meanings a repository may map — design/core/taxonomy.md §2. */
-export const MAPPABLE_MEANINGS = [
-    "awaitingTriage",
-    "ready",
-    "inProgress",
-    "needsReview",
-    "needsRevision",
-    "readyToMerge",
-    "blocked",
-] as const;
-export type MappableMeaning = (typeof MAPPABLE_MEANINGS)[number];
-
-export interface CapabilityConfig {
-    readonly enabled: boolean;
-    /** Opaque to the platform; validated by the capability's own contract. */
-    readonly settings: Readonly<Record<string, unknown>>;
-}
-
-export interface RepositoryConfig {
-    readonly schemaVersion: 1;
-    readonly mode: RepositoryMode;
-    readonly capabilities: Readonly<Record<string, CapabilityConfig>>;
-    readonly mappings: {
-        readonly labels: Partial<Readonly<Record<MappableMeaning, string>>>;
-    };
-    readonly principals: Readonly<Record<string, string>>;
-}
-
-/** schema.md §2.2 — no configuration causes no workflow-changing writes. */
-export const NO_CONFIG: RepositoryConfig = {
-    schemaVersion: 1,
-    mode: "observe",
-    capabilities: cleanRecord([]),
-    mappings: { labels: {} },
-    principals: cleanRecord([]),
-};
-
-/**
- * FINDING(config-no-config-mode): schema.md §2.2 says "no configuration
- * causes no workflow-changing writes" but does not say which *mode* an
- * unconfigured repository is in. `observe` (chosen here) satisfies the rule
- * — observe never writes — while still letting operators see findings;
- * `disabled` is the stricter reading. Register decision needed; the
- * constant above makes today's assumption explicit and greppable.
- */
-
-export type ConfigResult =
-    | { readonly ok: true; readonly config: RepositoryConfig }
-    | { readonly ok: false; readonly errors: readonly string[] };
-
-export interface ParseConfigOptions {
-    /**
-     * The platform's registry of shipped capability names. An *enabled*
-     * capability outside the registry is a validation error;
-     * a disabled unknown capability stays dormant (present, inert), so
-     * removing a capability from the platform does not break configs that
-     * still mention it disabled.
-     *
-     * FINDING(config-capability-registry-gap), experiment 6.3: without
-     * this list a configuration enabling a misspelled or unshipped
-     * capability passes validation silently — the maintainer believes a
-     * behavior is on that does not exist. Callers that have a registry
-     * REQUIRED: an absent registry used to skip the check entirely, and
-     * then (2026-07-28) came to mean "no capability is known", which
-     * rejects every enabled capability. Both readings are reachable by
-     * forgetting an optional argument, so the argument is no longer
-     * optional — a caller with no registry says so with `[]`, and the
-     * fail-closed result is then a choice rather than an omission.
-     */
-    readonly knownCapabilities: readonly string[];
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
     if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
     const prototype = Object.getPrototypeOf(v);
     return prototype === Object.prototype || prototype === null;
-}
-
-/**
- * A null-prototype record: absent-key lookups are always `undefined`.
- * With a normal prototype, `capabilities["constructor"]` would be
- * truthy for an unconfigured name — inherited Object.prototype
- * members must never masquerade as configuration.
- */
-function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
-    const record: Record<string, V> = Object.create(null);
-    for (const [key, value] of entries) record[key] = value;
-    return record;
 }
 
 const TOP_LEVEL_KEYS = new Set([
@@ -135,13 +38,13 @@ const TOP_LEVEL_KEYS = new Set([
  * other — a maintainer with three mistakes should be told about all
  * three, not made to fix them one push at a time.
  */
-interface Section<T> {
+export interface Section<T> {
     readonly value: T;
     readonly errors: readonly string[];
 }
 
 /** schema.md §2.7 — unknown top-level keys are rejected, never ignored. */
-function checkTopLevelKeys(raw: Record<string, unknown>): readonly string[] {
+export function checkTopLevelKeys(raw: Record<string, unknown>): readonly string[] {
     return Object.keys(raw)
         .filter((key) => !TOP_LEVEL_KEYS.has(key))
         .map((key) => `unknown key "${key}" (unknown keys are rejected, schema.md §2.7)`);
@@ -151,7 +54,7 @@ function checkTopLevelKeys(raw: Record<string, unknown>): readonly string[] {
  * D31's migration policy in one line: any version but 1 is rejected
  * whole. Migration tooling waits until a version 2 exists to migrate to.
  */
-function checkSchemaVersion(raw: Record<string, unknown>): readonly string[] {
+export function checkSchemaVersion(raw: Record<string, unknown>): readonly string[] {
     return raw.schemaVersion === 1
         ? []
         : [`schemaVersion must be 1, got ${JSON.stringify(raw.schemaVersion)}`];
@@ -167,7 +70,7 @@ function checkSchemaVersion(raw: Record<string, unknown>): readonly string[] {
  * safe one, but silently interpreting malformed input is the exact
  * pattern §2.7 and D38 reject everywhere else in this file.
  */
-function parseMode(raw: Record<string, unknown>): Section<unknown> {
+export function parseMode(raw: Record<string, unknown>): Section<unknown> {
     const value = Object.hasOwn(raw, "mode") ? raw.mode : "observe";
     return {
         value,
@@ -183,7 +86,7 @@ function parseMode(raw: Record<string, unknown>): Section<unknown> {
  * is an ordinary own property (plain `obj[key] = value` on a normal
  * object both pollutes the prototype and silently loses the entry).
  */
-function parseCapabilities(
+export function parseCapabilities(
     raw: Record<string, unknown>,
     knownCapabilities: readonly string[],
 ): Section<[string, CapabilityConfig][]> {
@@ -248,7 +151,7 @@ function parseCapabilities(
  * D34 exists to prevent. The original spelling is preserved for writes;
  * only the uniqueness key is folded.
  */
-function parseMappings(
+export function parseMappings(
     raw: Record<string, unknown>,
 ): Section<Partial<Record<MappableMeaning, string>>> {
     const labels: Partial<Record<MappableMeaning, string>> = {};
@@ -296,7 +199,7 @@ function parseMappings(
     return { value: labels, errors };
 }
 
-function parsePrincipals(raw: Record<string, unknown>): Section<[string, string][]> {
+export function parsePrincipals(raw: Record<string, unknown>): Section<[string, string][]> {
     const entries: [string, string][] = [];
     const errors: string[] = [];
     if (raw.principals === undefined) return { value: entries, errors };
@@ -320,46 +223,3 @@ function parsePrincipals(raw: Record<string, unknown>): Section<[string, string]
  * tests freeze it: top-level keys, version, mode, capabilities,
  * mappings, principals — outermost problem first.
  */
-export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigResult {
-    if (raw === undefined || raw === null) {
-        return { ok: true, config: NO_CONFIG };
-    }
-    if (!isPlainObject(raw)) {
-        return { ok: false, errors: ["configuration must be a mapping"] };
-    }
-
-    const mode = parseMode(raw);
-    const capabilities = parseCapabilities(raw, options.knownCapabilities);
-    const mappings = parseMappings(raw);
-    const principals = parsePrincipals(raw);
-
-    const errors = [
-        ...checkTopLevelKeys(raw),
-        ...checkSchemaVersion(raw),
-        ...mode.errors,
-        ...capabilities.errors,
-        ...mappings.errors,
-        ...principals.errors,
-    ];
-
-    /**
-     * §2.6 — fail closed: any error yields no configuration at all.
-     * FINDING(config-fail-closed-granularity), D38: the granularity is
-     * deliberately the WHOLE file — last-known-good and partial
-     * salvage were both rejected (see the register row). Humane only
-     * with the shell's two mitigations: the configuration report and
-     * PR-time validation via this same function.
-     */
-    if (errors.length > 0) return { ok: false, errors };
-
-    return {
-        ok: true,
-        config: {
-            schemaVersion: 1,
-            mode: mode.value as RepositoryMode,
-            capabilities: cleanRecord(capabilities.value),
-            mappings: { labels: mappings.value },
-            principals: cleanRecord(principals.value),
-        },
-    };
-}

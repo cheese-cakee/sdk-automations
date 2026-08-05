@@ -26,7 +26,7 @@ import type {
     IntentDeclaration,
     PermissionGrant,
 } from "./contract.js";
-import type { MappableMeaning, RepositoryConfig } from "./config.js";
+import type { MappableMeaning, RepositoryConfig } from "./config/index.js";
 import type { ActionClass } from "./safety.js";
 import type { EntityKind } from "./taxonomy.js";
 

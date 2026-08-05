@@ -176,7 +176,7 @@ D22 (kill switches). **Evidence:** `core/src/safety.ts`, the 5,120-context sweep
 
 ## 5. Configuration agenda
 
-**Venue:** the Q14 configuration review. **Evidence:** `core/src/config.ts`, experiment 6.3, the
+**Venue:** the Q14 configuration review. **Evidence:** `core/src/config/`, experiment 6.3, the
 adversarial and property suites.
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |

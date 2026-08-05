@@ -9,7 +9,7 @@
  *  - retryAdvice always terminates in bounded advice.
  */
 import { describe, it, expect } from "vitest";
-import type { RepositoryConfig } from "../src/config.js";
+import type { RepositoryConfig } from "../src/config/index.js";
 import {
     evaluateWrite,
     retryAdvice,

@@ -20,8 +20,8 @@
  * design class, but fails closed until its request can prove the
  * immediate explanation and simple maintainer reversal §1 requires.
  */
-import type { RepositoryConfig } from "./config.js";
-export type { RepositoryMode } from "./config.js";
+import type { RepositoryConfig } from "./config/index.js";
+export type { RepositoryMode } from "./config/index.js";
 
 export type ActionClass =
     | "observation"
