@@ -55,19 +55,13 @@ export interface CapabilityConfig {
 }
 
 export interface RepositoryConfig {
-    /**
-     * Which version of the reviewed file this is — the git blob or commit
-     * sha the shell fetched.
+        /**
+     * Which version of the reviewed file this is — the sha the shell fetched.
      *
-     * FINDING(config-revision-detached), D77: the executor guards every
-     * in-flight effect on a revision string and D45 rules that intents from
-     * an old revision are unresumable, yet the parsed configuration carried
-     * no identity at all. The string was invented by the shell alongside the
-     * config rather than as part of it, so two different configurations
-     * could share a revision and one configuration could be handed two, with
-     * nothing in core able to notice. It is an OBSERVATION — the shell read
-     * it from GitHub — so it arrives through `ParseConfigOptions` rather
-     * than being derived here.
+     * The executor guards every in-flight effect on this string and D45 rules
+     * old-revision intents unresumable, yet the parsed configuration once
+     * carried no identity at all (`FINDING(config-revision-detached)`, D77).
+     * An OBSERVATION, so it arrives through `ParseConfigOptions`.
      */
     readonly revision: string;
     readonly schemaVersion: 1;
@@ -113,18 +107,10 @@ export const NO_CONFIG: RepositoryConfig = {
 /**
  * Why a configuration was rejected, in a form a report can USE.
  *
- * FINDING(config-error-codes), D75: these were bare prose strings, and D38's
- * fail-closed granularity was accepted conditional on two mitigations — the
- * configuration report and the PR-time check run — both of which are
- * downstream consumers that could only echo the text. Nothing could group
- * fifteen errors by kind, count them, link one to a line, or translate it,
- * while every refusal elsewhere in core carried a machine-readable code.
- * The mitigation that makes fail-closed humane was weaker than it needed to
- * be for a pure type reason.
- *
- * `message` stays prose and stays unasserted by tests — the same convention
- * `safety.test.ts` holds over verdict reasons. The code is the contract; the
- * wording is for humans.
+ * D38's fail-closed granularity was accepted conditional on the configuration
+ * report and the PR-time check, and bare prose left both able only to echo
+ * text (`FINDING(config-error-codes)`, D75). The code is contract; the
+ * message is for humans and is never asserted on, only its presence.
  */
 export type ConfigErrorCode =
     | "notAMapping"
@@ -158,23 +144,14 @@ export type ConfigResult =
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */
     readonly revision: string;
-    /**
-     * The platform's registry of shipped capability names. An *enabled*
-     * capability outside the registry is a validation error;
-     * a disabled unknown capability stays dormant (present, inert), so
-     * removing a capability from the platform does not break configs that
-     * still mention it disabled.
+        /**
+     * The platform's shipped capability names. An ENABLED capability outside
+     * this list is a validation error; a disabled unknown one stays dormant,
+     * so retiring a capability never breaks a config that still mentions it.
      *
-     * FINDING(config-capability-registry-gap), experiment 6.3: without
-     * this list a configuration enabling a misspelled or unshipped
-     * capability passes validation silently — the maintainer believes a
-     * behavior is on that does not exist. Callers that have a registry
-     * REQUIRED: an absent registry used to skip the check entirely, and
-     * then (2026-07-28) came to mean "no capability is known", which
-     * rejects every enabled capability. Both readings are reachable by
-     * forgetting an optional argument, so the argument is no longer
-     * optional — a caller with no registry says so with `[]`, and the
-     * fail-closed result is then a choice rather than an omission.
+     * Required, not optional: an absent registry once meant "skip the check"
+     * and later "nothing is known", and both were reachable by forgetting an
+     * argument (`FINDING(config-capability-registry-gap)`, D58, experiment 6.3).
      */
     readonly knownCapabilities: readonly string[];
 }

@@ -36,18 +36,10 @@ export interface ExpectedFacts {
 }
 
 /**
- * The warning record a destructive intent must carry.
- *
- * FINDING(runtime-destructive-intent-has-no-warning): `evaluateDestructive`
- * requires a `DestructiveWarning` and a qualifying-activity flag, and
- * refuses without one (`noWarning`) — but contract.md §3's intent has no
- * field for either, so an intent alone could never pass the destructive
- * gate. The safety engine and the capability contract were written against
- * each other and did not meet. The warning belongs on the intent rather
- * than being looked up by the planner: the capability is what decides an
- * item is stale, so it is what must show its warning, and a planner that
- * fetched the record itself could pair a warning with an intent that was
- * never about it.
+ * Required when the action class is `clockTriggeredDestructive`, absent
+ * otherwise — and the reverse check is the dangerous one: a warning on a
+ * non-destructive intent reads as a grace period no gate will consult
+ * (`FINDING(runtime-destructive-intent-has-no-warning)`, D64).
  */
 export interface DestructiveDetail {
     readonly warnedAt: Date;
@@ -57,28 +49,17 @@ export interface DestructiveDetail {
     readonly reversesWith: string;
     readonly qualifyingActivitySinceWarning: boolean;
     /**
-     * The causal observation the warning actually authorized, restated
-     * so it can be compared against the intent's current cause.
-     *
-     * FINDING(runtime-warning-cannot-cross-the-store): D60 makes a
-     * `DestructiveWarning` a branded object that only
-     * `createDestructiveWarning` can build — a genuine within-process
-     * guarantee, and one that cannot survive the journey a warning
-     * actually makes. A warning is issued in one process run and acted
-     * on days later, across restarts, so it must be persisted as plain
-     * data and rebuilt; the brand is a runtime symbol and does not
-     * serialize. Rebuilding it from the CURRENT request would satisfy
-     * every type and make `warningMatchesRequest` tautological — a
-     * safety check that can never fail, which is worse than none. These
-     * two fields are therefore the stored warned cause, and the planner
-     * rebuilds the warning from them, so the comparison has something
-     * real to disagree with.
-     *
-     * The seam narrows D60's check to the causal fields: item and change
-     * both derive from the same intent at both ends, so a capability
-     * cannot make them diverge. The cause is the one part it can get
-     * wrong, and getting it wrong is exactly the reuse D60 forbids.
-     */
+ * The warning record a destructive intent must carry.
+ *
+ * `evaluateDestructive` refuses without one, and contract.md §3's intent had no
+ * field for it, so a destructive intent could never pass its own gate
+ * (`FINDING(runtime-destructive-intent-has-no-warning)`, D64).
+ *
+ * The warned CAUSE is carried separately because D60's branded warning cannot
+ * cross the store: rebuilding it from the current request would make the
+ * snapshot check compare a value with itself
+ * (`FINDING(runtime-warning-cannot-cross-the-store)`, D72).
+ */
     readonly warnedCause: string;
     readonly warnedCauseObservedAt: Date;
 }
@@ -96,18 +77,10 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly desired: IntentCatalogue[K];
     readonly cause: DatedCause;
     readonly explanation: StructuredExplanation;
-    /**
-     * The effect's stable identity across redelivery, retry, and restart
-     * — it becomes the journal's `effect_id`, so two intents sharing a key
-     * ARE one effect to the store.
-     *
-     * FINDING(runtime-idempotency-key-underived): contract.md §3 requires
-     * this field but never says what it is derived from, while the store's
-     * primary key silently depends on the answer. Two distinct intents
-     * that collide look like one already-done effect and the second is
-     * never performed; the same intent keyed differently on redelivery
-     * duplicates. `deriveIdempotencyKey` gives one derivation so the
-     * question is answered in one place rather than per capability.
+        /**
+     * The effect's stable identity across redelivery, retry and restart — it
+     * becomes the journal's `effect_id`, so two intents sharing a key ARE one
+     * effect to the store (`FINDING(runtime-idempotency-key-underived)`, D65).
      */
     readonly idempotencyKey: string;
 }

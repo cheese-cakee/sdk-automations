@@ -35,36 +35,21 @@ export interface WriteRequest {
     readonly target: { readonly item: string; readonly change: string };
 }
 
-/**
- * Ordering evidence for rule 5. A `Date` is the newest human change;
- * `null` means the shell CHECKED and found none; `"unknown"` means it
- * could not establish ordering at all.
- *
- * FINDING(safety-ordering-unknown), D51: the two cases used to collapse
- * into `null`, so unavailable evidence read as "no conflict" and the
- * write APPLIED. `manual-edits.md` §2 requires the opposite — "if
- * reliable ordering evidence is unavailable, the safe default is to
- * return a conflict and do nothing" — and D9 records that timestamp
- * reliability is still open, so unknown ordering is an expected state,
- * not a hypothetical.
- */
+    /**
+     * When the newest HUMAN change was made: a `Date`, `null` if the shell
+     * checked and found none, or `"unknown"` if it could not establish
+     * ordering. Unestablished ordering is a conflict, never an absence
+     * (`FINDING(safety-ordering-unknown)`, D51).
+     */
 export type HumanChangeOrdering = Date | null | "unknown";
 
 /** The facts the platform rechecked immediately before the write. */
 /**
- * The facts a shell must RECHECK immediately before a write, and nothing
- * else. Mode, capability and enablement used to live here too, copied
- * alongside the configuration that already held them.
+ * The facts a shell must RECHECK immediately before a write, and nothing else.
  *
- * FINDING(safety-context-derived), D73: three facts stored twice, free to
- * disagree, produced three separate repairs — D53 compared the capability
- * NAME, D67 compared the MODE, and the third, `capabilityEnabled`, was
- * never compared at all: a shell could assert consent for a capability the
- * reviewed configuration disabled, and D53's check passed because the names
- * matched. `evaluateWrite` now derives all three from the configuration and
- * the request, so a context that disagrees with the reviewed file cannot be
- * constructed rather than being caught. Two refusal codes disappear with
- * them; the fourth state stops being reachable.
+ * Mode, capability, enablement and blocked-ness used to live here too, copied
+ * alongside sources that already held them. All four are now derived
+ * (`FINDING(safety-context-derived)`, D73, D77).
  */
 export interface WriteContext {
     /**

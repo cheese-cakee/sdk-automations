@@ -1,16 +1,12 @@
 /**
- * The shared middle of both entry points — NOT public API.
+ * The shared middle of both entry points — NOT public API, and deliberately
+ * not re-exported by `safety/index.ts`.
  *
- * `evaluateWrite` and `evaluateDestructive` answer different questions and
- * are not interchangeable (D52 makes the general path refuse a destructive
- * request outright), but they share a preflight and the general rules. Those
- * two functions live here so the pair are peers over a common middle, rather
- * than one reaching into the other.
- *
- * `safety/index.ts` deliberately does not re-export this file. An earlier
- * split exported both helpers to let `destructive.ts` reach them, and the
- * barrel's `export *` published the middle of a safety decision as package
- * API — something no consumer should ever call.
+ * `evaluateWrite` and `evaluateDestructive` answer different questions and are
+ * not interchangeable — the general path REFUSES a destructive request outright
+ * (`FINDING(safety-destructive-entry-point)`, D52) — but they share a preflight
+ * and the general rules, so the pair are peers over a common middle rather than
+ * one reaching into the other.
  */
 
 import type { RepositoryConfig } from "../config/index.js";

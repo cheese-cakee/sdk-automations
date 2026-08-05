@@ -1,20 +1,11 @@
 /**
- * The capability contract's declaration layer as pure logic —
- * `design/modules/contract.md` §1 turned into validated types, plus the
- * two requirements the stage-three experiments added to D23:
+ * The capability contract's declaration layer — `design/modules/contract.md`
+ * §1 as validated types.
  *
- * - every declared intent names its **idempotency class** (experiment
- *   6.5: a lost-response retry duplicates comment creation but is
- *   harmless for label addition — the executor's recovery rule differs
- *   by class, so the class must be declared, not inferred);
- * - declarations form a **registry** whose names feed
- *   `parseConfig({ knownCapabilities })` (experiment 6.3,
- *   `FINDING(config-capability-registry-gap)`: without the registry an
- *   enabled unknown capability passes validation silently).
- *
- * The runtime boundary (evaluate/PlatformHandle, contract.md §2) is
- * stage-five work; this module is only what configuration validation,
- * permission diagnostics, and operator reporting need today.
+ * Two additions the stage-three experiments forced (D23): every intent names
+ * its idempotency class, and declarations form a registry whose names feed
+ * `parseConfig` (`FINDING(config-capability-registry-gap)`, experiments 6.3
+ * and 6.5). The runtime boundary itself lives in `boundary.ts`.
  */
 
 /**

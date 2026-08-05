@@ -1,22 +1,13 @@
 /**
  * What the platform decided, and why — the record every explanation lands in.
  *
- * Core already produces an explanation for every decision it makes: a
- * verdict carries a code and a reason, a screen carries a refusal, a
- * capability builds a `StructuredExplanation` per intent. Until now none of
- * it was collected anywhere, so the dry-run report, the configuration report
- * (D38's required mitigation), the operator surface (D44, D45) and the
- * managed comment goal 5 promises were each waiting on a sink that did not
- * exist. All four are views of the same record.
+ * Core already produced one for every decision it made and dropped all of it,
+ * so the dry-run report, the configuration report (D38), the operator surface
+ * (D44, D45) and goal 5's managed comment were each waiting on a sink that did
+ * not exist. All four are views of this one list.
  *
- * A FLAT LIST, deliberately, not a tree. The four consumers group it
- * differently — the config report by configuration path, the operator
- * surface by effect, a managed comment by item — and a shape that favours
- * one makes the others awkward. A list with a typed subject can be grouped
- * by any of them.
- *
- * Types and pure constructors only. Rendering to markdown, a check run, or
- * an operator page is the shell's business; core has no opinion on it.
+ * FLAT, deliberately: the four consumers group differently, and a shape that
+ * favours one makes the others awkward.
  */
 
 import type { ItemRef, RepositoryRef } from "../capability/index.js";

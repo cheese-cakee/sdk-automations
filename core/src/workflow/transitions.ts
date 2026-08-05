@@ -49,16 +49,11 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
     { from: null, to: "needsRevision", causes: ["checksFailed"] },
     /**
-     * FINDING(taxonomy-review-cause), D48: §5 labels this edge "New
-     * evidence requires contributor action" — deliberately broader than
-     * a failing check. The first implementation narrowed it to
-     * `checksFailed` alone and left the narrowing untagged, which
-     * dropped the audited PR Review Label Applicator: "on a
-     * `changes_requested` review it force-swaps the status to
-     * `status: needs revision`" (`audit/services-cpp.md`).
-     * `reviewRequestedChanges` needs the `pull_request_review`
-     * subscription experiment 6.6 found the App lacks.
-     */
+ * Three corrections found by reading these tables against `audit/` rather than
+ * against the prose: the missing `readyToMerge → needsRevision` edge, the added
+ * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
+ * that bundled a trigger with its consequence (D48).
+ */
     {
         from: "needsReview",
         to: "needsRevision",

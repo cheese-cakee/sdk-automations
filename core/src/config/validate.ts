@@ -173,18 +173,11 @@ export function parseCapabilities(
 }
 
 /**
- * FINDING(config-label-injectivity), D34: schema.md §3 never defines
- * "incompatible", so full injectivity is enforced — every meaning its
- * own label; the observation projection relies on label→meaning being
- * unambiguous.
- *
- * FINDING(config-label-case), D55: the comparison is case- and
- * edge-whitespace-insensitive, because GitHub treats label names
- * case-insensitively for UNIQUENESS. Exact-string comparison accepted
- * `status: ready` and `Status: Ready` as two mappings, which is one
- * label on GitHub — reintroducing exactly the label→meaning ambiguity
- * D34 exists to prevent. The original spelling is preserved for writes;
- * only the uniqueness key is folded.
+ * Label mappings are fully injective, and uniqueness is judged the way GitHub
+ * judges it — case- and edge-whitespace-insensitively, so `status: ready` and
+ * `Status: Ready` are one label and cannot map two meanings
+ * (`FINDING(config-label-injectivity)` D34, `FINDING(config-label-case)` D55).
+ * The original spelling is preserved for writes; only the uniqueness key folds.
  */
 export function parseMappings(
     raw: Record<string, unknown>,
