@@ -17,7 +17,7 @@ import {
     type PrCause,
     type PrMeaning,
     type WorkItemState,
-} from "../src/taxonomy.js";
+} from "../src/workflow/index.js";
 
 /**
  * The exhaustive matrix: every (from, to, cause) triple is either exactly

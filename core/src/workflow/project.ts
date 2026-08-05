@@ -17,8 +17,8 @@ import {
     type IssueMeaning,
     type PrMeaning,
     type WorkItemState,
-} from "./taxonomy.js";
-import type { MappableMeaning } from "./config/index.js";
+} from "./meanings.js";
+import type { MappableMeaning } from "../config/index.js";
 
 /** What the shell observed on one issue or pull request. */
 export interface LabelObservation {

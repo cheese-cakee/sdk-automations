@@ -150,7 +150,7 @@ three.
 ## 3. Workflow-profile agenda
 
 **Venue:** the D6/D8 manual-edit scenario review, fed by the stage-two maintainer conversations.
-**Evidence:** `core/src/taxonomy.ts`, `core/src/observe.ts`, the projection enumeration (all 128
+**Evidence:** `core/src/workflow/`, the projection enumeration (all 128
 meaning subsets).
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |
