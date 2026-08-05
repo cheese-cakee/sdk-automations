@@ -164,7 +164,7 @@ export function configEnabling(
         { revision: "rev-1", knownCapabilities: known },
     );
     if (!result.ok) {
-        throw new Error(`probe config invalid: ${result.errors.join("; ")}`);
+        throw new Error(`probe config invalid: ${result.errors.map((e) => e.message).join("; ")}`);
     }
     return result.config;
 }

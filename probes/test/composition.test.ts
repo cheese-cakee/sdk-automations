@@ -218,7 +218,7 @@ describe("the safety engine is on the path, not beside it", () => {
             },
             { revision: "rev-test", knownCapabilities: NAMES },
         );
-        if (!raw.ok) throw new Error(raw.errors.join("; "));
+        if (!raw.ok) throw new Error(raw.errors.map((e) => e.message).join("; "));
         return planIntents(await intentsFrom(intake, raw.config, issueObservation), {
             declaration: intake.declaration,
             config: raw.config,
@@ -425,7 +425,7 @@ describe("dry-run is now observable (Phase 1)", () => {
             },
             { revision: "rev-test", knownCapabilities: NAMES },
         );
-        if (!raw.ok) throw new Error(raw.errors.join("; "));
+        if (!raw.ok) throw new Error(raw.errors.map((e) => e.message).join("; "));
 
         const result = planIntents(
             await intentsFrom(intake, raw.config, issueObservation),

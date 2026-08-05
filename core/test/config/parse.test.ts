@@ -59,7 +59,7 @@ describe("parseConfig (design/config/schema.md)", () => {
     it("rejects unknown top-level keys (§2.7 — misspellings must not silently change behavior)", () => {
         const result = parseConfig({ schemaVersion: 1, mode: "observe", capabilties: {} }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.join()).toContain('unknown key "capabilties"');
+        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain('unknown key "capabilties"');
     });
 
     it("rejects unknown capability keys and unknown mapping meanings", () => {
@@ -70,8 +70,8 @@ describe("parseConfig (design/config/schema.md)", () => {
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain('unknown key "enable"');
-            expect(result.errors.join()).toContain('"readyForDev" is not a mappable meaning');
+            expect(result.errors.map((e) => e.message).join()).toContain('unknown key "enable"');
+            expect(result.errors.map((e) => e.message).join()).toContain('"readyForDev" is not a mappable meaning');
         }
     });
 
@@ -83,7 +83,7 @@ describe("parseConfig (design/config/schema.md)", () => {
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         // The message lists the legal modes, readably separated.
-        if (!result.ok) expect(result.errors.join()).toContain("disabled, observe, dry-run, active");
+        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("disabled, observe, dry-run, active");
         // No partially-applied config object exists on the failure arm.
         expect("config" in result).toBe(false);
     });
@@ -94,7 +94,7 @@ describe("parseConfig (design/config/schema.md)", () => {
             mappings: { fields: {} },
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.join()).toContain('mappings: unknown key "fields"');
+        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain('mappings: unknown key "fields"');
     });
 
     it("only boolean true enables a capability — truthiness is not consent (§2.4)", () => {
@@ -139,8 +139,8 @@ describe("parseConfig (design/config/schema.md)", () => {
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain('"status: wip"');
-            expect(result.errors.join()).toContain("injective");
+            expect(result.errors.map((e) => e.message).join()).toContain('"status: wip"');
+            expect(result.errors.map((e) => e.message).join()).toContain("injective");
         }
     });
 
@@ -168,10 +168,10 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain('"checksGate"');
-            expect(result.errors.join()).toContain("capability registry");
+            expect(result.errors.map((e) => e.message).join()).toContain('"checksGate"');
+            expect(result.errors.map((e) => e.message).join()).toContain("capability registry");
             // The registry listing is sorted so maintainers can scan it.
-            expect(result.errors.join()).toContain("assignment, prQuality");
+            expect(result.errors.map((e) => e.message).join()).toContain("assignment, prQuality");
         }
     });
 
@@ -181,7 +181,7 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.join()).toContain("known: none");
+        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("known: none");
     });
 
     it("keeps a disabled unknown capability dormant — removing a shipped capability must not break configs that still mention it", () => {
@@ -205,7 +205,7 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
             capabilities: { checksGate: { enabled: true } },
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.join()).toContain("(known: none)");
+        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("(known: none)");
     });
 
     it("a registry rejection fails closed like every other error (§2.6)", () => {
@@ -244,8 +244,8 @@ describe("audit findings, pinned (D55-D56)", () => {
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain("injective");
-            expect(result.errors.join()).toContain("GitHub treats as the same label");
+            expect(result.errors.map((e) => e.message).join()).toContain("injective");
+            expect(result.errors.map((e) => e.message).join()).toContain("GitHub treats as the same label");
         }
     });
 
@@ -277,6 +277,99 @@ describe("audit findings, pinned (D55-D56)", () => {
     it("rejects inherited configuration properties instead of activating them", () => {
         const raw = Object.assign(Object.create({ mode: "active" }), { schemaVersion: 1 });
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
-        expect(result).toEqual({ ok: false, errors: ["configuration must be a mapping"] });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            // The CODE is the contract; the wording is not (D75).
+            expect(result.errors).toEqual([
+                expect.objectContaining({ code: "notAMapping", path: null }),
+            ]);
+        }
+    });
+});
+
+describe("every error names its kind and its place (D75)", () => {
+    /**
+     * The path is what lets a check run annotate a line instead of pasting a
+     * paragraph, so it is contract and is asserted here. The MESSAGE is not —
+     * same convention `safety.test.ts` holds over verdict reasons.
+     */
+    const only = (raw: unknown, known: readonly string[] = ["intake"]) => {
+        const result = parseConfig(raw, { revision: "r", knownCapabilities: known });
+        if (result.ok) throw new Error("expected the document to be rejected");
+        return result.errors;
+    };
+
+    const base = {
+        schemaVersion: 1,
+        mode: "active",
+        capabilities: {},
+        mappings: { labels: {} },
+        principals: {},
+    };
+
+    it.each([
+        ["top-level key", { ...base, stray: 1 }, "unknownKey", "stray"],
+        ["schema version", { ...base, schemaVersion: 2 }, "schemaVersionUnsupported", "schemaVersion"],
+        ["mode", { ...base, mode: "sideways" }, "modeInvalid", "mode"],
+        ["capabilities shape", { ...base, capabilities: 3 }, "notAMapping", "capabilities"],
+        [
+            "capability name",
+            { ...base, capabilities: { "not-camel": { enabled: true } } },
+            "capabilityNameInvalid",
+            "capabilities.not-camel",
+        ],
+        [
+            "capability key",
+            { ...base, capabilities: { intake: { enabled: true, stray: 1 } } },
+            "unknownKey",
+            "capabilities.intake.stray",
+        ],
+        [
+            "enabled type",
+            { ...base, capabilities: { intake: { enabled: "yes" } } },
+            "capabilityEnabledNotBoolean",
+            "capabilities.intake.enabled",
+        ],
+        [
+            "unknown capability",
+            { ...base, capabilities: { ghost: { enabled: true } } },
+            "capabilityNotInRegistry",
+            "capabilities.ghost",
+        ],
+        [
+            "mappable meaning",
+            { ...base, mappings: { labels: { nonsense: "x" } } },
+            "meaningNotMappable",
+            "mappings.labels.nonsense",
+        ],
+        [
+            "label value",
+            { ...base, mappings: { labels: { ready: "  " } } },
+            "labelInvalid",
+            "mappings.labels.ready",
+        ],
+        [
+            "injectivity",
+            { ...base, mappings: { labels: { ready: "x", inProgress: "x" } } },
+            "labelNotInjective",
+            "mappings.labels.inProgress",
+        ],
+        [
+            "principal type",
+            { ...base, principals: { reviewer: 3 } },
+            "principalNotAString",
+            "principals.reviewer",
+        ],
+    ])("%s", (_name, raw, code, path) => {
+        const errors = only(raw);
+        const match = errors.find((e) => e.code === code);
+        expect(match, `no ${code} among ${errors.map((e) => e.code).join(", ")}`).toBeDefined();
+        expect(match!.path).toBe(path);
+        expect(match!.message.length).toBeGreaterThan(0);
+    });
+
+    it("a whole-document problem has no path to point at", () => {
+        const [e] = only("not a mapping at all");
+        expect(e).toMatchObject({ code: "notAMapping", path: null });
     });
 });

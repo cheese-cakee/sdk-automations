@@ -8,6 +8,7 @@
  * D38's whole-file fail-closed rule.
  */
 
+import type { ConfigError, ConfigErrorCode } from "./schema.js";
 import {
     CAPABILITY_NAME_PATTERN,
     MAPPABLE_MEANINGS,
@@ -40,24 +41,45 @@ const TOP_LEVEL_KEYS = new Set([
  */
 export interface Section<T> {
     readonly value: T;
-    readonly errors: readonly string[];
+    readonly errors: readonly ConfigError[];
+}
+
+/** One constructor, so every error is shaped the same way. */
+export function err(
+    code: ConfigErrorCode,
+    message: string,
+    path: string | null = null,
+): ConfigError {
+    return { code, message, path };
 }
 
 /** schema.md §2.7 — unknown top-level keys are rejected, never ignored. */
-export function checkTopLevelKeys(raw: Record<string, unknown>): readonly string[] {
+export function checkTopLevelKeys(raw: Record<string, unknown>): readonly ConfigError[] {
     return Object.keys(raw)
         .filter((key) => !TOP_LEVEL_KEYS.has(key))
-        .map((key) => `unknown key "${key}" (unknown keys are rejected, schema.md §2.7)`);
+        .map((key) =>
+            err(
+                "unknownKey",
+                `unknown key "${key}" (unknown keys are rejected, schema.md §2.7)`,
+                key,
+            ),
+        );
 }
 
 /**
  * D31's migration policy in one line: any version but 1 is rejected
  * whole. Migration tooling waits until a version 2 exists to migrate to.
  */
-export function checkSchemaVersion(raw: Record<string, unknown>): readonly string[] {
+export function checkSchemaVersion(raw: Record<string, unknown>): readonly ConfigError[] {
     return raw.schemaVersion === 1
         ? []
-        : [`schemaVersion must be 1, got ${JSON.stringify(raw.schemaVersion)}`];
+        : [
+              err(
+                  "schemaVersionUnsupported",
+                  `schemaVersion must be 1, got ${JSON.stringify(raw.schemaVersion)}`,
+                  "schemaVersion",
+              ),
+          ];
 }
 
 /**
@@ -76,7 +98,13 @@ export function parseMode(raw: Record<string, unknown>): Section<unknown> {
         value,
         errors: REPOSITORY_MODES.includes(value as RepositoryMode)
             ? []
-            : [`mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`],
+            : [
+                  err(
+                      "modeInvalid",
+                      `mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`,
+                      "mode",
+                  ),
+              ],
     };
 }
 
@@ -91,10 +119,13 @@ export function parseCapabilities(
     knownCapabilities: readonly string[],
 ): Section<[string, CapabilityConfig][]> {
     const entries: [string, CapabilityConfig][] = [];
-    const errors: string[] = [];
+    const errors: ConfigError[] = [];
     if (raw.capabilities === undefined) return { value: entries, errors };
     if (!isPlainObject(raw.capabilities)) {
-        return { value: entries, errors: ["capabilities must be a mapping"] };
+        return {
+            value: entries,
+            errors: [err("notAMapping", "capabilities must be a mapping", "capabilities")],
+        };
     }
 
     for (const [name, value] of Object.entries(raw.capabilities)) {
@@ -103,33 +134,37 @@ export function parseCapabilities(
         // rejecting it loses nothing and closes the hostile-key
         // hole (`__proto__`, dotted paths, etc.).
         if (!CAPABILITY_NAME_PATTERN.test(name)) {
-            errors.push(`capability name ${JSON.stringify(name)} is not a valid configuration key (camelCase)`);
+            errors.push(err("capabilityNameInvalid", `capability name ${JSON.stringify(name)} is not a valid configuration key (camelCase)`, `capabilities.${name}`));
             continue;
         }
         if (!isPlainObject(value)) {
-            errors.push(`capability "${name}" must be a mapping`);
+            errors.push(err("notAMapping", `capability "${name}" must be a mapping`, `capabilities.${name}`));
             continue;
         }
         for (const key of Object.keys(value)) {
             if (key !== "enabled" && key !== "settings") {
-                errors.push(`capability "${name}": unknown key "${key}"`);
+                errors.push(err("unknownKey", `capability "${name}": unknown key "${key}"`, `capabilities.${name}.${key}`));
             }
         }
         // §2.4 — every capability defaults to disabled; only an
         // explicit boolean true enables ("truthy" is not consent).
         if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
-            errors.push(`capability "${name}": enabled must be a boolean`);
+            errors.push(err("capabilityEnabledNotBoolean", `capability "${name}": enabled must be a boolean`, `capabilities.${name}.enabled`));
         }
         const settings = value.settings ?? {};
         if (!isPlainObject(settings)) {
-            errors.push(`capability "${name}": settings must be a mapping`);
+            errors.push(err("notAMapping", `capability "${name}": settings must be a mapping`, `capabilities.${name}.settings`));
             continue;
         }
         const enabled = value.enabled === true;
         if (enabled && !knownCapabilities.includes(name)) {
             errors.push(
-                `capability "${name}" is enabled but not in the platform's capability registry` +
-                ` (known: ${[...knownCapabilities].sort().join(", ") || "none"})`,
+                err(
+                    "capabilityNotInRegistry",
+                    `capability "${name}" is enabled but not in the platform's capability registry` +
+                        ` (known: ${[...knownCapabilities].sort().join(", ") || "none"})`,
+                    `capabilities.${name}`,
+                ),
             );
         }
         entries.push([name, { enabled, settings }]);
@@ -155,29 +190,32 @@ export function parseMappings(
     raw: Record<string, unknown>,
 ): Section<Partial<Record<MappableMeaning, string>>> {
     const labels: Partial<Record<MappableMeaning, string>> = {};
-    const errors: string[] = [];
+    const errors: ConfigError[] = [];
     if (raw.mappings === undefined) return { value: labels, errors };
     if (!isPlainObject(raw.mappings)) {
-        return { value: labels, errors: ["mappings must be a mapping"] };
+        return {
+            value: labels,
+            errors: [err("notAMapping", "mappings must be a mapping", "mappings")],
+        };
     }
 
     for (const key of Object.keys(raw.mappings)) {
-        if (key !== "labels") errors.push(`mappings: unknown key "${key}"`);
+        if (key !== "labels") errors.push(err("unknownKey", `mappings: unknown key "${key}"`, `mappings.${key}`));
     }
     const rawLabels = raw.mappings.labels ?? {};
     if (!isPlainObject(rawLabels)) {
-        errors.push("mappings.labels must be a mapping");
+        errors.push(err("notAMapping", "mappings.labels must be a mapping", "mappings.labels"));
         return { value: labels, errors };
     }
 
     const labelOwner = new Map<string, { meaning: string; label: string }>();
     for (const [meaning, label] of Object.entries(rawLabels)) {
         if (!MAPPABLE_MEANINGS.includes(meaning as MappableMeaning)) {
-            errors.push(`mappings.labels: "${meaning}" is not a mappable meaning`);
+            errors.push(err("meaningNotMappable", `mappings.labels: "${meaning}" is not a mappable meaning`, `mappings.labels.${meaning}`));
             continue;
         }
         if (typeof label !== "string" || label.trim() === "") {
-            errors.push(`mappings.labels.${meaning}: label must be a non-empty string`);
+            errors.push(err("labelInvalid", `mappings.labels.${meaning}: label must be a non-empty string`, `mappings.labels.${meaning}`));
             continue;
         }
         const key = label.trim().toLowerCase();
@@ -185,11 +223,13 @@ export function parseMappings(
         if (owner !== undefined) {
             const sameSpelling = owner.label === label;
             errors.push(
+                err("labelNotInjective",
                 `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner.meaning}" and "${meaning}"` +
                 (sameSpelling
                     ? ""
                     : ` (differing only in case or surrounding space from ${JSON.stringify(owner.label)}, which GitHub treats as the same label)`) +
                 ` — label mappings must be injective (schema.md §3)`,
+                `mappings.labels.${meaning}`),
             );
             continue;
         }
@@ -201,14 +241,17 @@ export function parseMappings(
 
 export function parsePrincipals(raw: Record<string, unknown>): Section<[string, string][]> {
     const entries: [string, string][] = [];
-    const errors: string[] = [];
+    const errors: ConfigError[] = [];
     if (raw.principals === undefined) return { value: entries, errors };
     if (!isPlainObject(raw.principals)) {
-        return { value: entries, errors: ["principals must be a mapping"] };
+        return {
+            value: entries,
+            errors: [err("notAMapping", "principals must be a mapping", "principals")],
+        };
     }
     for (const [key, value] of Object.entries(raw.principals)) {
         if (typeof value !== "string") {
-            errors.push(`principals.${key}: must be a string`);
+            errors.push(err("principalNotAString", `principals.${key}: must be a string`, `principals.${key}`));
             continue;
         }
         entries.push([key, value]);

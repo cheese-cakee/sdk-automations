@@ -364,7 +364,7 @@ describe("projectCapabilityView (contract.md §6)", () => {
             },
             { revision: "rev-test", knownCapabilities: ["fixture", "other"] },
         );
-        if (!result.ok) throw new Error(result.errors.join("; "));
+        if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
         return result.config;
     })();
 

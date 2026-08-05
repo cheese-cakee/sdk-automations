@@ -110,13 +110,12 @@ export function explanationFinding(
 /**
  * Configuration errors as findings.
  *
- * FINDING(report-config-errors-uncoded): every error becomes the SAME code,
- * `configInvalid`, because `parseConfig` returns prose strings and nothing
- * else. D38 was accepted conditional on the configuration report existing,
- * and this is the shape that report can currently take: a list a maintainer
- * must read in full, because nothing can group, count or link it. That is
- * exactly the cost D75 proposes removing, and it is now visible rather than
- * argued — the first consumer of config errors cannot do its job.
+ * D75, landed: each error carries its own code and the dotted path it came
+ * from, so this report can group by kind, count, and annotate a line rather
+ * than pasting a paragraph. The findings above were all `configInvalid`
+ * until the parser learned to say what KIND of wrong a document was — the
+ * first consumer of configuration errors could not do its job, which is what
+ * made the argument concrete.
  */
 export function configFindings(result: ConfigResult): readonly Finding[] {
     if (result.ok) {
@@ -129,10 +128,10 @@ export function configFindings(result: ConfigResult): readonly Finding[] {
             ),
         ];
     }
-    return result.errors.map((message) =>
-        finding("problem", "configInvalid", message, {
+    return result.errors.map((e) =>
+        finding("problem", e.code, e.message, {
             kind: "configuration",
-            path: null,
+            path: e.path,
         }),
     );
 }

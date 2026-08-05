@@ -61,7 +61,7 @@ describe("the assignment story, end to end in pure logic", () => {
         },
         { revision: "rev-test", knownCapabilities: registry.names },
     );
-    if (!configResult.ok) throw new Error(configResult.errors.join("; "));
+    if (!configResult.ok) throw new Error(configResult.errors.map((e) => e.message).join("; "));
     const config = configResult.config;
 
     it("wires registry → config → projection → transition → safety into one apply", () => {

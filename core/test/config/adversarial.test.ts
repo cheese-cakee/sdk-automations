@@ -18,7 +18,7 @@ describe("hostile keys (the __proto__ hole)", () => {
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain("not a valid configuration key");
+            expect(result.errors.map((e) => e.message).join()).toContain("not a valid configuration key");
         }
     });
 
@@ -129,7 +129,7 @@ describe("never throws, for any already-parsed shape", () => {
         }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.join()).toContain(
+            expect(result.errors.map((e) => e.message).join()).toContain(
                 'capability "assignment" must be a mapping',
             );
         }
@@ -143,7 +143,7 @@ describe("never throws, for any already-parsed shape", () => {
             if (!result.ok) {
                 expect(result.errors.length).toBeGreaterThan(0);
                 // Every error is a sentence, not an empty placeholder.
-                for (const error of result.errors) expect(error.length).toBeGreaterThan(0);
+                for (const { message: error } of result.errors) expect(error.length).toBeGreaterThan(0);
             }
         },
     );
@@ -165,7 +165,7 @@ describe("never throws, for any already-parsed shape", () => {
         for (const [raw, message] of cases) {
             const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
             expect(result.ok).toBe(false);
-            if (!result.ok) expect(result.errors.join()).toContain(message);
+            if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain(message);
         }
     });
 

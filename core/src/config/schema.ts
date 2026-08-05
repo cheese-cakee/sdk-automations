@@ -110,9 +110,50 @@ export const NO_CONFIG: RepositoryConfig = {
  * constant above makes today's assumption explicit and greppable.
  */
 
+/**
+ * Why a configuration was rejected, in a form a report can USE.
+ *
+ * FINDING(config-error-codes), D75: these were bare prose strings, and D38's
+ * fail-closed granularity was accepted conditional on two mitigations — the
+ * configuration report and the PR-time check run — both of which are
+ * downstream consumers that could only echo the text. Nothing could group
+ * fifteen errors by kind, count them, link one to a line, or translate it,
+ * while every refusal elsewhere in core carried a machine-readable code.
+ * The mitigation that makes fail-closed humane was weaker than it needed to
+ * be for a pure type reason.
+ *
+ * `message` stays prose and stays unasserted by tests — the same convention
+ * `safety.test.ts` holds over verdict reasons. The code is the contract; the
+ * wording is for humans.
+ */
+export type ConfigErrorCode =
+    | "notAMapping"
+    | "unknownKey"
+    | "schemaVersionUnsupported"
+    | "modeInvalid"
+    | "capabilityNameInvalid"
+    | "capabilityEnabledNotBoolean"
+    | "capabilityNotInRegistry"
+    | "meaningNotMappable"
+    | "labelInvalid"
+    | "labelNotInjective"
+    | "principalNotAString";
+
+export interface ConfigError {
+    readonly code: ConfigErrorCode;
+    /** Prose for a maintainer. Never asserted on, only its presence. */
+    readonly message: string;
+    /**
+     * Dotted path into the reviewed file — `capabilities.intake.enabled` —
+     * or `null` for a whole-document problem. This is what lets a check run
+     * annotate a line rather than paste a paragraph.
+     */
+    readonly path: string | null;
+}
+
 export type ConfigResult =
     | { readonly ok: true; readonly config: RepositoryConfig }
-    | { readonly ok: false; readonly errors: readonly string[] };
+    | { readonly ok: false; readonly errors: readonly ConfigError[] };
 
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */

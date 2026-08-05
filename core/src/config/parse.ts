@@ -12,6 +12,7 @@ import {
 } from "./schema.js";
 import {
     checkSchemaVersion,
+    err,
     checkTopLevelKeys,
     isPlainObject,
     parseCapabilities,
@@ -25,7 +26,10 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         return { ok: true, config: { ...NO_CONFIG, revision: options.revision } };
     }
     if (!isPlainObject(raw)) {
-        return { ok: false, errors: ["configuration must be a mapping"] };
+        return {
+            ok: false,
+            errors: [err("notAMapping", "configuration must be a mapping", null)],
+        };
     }
 
     const mode = parseMode(raw);

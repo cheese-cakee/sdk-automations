@@ -73,7 +73,7 @@ describe("parseConfig properties", () => {
             fc.property(validConfig, (raw) => {
                 const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: Object.keys(raw.capabilities ?? {}),
                 });
-                if (!result.ok) throw new Error(result.errors.join("; "));
+                if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
             }),
             { seed: SEED, numRuns: 300 },
         );

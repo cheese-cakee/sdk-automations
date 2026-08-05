@@ -134,21 +134,48 @@ describe("configuration findings", () => {
     });
 
     /**
-     * FINDING(report-config-errors-uncoded), pinned: every configuration
-     * error collapses to one code, because `parseConfig` returns prose and
-     * nothing else. This test exists to FAIL when D75 lands — at which point
-     * these findings should carry distinct codes and this expectation is the
-     * thing that tells you to update the report.
+     * This test used to assert the opposite, and was written to FAIL when
+     * D75 landed. It has: every configuration error now carries its own code
+     * and the dotted path it came from, so D38's report can group by kind,
+     * count, and annotate a line instead of pasting a paragraph.
      */
-    it("every configuration error shares one code, which is D75's whole argument", () => {
+    it("each kind of configuration error reports its own code and path", () => {
         const result = parseConfig(
             { schemaVersion: 2, mode: "sideways", nope: 1 },
             { revision: "rev-test", knownCapabilities: known },
         );
         const found = configFindings(result);
         expect(found.length).toBeGreaterThan(1);
-        expect(new Set(found.map((f) => f.code))).toEqual(new Set(["configInvalid"]));
+        expect(new Set(found.map((f) => f.code))).toEqual(
+            new Set(["schemaVersionUnsupported", "modeInvalid", "unknownKey"]),
+        );
         expect(found.every((f) => f.severity === "problem")).toBe(true);
+
+        // A path is what lets a check run annotate a line.
+        const bySubject = found.map((f) =>
+            f.subject.kind === "configuration" ? f.subject.path : null,
+        );
+        expect(bySubject).toContain("mode");
+        expect(bySubject).toContain("schemaVersion");
+        expect(bySubject).toContain("nope");
+    });
+
+    it("a report groups configuration errors by kind — the thing prose could not do", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "active",
+                nope: 1,
+                alsoNope: 2,
+                mappings: { labels: { awaitingTriage: "x", ready: "x" } },
+            },
+            { revision: "rev-test", knownCapabilities: known },
+        );
+        const found = configFindings(result);
+        const byCode = new Map<string, number>();
+        for (const f of found) byCode.set(f.code, (byCode.get(f.code) ?? 0) + 1);
+        expect(byCode.get("unknownKey")).toBe(2);
+        expect(byCode.get("labelNotInjective")).toBe(1);
     });
 });
 
