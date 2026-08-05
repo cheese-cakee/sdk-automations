@@ -9,7 +9,6 @@
  * errors and NO configuration object — there is no partially-valid config.
  */
 
-import type { RepositoryMode } from "./safety.js";
 import { CAPABILITY_NAME_PATTERN } from "./contract.js";
 
 export const REPOSITORY_MODES = [
@@ -18,6 +17,19 @@ export const REPOSITORY_MODES = [
     "dry-run",
     "active",
 ] as const;
+
+/**
+ * Derived, never restated. `MAPPABLE_MEANINGS` two declarations below has
+ * always done this; the mode did not, and kept its union hand-written in
+ * `safety.ts` — the same four strings in two files with nothing linking
+ * them, and a `value as RepositoryMode` cast in this file quietly covering
+ * the seam. Adding a mode to the array alone would have let `parseConfig`
+ * accept a value the safety engine's type had never heard of.
+ *
+ * FINDING(config-mode-union-derived), D76 — the fifth sighting of one fact
+ * stored twice, after D53, D62, D67 and D73.
+ */
+export type RepositoryMode = (typeof REPOSITORY_MODES)[number];
 
 /** The meanings a repository may map — design/core/taxonomy.md §2. */
 export const MAPPABLE_MEANINGS = [

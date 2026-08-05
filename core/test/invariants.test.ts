@@ -2,12 +2,14 @@
  * Exhaustive invariant sweeps — where the other suites check examples,
  * these enumerate the full input space and assert the PROPERTY:
  *  - `apply` happens exactly when every safety rule passes, swept over
- *    EVERY action class and capability-link state as well as every
- *    remaining context dimension (5,120 combos);
+ *    EVERY action class as well as every remaining configuration
+ *    and context dimension — the capability-link dimension is gone with
+ *    D53, whose state D73 made unrepresentable;
  *  - the projection is total and exclusive over all meaning subsets;
  *  - retryAdvice always terminates in bounded advice.
  */
 import { describe, it, expect } from "vitest";
+import type { RepositoryConfig } from "../src/config.js";
 import {
     evaluateWrite,
     retryAdvice,
@@ -68,20 +70,32 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                     for (const installationHasPermission of bools)
                         for (const itemBlocked of bools)
                             for (const preconditionHolds of bools)
-                                for (const capabilityMatches of bools)
                                     for (const latestHumanChangeAt of humanChanges)
                                         for (const mode of REPOSITORY_MODES) {
-                                        const context: WriteContext = {
+                                        const config: RepositoryConfig = {
+                                            schemaVersion: 1,
                                             mode,
-                                            capability: capabilityMatches ? CAPABILITY : "somethingElse",
-                                            capabilityEnabled,
+                                            capabilities: {
+                                                [CAPABILITY]: {
+                                                    enabled: capabilityEnabled,
+                                                    settings: {},
+                                                },
+                                            },
+                                            mappings: { labels: {} },
+                                            principals: {},
+                                        };
+                                        const context: WriteContext = {
                                             installationHasPermission,
                                             killSwitchActive,
                                             itemBlocked,
                                             preconditionHolds,
                                             latestHumanChangeAt,
                                         };
-                                        const verdict = evaluateWrite(requestFor(actionClass), context);
+                                        const verdict = evaluateWrite(
+                                            requestFor(actionClass),
+                                            config,
+                                            context,
+                                        );
                                         checked += 1;
                                         // Every non-apply carries prose for humans.
                                         if (verdict.outcome !== "apply") {
@@ -100,7 +114,6 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         const everyRulePasses =
                                             actionMayApply &&
                                             !killSwitchActive &&
-                                            capabilityMatches &&
                                             capabilityEnabled &&
                                             installationHasPermission &&
                                             !itemBlocked &&
@@ -113,8 +126,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         // whatever the context (D52).
                                         if (
                                             actionClass === "clockTriggeredDestructive" &&
-                                            !killSwitchActive &&
-                                            capabilityMatches
+                                            !killSwitchActive
                                         ) {
                                             expect(verdict).toMatchObject({
                                                 outcome: "refuse",
@@ -129,29 +141,20 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                             expect(verdict.outcome).not.toBe("apply");
                                         }
                                         }
-        expect(checked).toBe(5_120); // 5 classes × 2^5 flags × 2 capability links × 4 orderings × 4 modes
+        expect(checked).toBe(2_560); // 5 classes × 2^5 flags × 4 orderings × 4 modes
         // 2 currently authorized write classes × active mode ×
         // {null, older} ordering = 4. Immediate preventive actions stay
         // fail-closed until their explanation/reversal gate exists.
         expect(applies).toBe(4);
     });
 
-    it("a mismatched capability refuses regardless of enablement (D53)", () => {
-        for (const capabilityEnabled of [false, true]) {
-            expect(
-                evaluateWrite(requestFor("reversibleStateChange"), {
-                    mode: "active",
-                    capability: "somethingElse",
-                    capabilityEnabled,
-                    installationHasPermission: true,
-                    killSwitchActive: false,
-                    itemBlocked: false,
-                    preconditionHolds: true,
-                    latestHumanChangeAt: null,
-                }),
-            ).toMatchObject({ outcome: "refuse", code: "capabilityMismatch" });
-        }
-    });
+    /**
+     * D53's mismatched-capability test is deliberately gone, and the sweep
+     * above lost that dimension with it: `evaluateWrite` derives the
+     * capability from `request.capability` (D73), so a context describing a
+     * different one cannot be constructed. Both enumerated a state the types
+     * no longer permit.
+     */
 });
 
 describe("projection: total and exclusive over every meaning subset", () => {
