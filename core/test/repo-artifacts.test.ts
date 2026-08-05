@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -217,5 +217,61 @@ describe("enumerations are declared once", () => {
         const found = [...fake.matchAll(/export const ([A-Z][A-Z0-9_]*) = \[/g)];
         expect(found).toHaveLength(1);
         expect(fake.includes("(typeof COLOURS)[number]")).toBe(false);
+    });
+});
+
+/**
+ * A citation that points at a file which no longer exists breaks nothing.
+ * No test fails, no build breaks, no reader is warned — the reference simply
+ * becomes a lie, and the register's whole method is that a row cites the code
+ * proving it. Fifty-one such citations exist today, and the directory
+ * reorganisation is about to move most of the files they name.
+ *
+ * Same class as the mutate glob: silent when wrong, so it needs a test rather
+ * than care.
+ */
+describe("documents cite files that exist", () => {
+    const docs = (readdirSync(repoRoot, { recursive: true }) as string[])
+        .filter(
+            (rel) =>
+                rel.endsWith(".md") &&
+                !rel.includes("node_modules") &&
+                !rel.includes(".stryker-tmp") &&
+                // `experiments/` is untracked by design (see its README), so
+                // it exists on some machines and not in CI. Scanning it would
+                // make this suite pass or fail by geography.
+                !rel.startsWith("experiments/"),
+        )
+        .map((rel) => ({ doc: rel, text: readFileSync(join(repoRoot, rel), "utf8") }));
+
+    const PATH = /\b((?:core|store|executor|probes)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
+
+    it("finds documents and citations to check", () => {
+        expect(docs.length).toBeGreaterThan(5);
+        const total = docs.reduce((n, d) => n + [...d.text.matchAll(PATH)].length, 0);
+        expect(total).toBeGreaterThan(20);
+    });
+
+    it("every cited source path resolves to a real file", () => {
+        const dangling: string[] = [];
+        for (const { doc, text } of docs) {
+            for (const match of text.matchAll(PATH)) {
+                const cited = match[1]!;
+                if (!existsSync(join(repoRoot, cited))) {
+                    dangling.push(`${doc} -> ${cited}`);
+                }
+            }
+        }
+        expect(dangling).toEqual([]);
+    });
+
+    it("proves the check can fail", () => {
+        // Negative control, both directions: the matcher must find a path and
+        // the existence check must reject one that is not there.
+        const fake = "see `core/src/nonexistent.ts` for details";
+        const found = [...fake.matchAll(PATH)].map((m) => m[1]);
+        expect(found).toEqual(["core/src/nonexistent.ts"]);
+        expect(existsSync(join(repoRoot, found[0]!))).toBe(false);
+        expect(existsSync(join(repoRoot, "core/src/config.ts"))).toBe(true);
     });
 });
