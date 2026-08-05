@@ -232,7 +232,7 @@ The following work requires later approval and is not promised by November.
   therefore defined now: a second capability plus a toggle-matrix run — each capability alone, then both
   together — with the assertion that enabling or disabling one does not change the behavior of the other.
 
-  **Amended 2026-08-03 (D70).** The reasoning above is right about the arithmetic and wrong about the
+  **Amended 2026-08-05 (D70).** The reasoning above is right about the arithmetic and wrong about the
   prerequisite. P3 is a *structural* property, so disposable stubs test it exactly as well as shipped
   capabilities would, and the run no longer waits for November: `probes/test/toggle-matrix.test.ts` covers
   all eight subsets of three deliberately dissimilar capability stubs (D70). P3 is now a tested claim in code

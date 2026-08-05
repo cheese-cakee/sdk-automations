@@ -163,7 +163,7 @@ including a sweep advertised as exhaustive, because the sweep was exhaustive in 
 dimensions and the omitted dimension was exactly where the defect lived. The lesson for
 `design/testing/README.md` tier 2 is that "exhaustive" must name the dimensions it enumerates.
 
-**Rows added after this record (2026-08-03).** D61–D73 come from a fourth source: building the seam BETWEEN
+**Rows added after this record (2026-08-05).** D61–D73 come from a fourth source: building the seam BETWEEN
 the finished packages rather than auditing any one of them. `core/`, `store/`, and `executor/` were each
 verified against their own source documents, and the only coupling between them was a branded id and a type
 import — nothing had ever run a capability decision through to an effect. Writing the runtime boundary

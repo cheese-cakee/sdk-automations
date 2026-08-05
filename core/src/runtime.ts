@@ -3,7 +3,7 @@
  * and §6 as types. The declaration layer (`contract.ts`) says what a
  * capability *is*; this module says how the platform *calls* it.
  *
- * Written as parallel-track probe work (2026-08-03) while the stage-two
+ * Written as parallel-track probe work (2026-08-05) while the stage-two
  * ranking is still open, on D32's precedent: capability *choice* waits on
  * maintainer data, but the capability *boundary* is capability-independent
  * — nothing below names a capability. Still pure: `evaluate` returns a
