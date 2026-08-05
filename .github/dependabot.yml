@@ -21,11 +21,38 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(deps)"
-    # Every third-party dependency in this workspace is a devDependency;
-    # `dependencies` are workspace-internal only. Grouping keeps the
-    # tooling bumps to one reviewable pull request a week rather than one
-    # per transitive package.
+    # Grouping covers MINOR AND PATCH ONLY, so majors arrive as individual
+    # pull requests. The first version of this file grouped everything with
+    # `patterns: ["*"]`, and the result was PR #30: a TypeScript 5 → 7 major
+    # bundled with routine bumps, so the safe half could not be merged
+    # without the breaking half. A group is for changes you would review
+    # together; a major is never one of those.
     groups:
       dev-tooling:
-        patterns:
-          - "*"
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+    ignore:
+      # TypeScript 7 is the native port and drops much of the old JS compiler
+      # API. Stryker 9.6.1 calls `ts.parseConfigFileTextToJson`, which no
+      # longer exists there, so mutation testing dies during sandbox setup —
+      # exactly what PR #30 demonstrated in CI.
+      #
+      # REMOVE THIS ENTRY when Stryker declares TypeScript 7 support. It is a
+      # dated upstream constraint, not a preference, and an unexplained
+      # ignore would strand this project on TypeScript 5 indefinitely.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+      # `@types/node` should track the LOWEST supported runtime, not the
+      # newest available. `engines.node` is >= 23.4 and CI's floor is Node 24,
+      # so typing against Node 26 would let code compile against APIs absent
+      # from the versions actually supported — a failure that appears at run
+      # time, on the oldest supported Node, the least-tested path.
+      #
+      # Policy rather than workaround: it moves when the supported floor
+      # moves, and the two should be changed together.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]

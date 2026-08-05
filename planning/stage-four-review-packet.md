@@ -180,7 +180,7 @@ whichever candidate wins:
   chose. Implemented in `core/src/contract.ts` (`retired`,
   `activeNames`).
 
-**Two further constraints on the winner (added 2026-08-03).** The
+**Two further constraints on the winner (added 2026-08-05).** The
 capability runtime boundary now exists (`core/src/runtime.ts`), which
 gives the ranking conversation a feasibility check it did not have when
 this packet was written:

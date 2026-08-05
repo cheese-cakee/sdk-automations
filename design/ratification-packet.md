@@ -19,7 +19,7 @@ close-out, the D46 gate on `active`), D29/D33 as encoded, and D40 at quarterly c
 D34, D35, D38, D39 — carried into the stage-two conversations via §7, plus D39's security-control
 sub-question (D22) and the formal stage-four close-out of the storage trio.
 
-**Amended 2026-08-03.** The sentence above is no longer complete: §2b adds thirteen engineering rows
+**Amended 2026-08-05.** The sentence above is no longer complete: §2b adds thirteen engineering rows
 (D61–D73) that postdate the adoption record and have never been reviewed. They are not maintainer taste
 — they are architecture, and two of them are safety rows — so they belong to the stage-four session, not
 the stage-two conversations. Only D69 reaches into §7, as a gate on the first-capability choice.
@@ -33,7 +33,7 @@ selection, not on architecture review, and D50 plus D51–D53 and D55–D60, whi
 mechanical hardening carrying no maintainer choice. D54 (the unimplemented `immediatePreventive` gate) is
 covered in §4.
 
-The seam-born rows D61–D73 (added 2026-08-03) are covered, in §2b. They are listed separately from the
+The seam-born rows D61–D73 (added 2026-08-05) are covered, in §2b. They are listed separately from the
 2026-07-30 audit rows because they are not the same kind of thing: those were defect repairs inside
 `core/`, these are boundary decisions between packages, and two of them (D62, D64) change how the storage
 decision's retry and destructive rules are fed.
