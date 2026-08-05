@@ -39,9 +39,27 @@ const TOP_LEVEL_KEYS = new Set([
  * other — a maintainer with three mistakes should be told about all
  * three, not made to fix them one push at a time.
  */
-export interface Section<T> {
-    readonly value: T;
-    readonly errors: readonly ConfigError[];
+/**
+ * A section's outcome. A value exists only when the section is VALID — which
+ * is the whole point of the shape.
+ *
+ * The predecessor returned `{ value, errors }` and always populated both, so a
+ * reader had to carry a non-local invariant: this value only means anything if
+ * the GLOBAL error list is empty. `parseCapabilities` could do complete, correct
+ * work on six capabilities and have it discarded because `principals` had a typo.
+ *
+ * Splitting into a validate pass and a build pass was the other candidate and
+ * was rejected: the builder would assume exactly what the checker guarantees,
+ * with nothing tying them together — the same "two things free to disagree"
+ * defect this package spent D53, D62, D67, D73, D76 and D77 removing.
+ */
+export type Checked<T> =
+    | { readonly ok: true; readonly value: T }
+    | { readonly ok: false; readonly errors: readonly ConfigError[] };
+
+/** Fold a section's accumulated errors into a result. */
+function checked<T>(value: T, errors: readonly ConfigError[]): Checked<T> {
+    return errors.length > 0 ? { ok: false, errors } : { ok: true, value };
 }
 
 /** One constructor, so every error is shaped the same way. */
@@ -92,20 +110,34 @@ export function checkSchemaVersion(raw: Record<string, unknown>): readonly Confi
  * safe one, but silently interpreting malformed input is the exact
  * pattern §2.7 and D38 reject everywhere else in this file.
  */
-export function parseMode(raw: Record<string, unknown>): Section<unknown> {
+/**
+ * A type predicate, so the narrowing is sound in the direction that matters.
+ *
+ * The array is WIDENED to `readonly string[]` — always safe — rather than the
+ * unknown value being asserted to be a mode, which is the unsound direction
+ * and was how this file used to do it.
+ */
+function isRepositoryMode(value: unknown): value is RepositoryMode {
+    return (
+        typeof value === "string" &&
+        (REPOSITORY_MODES as readonly string[]).includes(value)
+    );
+}
+
+export function parseMode(raw: Record<string, unknown>): Checked<RepositoryMode> {
     const value = Object.hasOwn(raw, "mode") ? raw.mode : "observe";
-    return {
-        value,
-        errors: REPOSITORY_MODES.includes(value as RepositoryMode)
-            ? []
-            : [
+    return isRepositoryMode(value)
+        ? { ok: true, value }
+        : {
+              ok: false,
+              errors: [
                   err(
                       "modeInvalid",
                       `mode must be one of ${REPOSITORY_MODES.join(", ")}, got ${JSON.stringify(raw.mode)}`,
                       "mode",
                   ),
               ],
-    };
+          };
 }
 
 /**
@@ -117,13 +149,13 @@ export function parseMode(raw: Record<string, unknown>): Section<unknown> {
 export function parseCapabilities(
     raw: Record<string, unknown>,
     knownCapabilities: readonly string[],
-): Section<[string, CapabilityConfig][]> {
+): Checked<[string, CapabilityConfig][]> {
     const entries: [string, CapabilityConfig][] = [];
     const errors: ConfigError[] = [];
-    if (raw.capabilities === undefined) return { value: entries, errors };
+    if (raw.capabilities === undefined) return { ok: true, value: entries };
     if (!isPlainObject(raw.capabilities)) {
         return {
-            value: entries,
+            ok: false,
             errors: [err("notAMapping", "capabilities must be a mapping", "capabilities")],
         };
     }
@@ -169,7 +201,7 @@ export function parseCapabilities(
         }
         entries.push([name, { enabled, settings }]);
     }
-    return { value: entries, errors };
+    return checked(entries, errors);
 }
 
 /**
@@ -181,13 +213,13 @@ export function parseCapabilities(
  */
 export function parseMappings(
     raw: Record<string, unknown>,
-): Section<Partial<Record<MappableMeaning, string>>> {
+): Checked<Partial<Record<MappableMeaning, string>>> {
     const labels: Partial<Record<MappableMeaning, string>> = {};
     const errors: ConfigError[] = [];
-    if (raw.mappings === undefined) return { value: labels, errors };
+    if (raw.mappings === undefined) return { ok: true, value: labels };
     if (!isPlainObject(raw.mappings)) {
         return {
-            value: labels,
+            ok: false,
             errors: [err("notAMapping", "mappings must be a mapping", "mappings")],
         };
     }
@@ -198,7 +230,7 @@ export function parseMappings(
     const rawLabels = raw.mappings.labels ?? {};
     if (!isPlainObject(rawLabels)) {
         errors.push(err("notAMapping", "mappings.labels must be a mapping", "mappings.labels"));
-        return { value: labels, errors };
+        return checked(labels, errors);
     }
 
     const labelOwner = new Map<string, { meaning: string; label: string }>();
@@ -229,16 +261,16 @@ export function parseMappings(
         labelOwner.set(key, { meaning, label });
         labels[meaning as MappableMeaning] = label;
     }
-    return { value: labels, errors };
+    return checked(labels, errors);
 }
 
-export function parsePrincipals(raw: Record<string, unknown>): Section<[string, string][]> {
+export function parsePrincipals(raw: Record<string, unknown>): Checked<[string, string][]> {
     const entries: [string, string][] = [];
     const errors: ConfigError[] = [];
-    if (raw.principals === undefined) return { value: entries, errors };
+    if (raw.principals === undefined) return { ok: true, value: entries };
     if (!isPlainObject(raw.principals)) {
         return {
-            value: entries,
+            ok: false,
             errors: [err("notAMapping", "principals must be a mapping", "principals")],
         };
     }
@@ -249,7 +281,7 @@ export function parsePrincipals(raw: Record<string, unknown>): Section<[string, 
         }
         entries.push([key, value]);
     }
-    return { value: entries, errors };
+    return checked(entries, errors);
 }
 
 /**
