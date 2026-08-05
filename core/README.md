@@ -65,9 +65,22 @@ tidiness:
 
 So the rule reads in both directions: if you add a per-module test, it goes
 beside its module; if you cannot name the one module a test belongs to, it
-belongs at the root. `stryker.config.json` mutates `src/**/*.ts` — the
-recursive glob matters, because a single-level `src/*.ts` silently stops
-mutating a module the moment it moves into a subdirectory.
+belongs at the root.
+
+`test/repo-artifacts.test.ts` holds the invariants that are not about
+behaviour at all — source files stay free of control characters, and every
+module matches Stryker's mutate glob. Both exist because a regression got
+through: a NUL-delimited key made `runtime.ts` a binary file to grep, and a
+single-level `src/*.ts` glob silently stopped mutating three modules the day
+they moved into `src/github/`. Neither broke a test, because neither changed
+behaviour.
+
+**The mutation break threshold is 90**, and the number is evidence rather than
+taste: when `runtime.ts` had no tests in this package at all, the score was
+89.27 — so 90 is the value that would have failed the build for the regression
+that actually happened. It catches a module losing its coverage wholesale. It
+does *not* catch a module half-losing it, which is the weaker guarantee and is
+stated here rather than assumed. Today's score is 98.89.
 
 ## What the tests prove — and what they do not
 

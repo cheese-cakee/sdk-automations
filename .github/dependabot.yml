@@ -1,0 +1,31 @@
+version: 2
+
+# Dependabot already watches npm here — the three alerts on 2026-08-05
+# (brace-expansion, fast-uri, qs) came from it. The `github-actions`
+# ecosystem below is the addition, and it exists for a specific reason:
+# this workflow was first written pinning actions three major versions
+# behind, and nothing in the repository would ever have said so. Action
+# versions rot exactly like the `github/` fixtures do — silently, with
+# everything still green.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    # Every third-party dependency in this workspace is a devDependency;
+    # `dependencies` are workspace-internal only. Grouping keeps the
+    # tooling bumps to one reviewable pull request a week rather than one
+    # per transitive package.
+    groups:
+      dev-tooling:
+        patterns:
+          - "*"

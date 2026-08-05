@@ -342,7 +342,7 @@ describe("deriveIdempotencyKey", () => {
     it("produces a key with no control characters", () => {
         // A NUL-delimited key made the whole source file read as binary to
         // grep and diff; the encoding stays printable on purpose.
-        expect(deriveIdempotencyKey(base)).not.toMatch(/[ -]/);
+        expect(deriveIdempotencyKey(base)).not.toMatch(/[\u0000-\u001f]/);
     });
 });
 

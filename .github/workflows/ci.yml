@@ -1,0 +1,73 @@
+name: ci
+
+# `pull_request`, deliberately NOT `pull_request_target`: fork code runs with
+# no secrets and a read-only token. The mutation job below executes Stryker
+# against configuration a fork can edit, so the workflow must never hand that
+# code anything it could exfiltrate.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Goal 4 applied to ourselves: the smallest practical permission set. Nothing
+# here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck and tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 is the LTS floor we support; 25 is what development happens on.
+        # The matrix is not ceremony: `store/` uses `node:sqlite`, which is
+        # still experimental and still emits a warning on 24 — an API that
+        # can change between majors is one worth testing on both.
+        node: [24, 25]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Each package's own `test` script is `tsc --noEmit && vitest run`, so
+      # this covers typechecking too.
+      - run: pnpm -r test
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # 6.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # 7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level moderate
+
+  mutation:
+    name: mutation testing (core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # 6.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # 7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Fails the build below `thresholds.break` in core/stryker.config.json.
+      # That number is load-bearing: a module can leave the mutate glob, or
+      # lose its tests to another package, without a single test failing —
+      # both have happened, and only the score showed it.
+      - run: pnpm --filter @hiero-hackers/automation-core exec stryker run
