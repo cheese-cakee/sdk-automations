@@ -165,7 +165,7 @@ meaning subsets).
 ## 4. Safety-policy agenda
 
 **Venue:** maintainer review attached to D10 (destructive actions), D7 (human-edit precedence), and
-D22 (kill switches). **Evidence:** `core/src/safety.ts`, the 5,120-context sweep, boundary tests.
+D22 (kill switches). **Evidence:** `core/src/safety/`, the 5,120-context sweep, boundary tests.
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |
 |---|---|---|---|

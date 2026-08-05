@@ -12,7 +12,7 @@
 
 import type { IdempotencyClass, PermissionGrant } from "./declaration.js";
 import type { MappableMeaning } from "../config/index.js";
-import type { ActionClass } from "../safety.js";
+import type { ActionClass } from "../safety/index.js";
 import type { EntityKind } from "../workflow/index.js";
 
 // ─── References and explanations ─────────────────────────────────────

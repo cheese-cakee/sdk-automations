@@ -5,7 +5,7 @@
  * into calls is the executor's planner, deliberately outside `core/`.
  */
 
-import type { ActionClass } from "../safety.js";
+import type { ActionClass } from "../safety/index.js";
 import type { IdempotencyClass } from "./declaration.js";
 import type { MappableMeaning } from "../config/index.js";
 import {

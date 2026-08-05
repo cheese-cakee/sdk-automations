@@ -25,7 +25,7 @@ import {
     projectCapabilityView,
     screenIntent,
     type AnyIntent,
-} from "../src/index.js";
+} from "../../src/index.js";
 
 const declaration = declareCapability({
     name: "fixture",
