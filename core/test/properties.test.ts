@@ -59,7 +59,7 @@ describe("parseConfig properties", () => {
     it("never throws and ok ⇔ no errors, for arbitrary values", () => {
         fc.assert(
             fc.property(fc.anything(), (raw) => {
-                const result = parseConfig(raw, { knownCapabilities: [] });
+                const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
                 expect(typeof result.ok).toBe("boolean");
                 if (!result.ok) expect(result.errors.length).toBeGreaterThan(0);
                 else expect("errors" in result).toBe(false);
@@ -71,10 +71,9 @@ describe("parseConfig properties", () => {
     it("valid-by-construction configs parse ok", () => {
         fc.assert(
             fc.property(validConfig, (raw) => {
-                const result = parseConfig(raw, {
-                    knownCapabilities: Object.keys(raw.capabilities ?? {}),
+                const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: Object.keys(raw.capabilities ?? {}),
                 });
-                if (!result.ok) throw new Error(result.errors.join("; "));
+                if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
             }),
             { seed: SEED, numRuns: 300 },
         );
@@ -86,9 +85,19 @@ describe("parseConfig properties", () => {
         fc.assert(
             fc.property(validConfig, (raw) => {
                 const knownCapabilities = Object.keys(raw.capabilities ?? {});
-                const first = parseConfig(raw, { knownCapabilities });
+                const first = parseConfig(raw, { revision: "rev-test", knownCapabilities });
                 if (!first.ok) return; // covered by the property above
-                const second = parseConfig(first.config as unknown, {
+                /**
+                 * `revision` is metadata ABOUT the document, not a key IN
+                 * it (D77), so a parsed configuration is no longer a valid
+                 * document — it carries a field a maintainer never writes.
+                 * Stripping it keeps the property meaningful: what parsing
+                 * produces, minus the identity stamped on it, must parse
+                 * back to the same thing.
+                 */
+                const { revision: _stamped, ...asDocument } = first.config;
+                const second = parseConfig(asDocument as unknown, {
+                    revision: "rev-test",
                     knownCapabilities,
                 });
                 expect(second.ok).toBe(true);

@@ -59,9 +59,9 @@ describe("the assignment story, end to end in pure logic", () => {
                 },
             },
         },
-        { knownCapabilities: registry.names },
+        { revision: "rev-test", knownCapabilities: registry.names },
     );
-    if (!configResult.ok) throw new Error(configResult.errors.join("; "));
+    if (!configResult.ok) throw new Error(configResult.errors.map((e) => e.message).join("; "));
     const config = configResult.config;
 
     it("wires registry → config → projection → transition → safety into one apply", () => {
@@ -87,15 +87,16 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 actionClass: "reversibleStateChange",
                 capability: "assignment",
+                requiredPermissions: ["issues:write"],
                 causeObservedAt: new Date("2026-07-25T10:00:00Z"),
                 cause: "contributor requested /assign",
                 target: { item: "issue #7", change: "label 'status: in progress'" },
             },
             config,
             {
-                installationHasPermission: true, // shell fact, from the App's grants
+                installationGrants: ["issues:write"], // shell fact, from the App's grants
                 killSwitchActive: false,
-                itemBlocked: state.blocked,
+                observedMeanings: state.blocked ? (["blocked"] as const) : [],
                 preconditionHolds: true,
                 latestHumanChangeAt: new Date("2026-07-25T09:59:00Z"), // older: no conflict
             },
@@ -124,15 +125,16 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 actionClass: "reversibleStateChange",
                 capability: "assignment",
+                requiredPermissions: ["issues:write"],
                 causeObservedAt: new Date("2026-07-25T10:00:00Z"),
                 cause: "scheduled reclaim evaluation",
                 target: { item: "issue #7", change: "label 'status: ready for dev'" },
             },
             config,
             {
-                installationHasPermission: true,
+                installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                itemBlocked: false,
+                observedMeanings: [],
                 preconditionHolds: false, // recheck saw the close
                 latestHumanChangeAt: new Date("2026-07-25T10:05:00Z"), // the close
             },
@@ -157,7 +159,7 @@ describe("the assignment story, end to end in pure logic", () => {
                 mode: "dry-run",
                 capabilities: { assignment: { enabled: true } },
             },
-            { knownCapabilities: registry.names },
+            { revision: "rev-test", knownCapabilities: registry.names },
         );
         expect(dryConfig.ok).toBe(true);
         if (!dryConfig.ok) return;
@@ -165,15 +167,16 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 actionClass: "reversibleStateChange",
                 capability: "assignment",
+                requiredPermissions: ["issues:write"],
                 causeObservedAt: new Date("2026-07-25T10:00:00Z"),
                 cause: "contributor requested /assign",
                 target: { item: "issue #7", change: "label 'status: in progress'" },
             },
             dryConfig.config,
             {
-                installationHasPermission: true,
+                installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                itemBlocked: false,
+                observedMeanings: [],
                 preconditionHolds: true,
                 latestHumanChangeAt: null,
             },

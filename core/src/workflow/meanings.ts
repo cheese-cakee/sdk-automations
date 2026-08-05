@@ -1,32 +1,9 @@
 /**
- * The candidate Hiero workflow profile as executable logic —
- * `design/core/taxonomy.md` §2, §4, §5, §6 turned into transition tables.
- *
- * These are internal meanings, not GitHub label strings; repositories map
- * them via configuration (`design/config/schema.md` §3). The tables below
- * encode exactly the two state diagrams in the design doc — where the doc
- * was ambiguous, the choice is recorded in a comment tagged FINDING and
- * belongs in the decision register. `test/doc-drift.test.ts` compares the
- * tables against the doc's diagrams so the two cannot silently diverge.
- *
- * **This module is the CAPABILITY rulebook only.** `manual-edits.md` §1 and
- * D29 give humans and capabilities different rules: a capability may move
- * only along a documented edge, while a person with repository permission
- * may land an item anywhere. So there is deliberately no human rulebook
- * here — the human path is `observe.ts`, which reconciles whatever labels
- * a person left rather than validating them, and `safety.ts` rule 5, which
- * decides precedence when a human change and a capability request collide.
- * Routing a human edit through `applyTransition` would produce a
- * `noSuchEdge` refusal for a perfectly legal human action; nothing in the
- * types prevents that yet (the request carries no actor), so it stays a
- * shell obligation.
- *
- * What this module DOES see of human activity is one thing: divergence.
- * The `stalePrecondition` guard refuses when the item is not where the
- * request assumed, whoever moved it. It compares positions only — a human
- * change that leaves the position alone (unassigning while the item stays
- * `inProgress`) is invisible here and rides on `WriteContext`'s
- * `preconditionHolds` attestation instead.
+ * Closure is a recorded REASON, not a position: read from GitHub's own fields
+ * and never written as a label. Modelled orthogonally for the same reason as
+ * `blocked` (D28) — as a meaning it would become mappable, and a merged pull
+ * request still carrying `needs review` would project as a conflict
+ * (`FINDING(taxonomy-closure-reason)`, D47, D35).
  */
 
 /**
@@ -37,6 +14,8 @@
  * rules that walk them. Every enumeration derives its union from its array
  * (D76), so adding a member breaks compilation until every table is updated.
  */
+
+import type { MappableMeaning } from "../config/index.js";
 
 export type EntityKind = "issue" | "pullRequest";
 
@@ -149,4 +128,18 @@ export function closureReasonFor(cause: TransitionCause): ClosureReason | null {
         default:
             return null;
     }
+}
+
+/**
+ * Is this item paused?
+ *
+ * D28 makes `blocked` an orthogonal flag rather than a position, so the rule
+ * is simply presence. It lives here, once, because two places used to decide
+ * it: `project.ts` computed it from the observed meanings, and the safety
+ * engine was handed a separate boolean asserting the same thing — with
+ * nothing comparing them. A shell could project an item as blocked and then
+ * assert it was not.
+ */
+export function isBlocked(meanings: readonly MappableMeaning[]): boolean {
+    return meanings.includes("blocked");
 }

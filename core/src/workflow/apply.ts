@@ -134,15 +134,10 @@ export function applyTransition<M, C extends TransitionCause>(
 }
 
 /**
- * Reopening is a closure CLEAR, not a transition — the same shape as
- * `blocked` (D28), and the reason the first implementation's "except
- * reopen (not modelled yet)" comment could not be resolved inside the
- * edge tables: closing never removed the position labels (D35), so a
- * reopened item comes back exactly where it was and no position moves.
- *
- * FINDING(taxonomy-reopen), D49: a merged pull request can never reopen
- * — GitHub does not permit it — so the closure reason makes that a typed
- * refusal rather than an edge nobody remembered to leave out.
+ * Reopening is a closure CLEAR, not a transition: closing never removes the
+ * position labels (D35), so a reopened item returns exactly where it was. A
+ * merged pull request can never reopen, which GitHub enforces and this refuses
+ * explicitly rather than omitting (`FINDING(taxonomy-reopen)`, D49, D28).
  */
 export function applyReopen<M>(
     state: WorkItemState<M>,

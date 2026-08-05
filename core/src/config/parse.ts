@@ -12,6 +12,7 @@ import {
 } from "./schema.js";
 import {
     checkSchemaVersion,
+    err,
     checkTopLevelKeys,
     isPlainObject,
     parseCapabilities,
@@ -22,10 +23,13 @@ import {
 
 export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigResult {
     if (raw === undefined || raw === null) {
-        return { ok: true, config: NO_CONFIG };
+        return { ok: true, config: { ...NO_CONFIG, revision: options.revision } };
     }
     if (!isPlainObject(raw)) {
-        return { ok: false, errors: ["configuration must be a mapping"] };
+        return {
+            ok: false,
+            errors: [err("notAMapping", "configuration must be a mapping", null)],
+        };
     }
 
     const mode = parseMode(raw);
@@ -33,30 +37,39 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
     const mappings = parseMappings(raw);
     const principals = parsePrincipals(raw);
 
-    const errors = [
-        ...checkTopLevelKeys(raw),
-        ...checkSchemaVersion(raw),
-        ...mode.errors,
-        ...capabilities.errors,
-        ...mappings.errors,
-        ...principals.errors,
-    ];
+    /**
+     * §2.6 — fail closed: any error anywhere yields no configuration at all,
+     * whole-file (`FINDING(config-fail-closed-granularity)`, D38). The order
+     * below is the order a maintainer reads their mistakes in, and the tests
+     * freeze it: outermost problem first.
+     */
+    const structural = [...checkTopLevelKeys(raw), ...checkSchemaVersion(raw)];
 
     /**
-     * §2.6 — fail closed: any error yields no configuration at all.
-     * FINDING(config-fail-closed-granularity), D38: the granularity is
-     * deliberately the WHOLE file — last-known-good and partial
-     * salvage were both rejected (see the register row). Humane only
-     * with the shell's two mitigations: the configuration report and
-     * PR-time validation via this same function.
+     * One test, doing two jobs: it reports every failed section AND narrows
+     * the four results, so the success path below needs no cast and no
+     * unreachable guard to satisfy the compiler.
      */
-    if (errors.length > 0) return { ok: false, errors };
+    if (!mode.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
+        return {
+            ok: false,
+            errors: [
+                ...structural,
+                ...(mode.ok ? [] : mode.errors),
+                ...(capabilities.ok ? [] : capabilities.errors),
+                ...(mappings.ok ? [] : mappings.errors),
+                ...(principals.ok ? [] : principals.errors),
+            ],
+        };
+    }
+    if (structural.length > 0) return { ok: false, errors: structural };
 
     return {
         ok: true,
         config: {
+            revision: options.revision,
             schemaVersion: 1,
-            mode: mode.value as RepositoryMode,
+            mode: mode.value,
             capabilities: cleanRecord(capabilities.value),
             mappings: { labels: mappings.value },
             principals: cleanRecord(principals.value),

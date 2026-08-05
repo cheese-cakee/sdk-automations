@@ -10,7 +10,7 @@
  * through.
  */
 
-import type { IdempotencyClass, PermissionGrant } from "./declaration.js";
+
 import type { MappableMeaning } from "../config/index.js";
 import type { ActionClass } from "../safety/index.js";
 import type { EntityKind } from "../workflow/index.js";
@@ -147,32 +147,29 @@ export interface IntentCatalogue {
     readonly unassign: { readonly login: string };
 }
 
+import type { PermissionGrant } from "../github/index.js";
+
 export type IntentOperation = keyof IntentCatalogue & string;
+
+/**
+ * How a retry must behave after a lost response — experiment 6.5's
+ * classes. `idempotent`: re-sending cannot duplicate the outcome (label
+ * add). `nonIdempotent`: a blind retry duplicates; recovery must go
+ * through the read-back path (comment create).
+ */
+export type IdempotencyClass = "idempotent" | "nonIdempotent";
+
 
 /**
  * The facts the PLATFORM owns about an operation — never the capability.
  *
- * FINDING(runtime-idempotency-declared-not-checked): `contract.ts`
- * accepts any `idempotencyClass` on any intent name, so a capability
- * could declare `postManagedComment` as `idempotent`. The executor trusts
- * that class to choose its retry rule, so the declaration would send it
- * down the blind-retry path and reproduce experiment 6.5's demonstrated
- * comment duplication — the exact failure the class exists to prevent. A
- * per-capability field cannot be the authority on a per-endpoint fact.
- * The catalogue is now the authority and `checkAgainstCatalogue` rejects
- * a declaration that disagrees; the declared field survives as a
- * REDUNDANT statement that must match, which is what makes the mismatch
- * catchable at registry build instead of at the first lost response.
+ * The declared class is a redundant restatement that must match: a per-capability
+ * field cannot be authoritative about a per-endpoint fact
+ * (`FINDING(runtime-idempotency-declared-not-checked)`, D62).
  *
- * FINDING(runtime-action-class-floor): safety.md's `ActionClass` is not
- * declared anywhere in the capability contract, so `evaluateWrite` — which
- * requires one — had no supplier. It cannot be purely per-operation
- * either: `unassign` is a `reversibleStateChange` when a human asks and a
- * `clockTriggeredDestructive` when a clock does, and only the capability
- * knows which. The rule is therefore a FLOOR: the catalogue names the
- * minimum risk class, the intent may declare a stricter one, and a laxer
- * one is refused. A capability can be more careful than the platform
- * requires; it can never be less.
+ * `actionClassFloor` is a MINIMUM, not a value: `unassign` is reversible when a
+ * human asks and destructive when a clock does, so a capability may declare
+ * stricter and never laxer (`FINDING(runtime-action-class-floor)`, D63).
  */
 export interface OperationFacts {
     readonly idempotencyClass: IdempotencyClass;

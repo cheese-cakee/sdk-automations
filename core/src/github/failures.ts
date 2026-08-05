@@ -1,18 +1,13 @@
 /**
- * The failure catalogue as executable classification — the
- * `design/operations/endpoint-permission-matrix.md` failure table
- * turned into one pure function, because the stage-three evidence
- * showed the classes are distinguishable only by reading bodies and
- * headers together (a status code alone conflates four different
- * 403s). Every rule cites the run that observed it.
+ * GitHub's failure responses, classified — and the bounded retry advice that
+ * follows from each.
  *
- * The adapter owns retry policy explicitly (Octokit's default plugins
- * are disabled — 6.4); `retryAdvice` below is that policy's pure core.
- *
- * FINDING(failures-prose-snapshot), D40: body regexes are snapshots of
- * observed prose, not contracts. Rot degrades into
- * `forbiddenUnrecognized`; a periodic sandbox re-probe re-validates
- * the fixtures.
+ * The body regexes are DATED SNAPSHOTS, not contract: when GitHub rewords a
+ * message the match fails and the response degrades to
+ * `forbiddenUnrecognized` rather than being confidently misdiagnosed. Green
+ * tests here mean the fixtures still agree with themselves
+ * (`FINDING(failures-prose-snapshot)`, D40 — see this directory's README for
+ * the re-probe obligation).
  */
 
 import {
@@ -72,6 +67,38 @@ export type FailureClass =
     /** 5xx and everything else worth one bounded retry. */
     | { readonly kind: "transient" };
 
+/**
+ * The PERISHABLE SURFACE — every place this module reads GitHub's prose.
+ *
+ * Two patterns, and D40's quarterly re-probe is entirely about these: the
+ * rest of this file is logic over status codes and headers, which do not
+ * reword themselves. They are lifted out of `classifyFailure` because the
+ * re-probe is a specific editing task — find the pattern, compare it against
+ * what GitHub says now, change it — and it should not require reading a
+ * classifier at nesting depth five to perform.
+ *
+ * `observed` is the text the pattern was written against. It is not
+ * decoration: `failures.test.ts` asserts every pattern still matches its own
+ * sample, so editing one without the other fails rather than drifting
+ * silently — which is the whole failure mode of `FINDING(failures-prose-snapshot)`.
+ */
+export const BODY_PATTERNS = {
+    secondaryRateLimit: {
+        pattern: /secondary rate limit/i,
+        observed:
+            "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+        probedAt: "2026-07-23",
+        experiment: "6.4",
+    },
+    installationSuspended: {
+        pattern: /installation is currently suspended/i,
+        observed:
+            "This installation is currently suspended. Please contact an organization owner.",
+        probedAt: "2026-07-23",
+        experiment: "6.1",
+    },
+} as const;
+
 export function classifyFailure(o: FailureObservation): FailureClass {
     const body = o.body;
     if (o.status === 401) {
@@ -89,7 +116,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (o.headers["x-ratelimit-remaining"] === "0") {
             return { kind: "primaryExhausted", resetAt: o.headers["x-ratelimit-reset"] };
         }
-        if (/secondary rate limit/i.test(body) || o.status === 429) {
+        if (BODY_PATTERNS.secondaryRateLimit.pattern.test(body) || o.status === 429) {
             const retryAfter = parseSecondsHeader(o.headers["retry-after"]);
             switch (retryAfter.kind) {
                 case "missing":
@@ -120,7 +147,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (accepted !== undefined) {
             return { kind: "permissionMissing", acceptedPermissions: accepted };
         }
-        if (/installation is currently suspended/i.test(body)) {
+        if (BODY_PATTERNS.installationSuspended.pattern.test(body)) {
             return { kind: "installationSuspended" };
         }
         // No observed shape matched — say so, carrying the evidence.
@@ -147,15 +174,9 @@ export const MAX_RATE_LIMIT_ATTEMPTS = 3;
 export const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
 
 /**
- * Bounded, evidence-derived retry policy:
- * - secondary limit: GitHub's documented one-minute floor — no header
- *   exists to trust (6.4) — for at most MAX_RATE_LIMIT_ATTEMPTS;
- * - primary exhaustion: wait for the reset epoch, same bound;
- * - malformed or excessive wait signals: surface instead of guessing;
- * - expired token: refresh within its independent authentication bound;
- * - transient: bounded exponential backoff, attempt-indexed;
- * - everything else is a diagnosis, not a retry problem (D24).
- * Deterministic by design; the caller adds jitter if needed.
+ * Bounded retry advice. The caller supplies the attempt count because retry
+ * bounds must survive a restart — a counter that resets with the process is
+ * not a bound (D42, D24).
  */
 export function retryAdvice(
     failure: FailureClass,

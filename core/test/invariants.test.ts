@@ -33,6 +33,7 @@ const CAPABILITY = "assignment";
 const requestFor = (actionClass: ActionClass) => ({
     actionClass,
     capability: CAPABILITY,
+    requiredPermissions: ["issues:write"] as const,
     causeObservedAt: CAUSE_AT,
     cause: "sweep",
     target: { item: "issue #1", change: "label" },
@@ -73,6 +74,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                     for (const latestHumanChangeAt of humanChanges)
                                         for (const mode of REPOSITORY_MODES) {
                                         const config: RepositoryConfig = {
+                                            revision: "rev-test",
                                             schemaVersion: 1,
                                             mode,
                                             capabilities: {
@@ -85,9 +87,11 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                             principals: {},
                                         };
                                         const context: WriteContext = {
-                                            installationHasPermission,
+                                            installationGrants: installationHasPermission
+                                                ? (["issues:write"] as const)
+                                                : [],
                                             killSwitchActive,
-                                            itemBlocked,
+                                            observedMeanings: itemBlocked ? (["blocked"] as const) : [],
                                             preconditionHolds,
                                             latestHumanChangeAt,
                                         };

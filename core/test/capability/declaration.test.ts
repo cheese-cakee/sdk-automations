@@ -93,13 +93,13 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
 
         const rejected = parseConfig(
             { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
-            { knownCapabilities: result.registry.names },
+            { revision: "rev-test", knownCapabilities: result.registry.names },
         );
         expect(rejected.ok).toBe(false);
 
         const accepted = parseConfig(
             { schemaVersion: 1, capabilities: { prQuality: { enabled: true } } },
-            { knownCapabilities: result.registry.names },
+            { revision: "rev-test", knownCapabilities: result.registry.names },
         );
         expect(accepted.ok).toBe(true);
     });
@@ -112,7 +112,7 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
         // The repository that enabled it does NOT drop to observe...
         const config = parseConfig(
             { schemaVersion: 1, capabilities: { prQuality: { enabled: true } } },
-            { knownCapabilities: result.registry.names },
+            { revision: "rev-test", knownCapabilities: result.registry.names },
         );
         expect(config.ok).toBe(true);
 

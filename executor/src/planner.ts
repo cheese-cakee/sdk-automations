@@ -17,6 +17,14 @@
 
 import {
     createDestructiveWarning,
+    INTENT_OPERATIONS,
+    finding,
+    verdictFinding,
+    type Finding,
+    type RepositoryMode,
+    type RepositoryRef,
+    type Report,
+    type Subject,
     evaluateDestructive,
     evaluateWrite,
     idempotencyOf,
@@ -54,8 +62,6 @@ export interface PlanningResult {
 
 export interface PlanningInputs {
     readonly declaration: TypedDeclaration;
-    /** The default-branch configuration revision the intents were formed under. */
-    readonly revision: string;
     /**
      * The reviewed configuration itself — not a copy of its mode.
      *
@@ -111,6 +117,8 @@ function writeRequestFor(intent: AnyIntent): WriteRequest {
     return {
         actionClass: intent.actionClass,
         capability: intent.capability,
+        // From the catalogue, which owns what an operation needs (D62).
+        requiredPermissions: [INTENT_OPERATIONS[intent.operation].permission],
         causeObservedAt: intent.cause.observedAt,
         cause: intent.cause.cause,
         target: {
@@ -269,7 +277,7 @@ export function planIntents(
                     intent,
                     plan: {
                         effectId: intent.idempotencyKey,
-                        revision: inputs.revision,
+                        revision: inputs.config.revision,
                         calls: callsFor(intent),
                     },
                 });
@@ -280,5 +288,66 @@ export function planIntents(
     return {
         dispositions,
         plans: dispositions.flatMap((d) => (d.kind === "plan" ? [d.plan] : [])),
+    };
+}
+
+/**
+ * A planning pass as findings — the step that makes dry-run OBSERVABLE.
+ *
+ * D68 stops dry-run at planning and emits `record` dispositions, which was
+ * correct and, until now, invisible: nothing collected them, so the mode
+ * whose whole promise is "see what it would do" showed nothing. This is the
+ * conversion, and it lives here rather than in `core/` because `Disposition`
+ * is the executor's type and core must not depend on the executor.
+ *
+ * The severities follow core's rule, not a second one: a plan is `info`
+ * because it is the system working, a record is `notice` because nothing
+ * happened and that was intended, and a refusal is classified by core's own
+ * table wherever the code came from a safety verdict.
+ */
+export function planningFindings(
+    result: PlanningResult,
+    repository: RepositoryRef,
+): readonly Finding[] {
+    return result.dispositions.map((d) => {
+        const subject: Subject = {
+            kind: "effect",
+            capability: d.intent.capability,
+            item: d.intent.item,
+            operation: d.intent.operation,
+        };
+        if (d.kind === "plan") {
+            return finding(
+                "info",
+                "planned",
+                d.intent.explanation.summary,
+                subject,
+                d.intent.explanation.detail,
+            );
+        }
+        if (d.kind === "record") {
+            return finding("notice", d.code, d.reason, subject, [
+                d.intent.explanation.summary,
+            ]);
+        }
+        return verdictFinding(
+            { outcome: "refuse", code: d.code as never, reason: d.reason },
+            subject,
+        );
+    });
+}
+
+/** The whole pass as a report, ready for a shell to render. */
+export function planningReport(
+    result: PlanningResult,
+    repository: RepositoryRef,
+    mode: RepositoryMode,
+    revision: string,
+): Report {
+    return {
+        revision,
+        mode,
+        repository,
+        findings: planningFindings(result, repository),
     };
 }

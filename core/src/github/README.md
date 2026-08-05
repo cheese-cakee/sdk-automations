@@ -38,6 +38,13 @@ here so the question is settled once rather than re-litigated per file.
 D40 makes re-probing a standing obligation. This table is where that
 obligation lives next to the code it governs, rather than only in the register.
 
+**Where to look first:** `failures.ts` exports `BODY_PATTERNS` — the only two
+places this package reads GitHub's prose, each carrying the text it was
+written against, its probe date, and the experiment that produced it. The
+re-probe is: compare each `observed` sample against what GitHub says now. A
+test asserts every pattern still matches its own sample, so editing one
+without the other fails rather than drifting.
+
 | File | Probed by | Date | Goes stale when | First symptom |
 |---|---|---|---|---|
 | `failures.ts` | experiment 6.4 | 2026-07-23 | GitHub rewords error bodies | a rise in `forbiddenUnrecognized` classifications |

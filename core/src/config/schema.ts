@@ -55,6 +55,15 @@ export interface CapabilityConfig {
 }
 
 export interface RepositoryConfig {
+        /**
+     * Which version of the reviewed file this is — the sha the shell fetched.
+     *
+     * The executor guards every in-flight effect on this string and D45 rules
+     * old-revision intents unresumable, yet the parsed configuration once
+     * carried no identity at all (`FINDING(config-revision-detached)`, D77).
+     * An OBSERVATION, so it arrives through `ParseConfigOptions`.
+     */
+    readonly revision: string;
     readonly schemaVersion: 1;
     readonly mode: RepositoryMode;
     readonly capabilities: Readonly<Record<string, CapabilityConfig>>;
@@ -78,6 +87,7 @@ export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Read
 }
 
 export const NO_CONFIG: RepositoryConfig = {
+    revision: "",
     schemaVersion: 1,
     mode: "observe",
     capabilities: cleanRecord([]),
@@ -94,28 +104,54 @@ export const NO_CONFIG: RepositoryConfig = {
  * constant above makes today's assumption explicit and greppable.
  */
 
+/**
+ * Why a configuration was rejected, in a form a report can USE.
+ *
+ * D38's fail-closed granularity was accepted conditional on the configuration
+ * report and the PR-time check, and bare prose left both able only to echo
+ * text (`FINDING(config-error-codes)`, D75). The code is contract; the
+ * message is for humans and is never asserted on, only its presence.
+ */
+export type ConfigErrorCode =
+    | "notAMapping"
+    | "unknownKey"
+    | "schemaVersionUnsupported"
+    | "modeInvalid"
+    | "capabilityNameInvalid"
+    | "capabilityEnabledNotBoolean"
+    | "capabilityNotInRegistry"
+    | "meaningNotMappable"
+    | "labelInvalid"
+    | "labelNotInjective"
+    | "principalNotAString";
+
+export interface ConfigError {
+    readonly code: ConfigErrorCode;
+    /** Prose for a maintainer. Never asserted on, only its presence. */
+    readonly message: string;
+    /**
+     * Dotted path into the reviewed file — `capabilities.intake.enabled` —
+     * or `null` for a whole-document problem. This is what lets a check run
+     * annotate a line rather than paste a paragraph.
+     */
+    readonly path: string | null;
+}
+
 export type ConfigResult =
     | { readonly ok: true; readonly config: RepositoryConfig }
-    | { readonly ok: false; readonly errors: readonly string[] };
+    | { readonly ok: false; readonly errors: readonly ConfigError[] };
 
 export interface ParseConfigOptions {
-    /**
-     * The platform's registry of shipped capability names. An *enabled*
-     * capability outside the registry is a validation error;
-     * a disabled unknown capability stays dormant (present, inert), so
-     * removing a capability from the platform does not break configs that
-     * still mention it disabled.
+    /** The revision of the document being parsed. See `RepositoryConfig`. */
+    readonly revision: string;
+        /**
+     * The platform's shipped capability names. An ENABLED capability outside
+     * this list is a validation error; a disabled unknown one stays dormant,
+     * so retiring a capability never breaks a config that still mentions it.
      *
-     * FINDING(config-capability-registry-gap), experiment 6.3: without
-     * this list a configuration enabling a misspelled or unshipped
-     * capability passes validation silently — the maintainer believes a
-     * behavior is on that does not exist. Callers that have a registry
-     * REQUIRED: an absent registry used to skip the check entirely, and
-     * then (2026-07-28) came to mean "no capability is known", which
-     * rejects every enabled capability. Both readings are reachable by
-     * forgetting an optional argument, so the argument is no longer
-     * optional — a caller with no registry says so with `[]`, and the
-     * fail-closed result is then a choice rather than an omission.
+     * Required, not optional: an absent registry once meant "skip the check"
+     * and later "nothing is known", and both were reachable by forgetting an
+     * argument (`FINDING(config-capability-registry-gap)`, D58, experiment 6.3).
      */
     readonly knownCapabilities: readonly string[];
 }

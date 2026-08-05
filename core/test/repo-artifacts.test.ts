@@ -322,7 +322,7 @@ describe("documents name files that exist", () => {
      * arriving forces the exemption to be deleted rather than lingering as
      * a permanent hole in the check.
      */
-    const PLANNED = new Set(["endpoints.ts", "permissions.ts", "events.ts"]);
+    const PLANNED = new Set(["endpoints.ts", "events.ts"]);
 
     it("no planned filename has quietly started existing", () => {
         const arrived = [...PLANNED].filter((name) => sourceNames.has(name));
@@ -353,5 +353,56 @@ describe("documents name files that exist", () => {
         expect(sourceNames.has("taxonomy.ts")).toBe(false);
         expect([..."see `taxonomy.ts` and `write.ts`".matchAll(NAME)].map((m) => m[1]))
             .toEqual(["taxonomy.ts", "write.ts"]);
+    });
+});
+
+/**
+ * The sixth invariant, added because the fifth did not catch its own author.
+ *
+ * `D77` was cited three times in `core/src` before the register row existed.
+ * The citation checks above validate file PATHS and FILENAMES; a decision id
+ * is neither, so code could point at a row nobody had written. That is the
+ * register's method inverted — a decision cites the code proving it, and here
+ * the code cited a decision proving nothing.
+ */
+describe("code cites decisions that exist", () => {
+    const register = readFileSync(join(repoRoot, "design", "decisions.md"), "utf8");
+    const recorded = new Set(
+        [...register.matchAll(/^\| (D\d+) \|/gm)].map((m) => m[1]!),
+    );
+
+    const sources: { file: string; text: string }[] = [];
+    for (const pkg of ["core", "store", "executor"]) {
+        for (const rel of readdirSync(join(repoRoot, pkg, "src"), {
+            recursive: true,
+        }) as string[]) {
+            if (rel.endsWith(".ts")) {
+                sources.push({
+                    file: `${pkg}/src/${rel}`,
+                    text: readFileSync(join(repoRoot, pkg, "src", rel), "utf8"),
+                });
+            }
+        }
+    }
+
+    it("knows the register's rows and finds citations to check", () => {
+        expect(recorded.size).toBeGreaterThan(50);
+        const cited = sources.flatMap((s) => [...s.text.matchAll(/\bD\d+\b/g)]);
+        expect(cited.length).toBeGreaterThan(20);
+    });
+
+    it("every decision id cited in source appears in the register", () => {
+        const dangling: string[] = [];
+        for (const { file, text } of sources) {
+            for (const m of text.matchAll(/\bD\d+\b/g)) {
+                if (!recorded.has(m[0])) dangling.push(`${file} -> ${m[0]}`);
+            }
+        }
+        expect([...new Set(dangling)]).toEqual([]);
+    });
+
+    it("proves the check can fail", () => {
+        expect(recorded.has("D77")).toBe(true);
+        expect(recorded.has("D9999")).toBe(false);
     });
 });

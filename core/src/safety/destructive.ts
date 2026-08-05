@@ -12,11 +12,13 @@ import type { RepositoryConfig } from "../config/index.js";
 import {
     evaluateGeneralRulesAfterPreflight,
     evaluatePreflight,
-    type ActionClass,
-    type SafetyVerdict,
-    type WriteContext,
-    type WriteRequest,
-} from "./write.js";
+} from "./internal.js";
+import type {
+    ActionClass,
+    SafetyVerdict,
+    WriteContext,
+    WriteRequest,
+} from "./types.js";
 
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
 

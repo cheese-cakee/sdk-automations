@@ -1,20 +1,11 @@
 /**
- * The capability contract's declaration layer as pure logic —
- * `design/modules/contract.md` §1 turned into validated types, plus the
- * two requirements the stage-three experiments added to D23:
+ * The capability contract's declaration layer — `design/modules/contract.md`
+ * §1 as validated types.
  *
- * - every declared intent names its **idempotency class** (experiment
- *   6.5: a lost-response retry duplicates comment creation but is
- *   harmless for label addition — the executor's recovery rule differs
- *   by class, so the class must be declared, not inferred);
- * - declarations form a **registry** whose names feed
- *   `parseConfig({ knownCapabilities })` (experiment 6.3,
- *   `FINDING(config-capability-registry-gap)`: without the registry an
- *   enabled unknown capability passes validation silently).
- *
- * The runtime boundary (evaluate/PlatformHandle, contract.md §2) is
- * stage-five work; this module is only what configuration validation,
- * permission diagnostics, and operator reporting need today.
+ * Two additions the stage-three experiments forced (D23): every intent names
+ * its idempotency class, and declarations form a registry whose names feed
+ * `parseConfig` (`FINDING(config-capability-registry-gap)`, experiments 6.3
+ * and 6.5). The runtime boundary itself lives in `boundary.ts`.
  */
 
 /**
@@ -25,23 +16,22 @@
  * by this type.
  */
 import { CAPABILITY_NAME_PATTERN } from "../config/schema.js";
+import type { PermissionGrant } from "../github/index.js";
+import { isPermissionGrant } from "../github/index.js";
+import type {
+    IdempotencyClass,
+    IntentOperation,
+    ObservationName,
+    ResolverName,
+} from "./catalogue.js";
 
-export type PermissionGrant = `${string}:${"read" | "write"}`;
 
-const PERMISSION_PATTERN = /^[a-z][a-z_]*:(read|write)$/;
 
 /** contract.md §1 triggers, split into the two real shapes. */
 export type Trigger =
     | { readonly kind: "event"; readonly event: string }
     | { readonly kind: "schedule"; readonly description: string };
 
-/**
- * How a retry must behave after a lost response — experiment 6.5's
- * classes. `idempotent`: re-sending cannot duplicate the outcome (label
- * add). `nonIdempotent`: a blind retry duplicates; recovery must go
- * through the read-back path (comment create).
- */
-export type IdempotencyClass = "idempotent" | "nonIdempotent";
 
 export interface IntentDeclaration {
     readonly name: string;
@@ -133,7 +123,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
         ...d.permissions.organization,
     ]);
     for (const grant of [...d.permissions.repository, ...d.permissions.organization]) {
-        if (!PERMISSION_PATTERN.test(grant)) {
+        if (!isPermissionGrant(grant)) {
             errors.push(`${at}: permission "${grant}" is not in scope:level form`);
         }
     }
@@ -226,4 +216,30 @@ export function createRegistry(declarations: readonly CapabilityDeclaration[]): 
             },
         },
     };
+}
+
+/**
+ * A declaration whose names are catalogue keys. `CapabilityDeclaration`
+ * keeps `readonly string[]` because configuration validation and operator
+ * reporting only need names; the runtime boundary needs the payload types
+ * those names stand for, which only a key-constrained declaration gives.
+ */
+export interface TypedDeclaration extends CapabilityDeclaration {
+    readonly observations: readonly ObservationName[];
+    readonly resolvers: readonly ResolverName[];
+    readonly intents: readonly (IntentDeclaration & {
+        readonly name: IntentOperation;
+    })[];
+}
+
+/**
+ * Identity at runtime; the point is the `const` type parameter, which
+ * pins `observations`, `resolvers`, and `intents` as literal tuples. A
+ * declaration written as a plain object widens them to `string[]`, and
+ * every projection below then degrades to "any name" — losing exactly the
+ * isolation the boundary exists to enforce. Declare capabilities through
+ * this function, never by annotating them `: TypedDeclaration`.
+ */
+export function declareCapability<const D extends TypedDeclaration>(d: D): D {
+    return d;
 }

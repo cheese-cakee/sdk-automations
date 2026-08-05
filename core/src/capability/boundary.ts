@@ -7,7 +7,7 @@
  * is the guarantee: no Octokit, no HTTP, no raw payload, no other capability.
  */
 
-import type { CapabilityDeclaration, IntentDeclaration } from "./declaration.js";
+import type { TypedDeclaration } from "./declaration.js";
 import type { RepositoryConfig, MappableMeaning } from "../config/index.js";
 import type {
     IntentOperation,
@@ -22,32 +22,6 @@ import type {
 import type { AnyIntent } from "./intent.js";
 
 // ─── Typed declarations ──────────────────────────────────────────────
-
-/**
- * A declaration whose names are catalogue keys. `CapabilityDeclaration`
- * keeps `readonly string[]` because configuration validation and operator
- * reporting only need names; the runtime boundary needs the payload types
- * those names stand for, which only a key-constrained declaration gives.
- */
-export interface TypedDeclaration extends CapabilityDeclaration {
-    readonly observations: readonly ObservationName[];
-    readonly resolvers: readonly ResolverName[];
-    readonly intents: readonly (IntentDeclaration & {
-        readonly name: IntentOperation;
-    })[];
-}
-
-/**
- * Identity at runtime; the point is the `const` type parameter, which
- * pins `observations`, `resolvers`, and `intents` as literal tuples. A
- * declaration written as a plain object widens them to `string[]`, and
- * every projection below then degrades to "any name" — losing exactly the
- * isolation the boundary exists to enforce. Declare capabilities through
- * this function, never by annotating them `: TypedDeclaration`.
- */
-export function declareCapability<const D extends TypedDeclaration>(d: D): D {
-    return d;
-}
 
 export type ObservationFor<D extends TypedDeclaration> =
     ObservationCatalogue[D["observations"][number]];

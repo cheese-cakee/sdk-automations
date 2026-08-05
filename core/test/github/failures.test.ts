@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+    BODY_PATTERNS,
     classifyFailure,
     retryAdvice,
     MAX_RATE_LIMIT_ATTEMPTS,
@@ -337,5 +338,68 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         for (const failure of kinds) {
             expect(retryAdvice(failure, 0, 0).action).toBeTruthy();
         }
+    });
+});
+
+describe("the perishable surface keeps its own evidence", () => {
+    /**
+     * `FINDING(failures-prose-snapshot)`, D40: these two patterns are the only
+     * place this module reads GitHub's wording, and they go stale silently —
+     * a reworded message stops matching, the response degrades to
+     * `forbiddenUnrecognized`, and every test still passes because the
+     * fixtures agree with themselves.
+     *
+     * Nothing here can detect that GitHub has changed. What it CAN detect is
+     * the near-miss: a pattern edited without its recorded sample, or a sample
+     * updated without the pattern. That is the drift a human introduces during
+     * the quarterly re-probe, and it is the half that is catchable.
+     */
+    it("every pattern still matches the text it was written against", () => {
+        for (const [name, entry] of Object.entries(BODY_PATTERNS)) {
+            expect(
+                entry.pattern.test(entry.observed),
+                `${name}: the pattern no longer matches its own recorded sample`,
+            ).toBe(true);
+        }
+    });
+
+    it("every pattern records when and where it was probed", () => {
+        for (const [name, entry] of Object.entries(BODY_PATTERNS)) {
+            expect(entry.probedAt, `${name} has no probe date`).toMatch(
+                /^\d{4}-\d{2}-\d{2}$/,
+            );
+            expect(entry.experiment.length, `${name} names no experiment`).toBeGreaterThan(0);
+            expect(entry.observed.length).toBeGreaterThan(20);
+        }
+    });
+
+    /**
+     * The classifier must actually use them. A table nothing reads would pass
+     * every assertion above while the real regexes rotted inline.
+     */
+    it("the classifier routes through the table, not a private copy", () => {
+        expect(
+            classifyFailure({
+                status: 403,
+                body: BODY_PATTERNS.secondaryRateLimit.observed,
+                headers: {},
+            }),
+        ).toMatchObject({ kind: "secondaryLimit" });
+        expect(
+            classifyFailure({
+                status: 403,
+                body: BODY_PATTERNS.installationSuspended.observed,
+                headers: {},
+            }),
+        ).toMatchObject({ kind: "installationSuspended" });
+    });
+
+    it("prose it has never seen degrades to unrecognised, carrying the evidence", () => {
+        const result = classifyFailure({
+            status: 403,
+            body: "Some wording GitHub has not used before.",
+            headers: {},
+        });
+        expect(result.kind).toBe("forbiddenUnrecognized");
     });
 });

@@ -20,6 +20,7 @@ import { Store } from "@hiero-hackers/automation-store";
 import {
     RecoveryExecutor,
     planIntents,
+    planningReport,
     type EffectPlan,
     type EffectPort,
     type PlannedCall,
@@ -27,6 +28,7 @@ import {
 import {
     parseConfig,
     type AnyIntent,
+    problems,
     type RepositoryConfig,
     type RepositoryMode,
     type WriteContext,
@@ -46,7 +48,7 @@ const AT = new Date("2026-08-03T09:00:00.000Z");
 const NOW = new Date("2026-08-03T09:00:05.000Z");
 const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const NAMES = ["intake", "inactivity"];
-const REVISION = "rev-1";
+const REVISION = "rev-1";  // now stamped on the config itself (D77)
 
 /** Counts applications per call — the reference model for exactly-once. */
 class CountingPort implements EffectPort {
@@ -86,9 +88,9 @@ class CountingPort implements EffectPort {
 const permissive =
     () =>
     (_intent: AnyIntent): WriteContext => ({
-        installationHasPermission: true,
+        installationGrants: ["issues:write"],
         killSwitchActive: false,
-        itemBlocked: false,
+        observedMeanings: [],
         preconditionHolds: true,
         latestHumanChangeAt: null,
     });
@@ -124,7 +126,6 @@ describe("capability → planner → executor", () => {
 
         const result = planIntents(intents, {
             declaration: intake.declaration,
-            revision: REVISION,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -158,7 +159,6 @@ describe("capability → planner → executor", () => {
             await intentsFrom(intake, config, issueObservation),
             {
                 declaration: intake.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -216,12 +216,11 @@ describe("the safety engine is on the path, not beside it", () => {
                 mappings: { labels: { awaitingTriage: "status: triage" } },
                 principals: {},
             },
-            { knownCapabilities: NAMES },
+            { revision: "rev-test", knownCapabilities: NAMES },
         );
-        if (!raw.ok) throw new Error(raw.errors.join("; "));
+        if (!raw.ok) throw new Error(raw.errors.map((e) => e.message).join("; "));
         return planIntents(await intentsFrom(intake, raw.config, issueObservation), {
             declaration: intake.declaration,
-            revision: REVISION,
             config: raw.config,
             contextFor: context,
             now: NOW,
@@ -305,7 +304,6 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, staleObservation(warnedAt)),
             {
                 declaration: inactivity.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now,
@@ -338,7 +336,6 @@ describe("the destructive path", () => {
 
         const result = planIntents([drifted], {
             declaration: inactivity.declaration,
-            revision: REVISION,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -396,7 +393,6 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, observation),
             {
                 declaration: inactivity.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -407,5 +403,56 @@ describe("the destructive path", () => {
             kind: "refuse",
             code: "activityCancelled",
         });
+    });
+});
+
+describe("dry-run is now observable (Phase 1)", () => {
+    /**
+     * The gap this closes: D68 made dry-run stop at planning, which was
+     * correct and produced nothing anyone could see. A mode whose entire
+     * promise is "you can see what it would do" showed nothing, and stage
+     * five's exit gate — "explains every proposed effect without changing
+     * repository workflow state" — could have passed on silence.
+     */
+    it("a dry-run pass yields a readable report and still writes nothing", async () => {
+        const raw = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "dry-run",
+                capabilities: { intake: { enabled: true, settings: { announce: true } } },
+                mappings: { labels: { awaitingTriage: "status: triage" } },
+                principals: {},
+            },
+            { revision: "rev-test", knownCapabilities: NAMES },
+        );
+        if (!raw.ok) throw new Error(raw.errors.map((e) => e.message).join("; "));
+
+        const result = planIntents(
+            await intentsFrom(intake, raw.config, issueObservation),
+            {
+                declaration: intake.declaration,
+                config: raw.config,
+                contextFor: permissive(),
+                now: NOW,
+            },
+        );
+        const report = planningReport(result, REPO, "dry-run", REVISION);
+
+        // Nothing was planned, so nothing can be journalled.
+        expect(result.plans).toEqual([]);
+        const store = new Store(path);
+        expect(store.openIntents(NOW.toISOString())).toEqual([]);
+
+        // But the pass is no longer silent: every intent is accounted for,
+        // each says what it would have done, and none reads as a failure.
+        expect(report.findings).toHaveLength(result.dispositions.length);
+        expect(report.findings.length).toBeGreaterThan(0);
+        expect(report.findings.every((f) => f.severity === "notice")).toBe(true);
+        expect(problems(report)).toEqual([]);
+        for (const f of report.findings) {
+            expect(f.summary.length).toBeGreaterThan(0);
+            expect(f.subject.kind).toBe("effect");
+        }
+        expect(report.revision).toBe(REVISION);
     });
 });

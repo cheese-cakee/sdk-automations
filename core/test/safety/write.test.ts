@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     evaluateWrite,
+    GENERAL_RULES,
     evaluateDestructive,
     createDestructiveWarning,
     MIN_GRACE_DAYS,
@@ -15,6 +16,7 @@ import { REPOSITORY_MODES, type RepositoryConfig } from "../../src/config/index.
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",
     capability: "assignment",
+    requiredPermissions: ["issues:write"],
     causeObservedAt: new Date("2026-07-01T00:00:00Z"),
     cause: "contributor requested /assign",
     target: { item: "issue #42", change: "add label 'status: in progress'" },
@@ -27,6 +29,7 @@ const request = (over?: Partial<WriteRequest>): WriteRequest => ({
  * dry-run repository says so here, where a maintainer would.
  */
 const config = (over?: Partial<RepositoryConfig>): RepositoryConfig => ({
+    revision: "rev-test",
     schemaVersion: 1,
     mode: "active",
     capabilities: {
@@ -61,9 +64,9 @@ const evalDestructive = (
 ) => evaluateDestructive(plan, cfg, c, now);
 
 const context = (over?: Partial<WriteContext>): WriteContext => ({
-    installationHasPermission: true,
+    installationGrants: ["issues:write"],
     killSwitchActive: false,
-    itemBlocked: false,
+    observedMeanings: [],
     preconditionHolds: true,
     latestHumanChangeAt: null,
     ...over,
@@ -90,8 +93,8 @@ describe("evaluateWrite (safety.md §2)", () => {
 
     it.each([
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
-        ["missing permission (rule 2)", { installationHasPermission: false }, "permissionMissing"],
-        ["blocked item (§5)", { itemBlocked: true }, "itemBlocked"],
+        ["missing permission (rule 2)", { installationGrants: [] as const }, "permissionMissing"],
+        ["blocked item (§5)", { observedMeanings: ["blocked"] as const }, "itemBlocked"],
         ["failed precondition recheck (rule 4)", { preconditionHolds: false }, "preconditionStale"],
         [
             "newer human change (rule 5)",
@@ -124,8 +127,8 @@ describe("evaluateWrite (safety.md §2)", () => {
             request(),
             context({
                 killSwitchActive: true,
-                installationHasPermission: false,
-                itemBlocked: true,
+                installationGrants: [],
+                observedMeanings: ["blocked"],
                 preconditionHolds: false,
             }),
             config({
@@ -147,7 +150,7 @@ describe("evaluateWrite (safety.md §2)", () => {
     it("observations never require enablement or permission", () => {
         const verdict = evalWrite(
             request({ actionClass: "observation" }),
-            context({ installationHasPermission: false }),
+            context({ installationGrants: [] }),
             capabilityOff,
         );
         expect(verdict).toMatchObject({ outcome: "record-only", code: "observation" });
@@ -572,5 +575,59 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });
+    });
+});
+
+describe("the check order is contract, and now assertable directly", () => {
+    /**
+     * D39 makes verdict CODES contract, and D52 was a precedence defect: the
+     * kill switch was checked last on the destructive path, so an operator who
+     * had pulled the emergency brake was told "no recorded warning". The
+     * outcome was a refusal either way — only the reported code was wrong.
+     *
+     * While precedence was a sequence of `if`s it could only be tested by
+     * constructing inputs that trip several rules and seeing which wins. As a
+     * list it can be pinned outright, which is the entire reason for the shape.
+     */
+    it("pins the general-rule order", () => {
+        expect(GENERAL_RULES.map(([name]) => name)).toEqual([
+            "observation",
+            "capabilityDisabled",
+            "permissionMissing",
+            "itemBlocked",
+            "preconditionStale",
+            "humanOrderingUnknown",
+            "invalidTimestamp",
+            "newerHumanChange",
+            "modeDisabled",
+            "modeRecordsOnly",
+        ]);
+    });
+
+    it("every rule has a distinct name — a duplicate would hide a reordering", () => {
+        const names = GENERAL_RULES.map(([name]) => name);
+        expect(new Set(names).size).toBe(names.length);
+    });
+
+    /**
+     * The behavioural half: the order in the list is the order that fires.
+     * Everything below is wrong at once, and the FIRST rule wins.
+     */
+    it("the earliest failing rule names the code, matching the list", () => {
+        const verdict = evalWrite(
+            request(),
+            context({
+                installationGrants: [],
+                preconditionHolds: false,
+                observedMeanings: ["blocked"],
+                latestHumanChangeAt: "unknown",
+            }),
+            capabilityOff,
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "capabilityDisabled" });
+        const names = GENERAL_RULES.map(([n]) => n);
+        expect(names.indexOf("capabilityDisabled")).toBeLessThan(
+            names.indexOf("permissionMissing"),
+        );
     });
 });
