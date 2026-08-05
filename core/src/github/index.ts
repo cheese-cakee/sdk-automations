@@ -6,3 +6,4 @@
 export * from "./failures.js";
 export * from "./ids.js";
 export * from "./rate-limits.js";
+export * from "./permissions.js";

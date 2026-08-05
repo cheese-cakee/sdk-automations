@@ -362,7 +362,7 @@ describe("projectCapabilityView (contract.md §6)", () => {
                 mappings: { labels: { awaitingTriage: "status: triage", blocked: "blocked" } },
                 principals: {},
             },
-            { knownCapabilities: ["fixture", "other"] },
+            { revision: "rev-test", knownCapabilities: ["fixture", "other"] },
         );
         if (!result.ok) throw new Error(result.errors.join("; "));
         return result.config;
@@ -389,7 +389,7 @@ describe("projectCapabilityView (contract.md §6)", () => {
     it("reports no mapped meanings when the repository mapped none", () => {
         const bare = parseConfig(
             { schemaVersion: 1, mode: "observe", capabilities: {}, mappings: { labels: {} }, principals: {} },
-            { knownCapabilities: ["fixture"] },
+            { revision: "rev-test", knownCapabilities: ["fixture"] },
         );
         if (!bare.ok) throw new Error("fixture config invalid");
         const view = projectCapabilityView(declaration, bare.config);

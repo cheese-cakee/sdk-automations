@@ -17,6 +17,7 @@
 
 import {
     createDestructiveWarning,
+    INTENT_OPERATIONS,
     finding,
     verdictFinding,
     type Finding,
@@ -61,8 +62,6 @@ export interface PlanningResult {
 
 export interface PlanningInputs {
     readonly declaration: TypedDeclaration;
-    /** The default-branch configuration revision the intents were formed under. */
-    readonly revision: string;
     /**
      * The reviewed configuration itself — not a copy of its mode.
      *
@@ -118,6 +117,8 @@ function writeRequestFor(intent: AnyIntent): WriteRequest {
     return {
         actionClass: intent.actionClass,
         capability: intent.capability,
+        // From the catalogue, which owns what an operation needs (D62).
+        requiredPermissions: [INTENT_OPERATIONS[intent.operation].permission],
         causeObservedAt: intent.cause.observedAt,
         cause: intent.cause.cause,
         target: {
@@ -276,7 +277,7 @@ export function planIntents(
                     intent,
                     plan: {
                         effectId: intent.idempotencyKey,
-                        revision: inputs.revision,
+                        revision: inputs.config.revision,
                         calls: callsFor(intent),
                     },
                 });

@@ -14,6 +14,8 @@
  */
 
 import type { RepositoryConfig } from "../config/index.js";
+import { missingPermissions } from "../github/index.js";
+import { isBlocked } from "../workflow/index.js";
 import type {
     SafetyVerdict,
     WriteContext,
@@ -61,14 +63,23 @@ export function evaluateGeneralRulesAfterPreflight(
             reason: "the repository did not enable this capability (rule 1)",
         };
     }
-    if (!context.installationHasPermission) {
+    /**
+     * Derived, and the derivation is what lets the refusal be useful: the
+     * engine knows WHICH grants are missing, where a boolean could only ever
+     * say that something was.
+     */
+    const missing = missingPermissions(
+        request.requiredPermissions,
+        context.installationGrants,
+    );
+    if (missing.length > 0) {
         return {
             outcome: "refuse",
             code: "permissionMissing",
-            reason: "the installation lacks the required permission (rule 2)",
+            reason: `the installation lacks ${missing.join(", ")} (rule 2)`,
         };
     }
-    if (context.itemBlocked) {
+    if (isBlocked(context.observedMeanings)) {
         return {
             outcome: "refuse",
             code: "itemBlocked",

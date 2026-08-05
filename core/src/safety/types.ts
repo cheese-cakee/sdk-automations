@@ -7,7 +7,8 @@
  * depend on this without depending on each other.
  */
 
-import type { RepositoryConfig } from "../config/index.js";
+import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
+import type { PermissionGrant } from "../github/index.js";
 export type { RepositoryMode } from "../config/index.js";
 
 export type ActionClass =
@@ -20,6 +21,11 @@ export type ActionClass =
 
 /** What a capability must supply with every write request (safety.md §2.3). */
 export interface WriteRequest {
+    /**
+     * What this write needs, from the operation catalogue. Supplied rather
+     * than derived because core must not depend on the capability layer.
+     */
+    readonly requiredPermissions: readonly PermissionGrant[];
     readonly actionClass: ActionClass;
     readonly capability: string;
     /** Dated cause — when the triggering observation was made. */
@@ -61,11 +67,22 @@ export type HumanChangeOrdering = Date | null | "unknown";
  * them; the fourth state stops being reachable.
  */
 export interface WriteContext {
-    readonly installationHasPermission: boolean;
+    /**
+     * What GitHub GRANTED this installation — not whether it is enough.
+     * The engine computes sufficiency from the request's requirements, so a
+     * refusal can name the missing permission instead of saying only that
+     * one was missing (D77).
+     */
+    readonly installationGrants: readonly PermissionGrant[];
     /** Kill switches: global / installation / repository / capability (safety.md §5). */
     readonly killSwitchActive: boolean;
-    /** The item carries the mapped `blocked` meaning (safety.md §5). */
-    readonly itemBlocked: boolean;
+    /**
+     * The mapped meanings the shell OBSERVED on the item. Whether that means
+     * the item is paused is `isBlocked`'s decision, made once in
+     * `workflow/meanings.ts` — the projection already computed it from the
+     * same input, and a separate boolean here was free to disagree (D77).
+     */
+    readonly observedMeanings: readonly MappableMeaning[];
     /**
      * Shell attestation, not a fact the core can verify — the
      * precondition's shape is capability-specific. Executor tests own

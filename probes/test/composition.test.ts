@@ -48,7 +48,7 @@ const AT = new Date("2026-08-03T09:00:00.000Z");
 const NOW = new Date("2026-08-03T09:00:05.000Z");
 const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const NAMES = ["intake", "inactivity"];
-const REVISION = "rev-1";
+const REVISION = "rev-1";  // now stamped on the config itself (D77)
 
 /** Counts applications per call — the reference model for exactly-once. */
 class CountingPort implements EffectPort {
@@ -88,9 +88,9 @@ class CountingPort implements EffectPort {
 const permissive =
     () =>
     (_intent: AnyIntent): WriteContext => ({
-        installationHasPermission: true,
+        installationGrants: ["issues:write"],
         killSwitchActive: false,
-        itemBlocked: false,
+        observedMeanings: [],
         preconditionHolds: true,
         latestHumanChangeAt: null,
     });
@@ -126,7 +126,6 @@ describe("capability → planner → executor", () => {
 
         const result = planIntents(intents, {
             declaration: intake.declaration,
-            revision: REVISION,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -160,7 +159,6 @@ describe("capability → planner → executor", () => {
             await intentsFrom(intake, config, issueObservation),
             {
                 declaration: intake.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -218,12 +216,11 @@ describe("the safety engine is on the path, not beside it", () => {
                 mappings: { labels: { awaitingTriage: "status: triage" } },
                 principals: {},
             },
-            { knownCapabilities: NAMES },
+            { revision: "rev-test", knownCapabilities: NAMES },
         );
         if (!raw.ok) throw new Error(raw.errors.join("; "));
         return planIntents(await intentsFrom(intake, raw.config, issueObservation), {
             declaration: intake.declaration,
-            revision: REVISION,
             config: raw.config,
             contextFor: context,
             now: NOW,
@@ -307,7 +304,6 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, staleObservation(warnedAt)),
             {
                 declaration: inactivity.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now,
@@ -340,7 +336,6 @@ describe("the destructive path", () => {
 
         const result = planIntents([drifted], {
             declaration: inactivity.declaration,
-            revision: REVISION,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -398,7 +393,6 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, observation),
             {
                 declaration: inactivity.declaration,
-                revision: REVISION,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -429,7 +423,7 @@ describe("dry-run is now observable (Phase 1)", () => {
                 mappings: { labels: { awaitingTriage: "status: triage" } },
                 principals: {},
             },
-            { knownCapabilities: NAMES },
+            { revision: "rev-test", knownCapabilities: NAMES },
         );
         if (!raw.ok) throw new Error(raw.errors.join("; "));
 
@@ -437,7 +431,6 @@ describe("dry-run is now observable (Phase 1)", () => {
             await intentsFrom(intake, raw.config, issueObservation),
             {
                 declaration: intake.declaration,
-                revision: REVISION,
                 config: raw.config,
                 contextFor: permissive(),
                 now: NOW,

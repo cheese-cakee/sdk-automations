@@ -12,6 +12,7 @@
 
 import {
     ISSUE_MEANINGS,
+    isBlocked,
     PR_MEANINGS,
     type ClosureReason,
     type IssueMeaning,
@@ -82,7 +83,7 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
         return {
             kind: "conflict",
             positions,
-            blocked: distinct.includes("blocked"),
+            blocked: isBlocked(distinct),
             closedBy: observation.closedBy,
             ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
         };
@@ -98,7 +99,7 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
         kind: "position",
         state: {
             meaning: positions[0] ?? null,
-            blocked: distinct.includes("blocked"),
+            blocked: isBlocked(distinct),
             closedBy: observation.closedBy,
         },
         ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),

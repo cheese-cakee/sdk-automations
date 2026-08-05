@@ -126,7 +126,7 @@ describe("configuration findings", () => {
                 mappings: { labels: {} },
                 principals: {},
             },
-            { knownCapabilities: known },
+            { revision: "rev-test", knownCapabilities: known },
         );
         const [f] = configFindings(result);
         expect(f).toMatchObject({ severity: "info", code: "configValid" });
@@ -143,7 +143,7 @@ describe("configuration findings", () => {
     it("every configuration error shares one code, which is D75's whole argument", () => {
         const result = parseConfig(
             { schemaVersion: 2, mode: "sideways", nope: 1 },
-            { knownCapabilities: known },
+            { revision: "rev-test", knownCapabilities: known },
         );
         const found = configFindings(result);
         expect(found.length).toBeGreaterThan(1);

@@ -15,7 +15,7 @@ describe("hostile keys (the __proto__ hole)", () => {
         // Before the fix this passed validation, vanished from the
         // result, AND replaced the capabilities object's prototype.
         const raw = JSON.parse('{"schemaVersion":1,"capabilities":{"__proto__":{"enabled":true}}}');
-        const result = parseConfig(raw, { knownCapabilities: [] });
+        const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.join()).toContain("not a valid configuration key");
@@ -28,7 +28,7 @@ describe("hostile keys (the __proto__ hole)", () => {
             const result = parseConfig({
                 schemaVersion: 1,
                 capabilities: { [name]: { enabled: false } },
-            }, { knownCapabilities: [] });
+            }, { revision: "rev-test", knownCapabilities: [] });
             expect(result.ok).toBe(false);
         },
     );
@@ -40,7 +40,7 @@ describe("hostile keys (the __proto__ hole)", () => {
         const result = parseConfig({
             schemaVersion: 1,
             capabilities: { constructor: { enabled: false } },
-        }, { knownCapabilities: [] });
+        }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.config.capabilities.constructor).toEqual({ enabled: false, settings: {} });
@@ -51,7 +51,7 @@ describe("hostile keys (the __proto__ hole)", () => {
 
     it("a __proto__ principal survives as an own property — never pollution, never loss", () => {
         const raw = JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"team-x"}}');
-        const result = parseConfig(raw, { knownCapabilities: [] });
+        const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(Object.prototype.hasOwnProperty.call(result.config.principals, "__proto__")).toBe(true);
@@ -66,7 +66,7 @@ describe("hostile keys (the __proto__ hole)", () => {
                 capabilities: { prQuality: { enabled: true } },
                 principals: { maintainerTeam: "t" },
             },
-            { knownCapabilities: ["prQuality"] },
+            { revision: "rev-test", knownCapabilities: ["prQuality"] },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -76,11 +76,11 @@ describe("hostile keys (the __proto__ hole)", () => {
     });
 
     it("__proto__ as a top-level or mapping key is an ordinary rejected unknown key", () => {
-        const top = parseConfig(JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'), { knownCapabilities: [] });
+        const top = parseConfig(JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'), { revision: "rev-test", knownCapabilities: [] });
         expect(top.ok).toBe(false);
         const mapping = parseConfig(
             JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
-            { knownCapabilities: [] },
+            { revision: "rev-test", knownCapabilities: [] },
         );
         expect(mapping.ok).toBe(false);
     });
@@ -126,7 +126,7 @@ describe("never throws, for any already-parsed shape", () => {
         const result = parseConfig({
             schemaVersion: 1,
             capabilities: { assignment: null },
-        }, { knownCapabilities: [] });
+        }, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.join()).toContain(
@@ -138,7 +138,7 @@ describe("never throws, for any already-parsed shape", () => {
     it.each(hostile.map((value, i) => [i, value]))(
         "shape #%i returns a verdict instead of throwing",
         (_i, value) => {
-            const result = parseConfig(value, { knownCapabilities: [] });
+            const result = parseConfig(value, { revision: "rev-test", knownCapabilities: [] });
             expect(typeof result.ok).toBe("boolean");
             if (!result.ok) {
                 expect(result.errors.length).toBeGreaterThan(0);
@@ -163,7 +163,7 @@ describe("never throws, for any already-parsed shape", () => {
             [{ schemaVersion: 1, principals: { a: 1 } }, "principals.a: must be a string"],
         ];
         for (const [raw, message] of cases) {
-            const result = parseConfig(raw, { knownCapabilities: [] });
+            const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.errors.join()).toContain(message);
         }
@@ -179,7 +179,7 @@ describe("never throws, for any already-parsed shape", () => {
                 },
                 principals: { a: "x", b: "y" },
             },
-            { knownCapabilities: ["prQuality", "assignment"] },
+            { revision: "rev-test", knownCapabilities: ["prQuality", "assignment"] },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {

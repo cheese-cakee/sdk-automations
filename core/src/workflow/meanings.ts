@@ -38,6 +38,8 @@
  * (D76), so adding a member breaks compilation until every table is updated.
  */
 
+import type { MappableMeaning } from "../config/index.js";
+
 export type EntityKind = "issue" | "pullRequest";
 
 /** Issue-flow meanings — taxonomy.md §4. */
@@ -149,4 +151,18 @@ export function closureReasonFor(cause: TransitionCause): ClosureReason | null {
         default:
             return null;
     }
+}
+
+/**
+ * Is this item paused?
+ *
+ * D28 makes `blocked` an orthogonal flag rather than a position, so the rule
+ * is simply presence. It lives here, once, because two places used to decide
+ * it: `project.ts` computed it from the observed meanings, and the safety
+ * engine was handed a separate boolean asserting the same thing — with
+ * nothing comparing them. A shell could project an item as blocked and then
+ * assert it was not.
+ */
+export function isBlocked(meanings: readonly MappableMeaning[]): boolean {
+    return meanings.includes("blocked");
 }

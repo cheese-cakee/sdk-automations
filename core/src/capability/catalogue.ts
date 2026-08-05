@@ -147,9 +147,10 @@ export interface IntentCatalogue {
     readonly unassign: { readonly login: string };
 }
 
+import type { PermissionGrant } from "../github/index.js";
+
 export type IntentOperation = keyof IntentCatalogue & string;
 
-export type PermissionGrant = `${string}:${"read" | "write"}`;
 /**
  * How a retry must behave after a lost response — experiment 6.5's
  * classes. `idempotent`: re-sending cannot duplicate the outcome (label

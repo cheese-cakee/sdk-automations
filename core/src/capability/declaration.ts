@@ -25,16 +25,16 @@
  * by this type.
  */
 import { CAPABILITY_NAME_PATTERN } from "../config/schema.js";
+import type { PermissionGrant } from "../github/index.js";
+import { isPermissionGrant } from "../github/index.js";
 import type {
     IdempotencyClass,
     IntentOperation,
     ObservationName,
-    PermissionGrant,
     ResolverName,
 } from "./catalogue.js";
 
 
-const PERMISSION_PATTERN = /^[a-z][a-z_]*:(read|write)$/;
 
 /** contract.md §1 triggers, split into the two real shapes. */
 export type Trigger =
@@ -132,7 +132,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
         ...d.permissions.organization,
     ]);
     for (const grant of [...d.permissions.repository, ...d.permissions.organization]) {
-        if (!PERMISSION_PATTERN.test(grant)) {
+        if (!isPermissionGrant(grant)) {
             errors.push(`${at}: permission "${grant}" is not in scope:level form`);
         }
     }

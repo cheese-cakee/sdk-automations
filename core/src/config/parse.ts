@@ -22,7 +22,7 @@ import {
 
 export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigResult {
     if (raw === undefined || raw === null) {
-        return { ok: true, config: NO_CONFIG };
+        return { ok: true, config: { ...NO_CONFIG, revision: options.revision } };
     }
     if (!isPlainObject(raw)) {
         return { ok: false, errors: ["configuration must be a mapping"] };
@@ -55,6 +55,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
     return {
         ok: true,
         config: {
+            revision: options.revision,
             schemaVersion: 1,
             mode: mode.value as RepositoryMode,
             capabilities: cleanRecord(capabilities.value),

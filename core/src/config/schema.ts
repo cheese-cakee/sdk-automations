@@ -55,6 +55,21 @@ export interface CapabilityConfig {
 }
 
 export interface RepositoryConfig {
+    /**
+     * Which version of the reviewed file this is — the git blob or commit
+     * sha the shell fetched.
+     *
+     * FINDING(config-revision-detached), D77: the executor guards every
+     * in-flight effect on a revision string and D45 rules that intents from
+     * an old revision are unresumable, yet the parsed configuration carried
+     * no identity at all. The string was invented by the shell alongside the
+     * config rather than as part of it, so two different configurations
+     * could share a revision and one configuration could be handed two, with
+     * nothing in core able to notice. It is an OBSERVATION — the shell read
+     * it from GitHub — so it arrives through `ParseConfigOptions` rather
+     * than being derived here.
+     */
+    readonly revision: string;
     readonly schemaVersion: 1;
     readonly mode: RepositoryMode;
     readonly capabilities: Readonly<Record<string, CapabilityConfig>>;
@@ -78,6 +93,7 @@ export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Read
 }
 
 export const NO_CONFIG: RepositoryConfig = {
+    revision: "",
     schemaVersion: 1,
     mode: "observe",
     capabilities: cleanRecord([]),
@@ -99,6 +115,8 @@ export type ConfigResult =
     | { readonly ok: false; readonly errors: readonly string[] };
 
 export interface ParseConfigOptions {
+    /** The revision of the document being parsed. See `RepositoryConfig`. */
+    readonly revision: string;
     /**
      * The platform's registry of shipped capability names. An *enabled*
      * capability outside the registry is a validation error;
