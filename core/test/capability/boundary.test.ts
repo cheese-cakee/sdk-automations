@@ -495,21 +495,46 @@ describe("what the map check must NOT break", () => {
      * exists because that bug shipped in the first draft and passed every
      * other test in the suite.
      */
-    it("still allows the blocked flag on both entity kinds", () => {
+    it("refuses a capability-written pause, and not as a wrong entity (D79)", () => {
         for (const kind of ["issue", "pullRequest"] as const) {
-            expect(
-                screenIntent(
-                    intent({
-                        item: { kind, number: 1 },
-                        operation: "applyMappedLabel",
-                        actionClass: "reversibleStateChange",
-                        desired: { meaning: "blocked", cause: "intakeObserved" },
-                    }),
-                    declaration,
-                ),
-                `blocked should be legal on a ${kind}`,
-            ).toEqual({ ok: true });
+            const screen = screenIntent(
+                intent({
+                    item: { kind, number: 1 },
+                    operation: "applyMappedLabel",
+                    actionClass: "reversibleStateChange",
+                    desired: { meaning: "blocked", cause: "intakeObserved" },
+                }),
+                declaration,
+            );
+            // The CODE is the point. Refusing it as `meaningWrongEntity`
+            // would tell a maintainer they got the entity wrong, when what
+            // they actually did was try to withhold an item from every other
+            // capability.
+            expect(screen, `on a ${kind}`).toMatchObject({
+                ok: false,
+                code: "pauseNotCapabilityWritable",
+            });
         }
+    });
+
+    /**
+     * The refusal must be about pausing, not about positions: `blocked` is
+     * legal on both entity kinds and would pass an entity check. If this ever
+     * starts reporting `meaningWrongEntity`, the two rules have been reordered
+     * and the reason a maintainer sees has silently become false.
+     */
+    it("reaches the pause rule before the entity rule", () => {
+        const screen = screenIntent(
+            intent({
+                item: { kind: "pullRequest", number: 1 },
+                operation: "applyMappedLabel",
+                actionClass: "reversibleStateChange",
+                desired: { meaning: "blocked", cause: "intakeObserved" },
+            }),
+            declaration,
+        );
+        expect(screen.ok).toBe(false);
+        if (!screen.ok) expect(screen.code).not.toBe("meaningWrongEntity");
     });
 
     /**
@@ -532,5 +557,71 @@ describe("what the map check must NOT break", () => {
             declaration,
         );
         expect(screen).toMatchObject({ ok: false, code: "positionConflict" });
+    });
+});
+
+describe("the map is enforced on both flows, not just issues", () => {
+    /**
+     * Every test above uses an issue, so `canTransitionPr` was never reached
+     * and half the profile went unexercised — the mutation gate caught it.
+     * The pull-request flow has its own edges and its own causes, and a check
+     * that only ever ran on one of them proves very little.
+     */
+    const pr = (over: Record<string, unknown> = {}): AnyIntent =>
+        intent({
+            item: { kind: "pullRequest", number: 9 },
+            operation: "applyMappedLabel",
+            actionClass: "reversibleStateChange",
+            ...over,
+        });
+
+    it("accepts a documented pull-request edge", () => {
+        expect(
+            screenIntent(
+                pr({
+                    expected: {
+                        meaningsPresent: ["needsReview"],
+                        meaningsAbsent: [],
+                        closed: false,
+                    },
+                    desired: { meaning: "readyToMerge", cause: "reviewPolicySatisfied" },
+                }),
+                declaration,
+            ),
+        ).toEqual({ ok: true });
+    });
+
+    it("refuses a pull-request move the profile does not document", () => {
+        const screen = screenIntent(
+            pr({
+                expected: {
+                    meaningsPresent: ["needsReview"],
+                    meaningsAbsent: [],
+                    closed: false,
+                },
+                desired: { meaning: "readyToMerge", cause: "revisionResolved" },
+            }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!screen.ok) expect(screen.reason).toContain("needsReview");
+    });
+
+    it("names the right entity when an issue position lands on a pull request", () => {
+        const screen = screenIntent(
+            pr({ desired: { meaning: "ready", cause: "triageCompleted" } }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+        if (!screen.ok) expect(screen.reason).toContain("pull request");
+    });
+
+    it("says 'no position' rather than nothing when moving from nowhere", () => {
+        const screen = screenIntent(
+            pr({ desired: { meaning: "readyToMerge", cause: "checksPassed" } }),
+            declaration,
+        );
+        expect(screen.ok).toBe(false);
+        if (!screen.ok) expect(screen.reason).toContain("no position");
     });
 });

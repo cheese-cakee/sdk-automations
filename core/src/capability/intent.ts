@@ -185,14 +185,31 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
 
     /**
      * `blocked` is an orthogonal PAUSE FLAG, not a position (D28): an item
-     * keeps where it is while blocked. Applying it moves nothing, so there is
-     * no edge to check and no entity it belongs to — it is legal on both.
+     * keeps where it is while blocked, so applying it moves nothing and there
+     * is no edge to check. It is refused anyway, and for a different reason
+     * than a wrong entity — the distinction matters, because a maintainer
+     * reading a refusal deserves the true one.
      *
-     * The first version of this screen refused it as `meaningWrongEntity`,
-     * which would have broken every capability that blocks an item. "Not a
-     * position" and "wrong entity" are different things.
+     * D79: pausing is the ONE write whose blast radius is other capabilities.
+     * `itemBlocked` is not a rule about the item, it is a rule about every
+     * capability's access to it — so a capability that could set it would
+     * hold a veto over the others, through shared state and without calling
+     * them. That is the coupling P3 forbids, in its least visible form: the
+     * vetoed capability sees `itemBlocked` and cannot learn who caused it.
+     *
+     * It is also the consistent reading. "Detect a problem, freeze the item"
+     * is an `immediatePreventive` action, which D54 already refuses outright
+     * pending an explanation-and-reversal gate. Letting a capability reach the
+     * same outcome by writing a label would be a hole in D54, and the repair
+     * is to close the label path rather than widen the gate.
      */
-    if (intent.desired.meaning === "blocked") return { ok: true };
+    if (intent.desired.meaning === "blocked") {
+        return {
+            ok: false,
+            code: "pauseNotCapabilityWritable",
+            reason: "pausing an item withholds it from every capability, so only a human may set `blocked` (D79); a capability that must stop work needs the immediatePreventive gate (D54)",
+        };
+    }
 
     if (!own.includes(intent.desired.meaning)) {
         return {
