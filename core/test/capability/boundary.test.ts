@@ -64,7 +64,7 @@ const intent = (over: Record<string, unknown> = {}): AnyIntent =>
         operation: "applyMappedLabel",
         actionClass: "reversibleStateChange",
         expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
-        desired: { meaning: "awaitingTriage" },
+        desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: { cause: "someCause", observedAt: AT },
         explanation: { capability: "fixture", summary: "s", detail: [] },
         idempotencyKey: "k",
@@ -395,5 +395,91 @@ describe("projectCapabilityView (contract.md §6)", () => {
         const view = projectCapabilityView(declaration, bare.config);
         expect(view.mappedMeanings).toEqual([]);
         expect(view.settings).toEqual({});
+    });
+});
+
+describe("the map is enforced (D78)", () => {
+    const move = (over: Record<string, unknown> = {}): AnyIntent =>
+        intent({
+            operation: "applyMappedLabel",
+            actionClass: "reversibleStateChange",
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+            ...over,
+        });
+
+    /**
+     * The case that motivated all of this: `readyToMerge` is a pull-request
+     * position. Nothing used to stop a capability writing it onto an issue —
+     * the screen checked the operation was declared, safety checked permission
+     * and mode, and the tables that knew better had no caller.
+     */
+    it("refuses a pull-request position on an issue", () => {
+        expect(
+            screenIntent(
+                move({ desired: { meaning: "readyToMerge", cause: "intakeObserved" } }),
+                declaration,
+            ),
+        ).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+    });
+
+    it("accepts a documented edge", () => {
+        expect(screenIntent(move(), declaration)).toEqual({ ok: true });
+    });
+
+    it("refuses a move the profile does not document", () => {
+        // ready → inProgress is an edge, but not for `intakeObserved`.
+        const screen = screenIntent(
+            move({
+                expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
+                desired: { meaning: "inProgress", cause: "intakeObserved" },
+            }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!screen.ok) expect(screen.reason).toContain("ready");
+    });
+
+    it("accepts that same move under the cause the map names for it", () => {
+        expect(
+            screenIntent(
+                move({
+                    expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
+                    desired: { meaning: "inProgress", cause: "contributorAssigned" },
+                }),
+                declaration,
+            ),
+        ).toEqual({ ok: true });
+    });
+
+    /**
+     * A cross-entity label is noise to preserve, not a position (D35). It must
+     * not be mistaken for the `from` the capability is moving away from.
+     */
+    it("ignores a stray cross-flow label when reading the current position", () => {
+        expect(
+            screenIntent(
+                move({
+                    expected: {
+                        meaningsPresent: ["needsReview"],
+                        meaningsAbsent: [],
+                        closed: false,
+                    },
+                }),
+                declaration,
+            ),
+        ).toEqual({ ok: true });
+    });
+
+    it("leaves non-moving operations alone — a comment is not a transition", () => {
+        expect(
+            screenIntent(
+                intent({
+                    operation: "unassign",
+                    actionClass: "reversibleStateChange",
+                    desired: { login: "someone" },
+                }),
+                declaration,
+            ),
+        ).toEqual({ ok: true });
     });
 });

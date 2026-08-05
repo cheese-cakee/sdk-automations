@@ -85,7 +85,13 @@ export const intake: Capability<IntakeDeclaration> = {
                 meaningsAbsent: ["awaitingTriage"],
                 closed: false,
             },
-            desired: { meaning: "awaitingTriage" },
+            /**
+             * The map's answer: `[*] → awaitingTriage` for `intakeObserved`.
+             * This probe's own invented cause, `issueWithoutPosition`, is not
+             * on the map — closing the type is what forced the question, and
+             * the profile happened to have an edge for it (D78).
+             */
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
             cause: { cause: "issueWithoutPosition", observedAt: observation.observedAt },
             explanation: {
                 capability: "intake",

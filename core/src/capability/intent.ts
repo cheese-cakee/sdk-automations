@@ -9,6 +9,16 @@ import type { ActionClass } from "../safety/index.js";
 import type { IdempotencyClass } from "./catalogue.js";
 import type { MappableMeaning } from "../config/index.js";
 import {
+    canTransitionIssue,
+    canTransitionPr,
+    ISSUE_MEANINGS,
+    PR_MEANINGS,
+    type IssueCause,
+    type IssueMeaning,
+    type PrCause,
+    type PrMeaning,
+} from "../workflow/index.js";
+import {
     ACTION_CLASS_RANK,
     INTENT_OPERATIONS,
     type DatedCause,
@@ -153,6 +163,61 @@ export function checkAgainstCatalogue(d: TypedDeclaration): readonly string[] {
     return errors;
 }
 
+/**
+ * Is the move this intent would make on the profile's map?
+ *
+ * D29 says capabilities move along documented edges and humans may land
+ * anywhere — and nothing enforced the first half. The transition tables were
+ * exhaustively tested, checked against the design document, and corrected
+ * three times by D48's audit, with ZERO callers: a capability could put
+ * `readyToMerge`, a pull-request meaning, on an issue and both the screen and
+ * the safety engine would pass it (D78).
+ *
+ * Self-contained on purpose. Everything needed is already on the intent, and
+ * the claimed `from` is the same `expected` safety rechecks as
+ * `preconditionHolds`.
+ */
+function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
+    const own =
+        intent.item.kind === "issue"
+            ? (ISSUE_MEANINGS as readonly MappableMeaning[])
+            : (PR_MEANINGS as readonly MappableMeaning[]);
+
+    if (!own.includes(intent.desired.meaning)) {
+        return {
+            ok: false,
+            code: "meaningWrongEntity",
+            reason: `"${intent.desired.meaning}" is not a ${intent.item.kind} position`,
+        };
+    }
+
+    // Own-flow only: a stray cross-entity label is noise to preserve (D35),
+    // not the position being moved away from.
+    const held = intent.expected.meaningsPresent.filter((m) => own.includes(m));
+    const from = held.length === 1 ? held[0]! : null;
+
+    const verdict =
+        intent.item.kind === "issue"
+            ? canTransitionIssue({
+                  from: from as IssueMeaning | null,
+                  to: intent.desired.meaning as IssueMeaning,
+                  cause: intent.desired.cause as IssueCause,
+              })
+            : canTransitionPr({
+                  from: from as PrMeaning | null,
+                  to: intent.desired.meaning as PrMeaning,
+                  cause: intent.desired.cause as PrCause,
+              });
+
+    return verdict.allowed
+        ? { ok: true }
+        : {
+              ok: false,
+              code: "transitionNotOnMap",
+              reason: `${from ?? "no position"} → ${intent.desired.meaning} for "${intent.desired.cause}" is not a documented edge (${verdict.code})`,
+          };
+}
+
 export type IntentScreen =
     | { readonly ok: true }
     | { readonly ok: false; readonly code: string; readonly reason: string };
@@ -221,6 +286,9 @@ export function screenIntent(
             code: "warningWithoutDestructive",
             reason: `"${intent.operation}" carries a warning record but is declared "${intent.actionClass}" — no gate would check it`,
         };
+    }
+    if (intent.operation === "applyMappedLabel") {
+        return screenTransition(intent);
     }
     return { ok: true };
 }

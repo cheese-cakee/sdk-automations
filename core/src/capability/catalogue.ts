@@ -13,7 +13,7 @@
 
 import type { MappableMeaning } from "../config/index.js";
 import type { ActionClass } from "../safety/index.js";
-import type { EntityKind } from "../workflow/index.js";
+import type { EntityKind, TransitionCause } from "../workflow/index.js";
 
 // ─── References and explanations ─────────────────────────────────────
 
@@ -142,7 +142,20 @@ export interface IntentCatalogue {
         readonly marker: string;
         readonly body: string;
     };
-    readonly applyMappedLabel: { readonly meaning: MappableMeaning };
+    /**
+     * The one operation that MOVES an item, so it is the one that names a
+     * transition cause — from the closed, entity-scoped list in
+     * `workflow/meanings.ts`. `screenIntent` checks the resulting edge
+     * against the profile's tables (D78).
+     *
+     * The others do not move anything: a comment and an unassign have
+     * reasons but not transitions, and keep the free-text `DatedCause`
+     * that identifies the occasion.
+     */
+    readonly applyMappedLabel: {
+        readonly meaning: MappableMeaning;
+        readonly cause: TransitionCause;
+    };
     readonly removeMappedLabel: { readonly meaning: MappableMeaning };
     readonly unassign: { readonly login: string };
 }

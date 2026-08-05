@@ -135,7 +135,7 @@ describe("intent screening", () => {
             capability: "prQuality",
             operation: "applyMappedLabel",
             actionClass: "reversibleStateChange",
-            desired: { meaning: "awaitingTriage" },
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         } as AnyIntent;
         expect(screenIntent(intent, intake.declaration)).toMatchObject({
             ok: false,
@@ -149,7 +149,7 @@ describe("intent screening", () => {
             ...base,
             operation: "applyMappedLabel",
             actionClass: "observation",
-            desired: { meaning: "awaitingTriage" },
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         } as AnyIntent;
         expect(screenIntent(intent, intake.declaration)).toMatchObject({
             ok: false,
@@ -171,7 +171,7 @@ describe("intent screening", () => {
             ...base,
             operation: "applyMappedLabel",
             actionClass: "immediatePreventive",
-            desired: { meaning: "awaitingTriage" },
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         } as AnyIntent;
         expect(screenIntent(intent, intake.declaration)).toEqual({ ok: true });
     });
