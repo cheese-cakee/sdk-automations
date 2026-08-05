@@ -8,4 +8,7 @@
  */
 export * from "./types.js";
 export { evaluateWrite } from "./write.js";
+// The rule ORDER is contract (D39, D52), so the list is public for tests to
+// assert directly. The rules themselves stay internal.
+export { GENERAL_RULES } from "./internal.js";
 export * from "./destructive.js";

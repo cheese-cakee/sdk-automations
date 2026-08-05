@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     evaluateWrite,
+    GENERAL_RULES,
     evaluateDestructive,
     createDestructiveWarning,
     MIN_GRACE_DAYS,
@@ -574,5 +575,59 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                 afterGrace,
             ),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });
+    });
+});
+
+describe("the check order is contract, and now assertable directly", () => {
+    /**
+     * D39 makes verdict CODES contract, and D52 was a precedence defect: the
+     * kill switch was checked last on the destructive path, so an operator who
+     * had pulled the emergency brake was told "no recorded warning". The
+     * outcome was a refusal either way — only the reported code was wrong.
+     *
+     * While precedence was a sequence of `if`s it could only be tested by
+     * constructing inputs that trip several rules and seeing which wins. As a
+     * list it can be pinned outright, which is the entire reason for the shape.
+     */
+    it("pins the general-rule order", () => {
+        expect(GENERAL_RULES.map(([name]) => name)).toEqual([
+            "observation",
+            "capabilityDisabled",
+            "permissionMissing",
+            "itemBlocked",
+            "preconditionStale",
+            "humanOrderingUnknown",
+            "invalidTimestamp",
+            "newerHumanChange",
+            "modeDisabled",
+            "modeRecordsOnly",
+        ]);
+    });
+
+    it("every rule has a distinct name — a duplicate would hide a reordering", () => {
+        const names = GENERAL_RULES.map(([name]) => name);
+        expect(new Set(names).size).toBe(names.length);
+    });
+
+    /**
+     * The behavioural half: the order in the list is the order that fires.
+     * Everything below is wrong at once, and the FIRST rule wins.
+     */
+    it("the earliest failing rule names the code, matching the list", () => {
+        const verdict = evalWrite(
+            request(),
+            context({
+                installationGrants: [],
+                preconditionHolds: false,
+                observedMeanings: ["blocked"],
+                latestHumanChangeAt: "unknown",
+            }),
+            capabilityOff,
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "capabilityDisabled" });
+        const names = GENERAL_RULES.map(([n]) => n);
+        expect(names.indexOf("capabilityDisabled")).toBeLessThan(
+            names.indexOf("permissionMissing"),
+        );
     });
 });

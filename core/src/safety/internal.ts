@@ -13,6 +13,8 @@ import type { RepositoryConfig } from "../config/index.js";
 import { missingPermissions } from "../github/index.js";
 import { isBlocked } from "../workflow/index.js";
 import type {
+    RecordOnlyCode,
+    SafetyRefusalCode,
     SafetyVerdict,
     WriteContext,
     WriteRequest,
@@ -36,110 +38,172 @@ export function evaluatePreflight(
     return null;
 }
 
+/**
+ * Everything a rule may look at, derived once so no rule recomputes it.
+ */
+interface Facts {
+    readonly request: WriteRequest;
+    readonly config: RepositoryConfig;
+    readonly context: WriteContext;
+    readonly capabilityEnabled: boolean;
+    readonly missing: readonly string[];
+}
+
+type Rule = (f: Facts) => SafetyVerdict | null;
+
+const refuse = (code: SafetyRefusalCode, reason: string): SafetyVerdict => ({
+    outcome: "refuse",
+    code,
+    reason,
+});
+const record = (code: RecordOnlyCode, reason: string): SafetyVerdict => ({
+    outcome: "record-only",
+    code,
+    reason,
+});
+
+/**
+ * The general rules, IN ORDER — and the order is contract, not style.
+ *
+ * Expressed as data rather than a sequence of `if`s because precedence bugs
+ * are a demonstrated class here: D52 was one. The kill switch was checked last
+ * on the destructive path, so an operator who had pulled the emergency brake
+ * was told "no recorded warning" instead. The outcome was a refusal either
+ * way; the reported CODE contradicted the register, and D39 makes codes
+ * contract.
+ *
+ * A sequence can only be tested by constructing inputs that trigger several
+ * rules and observing which wins. A list can be asserted directly, which is
+ * what `write.test.ts` now does.
+ */
+export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
+    [
+        // Observations need no permission and are always recordable.
+        "observation",
+        (f) =>
+            f.request.actionClass === "observation"
+                ? record("observation", "observation records a finding")
+                : null,
+    ],
+    [
+        "capabilityDisabled",
+        (f) =>
+            f.capabilityEnabled
+                ? null
+                : refuse(
+                      "capabilityDisabled",
+                      "the repository did not enable this capability (rule 1)",
+                  ),
+    ],
+    [
+        "permissionMissing",
+        (f) =>
+            f.missing.length === 0
+                ? null
+                : refuse(
+                      "permissionMissing",
+                      `the installation lacks ${f.missing.join(", ")} (rule 2)`,
+                  ),
+    ],
+    [
+        "itemBlocked",
+        (f) =>
+            isBlocked(f.context.observedMeanings)
+                ? refuse(
+                      "itemBlocked",
+                      "the item is blocked — capability writes are paused (§5)",
+                  )
+                : null,
+    ],
+    [
+        "preconditionStale",
+        (f) =>
+            f.context.preconditionHolds
+                ? null
+                : refuse(
+                      "preconditionStale",
+                      "the rechecked precondition no longer holds (rule 4)",
+                  ),
+    ],
+    [
+        // Unestablished ordering is a conflict, never an absence — checked
+        // before the comparison, because there is nothing to compare against.
+        "humanOrderingUnknown",
+        (f) =>
+            f.context.latestHumanChangeAt === "unknown"
+                ? refuse(
+                      "humanOrderingUnknown",
+                      "ordering evidence for the newest human change is unavailable; the safe default is a conflict (manual-edits.md §2)",
+                  )
+                : null,
+    ],
+    [
+        "invalidTimestamp",
+        (f) =>
+            !Number.isFinite(f.request.causeObservedAt.getTime()) ||
+            (f.context.latestHumanChangeAt !== null &&
+                f.context.latestHumanChangeAt !== "unknown" &&
+                !Number.isFinite(f.context.latestHumanChangeAt.getTime()))
+                ? refuse(
+                      "invalidTimestamp",
+                      "the write request contains an invalid observation or human-change timestamp",
+                  )
+                : null,
+    ],
+    [
+        // Ties go to the human: GitHub timestamps have second granularity,
+        // so exact ties happen (D33).
+        "newerHumanChange",
+        (f) =>
+            f.context.latestHumanChangeAt !== null &&
+            f.context.latestHumanChangeAt !== "unknown" &&
+            f.context.latestHumanChangeAt.getTime() >=
+                f.request.causeObservedAt.getTime()
+                ? refuse(
+                      "newerHumanChange",
+                      "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",
+                  )
+                : null,
+    ],
+    [
+        "modeDisabled",
+        (f) =>
+            f.config.mode === "disabled"
+                ? refuse("modeDisabled", "the repository mode is disabled")
+                : null,
+    ],
+    [
+        "modeRecordsOnly",
+        (f) =>
+            f.config.mode === "observe" || f.config.mode === "dry-run"
+                ? record(
+                      "modeRecordsOnly",
+                      `repository mode is ${f.config.mode}; the effect is recorded, not applied (rule 10)`,
+                  )
+                : null,
+    ],
+];
+
 export function evaluateGeneralRulesAfterPreflight(
     request: WriteRequest,
     config: RepositoryConfig,
     context: WriteContext,
 ): SafetyVerdict {
-    // Derived, never supplied: the reviewed file is the only source.
-    const capabilityEnabled =
-        config.capabilities[request.capability]?.enabled === true;
-    if (request.actionClass === "observation") {
-        // Observations need no write permission and are always recordable.
-        return {
-            outcome: "record-only",
-            code: "observation",
-            reason: "observation records a finding",
-        };
-    }
-    if (!capabilityEnabled) {
-        return {
-            outcome: "refuse",
-            code: "capabilityDisabled",
-            reason: "the repository did not enable this capability (rule 1)",
-        };
-    }
-    /**
-     * Derived, and the derivation is what lets the refusal be useful: the
-     * engine knows WHICH grants are missing, where a boolean could only ever
-     * say that something was.
-     */
-    const missing = missingPermissions(
-        request.requiredPermissions,
-        context.installationGrants,
-    );
-    if (missing.length > 0) {
-        return {
-            outcome: "refuse",
-            code: "permissionMissing",
-            reason: `the installation lacks ${missing.join(", ")} (rule 2)`,
-        };
-    }
-    if (isBlocked(context.observedMeanings)) {
-        return {
-            outcome: "refuse",
-            code: "itemBlocked",
-            reason: "the item is blocked — capability writes are paused (§5)",
-        };
-    }
-    if (!context.preconditionHolds) {
-        return {
-            outcome: "refuse",
-            code: "preconditionStale",
-            reason: "the rechecked precondition no longer holds (rule 4)",
-        };
-    }
-    /**
-     * FINDING(safety-ordering-unknown), D51: unestablished ordering is a
-     * conflict, never an absence — `manual-edits.md` §2's safe default.
-     * Checked before the comparison below, because there is nothing to
-     * compare against.
-     */
-    if (context.latestHumanChangeAt === "unknown") {
-        return {
-            outcome: "refuse",
-            code: "humanOrderingUnknown",
-            reason: "ordering evidence for the newest human change is unavailable; the safe default is a conflict (manual-edits.md §2)",
-        };
-    }
-    if (
-        !Number.isFinite(request.causeObservedAt.getTime()) ||
-        (context.latestHumanChangeAt !== null &&
-            !Number.isFinite(context.latestHumanChangeAt.getTime()))
-    ) {
-        return {
-            outcome: "refuse",
-            code: "invalidTimestamp",
-            reason: "the write request contains an invalid observation or human-change timestamp",
-        };
-    }
-    /**
-     * FINDING(safety-human-tie), D33: ties go to the human (`>=`) —
-     * GitHub timestamps have second granularity, so exact ties happen.
-     */
-    if (
-        context.latestHumanChangeAt !== null &&
-        context.latestHumanChangeAt.getTime() >= request.causeObservedAt.getTime()
-    ) {
-        return {
-            outcome: "refuse",
-            code: "newerHumanChange",
-            reason: "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",
-        };
-    }
-    if (config.mode === "disabled") {
-        return {
-            outcome: "refuse",
-            code: "modeDisabled",
-            reason: "the repository mode is disabled",
-        };
-    }
-    if (config.mode === "observe" || config.mode === "dry-run") {
-        return {
-            outcome: "record-only",
-            code: "modeRecordsOnly",
-            reason: `repository mode is ${config.mode}; the effect is recorded, not applied (rule 10)`,
-        };
+    const facts: Facts = {
+        request,
+        config,
+        context,
+        // Derived, never supplied: the reviewed file is the only source (D73).
+        capabilityEnabled:
+            config.capabilities[request.capability]?.enabled === true,
+        missing: missingPermissions(
+            request.requiredPermissions,
+            context.installationGrants,
+        ),
+    };
+    for (const [, rule] of GENERAL_RULES) {
+        const verdict = rule(facts);
+        if (verdict !== null) return verdict;
     }
     return { outcome: "apply" };
 }
