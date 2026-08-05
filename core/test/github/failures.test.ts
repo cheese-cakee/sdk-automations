@@ -10,8 +10,8 @@ import {
     MAX_RATE_LIMIT_ATTEMPTS,
     MAX_TOKEN_REFRESH_ATTEMPTS,
     type FailureClass,
-} from "../src/github/failures.js";
-import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS } from "../src/github/rate-limits.js";
+} from "../../src/github/failures.js";
+import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS } from "../../src/github/rate-limits.js";
 
 const observed = {
     permissionMissing: {

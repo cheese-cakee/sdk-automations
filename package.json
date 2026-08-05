@@ -2,8 +2,17 @@
     "name": "@hiero-hackers/sdk-automations",
     "version": "0.0.0",
     "private": true,
-    "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store).",
+    "packageManager": "pnpm@10.29.1",
+    "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), executor (recovery loop), probes (disposable).",
     "scripts": {
-        "test": "pnpm -r test"
+        "test": "pnpm -r test",
+        "audit": "pnpm audit --audit-level moderate"
+    },
+    "pnpm": {
+        "overrides": {
+            "brace-expansion@<5.0.9": ">=5.0.9",
+            "fast-uri@<3.1.5": ">=3.1.5",
+            "qs@<6.15.2": ">=6.15.2"
+        }
     }
 }

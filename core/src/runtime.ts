@@ -440,12 +440,17 @@ export function projectCapabilityView<const D extends TypedDeclaration>(
             settings[key] = block.settings[key];
         }
     }
-    const mapped = (
-        Object.keys(config.mappings.labels) as MappableMeaning[]
-    ).filter((m) => config.mappings.labels[m] !== undefined);
+    /**
+     * No `!== undefined` filter: `exactOptionalPropertyTypes` means a
+     * present key on `Partial<Record<MappableMeaning, string>>` holds a
+     * string, and `parseConfig` only ever assigns defined labels — so the
+     * filter was unreachable, and a mutation run proved it by surviving its
+     * removal. Defensiveness that cannot fire is a line a maintainer has to
+     * understand for nothing.
+     */
     return {
         settings: settings as CapabilityView<D>["settings"],
-        mappedMeanings: mapped,
+        mappedMeanings: Object.keys(config.mappings.labels) as MappableMeaning[],
     };
 }
 

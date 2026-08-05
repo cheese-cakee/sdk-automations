@@ -51,6 +51,37 @@ a documented edge or rejected), destructive actions cannot fire without a
 recorded warning and an elapsed grace period, and one config error yields
 no configuration at all.
 
+## Where a test lives
+
+`test/` mirrors `src/`, and the mirror carries meaning rather than being
+tidiness:
+
+- **A test inside a subdirectory tests that subdirectory.**
+  `test/github/failures.test.ts` covers `src/github/failures.ts`.
+- **A test at the root spans modules, deliberately.** `invariants` and
+  `properties` compose several modules; `doc-drift` checks the design
+  documents against the tables. None of them belongs to one file, and the
+  absence of a directory is how they say so.
+
+So the rule reads in both directions: if you add a per-module test, it goes
+beside its module; if you cannot name the one module a test belongs to, it
+belongs at the root.
+
+`test/repo-artifacts.test.ts` holds the invariants that are not about
+behaviour at all — source files stay free of control characters, and every
+module matches Stryker's mutate glob. Both exist because a regression got
+through: a NUL-delimited key made `runtime.ts` a binary file to grep, and a
+single-level `src/*.ts` glob silently stopped mutating three modules the day
+they moved into `src/github/`. Neither broke a test, because neither changed
+behaviour.
+
+**The mutation break threshold is 90**, and the number is evidence rather than
+taste: when `runtime.ts` had no tests in this package at all, the score was
+89.27 — so 90 is the value that would have failed the build for the regression
+that actually happened. It catches a module losing its coverage wholesale. It
+does *not* catch a module half-losing it, which is the weaker guarantee and is
+stated here rather than assumed. Today's score is 98.89.
+
 ## What the tests prove — and what they do not
 
 The invariant tests prove the *decision logic* is coherent: given true
