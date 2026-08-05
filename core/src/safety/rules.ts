@@ -1,6 +1,12 @@
 /**
- * The shared middle of both entry points — NOT public API, and deliberately
- * not re-exported by `safety/index.ts`.
+ * The general rules every write passes, and the preflight before them.
+ *
+ * **If you are asking "why was my write refused?", this is the file.** Both
+ * entry points — `write.ts` and `destructive.ts` — arrive here after applying
+ * their own door policy.
+ *
+ * Only `GENERAL_RULES` is exported onward, because the ORDER is contract
+ * (D39, D52); the rules themselves are not public API.
  *
  * `evaluateWrite` and `evaluateDestructive` answer different questions and are
  * not interchangeable — the general path REFUSES a destructive request outright

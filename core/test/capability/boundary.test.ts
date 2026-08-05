@@ -483,3 +483,54 @@ describe("the map is enforced (D78)", () => {
         ).toEqual({ ok: true });
     });
 });
+
+describe("what the map check must NOT break", () => {
+    /**
+     * `blocked` is an orthogonal pause flag, not a position (D28). It is
+     * mappable, it applies to issues and pull requests alike, and applying it
+     * moves nothing — so there is no edge to check.
+     *
+     * The first version of the screen refused it as `meaningWrongEntity`,
+     * which would have broken every capability that blocks an item. This test
+     * exists because that bug shipped in the first draft and passed every
+     * other test in the suite.
+     */
+    it("still allows the blocked flag on both entity kinds", () => {
+        for (const kind of ["issue", "pullRequest"] as const) {
+            expect(
+                screenIntent(
+                    intent({
+                        item: { kind, number: 1 },
+                        operation: "applyMappedLabel",
+                        actionClass: "reversibleStateChange",
+                        desired: { meaning: "blocked", cause: "intakeObserved" },
+                    }),
+                    declaration,
+                ),
+                `blocked should be legal on a ${kind}`,
+            ).toEqual({ ok: true });
+        }
+    });
+
+    /**
+     * Two own-flow positions is a conflict, and the projection refuses to
+     * produce one (D35). Silently treating it as "no position" would check
+     * the `[*] → to` edge — the wrong one — and could let a move through.
+     */
+    it("refuses a conflicted position rather than checking the wrong edge", () => {
+        const screen = screenIntent(
+            intent({
+                operation: "applyMappedLabel",
+                actionClass: "reversibleStateChange",
+                expected: {
+                    meaningsPresent: ["ready", "inProgress"],
+                    meaningsAbsent: [],
+                    closed: false,
+                },
+                desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+            }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "positionConflict" });
+    });
+});

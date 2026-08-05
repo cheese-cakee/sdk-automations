@@ -183,17 +183,40 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
             ? (ISSUE_MEANINGS as readonly MappableMeaning[])
             : (PR_MEANINGS as readonly MappableMeaning[]);
 
+    /**
+     * `blocked` is an orthogonal PAUSE FLAG, not a position (D28): an item
+     * keeps where it is while blocked. Applying it moves nothing, so there is
+     * no edge to check and no entity it belongs to — it is legal on both.
+     *
+     * The first version of this screen refused it as `meaningWrongEntity`,
+     * which would have broken every capability that blocks an item. "Not a
+     * position" and "wrong entity" are different things.
+     */
+    if (intent.desired.meaning === "blocked") return { ok: true };
+
     if (!own.includes(intent.desired.meaning)) {
         return {
             ok: false,
             code: "meaningWrongEntity",
-            reason: `"${intent.desired.meaning}" is not a ${intent.item.kind} position`,
+            reason: `"${intent.desired.meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
         };
     }
 
     // Own-flow only: a stray cross-entity label is noise to preserve (D35),
     // not the position being moved away from.
     const held = intent.expected.meaningsPresent.filter((m) => own.includes(m));
+    /**
+     * More than one own-flow position is a conflict, and `observe.ts` refuses
+     * to project one (D35). Treating it as "no position" here would silently
+     * check the wrong edge — the `[*] → to` one — so it is refused instead.
+     */
+    if (held.length > 1) {
+        return {
+            ok: false,
+            code: "positionConflict",
+            reason: `the item is claimed to hold ${held.join(" and ")}; a conflicted position has no edge to move along`,
+        };
+    }
     const from = held.length === 1 ? held[0]! : null;
 
     const verdict =

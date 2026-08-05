@@ -12,7 +12,7 @@ import type { RepositoryConfig } from "../config/index.js";
 import {
     evaluateGeneralRulesAfterPreflight,
     evaluatePreflight,
-} from "./internal.js";
+} from "./rules.js";
 import type {
     ActionClass,
     SafetyVerdict,
