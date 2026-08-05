@@ -20,6 +20,7 @@ import { Store } from "@hiero-hackers/automation-store";
 import {
     RecoveryExecutor,
     planIntents,
+    planningReport,
     type EffectPlan,
     type EffectPort,
     type PlannedCall,
@@ -27,6 +28,7 @@ import {
 import {
     parseConfig,
     type AnyIntent,
+    problems,
     type RepositoryConfig,
     type RepositoryMode,
     type WriteContext,
@@ -407,5 +409,57 @@ describe("the destructive path", () => {
             kind: "refuse",
             code: "activityCancelled",
         });
+    });
+});
+
+describe("dry-run is now observable (Phase 1)", () => {
+    /**
+     * The gap this closes: D68 made dry-run stop at planning, which was
+     * correct and produced nothing anyone could see. A mode whose entire
+     * promise is "you can see what it would do" showed nothing, and stage
+     * five's exit gate — "explains every proposed effect without changing
+     * repository workflow state" — could have passed on silence.
+     */
+    it("a dry-run pass yields a readable report and still writes nothing", async () => {
+        const raw = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "dry-run",
+                capabilities: { intake: { enabled: true, settings: { announce: true } } },
+                mappings: { labels: { awaitingTriage: "status: triage" } },
+                principals: {},
+            },
+            { knownCapabilities: NAMES },
+        );
+        if (!raw.ok) throw new Error(raw.errors.join("; "));
+
+        const result = planIntents(
+            await intentsFrom(intake, raw.config, issueObservation),
+            {
+                declaration: intake.declaration,
+                revision: REVISION,
+                config: raw.config,
+                contextFor: permissive(),
+                now: NOW,
+            },
+        );
+        const report = planningReport(result, REPO, "dry-run", REVISION);
+
+        // Nothing was planned, so nothing can be journalled.
+        expect(result.plans).toEqual([]);
+        const store = new Store(path);
+        expect(store.openIntents(NOW.toISOString())).toEqual([]);
+
+        // But the pass is no longer silent: every intent is accounted for,
+        // each says what it would have done, and none reads as a failure.
+        expect(report.findings).toHaveLength(result.dispositions.length);
+        expect(report.findings.length).toBeGreaterThan(0);
+        expect(report.findings.every((f) => f.severity === "notice")).toBe(true);
+        expect(problems(report)).toEqual([]);
+        for (const f of report.findings) {
+            expect(f.summary.length).toBeGreaterThan(0);
+            expect(f.subject.kind).toBe("effect");
+        }
+        expect(report.revision).toBe(REVISION);
     });
 });
