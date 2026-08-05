@@ -10,7 +10,7 @@
  * through.
  */
 
-import type { IdempotencyClass, PermissionGrant } from "./declaration.js";
+
 import type { MappableMeaning } from "../config/index.js";
 import type { ActionClass } from "../safety/index.js";
 import type { EntityKind } from "../workflow/index.js";
@@ -148,6 +148,16 @@ export interface IntentCatalogue {
 }
 
 export type IntentOperation = keyof IntentCatalogue & string;
+
+export type PermissionGrant = `${string}:${"read" | "write"}`;
+/**
+ * How a retry must behave after a lost response — experiment 6.5's
+ * classes. `idempotent`: re-sending cannot duplicate the outcome (label
+ * add). `nonIdempotent`: a blind retry duplicates; recovery must go
+ * through the read-back path (comment create).
+ */
+export type IdempotencyClass = "idempotent" | "nonIdempotent";
+
 
 /**
  * The facts the PLATFORM owns about an operation — never the capability.

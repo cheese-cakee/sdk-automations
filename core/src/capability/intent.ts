@@ -6,7 +6,7 @@
  */
 
 import type { ActionClass } from "../safety/index.js";
-import type { IdempotencyClass } from "./declaration.js";
+import type { IdempotencyClass } from "./catalogue.js";
 import type { MappableMeaning } from "../config/index.js";
 import {
     ACTION_CLASS_RANK,
@@ -18,7 +18,7 @@ import {
     type RepositoryRef,
     type StructuredExplanation,
 } from "./catalogue.js";
-import type { TypedDeclaration } from "./boundary.js";
+import type { TypedDeclaration } from "./declaration.js";
 
 // ─── Intents ─────────────────────────────────────────────────────────
 
