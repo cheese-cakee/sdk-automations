@@ -3,9 +3,9 @@ import {
     projectIssueObservation,
     projectPrObservation,
     type LabelObservation,
-} from "../src/observe.js";
-import { ISSUE_MEANINGS, PR_MEANINGS, type ClosureReason } from "../src/taxonomy.js";
-import type { MappableMeaning } from "../src/config.js";
+} from "../../src/workflow/index.js";
+import { ISSUE_MEANINGS, PR_MEANINGS, type ClosureReason } from "../../src/workflow/index.js";
+import type { MappableMeaning } from "../../src/config/index.js";
 
 const observed = (
     meanings: readonly MappableMeaning[],

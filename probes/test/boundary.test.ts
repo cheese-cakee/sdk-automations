@@ -1,5 +1,5 @@
 /**
- * Conformance of the runtime boundary itself (`core/src/runtime.ts`), and
+ * Conformance of the runtime boundary itself (`core/src/capability/`), and
  * the subset of contract.md §8's kit that needs no adapter.
  */
 

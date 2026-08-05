@@ -75,3 +75,73 @@ at which point subdirectories may start to earn their keep:
   in `executor/src/policy.ts` mixed in with adopted *decisions* like the lease
   duration. Those two kinds of constant have different owners and different
   reasons to change; splitting them is a follow-up, not part of this move.
+
+### The case for splitting into its own package
+
+**Zero coupling, measured.** After the directory reorganisation, no other part
+of `core/` imports this directory and it imports nothing. Its only attachment
+to the package is three re-export lines in `core/src/index.ts`. Compare
+`config/`, which three directories depend on. By dependency, this is already a
+package in everything but name.
+
+**A change cadence nothing else here shares.** Every other directory in
+`core/` encodes a decision the project made; it stays true until someone
+decides differently. This one holds dated measurements of a live system, and
+D40 makes re-probing a standing quarterly obligation. A package boundary would
+make "this rots, the rest does not" *enforced* rather than merely written
+down — its own version, its own release notes, its own reason to be reviewed
+on a clock.
+
+**Its own reason to distrust green tests**, set out at the top of this file.
+That warning applies here and nowhere else in `core/`.
+
+### The case against splitting *today*
+
+**The consumer that justifies it does not exist.** The only consumer outside
+`core/` is `store/`, pulling a single branded type (`DeliveryGuid`). A fifth
+workspace package for roughly 280 lines and one and a half consumers is
+overhead, not architecture.
+
+**It would move register citations twice in one day.** Four rows cite paths in
+this directory, and those paths had already moved once during the
+reorganisation. Churning evidence links is not free in a project whose method
+is that a decision cites the code proving it.
+
+**The package count is unstable.** `probes/` is scheduled for deletion when
+stage four names the first capability, and a `shared/` package may appear if
+D74 and D75 are accepted. Adding a fifth package into that is churn on top of
+churn.
+
+**The directory already earns most of the benefit.** The provenance table, the
+inclusion test, and the D40 obligation are all here and all working. A package
+would add version independence and a compiler-enforced boundary — neither of
+which bites while there is one real consumer.
+
+### The trigger
+
+**Split it when the adapter is built** — stage five.
+
+The adapter is *entirely* GitHub-observed knowledge, so it is the consumer
+that makes an enforced boundary pay for itself. It will want every file in the
+list above: `endpoints.ts` from the permission matrix, `permissions.ts` for
+the ratified ceiling, `events.ts` for the subscription list, and the
+read-after-write freshness rule — which today sits in `executor/src/policy.ts`
+next to adopted *decisions* like the lease duration and the retention window.
+Those two kinds of constant have different owners and different reasons to
+change, and the split is the natural moment to separate them.
+
+At that point this directory roughly doubles, gains a real consumer, and the
+boundary pays for itself.
+
+**A measurable secondary signal**, if the adapter is delayed: when this
+directory holds more files than any other directory in `core/`, it has stopped
+being a corner of core and should leave regardless.
+
+### What would change the answer sooner
+
+- A second package needing GitHub-observed facts before the adapter exists.
+- A re-probe finding that fixtures drift faster than quarterly, which would
+  make an independent release cadence worth having on its own.
+- A decision that `core/` must be publishable with no GitHub knowledge in it
+  at all — a stronger claim than anything the register currently makes, and
+  one that would settle this by principle rather than by cost.

@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { PROFILE_EDGES } from "../src/taxonomy.js";
+import { PROFILE_EDGES } from "../src/workflow/index.js";
 
 const DOC = new URL("../../design/core/taxonomy.md", import.meta.url);
 

@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -217,5 +217,141 @@ describe("enumerations are declared once", () => {
         const found = [...fake.matchAll(/export const ([A-Z][A-Z0-9_]*) = \[/g)];
         expect(found).toHaveLength(1);
         expect(fake.includes("(typeof COLOURS)[number]")).toBe(false);
+    });
+});
+
+/**
+ * A citation that points at a file which no longer exists breaks nothing.
+ * No test fails, no build breaks, no reader is warned — the reference simply
+ * becomes a lie, and the register's whole method is that a row cites the code
+ * proving it. Fifty-one such citations exist today, and the directory
+ * reorganisation is about to move most of the files they name.
+ *
+ * Same class as the mutate glob: silent when wrong, so it needs a test rather
+ * than care.
+ */
+describe("documents cite files that exist", () => {
+    const docs = (readdirSync(repoRoot, { recursive: true }) as string[])
+        .filter(
+            (rel) =>
+                rel.endsWith(".md") &&
+                !rel.includes("node_modules") &&
+                !rel.includes(".stryker-tmp") &&
+                // `experiments/` is untracked by design (see its README), so
+                // it exists on some machines and not in CI. Scanning it would
+                // make this suite pass or fail by geography.
+                !rel.startsWith("experiments/"),
+        )
+        .map((rel) => ({ doc: rel, text: readFileSync(join(repoRoot, rel), "utf8") }));
+
+    const PATH = /\b((?:core|store|executor|probes)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
+
+    it("finds documents and citations to check", () => {
+        expect(docs.length).toBeGreaterThan(5);
+        const total = docs.reduce((n, d) => n + [...d.text.matchAll(PATH)].length, 0);
+        expect(total).toBeGreaterThan(20);
+    });
+
+    it("every cited source path resolves to a real file", () => {
+        const dangling: string[] = [];
+        for (const { doc, text } of docs) {
+            for (const match of text.matchAll(PATH)) {
+                const cited = match[1]!;
+                if (!existsSync(join(repoRoot, cited))) {
+                    dangling.push(`${doc} -> ${cited}`);
+                }
+            }
+        }
+        expect(dangling).toEqual([]);
+    });
+
+    it("proves the check can fail", () => {
+        // Negative control, both directions: the matcher must find a path and
+        // the existence check must reject one that is not there.
+        const fake = "see `core/src/nonexistent.ts` for details";
+        const found = [...fake.matchAll(PATH)].map((m) => m[1]);
+        expect(found).toEqual(["core/src/nonexistent.ts"]);
+        expect(existsSync(join(repoRoot, found[0]!))).toBe(false);
+        expect(existsSync(join(repoRoot, "core/src/index.ts"))).toBe(true);
+    });
+});
+
+/**
+ * The blind spot in the check above, found the hard way: it validates
+ * `core/src/….ts` PATHS, and the architecture diagram in `core/README.md`
+ * named six files as bare mermaid labels — `taxonomy.ts`, `config.ts` and
+ * the rest. The directory reorganisation deleted every one of them and the
+ * diagram sailed through, still describing a package that no longer existed.
+ *
+ * Diagrams are where a visual reader looks first, so a stale one misleads
+ * more than a stale sentence. This matches on the FILENAME rather than the
+ * path — deliberately lenient, because a document may reasonably mention a
+ * file without siting it, and the failure worth catching is a name that
+ * refers to nothing at all.
+ */
+describe("documents name files that exist", () => {
+    const sourceNames = new Set<string>();
+    for (const pkg of ["core", "store", "executor", "probes"]) {
+        for (const dir of ["src", "test"]) {
+            try {
+                for (const rel of readdirSync(join(repoRoot, pkg, dir), {
+                    recursive: true,
+                }) as string[]) {
+                    if (rel.endsWith(".ts")) sourceNames.add(rel.split("/").pop()!);
+                }
+            } catch {
+                // a package need not have both directories
+            }
+        }
+    }
+
+    const docs = (readdirSync(repoRoot, { recursive: true }) as string[]).filter(
+        (rel) =>
+            rel.endsWith(".md") &&
+            !rel.includes("node_modules") &&
+            !rel.includes(".stryker-tmp") &&
+            !rel.startsWith("experiments/"),
+    );
+
+    const NAME = /(?<![\w/.-])([a-z][a-z0-9-]*\.ts)(?![\w-])/g;
+
+    /**
+     * Files a document names DELIBERATELY before they exist — `github/`'s
+     * README lists what the adapter will bring. The list cleans itself up:
+     * the test below fails if an entry starts existing, so a planned file
+     * arriving forces the exemption to be deleted rather than lingering as
+     * a permanent hole in the check.
+     */
+    const PLANNED = new Set(["endpoints.ts", "permissions.ts", "events.ts"]);
+
+    it("no planned filename has quietly started existing", () => {
+        const arrived = [...PLANNED].filter((name) => sourceNames.has(name));
+        expect(arrived).toEqual([]);
+    });
+
+    it("knows the source filenames and finds names to check", () => {
+        expect(sourceNames.size).toBeGreaterThan(15);
+        expect(docs.length).toBeGreaterThan(5);
+    });
+
+    it("every bare source filename in a document resolves to a real file", () => {
+        const unknown: string[] = [];
+        for (const doc of docs) {
+            const text = readFileSync(join(repoRoot, doc), "utf8");
+            for (const match of text.matchAll(NAME)) {
+                const name = match[1]!;
+                if (!sourceNames.has(name) && !PLANNED.has(name)) {
+                    unknown.push(`${doc} -> ${name}`);
+                }
+            }
+        }
+        expect([...new Set(unknown)]).toEqual([]);
+    });
+
+    it("proves the check can fail", () => {
+        expect(sourceNames.has("write.ts")).toBe(true);
+        expect(sourceNames.has("taxonomy.ts")).toBe(false);
+        expect([..."see `taxonomy.ts` and `write.ts`".matchAll(NAME)].map((m) => m[1]))
+            .toEqual(["taxonomy.ts", "write.ts"]);
     });
 });

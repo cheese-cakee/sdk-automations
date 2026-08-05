@@ -1,0 +1,144 @@
+/**
+ * How the platform CALLS a capability — `design/modules/contract.md` §2 and
+ * §6 as types.
+ *
+ * `declaration.ts` says what a capability is; this says how it is invoked and
+ * what it is allowed to see. The shape of what is ABSENT from `PlatformHandle`
+ * is the guarantee: no Octokit, no HTTP, no raw payload, no other capability.
+ */
+
+import type { CapabilityDeclaration, IntentDeclaration } from "./declaration.js";
+import type { RepositoryConfig, MappableMeaning } from "../config/index.js";
+import type {
+    IntentOperation,
+    ObservationCatalogue,
+    ObservationName,
+    ResolverAnswer,
+    ResolverInput,
+    ResolverName,
+    ResolverOutput,
+    StructuredExplanation,
+} from "./catalogue.js";
+import type { AnyIntent } from "./intent.js";
+
+// ─── Typed declarations ──────────────────────────────────────────────
+
+/**
+ * A declaration whose names are catalogue keys. `CapabilityDeclaration`
+ * keeps `readonly string[]` because configuration validation and operator
+ * reporting only need names; the runtime boundary needs the payload types
+ * those names stand for, which only a key-constrained declaration gives.
+ */
+export interface TypedDeclaration extends CapabilityDeclaration {
+    readonly observations: readonly ObservationName[];
+    readonly resolvers: readonly ResolverName[];
+    readonly intents: readonly (IntentDeclaration & {
+        readonly name: IntentOperation;
+    })[];
+}
+
+/**
+ * Identity at runtime; the point is the `const` type parameter, which
+ * pins `observations`, `resolvers`, and `intents` as literal tuples. A
+ * declaration written as a plain object widens them to `string[]`, and
+ * every projection below then degrades to "any name" — losing exactly the
+ * isolation the boundary exists to enforce. Declare capabilities through
+ * this function, never by annotating them `: TypedDeclaration`.
+ */
+export function declareCapability<const D extends TypedDeclaration>(d: D): D {
+    return d;
+}
+
+export type ObservationFor<D extends TypedDeclaration> =
+    ObservationCatalogue[D["observations"][number]];
+
+export type IntentFor<D extends TypedDeclaration> = Extract<
+    AnyIntent,
+    { operation: D["intents"][number]["name"] }
+>;
+
+/**
+ * contract.md §6 — the projection a capability sees. Four deliberate
+ * omissions, each of which would hand a capability a decision that is not
+ * its own:
+ *
+ * - no `mode`: dry-run and active are policy. A capability that branched
+ *   on mode would be deciding whether to write, which is rule 10's job.
+ * - no `enabled`: a disabled capability is never evaluated (§8), so the
+ *   field could only ever read `true` — and a capability that could read
+ *   it could try to act while off.
+ * - no other capability's block (§6, P3).
+ * - **no label strings.** §6 says a capability "refers to internal
+ *   meanings rather than repository label strings", so the view reports
+ *   WHICH meanings a repository has mapped, never what it calls them.
+ *   Passing `mappings.labels` through would have satisfied the types and
+ *   quietly broken the rule; a capability that never sees a label string
+ *   cannot hard-code one.
+ */
+export interface CapabilityView<D extends TypedDeclaration> {
+    readonly settings: {
+        readonly [K in D["configKeys"][number]]?: unknown;
+    };
+    readonly mappedMeanings: readonly MappableMeaning[];
+}
+
+/**
+ * Build that view. Undeclared settings keys are dropped rather than
+ * rejected — the capability's own schema owns its block (§6), and this
+ * function's job is the isolation cut, not validation.
+ */
+export function projectCapabilityView<const D extends TypedDeclaration>(
+    declaration: D,
+    config: RepositoryConfig,
+): CapabilityView<D> {
+    const block = config.capabilities[declaration.name];
+    const settings: Record<string, unknown> = Object.create(null);
+    for (const key of declaration.configKeys) {
+        if (block !== undefined && Object.hasOwn(block.settings, key)) {
+            settings[key] = block.settings[key];
+        }
+    }
+    /**
+     * No `!== undefined` filter: `exactOptionalPropertyTypes` means a
+     * present key on `Partial<Record<MappableMeaning, string>>` holds a
+     * string, and `parseConfig` only ever assigns defined labels — so the
+     * filter was unreachable, and a mutation run proved it by surviving its
+     * removal. Defensiveness that cannot fire is a line a maintainer has to
+     * understand for nothing.
+     */
+    return {
+        settings: settings as CapabilityView<D>["settings"],
+        mappedMeanings: Object.keys(config.mappings.labels) as MappableMeaning[],
+    };
+}
+
+// ─── The handle and the capability ───────────────────────────────────
+
+/**
+ * contract.md §2. `Q extends D["resolvers"][number]` is the isolation
+ * rule as a type: an undeclared resolver does not compile. It does not
+ * expose Octokit, HTTP, a raw payload, arbitrary comments, or another
+ * capability — the shape of what is absent is the guarantee.
+ */
+export interface PlatformHandle<D extends TypedDeclaration> {
+    resolve<Q extends D["resolvers"][number] & ResolverName>(
+        query: Q,
+        input: ResolverInput<Q>,
+    ): Promise<ResolverAnswer<ResolverOutput<Q>>>;
+    explain(explanation: StructuredExplanation): void;
+}
+
+export interface Capability<D extends TypedDeclaration> {
+    readonly declaration: D;
+    /**
+     * Pure with respect to the repository: a capability decides, it never
+     * writes. Everything it returns is a REQUEST that the policy layer
+     * may refuse — which is why `evaluate` cannot report success, and why
+     * `EffectResult` (contract.md §4) is never handed back to it.
+     */
+    evaluate(
+        observation: ObservationFor<D>,
+        config: CapabilityView<D>,
+        platform: PlatformHandle<D>,
+    ): Promise<readonly IntentFor<D>[]>;
+}

@@ -9,8 +9,8 @@ import {
     type DestructivePlan,
     type DestructiveWarning,
     type DestructiveWarningInput,
-} from "../src/safety.js";
-import { REPOSITORY_MODES, type RepositoryConfig } from "../src/config.js";
+} from "../../src/safety/index.js";
+import { REPOSITORY_MODES, type RepositoryConfig } from "../../src/config/index.js";
 
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",

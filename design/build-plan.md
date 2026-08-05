@@ -236,7 +236,7 @@ The following work requires later approval and is not promised by November.
   prerequisite. P3 is a *structural* property, so disposable stubs test it exactly as well as shipped
   capabilities would, and the run no longer waits for November: `probes/test/toggle-matrix.test.ts` covers
   all eight subsets of three deliberately dissimilar capability stubs (D70). P3 is now a tested claim in code
-  against the boundary in `core/src/runtime.ts`; what remains for after November is re-running the matrix
+  against the boundary in `core/src/capability/`; what remains for after November is re-running the matrix
   with the first ratified capability substituted for its probe, which is a substitution rather than a new
   workstream.
 

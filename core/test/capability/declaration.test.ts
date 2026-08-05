@@ -3,8 +3,8 @@ import {
     createRegistry,
     validateDeclaration,
     type CapabilityDeclaration,
-} from "../src/contract.js";
-import { parseConfig } from "../src/config.js";
+} from "../../src/capability/index.js";
+import { parseConfig } from "../../src/config/index.js";
 
 const prQuality: CapabilityDeclaration = {
     name: "prQuality",
