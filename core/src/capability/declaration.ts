@@ -24,6 +24,8 @@
  * permission *ceiling* is policy, owned by the stage-four review, not
  * by this type.
  */
+import { CAPABILITY_NAME_PATTERN } from "../config/schema.js";
+
 export type PermissionGrant = `${string}:${"read" | "write"}`;
 
 const PERMISSION_PATTERN = /^[a-z][a-z_]*:(read|write)$/;
@@ -80,15 +82,6 @@ export interface CapabilityDeclaration {
     readonly operationalNeeds: OperationalNeeds;
 }
 
-/**
- * Capability names must be usable as configuration keys
- * (`capabilities.<name>` in schema.md §3), so they share the camelCase
- * shape of the shipped examples (`prQuality`, `assignment`). Exported
- * because `parseConfig` enforces the same shape on config keys — a key
- * this pattern rejects can never name a shipped capability, and
- * rejecting it also closes the `__proto__`-style key hole.
- */
-export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
 function duplicates(values: readonly string[]): string[] {
     const seen = new Set<string>();

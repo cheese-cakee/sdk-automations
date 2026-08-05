@@ -38,6 +38,16 @@ export const MAPPABLE_MEANINGS = [
 ] as const;
 export type MappableMeaning = (typeof MAPPABLE_MEANINGS)[number];
 
+/**
+ * Capability names must be usable as configuration keys
+ * (`capabilities.<name>` in schema.md §3), so they share the camelCase
+ * shape of the shipped examples (`prQuality`, `assignment`). Exported
+ * because `parseConfig` enforces the same shape on config keys — a key
+ * this pattern rejects can never name a shipped capability, and
+ * rejecting it also closes the `__proto__`-style key hole.
+ */
+export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
+
 export interface CapabilityConfig {
     readonly enabled: boolean;
     /** Opaque to the platform; validated by the capability's own contract. */

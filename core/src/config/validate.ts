@@ -8,8 +8,8 @@
  * D38's whole-file fail-closed rule.
  */
 
-import { CAPABILITY_NAME_PATTERN } from "../capability/declaration.js";
 import {
+    CAPABILITY_NAME_PATTERN,
     MAPPABLE_MEANINGS,
     REPOSITORY_MODES,
     type CapabilityConfig,

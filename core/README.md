@@ -5,45 +5,80 @@ not block"): the work-item state machine, the safety engine, and the
 configuration validator as typed code with invariant tests. No I/O, no
 GitHub, no platform — `pnpm test` runs the whole thing in under a second.
 
-| Module | Implements | Source of truth |
+| Directory | The question it answers | Files |
 |---|---|---|
-| `src/taxonomy.ts` | Both workflow state diagrams as transition tables (entity-scoped causes); the blocked-pause and stale-precondition invariants; closure reasons and reopening | `design/core/taxonomy.md` §2–§5, §5.1 |
-| `src/observe.ts` | The observed-labels → position projection: a set of mapped meanings in, one position or an explicit conflict out — no repair, no guessing | `design/core/manual-edits.md` §3, §8 tests 2–3 |
-| `src/safety.ts` | The action classes, the mechanically checkable write rules, the inescapable clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
-| `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; required capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
-| `src/contract.ts` | Capability declarations with per-intent idempotency class; registry that feeds `parseConfig` | `design/modules/contract.md` §1 + the D23 amendments (experiments 6.3, 6.5) |
-| `src/github/ids.ts` | Separate branded webhook GUID and REST delivery-record id strings | `FINDING(delivery-id-precision)`, experiment 6.2 |
-| `src/github/failures.ts` | The failure catalogue as classification plus bounded retry advice, tested against observed response bodies | failure table in `design/operations/endpoint-permission-matrix.md` |
-| `src/runtime.ts` | The capability runtime boundary: closed observation/resolver/intent catalogues, `Capability`, `PlatformHandle`, `Intent`, the config projection, and the intent screens | `design/modules/contract.md` §2, §3, §6 + D61–D65, D71, D72 |
+| `src/config/` | What did this repository ask for? | `schema.ts` (shape and enumerations), `validate.ts` (the six section validators), `parse.ts` (`parseConfig`) |
+| `src/workflow/` | What states exist, and how do they move? | `meanings.ts` (vocabulary), `transitions.ts` (the diagrams as tables), `apply.ts` (the rules that walk them), `project.ts` (observed labels → position) |
+| `src/capability/` | What may a capability declare and do? | `declaration.ts` (what it is), `catalogue.ts` (the closed vocabularies), `boundary.ts` (how the platform calls it), `intent.ts` (what it asks for, and the screens) |
+| `src/safety/` | May this write happen? | `write.ts` (the general rules), `destructive.ts` (the §3 warning and grace gates, a separate entry point by D52) |
+| `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts` — and its own [README](src/github/README.md) |
+
+Directories are named for the question a maintainer arrives with, not for a
+technical kind. There is no `types/` or `utils/`: naming by kind forces you to
+already know the answer in order to find it.
 
 `src/github/` is the one directory whose contents can go WRONG while nobody
 edits them — it holds what we measured about GitHub's live behaviour, and it
-carries its own [README](src/github/README.md) with the provenance table and
-the D40 re-probe obligation. Everything else in `core/` encodes a decision the
-project made, and stays true until someone decides differently.
+carries the provenance table and the D40 re-probe obligation. Everything else
+in `core/` encodes a decision the project made, and stays true until someone
+decides differently.
+
+Each directory has an `index.ts` barrel, so consumers name the CONCERN rather
+than the file inside it: a capability cares that configuration was validated,
+not which of three files did which part.
+
+The sibling `store/` package holds the owned operational store (protocol
+6.5's decision) — it does I/O, so it lives outside this no-I/O track.
 
 The sibling `store/` package holds the owned operational store (protocol
 6.5's decision) — it does I/O, so it lives outside this no-I/O track.
 
 ## How the pieces connect
 
-Four independent lanes of pure logic. The platform shell (stage five)
-supplies every input and performs every side effect; core only decides.
+Two views, because they answer different questions.
+
+**Who depends on whom** — what a maintainer needs when changing something.
+Every arrow runs one way; `config/` is the root and imports nothing.
 
 ```mermaid
 flowchart TB
-    D["Shipped capability declarations"] --> CT["contract.ts - validate and build the registry"]
-    Y["Fetched config YAML, already parsed"] --> CF["config.ts - strict parse, fail closed"]
-    CT -->|"registry names"| CF
-    CF --> EC["Effective config, or observe on any error"]
-    I["Intent and observed state"] --> TX["taxonomy.ts - transition table"]
-    TX --> SF["safety.ts - mode and grace checks"]
-    SF --> V["Allow or refuse, with the reason"]
-    F["GitHub failure response"] --> FL["failures.ts - classify by status, body, headers"]
-    FL --> RA["Retry advice, or a diagnosis to surface"]
-    R["Raw webhook GUID or REST record id"] --> ID["ids.ts - validate and brand separately"]
-    ID --> DI["DeliveryGuid for dedup; DeliveryRecordId for REST redelivery"]
+    CAP["capability/<br/>declare, call, screen"]
+    SAFE["safety/<br/>may this write happen"]
+    WF["workflow/<br/>states and moves"]
+    CFG["config/<br/>what the repository asked for"]
+    GH["github/<br/>what we measured of GitHub"]
+    CAP --> SAFE
+    CAP --> WF
+    CAP --> CFG
+    SAFE --> CFG
+    WF --> CFG
 ```
+
+`github/` stands alone deliberately: nothing in core decides anything from it,
+and it is the only directory whose contents can go stale without an edit.
+
+**What actually happens to one event** — the path a webhook takes. Only the
+shaded steps live in `core/`; the shell and the executor own the rest, which
+is why core can be pure.
+
+```mermaid
+flowchart LR
+    W["webhook"] --> N["shell: normalize"]
+    N --> O["observation"]
+    O --> E["capability.evaluate()"]
+    E --> I["intent[]"]
+    I --> S["safety: verdict"]
+    S --> P["executor: plan"]
+    P --> G["adapter: GitHub"]
+    style E fill:#EEEDFE,stroke:#534AB7
+    style S fill:#EEEDFE,stroke:#534AB7
+    style O fill:#EEEDFE,stroke:#534AB7
+```
+
+Core decides; it never acts. `evaluate` returns requests, `safety` returns a
+verdict, and every write happens outside this package — which is what makes
+the whole thing testable in under a second with no network.
+
 
 The tests are the executable form of the design's own claims: the
 transition matrix is exhaustive (every `(from, to, cause)` triple is either
@@ -70,13 +105,13 @@ belongs at the root.
 `test/repo-artifacts.test.ts` holds the invariants that are not about
 behaviour at all — source files stay free of control characters, and every
 module matches Stryker's mutate glob. Both exist because a regression got
-through: a NUL-delimited key made `runtime.ts` a binary file to grep, and a
+through: a NUL-delimited key made `capability/intent.ts` a binary file to grep, and a
 single-level `src/*.ts` glob silently stopped mutating three modules the day
 they moved into `src/github/`. Neither broke a test, because neither changed
 behaviour.
 
 **The mutation break threshold is 90**, and the number is evidence rather than
-taste: when `runtime.ts` had no tests in this package at all, the score was
+taste: when the capability boundary had no tests in this package at all, the score was
 89.27 — so 90 is the value that would have failed the build for the regression
 that actually happened. It catches a module losing its coverage wholesale. It
 does *not* catch a module half-losing it, which is the weaker guarantee and is
