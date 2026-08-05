@@ -284,8 +284,10 @@ export function canTransitionPr(
 
 /** The edge tables, exposed read-only for the doc-drift check. */
 export const PROFILE_EDGES: {
-    readonly issue: readonly { readonly from: string | null; readonly to: string | null }[];
-    readonly pullRequest: readonly { readonly from: string | null; readonly to: string | null }[];
+    readonly [K in EntityKind]: readonly {
+        readonly from: string | null;
+        readonly to: string | null;
+    }[];
 } = {
     issue: ISSUE_EDGES.map((e) => ({ from: e.from, to: e.to })),
     pullRequest: PR_EDGES.map((e) => ({ from: e.from, to: e.to })),

@@ -21,6 +21,7 @@
  * immediate explanation and simple maintainer reversal §1 requires.
  */
 import type { RepositoryConfig } from "./config.js";
+export type { RepositoryMode } from "./config.js";
 
 export type ActionClass =
     | "observation"
@@ -29,8 +30,6 @@ export type ActionClass =
     | "clockTriggeredDestructive"
     | "immediatePreventive";
 
-/** design/config/schema.md §4 — repository modes. */
-export type RepositoryMode = "disabled" | "observe" | "dry-run" | "active";
 
 /** What a capability must supply with every write request (safety.md §2.3). */
 export interface WriteRequest {
