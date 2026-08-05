@@ -76,18 +76,16 @@ class CountingPort implements EffectPort {
 }
 
 /**
- * Everything holds; the shell's rechecked facts in the happy case. The
- * mode is a PARAMETER rather than a constant because the shell must take
- * it from the reviewed configuration — see FINDING(planner-mode-duplicated),
- * which the first version of this helper walked straight into by
- * hard-coding `active`.
+ * Everything holds; the shell's rechecked facts in the happy case.
+ *
+ * The mode used to be a parameter here, because the context carried a copy
+ * of it and the copy could disagree with the reviewed file. D73 removed the
+ * copy — mode and enablement are read from the configuration — so this
+ * helper now supplies only facts a shell genuinely has to recheck.
  */
 const permissive =
-    (mode: RepositoryMode = "active") =>
-    (intent: AnyIntent): WriteContext => ({
-        mode,
-        capability: intent.capability,
-        capabilityEnabled: true,
+    () =>
+    (_intent: AnyIntent): WriteContext => ({
         installationHasPermission: true,
         killSwitchActive: false,
         itemBlocked: false,
@@ -127,7 +125,7 @@ describe("capability → planner → executor", () => {
         const result = planIntents(intents, {
             declaration: intake.declaration,
             revision: REVISION,
-            mode: "active",
+            config,
             contextFor: permissive(),
             now: NOW,
         });
@@ -161,7 +159,7 @@ describe("capability → planner → executor", () => {
             {
                 declaration: intake.declaration,
                 revision: REVISION,
-                mode: "active",
+                config,
                 contextFor: permissive(),
                 now: NOW,
             },
@@ -224,7 +222,7 @@ describe("the safety engine is on the path, not beside it", () => {
         return planIntents(await intentsFrom(intake, raw.config, issueObservation), {
             declaration: intake.declaration,
             revision: REVISION,
-            mode,
+            config: raw.config,
             contextFor: context,
             now: NOW,
         });
@@ -260,7 +258,7 @@ describe("the safety engine is on the path, not beside it", () => {
      * out of a mode whose entire promise is that nothing happens.
      */
     it("dry-run records the intent and writes nothing to the store", async () => {
-        const result = await planFor(permissive("dry-run"), "dry-run");
+        const result = await planFor(permissive(), "dry-run");
         expect(result.plans).toEqual([]);
         expect(result.dispositions[0]).toMatchObject({
             kind: "record",
@@ -275,20 +273,12 @@ describe("the safety engine is on the path, not beside it", () => {
     });
 
     /**
-     * FINDING(planner-mode-duplicated), pinned. This is the shape of the
-     * bug that wrote this test: a shell whose rechecked context disagrees
-     * with the reviewed configuration. Before the guard it produced a
-     * plan — an `active` write on a `dry-run` repository — and both
-     * halves looked correct in isolation.
+     * The `modeMismatch` test lived here and is deliberately gone. It pinned
+     * a shell whose rechecked context disagreed with the reviewed file about
+     * mode — a state D73 made unconstructible, because the context no longer
+     * carries a mode to disagree with. The guard, its refusal code, and this
+     * test all retired together.
      */
-    it("refuses when the rechecked mode disagrees with the reviewed configuration", async () => {
-        const result = await planFor(permissive("active"), "dry-run");
-        expect(result.plans).toEqual([]);
-        expect(result.dispositions[0]).toMatchObject({
-            kind: "refuse",
-            code: "modeMismatch",
-        });
-    });
 });
 
 describe("the destructive path", () => {
@@ -316,7 +306,7 @@ describe("the destructive path", () => {
             {
                 declaration: inactivity.declaration,
                 revision: REVISION,
-                mode: "active",
+                config,
                 contextFor: permissive(),
                 now,
             },
@@ -349,7 +339,7 @@ describe("the destructive path", () => {
         const result = planIntents([drifted], {
             declaration: inactivity.declaration,
             revision: REVISION,
-            mode: "active",
+            config,
             contextFor: permissive(),
             now: NOW,
         });
@@ -407,7 +397,7 @@ describe("the destructive path", () => {
             {
                 declaration: inactivity.declaration,
                 revision: REVISION,
-                mode: "active",
+                config,
                 contextFor: permissive(),
                 now: NOW,
             },

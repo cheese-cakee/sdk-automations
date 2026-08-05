@@ -23,7 +23,7 @@ import {
     screenIntent,
     type AnyIntent,
     type RecordOnlyCode,
-    type RepositoryMode,
+    type RepositoryConfig,
     type TypedDeclaration,
     type WriteContext,
     type WriteRequest,
@@ -57,7 +57,7 @@ export interface PlanningInputs {
     /** The default-branch configuration revision the intents were formed under. */
     readonly revision: string;
     /**
-     * The mode from the REVIEWED configuration (`RepositoryConfig.mode`).
+     * The reviewed configuration itself — not a copy of its mode.
      *
      * FINDING(planner-mode-duplicated): the repository mode exists twice
      * — once in the parsed configuration and once in `WriteContext`, which
@@ -69,13 +69,12 @@ export interface PlanningInputs {
      * test set the config to `dry-run`, got a plan, and exposed it.
      *
      * Goal 2 makes the configured value authoritative ("a repository
-     * declares its choices in a reviewed file"), so a disagreement is a
-     * shell defect and the planner refuses rather than picking a winner.
-     * Overriding the context silently would have been the tempting fix
-     * and the wrong one — it repairs the symptom and leaves the shell
-     * bug in place, unobserved.
+     * declares its choices in a reviewed file"). D73 finished the job the
+     * `modeMismatch` guard started: the safety engine now reads mode and
+     * enablement from the configuration directly, so there is no second
+     * copy to disagree with and no comparison left to make.
      */
-    readonly mode: RepositoryMode;
+    readonly config: RepositoryConfig;
     /**
      * Facts rechecked immediately before the write, for THIS intent
      * (safety.md rule 4). A function rather than a value because
@@ -202,15 +201,6 @@ export function planIntents(
         keys.set(intent.idempotencyKey, intent);
 
         const context = inputs.contextFor(intent);
-        if (context.mode !== inputs.mode) {
-            dispositions.push({
-                kind: "refuse",
-                intent,
-                code: "modeMismatch",
-                reason: `the rechecked context says mode "${context.mode}" but the reviewed configuration says "${inputs.mode}" (FINDING(planner-mode-duplicated))`,
-            });
-            continue;
-        }
         const request = writeRequestFor(intent);
         const verdict =
             intent.actionClass === "clockTriggeredDestructive" &&
@@ -242,10 +232,11 @@ export function planIntents(
                           qualifyingActivitySinceWarning:
                               intent.destructive.qualifyingActivitySinceWarning,
                       },
+                      inputs.config,
                       context,
                       inputs.now,
                   )
-                : evaluateWrite(request, context);
+                : evaluateWrite(request, inputs.config, context);
 
         switch (verdict.outcome) {
             case "refuse":

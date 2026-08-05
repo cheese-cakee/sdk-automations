@@ -118,7 +118,9 @@ dead process rather than racing a live one — so **D41 remains untouched and st
 ## 2c. Core simplification agenda
 
 **Venue:** the stage-four architecture review, after §2 and §2b. **Evidence:** a cross-cutting read of
-`core/` on 2026-08-05, recorded as D73, D74 and D75.
+`core/` on 2026-08-05, recorded as D73, D74 and D75. **D73 is implemented and in the branch; D74 and D75
+are proposals.** The review's job on D73 is therefore confirm-or-revert, which is the same standing every
+other implemented-but-unratified row in this register already has.
 
 Three proposals that share one shape, and one reason for being asked NOW rather than after the review.
 
@@ -132,7 +134,7 @@ wastes the review's own decision, so the choice belongs here, in front of the pe
 
 | Row | Proposal | The question for reviewers | Recommended answer |
 |---|---|---|---|
-| **D73** | Derive `WriteContext` from the parsed configuration and the declaration, instead of assembling it by hand. | Close the consent gap with a fifth comparison, or remove the class of gap entirely? | **Derive.** The same fact stored twice, free to disagree, has now been patched four times — D53 (capability name), D62 (idempotency class), D67 (mode), and D73, which was never patched at all: a shell can assert consent for a capability the reviewed configuration disables, and D53's check passes because the *names* match. Deriving retires two guards, two refusal codes, and makes the fourth state unrepresentable rather than merely checked. |
+| **D73** | Derive `WriteContext` from the reviewed configuration and the request, instead of assembling it by hand. **Implemented 2026-08-05**; D53 and D67 are marked `replaced`. | Confirm the derivation, or revert to guards? | **Confirm.** The same fact stored twice, free to disagree, had been patched three times — D53 (capability name), D62 (idempotency class), D67 (mode) — and the fourth, consent itself, was never patched at all: a shell could assert `capabilityEnabled: true` for a capability the reviewed file disabled, and D53's check passed because the *names* matched. `evaluateWrite(request, config, facts)` now reads mode, enablement and capability from the two things the caller already holds. Two refusal codes, two guards and two tests were deleted, and the exhaustive safety sweep lost a whole dimension — it had been enumerating a state the types no longer permit. |
 | **D74** | One internal instant representation — epoch milliseconds — converted only at GitHub-in and SQLite-out. | Accept a single representation, and delete the store's defensive timestamp validator? | **Accept.** Three encodings cross one seam today (`Date`, `…Ms` numbers, canonical ISO strings), and the store validates format precisely because it cannot trust what it is handed. Milliseconds satisfy D60's immutability requirement by type instead of by convention. |
 | **D75** | One failure discriminant, and a machine-readable `code` on configuration errors. | Is prose-only configuration error reporting acceptable, given that D38 rests on the config report and the PR-time check? | **Not acceptable — add codes.** D38's fail-closed granularity was accepted *conditional on those two mitigations*, and both can currently only echo strings, because configuration errors carry no code to group, count or link by. Every other refusal in core has one. The prose stays prose: assert `reason` is present, never its wording. |
 

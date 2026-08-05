@@ -91,10 +91,8 @@ describe("the assignment story, end to end in pure logic", () => {
                 cause: "contributor requested /assign",
                 target: { item: "issue #7", change: "label 'status: in progress'" },
             },
+            config,
             {
-                mode: config.mode,
-                capability: "assignment",
-                capabilityEnabled: config.capabilities.assignment?.enabled === true,
                 installationHasPermission: true, // shell fact, from the App's grants
                 killSwitchActive: false,
                 itemBlocked: state.blocked,
@@ -130,10 +128,8 @@ describe("the assignment story, end to end in pure logic", () => {
                 cause: "scheduled reclaim evaluation",
                 target: { item: "issue #7", change: "label 'status: ready for dev'" },
             },
+            config,
             {
-                mode: config.mode,
-                capability: "assignment",
-                capabilityEnabled: true,
                 installationHasPermission: true,
                 killSwitchActive: false,
                 itemBlocked: false,
@@ -173,10 +169,8 @@ describe("the assignment story, end to end in pure logic", () => {
                 cause: "contributor requested /assign",
                 target: { item: "issue #7", change: "label 'status: in progress'" },
             },
+            dryConfig.config,
             {
-                mode: dryConfig.config.mode,
-                capability: "assignment",
-                capabilityEnabled: true,
                 installationHasPermission: true,
                 killSwitchActive: false,
                 itemBlocked: false,

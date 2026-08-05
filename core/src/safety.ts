@@ -20,6 +20,8 @@
  * design class, but fails closed until its request can prove the
  * immediate explanation and simple maintainer reversal §1 requires.
  */
+import type { RepositoryConfig } from "./config.js";
+
 export type ActionClass =
     | "observation"
     | "humanFacingOutput"
@@ -57,19 +59,22 @@ export interface WriteRequest {
 export type HumanChangeOrdering = Date | null | "unknown";
 
 /** The facts the platform rechecked immediately before the write. */
+/**
+ * The facts a shell must RECHECK immediately before a write, and nothing
+ * else. Mode, capability and enablement used to live here too, copied
+ * alongside the configuration that already held them.
+ *
+ * FINDING(safety-context-derived), D73: three facts stored twice, free to
+ * disagree, produced three separate repairs — D53 compared the capability
+ * NAME, D67 compared the MODE, and the third, `capabilityEnabled`, was
+ * never compared at all: a shell could assert consent for a capability the
+ * reviewed configuration disabled, and D53's check passed because the names
+ * matched. `evaluateWrite` now derives all three from the configuration and
+ * the request, so a context that disagrees with the reviewed file cannot be
+ * constructed rather than being caught. Two refusal codes disappear with
+ * them; the fourth state stops being reachable.
+ */
 export interface WriteContext {
-    readonly mode: RepositoryMode;
-    /**
-     * The capability the enablement flag below refers to. Compared
-     * against `request.capability` — FINDING(safety-capability-link),
-     * D53: the request named a capability and the context asserted a
-     * bare boolean about "the" capability, with nothing tying them
-     * together, so a shell could answer the enablement question about a
-     * different capability entirely. Cheap to check, so no longer an
-     * attestation.
-     */
-    readonly capability: string;
-    readonly capabilityEnabled: boolean;
     readonly installationHasPermission: boolean;
     /** Kill switches: global / installation / repository / capability (safety.md §5). */
     readonly killSwitchActive: boolean;
@@ -102,7 +107,6 @@ export type SafetyRefusalCode =
     | "killSwitch"
     | "wrongEntryPoint"
     | "preventiveGateUnavailable"
-    | "capabilityMismatch"
     | "capabilityDisabled"
     | "permissionMissing"
     | "itemBlocked"
@@ -148,7 +152,6 @@ export type SafetyVerdict =
  * reported, frozen by the tests.
  */
 function evaluatePreflight(
-    request: WriteRequest,
     context: WriteContext,
 ): SafetyVerdict | null {
     /**
@@ -163,20 +166,17 @@ function evaluatePreflight(
             reason: "a kill switch is active",
         };
     }
-    if (request.capability !== context.capability) {
-        return {
-            outcome: "refuse",
-            code: "capabilityMismatch",
-            reason: `the request is from "${request.capability}" but the rechecked context describes "${context.capability}"`,
-        };
-    }
     return null;
 }
 
 function evaluateGeneralRulesAfterPreflight(
     request: WriteRequest,
+    config: RepositoryConfig,
     context: WriteContext,
 ): SafetyVerdict {
+    // Derived, never supplied: the reviewed file is the only source.
+    const capabilityEnabled =
+        config.capabilities[request.capability]?.enabled === true;
     if (request.actionClass === "observation") {
         // Observations need no write permission and are always recordable.
         return {
@@ -185,7 +185,7 @@ function evaluateGeneralRulesAfterPreflight(
             reason: "observation records a finding",
         };
     }
-    if (!context.capabilityEnabled) {
+    if (!capabilityEnabled) {
         return {
             outcome: "refuse",
             code: "capabilityDisabled",
@@ -251,18 +251,18 @@ function evaluateGeneralRulesAfterPreflight(
             reason: "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",
         };
     }
-    if (context.mode === "disabled") {
+    if (config.mode === "disabled") {
         return {
             outcome: "refuse",
             code: "modeDisabled",
             reason: "the repository mode is disabled",
         };
     }
-    if (context.mode === "observe" || context.mode === "dry-run") {
+    if (config.mode === "observe" || config.mode === "dry-run") {
         return {
             outcome: "record-only",
             code: "modeRecordsOnly",
-            reason: `repository mode is ${context.mode}; the effect is recorded, not applied (rule 10)`,
+            reason: `repository mode is ${config.mode}; the effect is recorded, not applied (rule 10)`,
         };
     }
     return { outcome: "apply" };
@@ -284,9 +284,10 @@ function evaluateGeneralRulesAfterPreflight(
  */
 export function evaluateWrite(
     request: WriteRequest,
+    config: RepositoryConfig,
     context: WriteContext,
 ): SafetyVerdict {
-    const preflight = evaluatePreflight(request, context);
+    const preflight = evaluatePreflight(context);
     if (preflight !== null) return preflight;
     if (request.actionClass === "clockTriggeredDestructive") {
         return {
@@ -302,7 +303,7 @@ export function evaluateWrite(
             reason: "immediate preventive actions are disabled until the request proves an immediate explanation and a simple maintainer reversal (safety.md §1)",
         };
     }
-    return evaluateGeneralRulesAfterPreflight(request, context);
+    return evaluateGeneralRulesAfterPreflight(request, config, context);
 }
 
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
@@ -413,6 +414,7 @@ function warningMatchesRequest(
 /** safety.md §3 — every condition the executor confirms before acting. */
 export function evaluateDestructive(
     plan: DestructivePlan,
+    config: RepositoryConfig,
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
@@ -424,7 +426,7 @@ export function evaluateDestructive(
      * refusal, but D39 freezes the verdict CODES as contract and claims
      * kill-switch-first, so the reported code contradicted the register.
      */
-    const preflight = evaluatePreflight(plan.request, context);
+    const preflight = evaluatePreflight(context);
     if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
         return {
@@ -499,5 +501,5 @@ export function evaluateDestructive(
     // All destructive-specific gates passed; the general write rules
     // decide. Calls the shared internal path, not the public
     // `evaluateWrite`, which now refuses this action class outright (D52).
-    return evaluateGeneralRulesAfterPreflight(plan.request, context);
+    return evaluateGeneralRulesAfterPreflight(plan.request, config, context);
 }

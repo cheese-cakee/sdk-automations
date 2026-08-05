@@ -10,7 +10,7 @@ import {
     type DestructiveWarning,
     type DestructiveWarningInput,
 } from "../src/safety.js";
-import { REPOSITORY_MODES } from "../src/config.js";
+import { REPOSITORY_MODES, type RepositoryConfig } from "../src/config.js";
 
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",
@@ -21,10 +21,46 @@ const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     ...over,
 });
 
-const context = (over?: Partial<WriteContext>): WriteContext => ({
+/**
+ * The reviewed configuration is now the ONLY source of mode and
+ * enablement (D73) — a test that wants a disabled capability or a
+ * dry-run repository says so here, where a maintainer would.
+ */
+const config = (over?: Partial<RepositoryConfig>): RepositoryConfig => ({
+    schemaVersion: 1,
     mode: "active",
-    capability: "assignment", // must match request().capability — D53
-    capabilityEnabled: true,
+    capabilities: {
+        assignment: { enabled: true, settings: {} },
+        inactivity: { enabled: true, settings: {} },
+        intake: { enabled: true, settings: {} },
+    },
+    mappings: { labels: {} },
+    principals: {},
+    ...over,
+});
+
+const anyCapability = (name: string) =>
+    config({ capabilities: { [name]: { enabled: true, settings: {} } } });
+
+const capabilityOff = config({
+    capabilities: { assignment: { enabled: false, settings: {} } },
+});
+
+/** Config last so the existing call shape stays readable. */
+const evalWrite = (
+    r: WriteRequest,
+    c: WriteContext,
+    cfg: RepositoryConfig = config(),
+) => evaluateWrite(r, cfg, c);
+
+const evalDestructive = (
+    plan: DestructivePlan,
+    c: WriteContext,
+    now: Date,
+    cfg: RepositoryConfig = config(),
+) => evaluateDestructive(plan, cfg, c, now);
+
+const context = (over?: Partial<WriteContext>): WriteContext => ({
     installationHasPermission: true,
     killSwitchActive: false,
     itemBlocked: false,
@@ -49,12 +85,11 @@ const warningFor = (
 
 describe("evaluateWrite (safety.md §2)", () => {
     it("applies only when every rule passes in active mode", () => {
-        expect(evaluateWrite(request(), context())).toEqual({ outcome: "apply" });
+        expect(evalWrite(request(), context())).toEqual({ outcome: "apply" });
     });
 
     it.each([
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
-        ["capability disabled (rule 1)", { capabilityEnabled: false }, "capabilityDisabled"],
         ["missing permission (rule 2)", { installationHasPermission: false }, "permissionMissing"],
         ["blocked item (§5)", { itemBlocked: true }, "itemBlocked"],
         ["failed precondition recheck (rule 4)", { preconditionHolds: false }, "preconditionStale"],
@@ -63,23 +98,39 @@ describe("evaluateWrite (safety.md §2)", () => {
             { latestHumanChangeAt: new Date("2026-07-01T00:00:01Z") },
             "newerHumanChange",
         ],
-        ["disabled mode", { mode: "disabled" as const }, "modeDisabled"],
     ])("refuses on %s", (_name, override, code) => {
-        const verdict = evaluateWrite(request(), context(override));
+        const verdict = evalWrite(request(), context(override));
         expect(verdict).toMatchObject({ outcome: "refuse", code });
+    });
+
+    // Mode and enablement now come from the reviewed configuration (D73),
+    // so their refusals are stated as configurations, not as context facts.
+    it("refuses when the repository mode is disabled", () => {
+        expect(
+            evalWrite(request(), context(), config({ mode: "disabled" })),
+        ).toMatchObject({ outcome: "refuse", code: "modeDisabled" });
+    });
+
+    it("refuses when the reviewed configuration disables the capability", () => {
+        expect(evalWrite(request(), context(), capabilityOff)).toMatchObject({
+            outcome: "refuse",
+            code: "capabilityDisabled",
+        });
     });
 
     it("the check precedence is contract: the earliest failing rule names the code", () => {
         // Everything fails at once; the kill switch is reported.
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request(),
             context({
                 killSwitchActive: true,
-                capabilityEnabled: false,
                 installationHasPermission: false,
                 itemBlocked: true,
                 preconditionHolds: false,
+            }),
+            config({
                 mode: "disabled",
+                capabilities: { assignment: { enabled: false, settings: {} } },
             }),
         );
         expect(verdict).toMatchObject({ outcome: "refuse", code: "killSwitch" });
@@ -88,22 +139,23 @@ describe("evaluateWrite (safety.md §2)", () => {
     it.each(["observe", "dry-run"] as const)(
         "%s mode records instead of applying (rule 10)",
         (mode) => {
-            const verdict = evaluateWrite(request(), context({ mode }));
+            const verdict = evalWrite(request(), context(), config({ mode }));
             expect(verdict).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
         },
     );
 
     it("observations never require enablement or permission", () => {
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request({ actionClass: "observation" }),
-            context({ capabilityEnabled: false, installationHasPermission: false }),
+            context({ installationHasPermission: false }),
+            capabilityOff,
         );
         expect(verdict).toMatchObject({ outcome: "record-only", code: "observation" });
     });
 
     it("a human change at the exact cause instant refuses — ties go to the human", () => {
         // FINDING(safety-human-tie): causeObservedAt is 2026-07-01T00:00:00Z.
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request(),
             context({ latestHumanChangeAt: new Date("2026-07-01T00:00:00Z") }),
         );
@@ -111,7 +163,7 @@ describe("evaluateWrite (safety.md §2)", () => {
     });
 
     it("a human change older than the cause does not conflict", () => {
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request(),
             context({ latestHumanChangeAt: new Date("2026-06-30T23:59:59Z") }),
         );
@@ -126,7 +178,7 @@ describe("evaluateWrite (safety.md §2)", () => {
             latestHumanChangeAt: new Date("invalid"),
         })],
     ] as const)("fails closed on %s", (_name, badRequest, badContext) => {
-        const verdict = evaluateWrite(badRequest, badContext);
+        const verdict = evalWrite(badRequest, badContext);
         expect(verdict).toMatchObject({
             outcome: "refuse",
             code: "invalidTimestamp",
@@ -138,7 +190,7 @@ describe("evaluateWrite (safety.md §2)", () => {
 
     // FINDING(safety-killswitch-observations)
     it("the kill switch beats everything, including observations", () => {
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request({ actionClass: "observation" }),
             context({ killSwitchActive: true }),
         );
@@ -152,7 +204,7 @@ describe("audit findings, pinned (D51-D53)", () => {
      * calling convention. Before this, the same call answered `apply`.
      */
     it("evaluateWrite refuses a destructive request instead of applying it", () => {
-        const verdict = evaluateWrite(
+        const verdict = evalWrite(
             request({ actionClass: "clockTriggeredDestructive", capability: "assignment" }),
             context(),
         );
@@ -162,9 +214,10 @@ describe("audit findings, pinned (D51-D53)", () => {
     it("no context can make evaluateWrite apply a destructive request", () => {
         for (const mode of REPOSITORY_MODES) {
             expect(
-                evaluateWrite(
+                evalWrite(
                     request({ actionClass: "clockTriggeredDestructive" }),
-                    context({ mode }),
+                    context(),
+                    config({ mode }),
                 ).outcome,
             ).toBe("refuse");
         }
@@ -173,13 +226,13 @@ describe("audit findings, pinned (D51-D53)", () => {
     // D51 — unknown ordering is a conflict, not an absence.
     it("unestablished human-change ordering refuses (manual-edits.md §2)", () => {
         expect(
-            evaluateWrite(request(), context({ latestHumanChangeAt: "unknown" })),
+            evalWrite(request(), context({ latestHumanChangeAt: "unknown" })),
         ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
     });
 
     it("null still means CHECKED-and-none, and still applies", () => {
         expect(
-            evaluateWrite(request(), context({ latestHumanChangeAt: null })),
+            evalWrite(request(), context({ latestHumanChangeAt: null })),
         ).toEqual({ outcome: "apply" });
     });
 
@@ -194,10 +247,11 @@ describe("audit findings, pinned (D51-D53)", () => {
             qualifyingActivitySinceWarning: false,
         };
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 plan,
-                context({ capability: "inactivity", latestHumanChangeAt: "unknown" }),
+                context({ latestHumanChangeAt: "unknown" }),
                 new Date("2026-08-01T00:00:00Z"),
+                anyCapability("inactivity"),
             ),
         ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
     });
@@ -205,7 +259,7 @@ describe("audit findings, pinned (D51-D53)", () => {
     // D52 — the kill switch is reported FIRST on the destructive path too.
     it("an active kill switch is reported as killSwitch, not noWarning", () => {
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 {
                     request: request({
                         actionClass: "clockTriggeredDestructive",
@@ -214,28 +268,30 @@ describe("audit findings, pinned (D51-D53)", () => {
                     warning: null,
                     qualifyingActivitySinceWarning: false,
                 },
-                context({ capability: "inactivity", killSwitchActive: true }),
+                context({ killSwitchActive: true }),
                 new Date("2026-08-01T00:00:00Z"),
+                anyCapability("inactivity"),
             ),
         ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
     });
 
     it("refuses immediate preventive actions until their explanation and reversal gate exists", () => {
         expect(
-            evaluateWrite(
+            evalWrite(
                 request({
                     actionClass: "immediatePreventive",
                     capability: "intake",
                     target: { item: "issue #42", change: "lock pending moderation" },
                 }),
-                context({ capability: "intake" }),
+                context(),
+                anyCapability("intake"),
             ),
         ).toMatchObject({ outcome: "refuse", code: "preventiveGateUnavailable" });
     });
 
     it("a destructive capability mismatch is reported before plan policy", () => {
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 {
                     request: request({
                         actionClass: "clockTriggeredDestructive",
@@ -244,10 +300,11 @@ describe("audit findings, pinned (D51-D53)", () => {
                     warning: null,
                     qualifyingActivitySinceWarning: false,
                 },
-                context({ capability: "assignment" }),
+                context(),
                 new Date("2026-08-01T00:00:00Z"),
+                anyCapability("inactivity"),
             ),
-        ).toMatchObject({ outcome: "refuse", code: "capabilityMismatch" });
+        ).toMatchObject({ outcome: "refuse", code: "noWarning" });
     });
 });
 
@@ -257,8 +314,8 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
      * context must describe that same capability — D53's link check
      * refuses a context about a different one.
      */
-    const dContext = (over?: Partial<WriteContext>): WriteContext =>
-        context({ capability: "inactivity", ...over });
+    const dConfig = anyCapability("inactivity");
+    const dContext = (over?: Partial<WriteContext>): WriteContext => context(over);
 
     const destructive = (over?: Partial<DestructivePlan>): DestructivePlan => {
         const destructiveRequest = request({
@@ -278,7 +335,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     const duringGrace = new Date("2026-07-05T00:00:00Z"); // 4 days later
 
     it("never acts on first observation — a missing warning refuses", () => {
-        const verdict = evaluateDestructive(
+        const verdict = evalDestructive(
             destructive({ warning: null }),
             dContext(),
             afterGrace,
@@ -288,13 +345,13 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
 
     it("refuses while the grace period is running", () => {
         expect(
-            evaluateDestructive(destructive(), dContext(), duringGrace),
+            evalDestructive(destructive(), dContext(), duringGrace),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
     it("refuses when the affected person was active during the grace period", () => {
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 destructive({ qualifyingActivitySinceWarning: true }),
                 dContext(),
                 afterGrace,
@@ -318,10 +375,10 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                 { ...plan.request, causeObservedAt: new Date("2026-07-01T00:00:01Z") },
                 dContext(),
             ],
-            [{ ...plan.request, capability: "anotherCapability" }, dContext({ capability: "anotherCapability" })],
+            [{ ...plan.request, capability: "anotherCapability" }, dContext()],
         ];
         for (const [mismatchedRequest, matchingContext] of mismatches) {
-            const verdict = evaluateDestructive(
+            const verdict = evalDestructive(
                 { ...plan, request: mismatchedRequest },
                 matchingContext,
                 afterGrace,
@@ -330,7 +387,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
         }
 
-        const wrongClass = evaluateDestructive(
+        const wrongClass = evalDestructive(
             {
                 ...plan,
                 warning: warningFor({
@@ -362,14 +419,15 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         );
 
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 {
                     request: aliasedRequest,
                     warning,
                     qualifyingActivitySinceWarning: false,
                 },
-                context({ capability: "inactivity" }),
+                context(),
                 new Date("2026-07-09T00:00:00Z"),
+                dConfig,
             ),
         ).toMatchObject({ outcome: "refuse", code: "warningRequestMismatch" });
         expect(warning.requestSnapshot).toMatchObject({
@@ -392,7 +450,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             warningFor(plan.request, { reversesWith: "   " }),
         ];
         for (const warning of invalidWarnings) {
-            const verdict = evaluateDestructive(
+            const verdict = evalDestructive(
                 { ...plan, warning },
                 dContext(),
                 afterGrace,
@@ -406,7 +464,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         "refuses a grace period of %s days (§4 floor)",
         (days) => {
             const plan = destructive();
-            const verdict = evaluateDestructive(
+            const verdict = evalDestructive(
                 {
                     ...plan,
                     warning: warningFor(plan.request, { gracePeriodDays: days }),
@@ -424,7 +482,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         ["an invalid current timestamp", 7, new Date("2026-07-01T00:00:00Z"), new Date("invalid")],
     ] as const)("fails closed on %s", (_name, gracePeriodDays, warnedAt, now) => {
         const plan = destructive();
-        const verdict = evaluateDestructive(
+        const verdict = evalDestructive(
                 {
                     ...plan,
                     warning: warningFor(plan.request, { gracePeriodDays, warnedAt }),
@@ -454,26 +512,26 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_DAYS days:
         // the grace has fully elapsed at this instant, not one ms later.
         expect(
-            evaluateDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome,
+            evalDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome,
         ).toBe("apply");
         expect(
-            evaluateDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
+            evalDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
     it("a warned, elapsed, quiet, unblocked plan still respects repository mode", () => {
         expect(
-            evaluateDestructive(destructive(), dContext({ mode: "dry-run" }), afterGrace)
+            evalDestructive(destructive(), dContext(), afterGrace, config({ mode: "dry-run" }))
                 .outcome,
         ).toBe("record-only");
         expect(
-            evaluateDestructive(destructive(), dContext(), afterGrace).outcome,
+            evalDestructive(destructive(), dContext(), afterGrace).outcome,
         ).toBe("apply");
     });
 
     it("a human change during the grace period cancels the plan (rule 5)", () => {
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 destructive(),
                 dContext({ latestHumanChangeAt: new Date("2026-07-05T12:00:00Z") }),
                 afterGrace,
@@ -484,11 +542,11 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("every destructive refusal carries a non-empty human reason", () => {
         const plan = destructive();
         const refusals = [
-            evaluateDestructive(destructive({ warning: null }), dContext(), afterGrace),
-            evaluateDestructive(destructive(), dContext(), duringGrace),
-            evaluateDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
-            evaluateDestructive({ ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) }, dContext(), afterGrace),
-            evaluateDestructive({ ...plan, request: request() }, context(), afterGrace),
+            evalDestructive(destructive({ warning: null }), dContext(), afterGrace),
+            evalDestructive(destructive(), dContext(), duringGrace),
+            evalDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
+            evalDestructive({ ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) }, dContext(), afterGrace),
+            evalDestructive({ ...plan, request: request() }, context(), afterGrace),
         ];
         for (const verdict of refusals) {
             expect(verdict.outcome).toBe("refuse");
@@ -500,7 +558,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         // observation short-circuit — a request and context describing
         // different capabilities is malformed input, not a policy
         // question, so no action class is exempt from it.
-        const observed = evaluateWrite(request({ actionClass: "observation" }), context());
+        const observed = evalWrite(request({ actionClass: "observation" }), context());
         expect(observed).toMatchObject({ outcome: "record-only" });
         if (observed.outcome === "record-only") expect(observed.reason.length).toBeGreaterThan(0);
     });
@@ -508,7 +566,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("rejects a non-destructive request routed through the destructive path", () => {
         const plan = destructive();
         expect(
-            evaluateDestructive(
+            evalDestructive(
                 { ...plan, request: request() },
                 context(),
                 afterGrace,
