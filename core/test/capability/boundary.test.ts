@@ -91,7 +91,6 @@ describe("the operation catalogue owns what the declaration may only restate", (
     it("pins the idempotency class of every operation", () => {
         expect(idempotencyOf("postManagedComment")).toBe("nonIdempotent");
         expect(idempotencyOf("applyMappedLabel")).toBe("idempotent");
-        expect(idempotencyOf("removeMappedLabel")).toBe("idempotent");
         expect(idempotencyOf("unassign")).toBe("idempotent");
     });
 
@@ -101,7 +100,7 @@ describe("the operation catalogue owns what the declaration may only restate", (
             actionClassFloor: "humanFacingOutput",
             permission: "issues:write",
         });
-        for (const op of ["applyMappedLabel", "removeMappedLabel", "unassign"] as const) {
+        for (const op of ["applyMappedLabel", "unassign"] as const) {
             expect(INTENT_OPERATIONS[op]).toEqual({
                 idempotencyClass: "idempotent",
                 actionClassFloor: "reversibleStateChange",
@@ -310,7 +309,6 @@ describe("deriveIdempotencyKey", () => {
             { ...base, repository: { owner: "o", repo: "r2" } },
             { ...base, item: { kind: "pullRequest", number: 1 } as const },
             { ...base, item: { kind: "issue", number: 2 } as const },
-            { ...base, operation: "removeMappedLabel" as const },
             { ...base, cause: { cause: "otherCause", observedAt: AT } },
             { ...base, cause: { cause: "someCause", observedAt: new Date(AT.getTime() + 1) } },
         ];

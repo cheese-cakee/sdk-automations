@@ -29,6 +29,8 @@ import {
     parseConfig,
     type AnyIntent,
     problems,
+    type IssueMeaning,
+    type ObservationProjection,
     type RepositoryConfig,
     type RepositoryMode,
     type WriteContext,
@@ -99,9 +101,11 @@ const issueObservation = {
     kind: "issueUpdated",
     repository: REPO,
     item: { kind: "issue", number: 11 },
-    meanings: [],
-    blocked: false,
-    closed: false,
+    position: {
+        kind: "position",
+        state: { meaning: null, blocked: false, closedBy: null },
+        ignored: [],
+    },
     observedAt: AT,
 } as const;
 
@@ -454,5 +458,52 @@ describe("dry-run is now observable (Phase 1)", () => {
             expect(f.subject.kind).toBe("effect");
         }
         expect(report.revision).toBe(REVISION);
+    });
+});
+
+describe("a conflicted item reaches the capability as a conflict (D81)", () => {
+    /**
+     * Before D81 this observation was indistinguishable from a clean one: the
+     * payload carried a bare meaning list, so `intake` saw two meanings, read
+     * "already positioned", and returned nothing — the right answer for the
+     * wrong reason. Give it a conflict where the positions happen to be empty
+     * and the old shape would have triaged it.
+     */
+    const conflicted = {
+        kind: "issueUpdated",
+        repository: REPO,
+        item: { kind: "issue", number: 11 },
+        position: {
+            kind: "conflict",
+            positions: ["ready", "inProgress"],
+            blocked: false,
+            closedBy: null,
+            ignored: [],
+        } as ObservationProjection<IssueMeaning>,
+        observedAt: AT,
+    } as const;
+
+    it("intake declines, and says why", async () => {
+        const config = configEnabling(NAMES, NAMES, { intake: { announce: true } });
+        const records = await runEnabled([intake], config, conflicted, {});
+        expect(records).toHaveLength(1);
+        expect(records[0]!.intents).toEqual([]);
+        const said = records[0]!.explanations.map((e) => e.summary).join(" ");
+        expect(said).toContain("more than one workflow position");
+    });
+
+    it("the same item with a clean projection is triaged", async () => {
+        const config = configEnabling(NAMES, NAMES, { intake: { announce: false } });
+        const clean = {
+            ...conflicted,
+            position: {
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: null },
+                ignored: [],
+            } as ObservationProjection<IssueMeaning>,
+        } as const;
+        const records = await runEnabled([intake], config, clean, {});
+        expect(records[0]!.intents).toHaveLength(1);
+        expect(records[0]!.intents[0]!.operation).toBe("applyMappedLabel");
     });
 });

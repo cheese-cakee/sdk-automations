@@ -13,7 +13,13 @@
 
 import type { MappableMeaning } from "../config/index.js";
 import type { ActionClass } from "../safety/index.js";
-import type { EntityKind, TransitionCause } from "../workflow/index.js";
+import type {
+    EntityKind,
+    IssueMeaning,
+    ObservationProjection,
+    PrMeaning,
+    TransitionCause,
+} from "../workflow/index.js";
 
 // ─── References and explanations ─────────────────────────────────────
 
@@ -65,20 +71,27 @@ export interface ObservationCatalogue {
         readonly kind: "issueUpdated";
         readonly repository: RepositoryRef;
         readonly item: ItemRef;
-        /** The projection from `observe.ts`; `null` when it conflicted. */
-        readonly meanings: readonly MappableMeaning[];
-        readonly blocked: boolean;
-        readonly closed: boolean;
+        /**
+         * The projection itself, not a flattening of it (D81).
+         *
+         * `observe.ts` distinguishes a CONFLICT — more than one own-flow
+         * position, which it refuses to resolve (D35) — from a position. This
+         * payload used to carry a bare meaning list, so that distinction died
+         * at the boundary and a capability handed a human's double-labelled
+         * issue could not tell it from a clean one. `blocked` and `closed`
+         * travelled beside it as separate booleans the shell had to keep
+         * consistent with the same meanings; both are read from the
+         * projection now.
+         */
+        readonly position: ObservationProjection<IssueMeaning>;
         readonly observedAt: Date;
     };
     readonly pullRequestUpdated: {
         readonly kind: "pullRequestUpdated";
         readonly repository: RepositoryRef;
         readonly item: ItemRef;
-        readonly meanings: readonly MappableMeaning[];
-        readonly blocked: boolean;
-        readonly closed: boolean;
-        readonly merged: boolean;
+        /** See `issueUpdated`. `merged` is `state.closedBy === "merged"`. */
+        readonly position: ObservationProjection<PrMeaning>;
         readonly observedAt: Date;
     };
     readonly staleItemsDue: {
@@ -152,11 +165,26 @@ export interface IntentCatalogue {
      * reasons but not transitions, and keep the free-text `DatedCause`
      * that identifies the occasion.
      */
+    /**
+     * SET the item's position — not "add a label". The adapter removes the
+     * position label the item previously held as part of realising this, per
+     * D4's rule that the platform removes only named managed labels.
+     *
+     * That is why there is no `removeMappedLabel` (D80): a position CHANGE is
+     * this operation, the map has no edge for leaving a position without
+     * closing, and unpausing needs the same authority as pausing, which D79
+     * reserves to humans. An operation with no legal use is dead vocabulary
+     * in a closed catalogue — the kind that gets used later without anyone
+     * rechecking whether it was ever allowed.
+     *
+     * The one operation that MOVES an item, so the one that names a
+     * transition cause from the closed, entity-scoped list in
+     * `workflow/meanings.ts`; `screenIntent` checks the edge (D78).
+     */
     readonly applyMappedLabel: {
         readonly meaning: MappableMeaning;
         readonly cause: TransitionCause;
     };
-    readonly removeMappedLabel: { readonly meaning: MappableMeaning };
     readonly unassign: { readonly login: string };
 }
 
@@ -209,11 +237,6 @@ export const INTENT_OPERATIONS: {
         permission: "issues:write",
     },
     applyMappedLabel: {
-        idempotencyClass: "idempotent",
-        actionClassFloor: "reversibleStateChange",
-        permission: "issues:write",
-    },
-    removeMappedLabel: {
         idempotencyClass: "idempotent",
         actionClassFloor: "reversibleStateChange",
         permission: "issues:write",

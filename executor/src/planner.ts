@@ -105,9 +105,9 @@ function describeChange(intent: AnyIntent): string {
         case "postManagedComment":
             return `managed comment ${intent.desired.marker}`;
         case "applyMappedLabel":
-            return `add mapped meaning ${intent.desired.meaning}`;
-        case "removeMappedLabel":
-            return `remove mapped meaning ${intent.desired.meaning}`;
+            // "set", not "add": the adapter swaps the previous position
+            // label as part of realising this (D4, D80).
+            return `set mapped position ${intent.desired.meaning}`;
         case "unassign":
             return `unassign ${intent.desired.login}`;
     }

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+    closureOf,
+    isPausedByProjection,
     projectIssueObservation,
     projectPrObservation,
     type LabelObservation,
@@ -163,5 +165,62 @@ describe("conflict verdicts carry blocked and closedBy (D59)", () => {
             closedBy: "merged",
             ignored: [],
         });
+    });
+});
+
+describe("closure and pause read the same on both branches", () => {
+    /**
+     * Closure rides on `state.closedBy` for a position and on `closedBy` at
+     * the top level for a conflict (D59). Reading one branch only compiles
+     * fine and silently treats every conflicted, closed item as open — which
+     * is exactly the bug made the first time a capability consumed a
+     * projection, and the reason these helpers exist.
+     */
+    it("finds closure whichever branch the projection took", () => {
+        expect(
+            closureOf({
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: "merged" },
+                ignored: [],
+            }),
+        ).toBe("merged");
+        expect(
+            closureOf({
+                kind: "conflict",
+                positions: ["ready", "inProgress"],
+                blocked: false,
+                closedBy: "merged",
+                ignored: [],
+            }),
+        ).toBe("merged");
+    });
+
+    it("finds the pause flag whichever branch the projection took", () => {
+        expect(
+            isPausedByProjection({
+                kind: "position",
+                state: { meaning: null, blocked: true, closedBy: null },
+                ignored: [],
+            }),
+        ).toBe(true);
+        expect(
+            isPausedByProjection({
+                kind: "conflict",
+                positions: ["ready", "inProgress"],
+                blocked: true,
+                closedBy: null,
+                ignored: [],
+            }),
+        ).toBe(true);
+    });
+
+    it("reports open and unpaused when neither is set", () => {
+        const clean = {
+            kind: "position",
+            state: { meaning: null, blocked: false, closedBy: null },
+            ignored: [],
+        } as const;
+        expect(closureOf(clean)).toBeNull();
+        expect(isPausedByProjection(clean)).toBe(false);
     });
 });

@@ -119,3 +119,29 @@ export function projectPrObservation(
 ): ObservationProjection<PrMeaning> {
     return projectWith(PR_MEANINGS, observation);
 }
+
+/**
+ * Is this item closed, whichever branch the projection took?
+ *
+ * Closure rides on BOTH — `state.closedBy` on a position, `closedBy` at the
+ * top level on a conflict (D59) — and that asymmetry is a trap: reading it
+ * from one branch only compiles fine and silently treats every conflicted,
+ * closed item as open. This exists because that mistake was made the first
+ * time a capability consumed the projection.
+ */
+export function closureOf<M>(
+    projection: ObservationProjection<M>,
+): ClosureReason | null {
+    return projection.kind === "position"
+        ? projection.state.closedBy
+        : projection.closedBy;
+}
+
+/** Is this item paused, whichever branch the projection took? See `closureOf`. */
+export function isPausedByProjection<M>(
+    projection: ObservationProjection<M>,
+): boolean {
+    return projection.kind === "position"
+        ? projection.state.blocked
+        : projection.blocked;
+}
