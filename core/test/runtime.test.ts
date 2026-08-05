@@ -1,0 +1,399 @@
+/**
+ * The capability runtime boundary, tested from inside its own package.
+ *
+ * These assertions existed before, in `probes/test/boundary.test.ts` — and
+ * only there. `probes/` is deliberately disposable and its README gives the
+ * procedure for deleting it once stage four names a real capability, so the
+ * boundary's only tests were scheduled for deletion along with the scaffold
+ * that happened to exercise them. The 2026-08-05 mutation run made it
+ * visible: `runtime.ts` scored 0.00 with 98 uncovered mutants, because
+ * Stryker runs this package's suite and this package tested none of it.
+ *
+ * The probe suites stay. They test the boundary in COMPOSITION — a real
+ * capability, the planner, the store. This file tests it in ISOLATION, which
+ * is what has to survive the probes being deleted.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+    checkAgainstCatalogue,
+    declareCapability,
+    deriveIdempotencyKey,
+    idempotencyOf,
+    INTENT_OPERATIONS,
+    parseConfig,
+    projectCapabilityView,
+    screenIntent,
+    type AnyIntent,
+} from "../src/index.js";
+
+const declaration = declareCapability({
+    name: "fixture",
+    triggers: [{ kind: "event", event: "issues" }],
+    configKeys: ["announce"],
+    observations: ["issueUpdated"],
+    resolvers: ["linkedIssues"],
+    intents: [
+        {
+            name: "applyMappedLabel",
+            idempotencyClass: "idempotent",
+            requiredPermissions: ["issues:write"],
+        },
+        {
+            name: "unassign",
+            idempotencyClass: "idempotent",
+            requiredPermissions: ["issues:write"],
+        },
+    ],
+    permissions: { repository: ["issues:write"], organization: [] },
+    operationalNeeds: {
+        schedule: false,
+        durableState: "none",
+        crossItemCoordination: false,
+        externalDelivery: false,
+    },
+});
+
+const AT = new Date("2026-08-05T09:00:00.000Z");
+
+const intent = (over: Record<string, unknown> = {}): AnyIntent =>
+    ({
+        capability: "fixture",
+        repository: { owner: "o", repo: "r" },
+        item: { kind: "issue", number: 1 },
+        operation: "applyMappedLabel",
+        actionClass: "reversibleStateChange",
+        expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
+        desired: { meaning: "awaitingTriage" },
+        cause: { cause: "someCause", observedAt: AT },
+        explanation: { capability: "fixture", summary: "s", detail: [] },
+        idempotencyKey: "k",
+        ...over,
+    }) as AnyIntent;
+
+const destructiveDetail = {
+    warnedAt: AT,
+    gracePeriodDays: 7,
+    earliestActionAt: new Date("2026-08-12T09:00:00.000Z"),
+    cancelledBy: "activity",
+    reversesWith: "reassigning",
+    qualifyingActivitySinceWarning: false,
+    warnedCause: "someCause",
+    warnedCauseObservedAt: AT,
+};
+
+describe("the operation catalogue owns what the declaration may only restate", () => {
+    /**
+     * D62. If these values are not pinned here, a declaration is free to
+     * disagree with the platform and the executor picks its retry rule from
+     * the wrong one — 6.5's demonstrated comment duplication.
+     */
+    it("pins the idempotency class of every operation", () => {
+        expect(idempotencyOf("postManagedComment")).toBe("nonIdempotent");
+        expect(idempotencyOf("applyMappedLabel")).toBe("idempotent");
+        expect(idempotencyOf("removeMappedLabel")).toBe("idempotent");
+        expect(idempotencyOf("unassign")).toBe("idempotent");
+    });
+
+    it("pins the action-class floor and required permission of every operation", () => {
+        expect(INTENT_OPERATIONS.postManagedComment).toEqual({
+            idempotencyClass: "nonIdempotent",
+            actionClassFloor: "humanFacingOutput",
+            permission: "issues:write",
+        });
+        for (const op of ["applyMappedLabel", "removeMappedLabel", "unassign"] as const) {
+            expect(INTENT_OPERATIONS[op]).toEqual({
+                idempotencyClass: "idempotent",
+                actionClassFloor: "reversibleStateChange",
+                permission: "issues:write",
+            });
+        }
+    });
+
+    it("rejects a declaration whose idempotency class contradicts the catalogue", () => {
+        const liar = declareCapability({
+            ...declaration,
+            intents: [
+                {
+                    name: "postManagedComment",
+                    idempotencyClass: "idempotent",
+                    requiredPermissions: ["issues:write"],
+                },
+            ],
+        });
+        const errors = checkAgainstCatalogue(liar);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain("the platform owns this fact");
+    });
+
+    it("rejects a declaration whose intent omits the operation's permission", () => {
+        const under = declareCapability({
+            ...declaration,
+            intents: [
+                {
+                    name: "applyMappedLabel",
+                    idempotencyClass: "idempotent",
+                    requiredPermissions: [],
+                },
+            ],
+        });
+        expect(checkAgainstCatalogue(under)[0]).toContain('must require "issues:write"');
+    });
+
+    it("accepts a declaration that agrees with the catalogue", () => {
+        expect(checkAgainstCatalogue(declaration)).toEqual([]);
+    });
+});
+
+describe("screenIntent", () => {
+    it("accepts a well-formed intent", () => {
+        expect(screenIntent(intent(), declaration)).toEqual({ ok: true });
+    });
+
+    it("refuses an intent attributed to another capability", () => {
+        expect(screenIntent(intent({ capability: "other" }), declaration)).toMatchObject({
+            ok: false,
+            code: "foreignCapability",
+        });
+    });
+
+    it("refuses an operation the capability did not declare", () => {
+        expect(
+            screenIntent(
+                intent({
+                    operation: "postManagedComment",
+                    actionClass: "humanFacingOutput",
+                    desired: { marker: "<!-- m -->", body: "b" },
+                }),
+                declaration,
+            ),
+        ).toMatchObject({ ok: false, code: "undeclaredIntent" });
+    });
+
+    /**
+     * D63's floor, in both directions. The `below` case is what pins
+     * ACTION_CLASS_RANK: with an empty rank map every lookup is `undefined`,
+     * `undefined < undefined` is false, and an understated write would sail
+     * through — so this assertion is the one that makes the ranking real.
+     */
+    it("refuses a write that understates its risk class", () => {
+        expect(
+            screenIntent(intent({ actionClass: "humanFacingOutput" }), declaration),
+        ).toMatchObject({ ok: false, code: "actionClassBelowFloor" });
+        expect(
+            screenIntent(intent({ actionClass: "observation" }), declaration),
+        ).toMatchObject({ ok: false, code: "actionClassBelowFloor" });
+    });
+
+    it("accepts a stricter class than the floor", () => {
+        // Permitted by the screen; `evaluateWrite` still refuses
+        // `immediatePreventive` for want of a gate (D54). The screen bounds
+        // what may be CLAIMED, the safety engine what may HAPPEN.
+        expect(
+            screenIntent(intent({ actionClass: "immediatePreventive" }), declaration),
+        ).toEqual({ ok: true });
+    });
+
+    it("refuses an intent whose cause carries an invalid timestamp", () => {
+        expect(
+            screenIntent(
+                intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
+                declaration,
+            ),
+        ).toMatchObject({ ok: false, code: "invalidCause" });
+    });
+
+    /** D64, both directions — the reverse check is the dangerous one. */
+    it("refuses a destructive intent carrying no warning record", () => {
+        expect(
+            screenIntent(
+                intent({
+                    operation: "unassign",
+                    actionClass: "clockTriggeredDestructive",
+                    desired: { login: "someone" },
+                }),
+                declaration,
+            ),
+        ).toMatchObject({ ok: false, code: "destructiveWithoutWarning" });
+    });
+
+    it("refuses a warning record attached to a non-destructive intent", () => {
+        expect(
+            screenIntent(
+                intent({
+                    operation: "unassign",
+                    actionClass: "reversibleStateChange",
+                    desired: { login: "someone" },
+                    destructive: destructiveDetail,
+                }),
+                declaration,
+            ),
+        ).toMatchObject({ ok: false, code: "warningWithoutDestructive" });
+    });
+
+    /**
+     * The same invariant `safety.test.ts` holds over its verdicts: `code` is
+     * machine-readable contract and asserted exactly; `reason` is prose for
+     * humans and asserted only to be PRESENT. A refusal that cannot say why
+     * is a refusal an operator cannot act on — but pinning the wording would
+     * make human-facing text a breaking change.
+     */
+    it("every refusal carries a non-empty human reason", () => {
+        const refusals = [
+            intent({ capability: "other" }),
+            intent({
+                operation: "postManagedComment",
+                actionClass: "humanFacingOutput",
+                desired: { marker: "<!-- m -->", body: "b" },
+            }),
+            intent({ actionClass: "observation" }),
+            intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
+            intent({
+                operation: "unassign",
+                actionClass: "clockTriggeredDestructive",
+                desired: { login: "someone" },
+            }),
+            intent({
+                operation: "unassign",
+                actionClass: "reversibleStateChange",
+                desired: { login: "someone" },
+                destructive: destructiveDetail,
+            }),
+        ];
+        const seen = new Set<string>();
+        for (const candidate of refusals) {
+            const screen = screenIntent(candidate, declaration);
+            expect(screen.ok).toBe(false);
+            if (!screen.ok) {
+                expect(screen.reason.length).toBeGreaterThan(0);
+                expect(screen.code.length).toBeGreaterThan(0);
+                seen.add(screen.code);
+            }
+        }
+        // Every refusal path reports a DISTINCT code — a shared code would
+        // make two different defects indistinguishable to an operator.
+        expect(seen.size).toBe(refusals.length);
+    });
+
+    it("accepts a destructive intent that carries its warning", () => {
+        expect(
+            screenIntent(
+                intent({
+                    operation: "unassign",
+                    actionClass: "clockTriggeredDestructive",
+                    desired: { login: "someone" },
+                    destructive: destructiveDetail,
+                }),
+                declaration,
+            ),
+        ).toEqual({ ok: true });
+    });
+});
+
+describe("deriveIdempotencyKey", () => {
+    const base = {
+        capability: "fixture",
+        repository: { owner: "o", repo: "r" },
+        item: { kind: "issue", number: 1 },
+        operation: "applyMappedLabel",
+        cause: { cause: "someCause", observedAt: AT },
+    } as const;
+
+    it("is stable across independent derivations of the same occasion", () => {
+        expect(deriveIdempotencyKey(base)).toBe(deriveIdempotencyKey(base));
+    });
+
+    it("distinguishes every identifying field", () => {
+        const variants = [
+            { ...base, capability: "other" },
+            { ...base, repository: { owner: "o2", repo: "r" } },
+            { ...base, repository: { owner: "o", repo: "r2" } },
+            { ...base, item: { kind: "pullRequest", number: 1 } as const },
+            { ...base, item: { kind: "issue", number: 2 } as const },
+            { ...base, operation: "removeMappedLabel" as const },
+            { ...base, cause: { cause: "otherCause", observedAt: AT } },
+            { ...base, cause: { cause: "someCause", observedAt: new Date(AT.getTime() + 1) } },
+        ];
+        const keys = new Set(variants.map(deriveIdempotencyKey));
+        expect(keys.size).toBe(variants.length);
+        expect(keys.has(deriveIdempotencyKey(base))).toBe(false);
+    });
+
+    /**
+     * FINDING(runtime-idempotency-key-underived): the encoding must not let
+     * a field boundary move. A delimiter join makes capability "a b" with
+     * repo "c" collide with capability "a" and repo "b c"; two distinct
+     * effects become one and the store cannot tell.
+     */
+    it("does not let a field boundary shift between fields", () => {
+        const a = deriveIdempotencyKey({
+            ...base,
+            capability: "a b",
+            repository: { owner: "c", repo: "r" },
+        });
+        const b = deriveIdempotencyKey({
+            ...base,
+            capability: "a",
+            repository: { owner: "b c", repo: "r" },
+        });
+        expect(a).not.toBe(b);
+    });
+
+    it("produces a key with no control characters", () => {
+        // A NUL-delimited key made the whole source file read as binary to
+        // grep and diff; the encoding stays printable on purpose.
+        expect(deriveIdempotencyKey(base)).not.toMatch(/[ -]/);
+    });
+});
+
+describe("projectCapabilityView (contract.md §6)", () => {
+    const config = (() => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "active",
+                capabilities: {
+                    fixture: {
+                        enabled: true,
+                        settings: { announce: true, undeclared: "leak" },
+                    },
+                    other: { enabled: true, settings: { secret: "theirs" } },
+                },
+                mappings: { labels: { awaitingTriage: "status: triage", blocked: "blocked" } },
+                principals: {},
+            },
+            { knownCapabilities: ["fixture", "other"] },
+        );
+        if (!result.ok) throw new Error(result.errors.join("; "));
+        return result.config;
+    })();
+
+    it("passes through only the capability's declared config keys", () => {
+        const view = projectCapabilityView(declaration, config);
+        expect(view.settings).toEqual({ announce: true });
+    });
+
+    it("never exposes another capability's configuration", () => {
+        expect(JSON.stringify(projectCapabilityView(declaration, config))).not.toContain(
+            "theirs",
+        );
+    });
+
+    /** D71 — availability of a meaning, never the repository's word for it. */
+    it("reports mapped meanings without exposing a label string", () => {
+        const view = projectCapabilityView(declaration, config);
+        expect([...view.mappedMeanings].sort()).toEqual(["awaitingTriage", "blocked"]);
+        expect(JSON.stringify(view)).not.toContain("status: triage");
+    });
+
+    it("reports no mapped meanings when the repository mapped none", () => {
+        const bare = parseConfig(
+            { schemaVersion: 1, mode: "observe", capabilities: {}, mappings: { labels: {} }, principals: {} },
+            { knownCapabilities: ["fixture"] },
+        );
+        if (!bare.ok) throw new Error("fixture config invalid");
+        const view = projectCapabilityView(declaration, bare.config);
+        expect(view.mappedMeanings).toEqual([]);
+        expect(view.settings).toEqual({});
+    });
+});
