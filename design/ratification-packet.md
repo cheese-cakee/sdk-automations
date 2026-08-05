@@ -19,8 +19,8 @@ close-out, the D46 gate on `active`), D29/D33 as encoded, and D40 at quarterly c
 D34, D35, D38, D39 — carried into the stage-two conversations via §7, plus D39's security-control
 sub-question (D22) and the formal stage-four close-out of the storage trio.
 
-**Amended 2026-08-03.** The sentence above is no longer complete: §2b adds twelve engineering rows
-(D61–D72) that postdate the adoption record and have never been reviewed. They are not maintainer taste
+**Amended 2026-08-03.** The sentence above is no longer complete: §2b adds thirteen engineering rows
+(D61–D73) that postdate the adoption record and have never been reviewed. They are not maintainer taste
 — they are architecture, and two of them are safety rows — so they belong to the stage-four session, not
 the stage-two conversations. Only D69 reaches into §7, as a gate on the first-capability choice.
 
@@ -33,7 +33,7 @@ selection, not on architecture review, and D50 plus D51–D53 and D55–D60, whi
 mechanical hardening carrying no maintainer choice. D54 (the unimplemented `immediatePreventive` gate) is
 covered in §4.
 
-The seam-born rows D61–D72 (added 2026-08-03) are covered, in §2b. They are listed separately from the
+The seam-born rows D61–D73 (added 2026-08-03) are covered, in §2b. They are listed separately from the
 2026-07-30 audit rows because they are not the same kind of thing: those were defect repairs inside
 `core/`, these are boundary decisions between packages, and two of them (D62, D64) change how the storage
 decision's retry and destructive rules are fed.
@@ -75,7 +75,7 @@ finished packages rather than any one of them. Each package was individually cor
 tested, which is exactly why these gaps were invisible until a capability decision was
 carried through to an effect for the first time.
 
-**Two of them are safety rows and should be read first (D62, D64).** Both are cases where the safety
+**Three of them are safety rows and should be read first (D62, D64, D73).** Both are cases where the safety
 engine and the capability contract were written against each other and did not meet.
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |
@@ -93,6 +93,8 @@ engine and the capability contract were written against each other and did not m
 | D71 | A capability sees which meanings are mapped, never the repository's label strings. | Is availability-only enough for a capability that wants to explain itself in the repository's own words? | Accept the projection. The managed comment is rendered by the platform, which does have the mapping — so the capability never needs the string. |
 
 | D72 | A destructive warning is rebuilt at act time from the stored warned cause, never from the current request. | Is plain-data persistence plus rebuild the intended reading of D60, or a weakening of it? | Accept as the intended reading. The brand is a within-process guarantee; the store is the trust boundary. Rebuilding from the current request would make D60's snapshot check compare a value with itself — the tempting fix and the one that voids the row. |
+
+| **D73** | `WriteContext.capabilityEnabled` duplicates `CapabilityConfig.enabled` with no comparison between them. | Close it with a fifth guard, or by deriving `WriteContext` from the configuration entirely? | **Derive.** A shell can assert consent for a capability the reviewed config disables, and D53's name check passes because the names match. A fifth comparison closes this one instance; the derivation retires D53's and D67's guards too and makes the state unrepresentable. Until it lands, `capabilityEnabled` must come from `parseConfig` output and nowhere else. |
 
 **What this agenda does not settle.** Nothing here touches GitHub: the composition suite fakes the port
 with the same declared read-after-write kindness as the crash grid (D46), and its crash test restarts a
@@ -139,7 +141,7 @@ adversarial and property suites.
 
 ## 6. Operations agenda
 
-**Venue:** the Q1/Q13 owners (hosting and operations). **Evidence:** `core/src/failures.ts`, the
+**Venue:** the Q1/Q13 owners (hosting and operations). **Evidence:** `core/src/github/failures.ts`, the
 observed-fixture suite.
 
 | Row | Decision to confirm | The question for reviewers | Recommended answer |

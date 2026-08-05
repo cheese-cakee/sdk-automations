@@ -16,7 +16,7 @@ capability that describes a desired outcome and a recovery loop that drives
 calls, had never met.
 
 These probes are the load on that seam. What they found is recorded as
-D61–D72 in [`design/decisions.md`](../design/decisions.md); seven of the twelve
+D61–D73 in [`design/decisions.md`](../design/decisions.md); eight of the thirteen
 rows are gaps that no further work inside a single package would have
 surfaced, because each package was individually correct. D72 needed more than
 that again — it appeared only when this branch met the 2026-07-30 audit's

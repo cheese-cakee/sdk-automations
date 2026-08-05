@@ -12,9 +12,15 @@ GitHub, no platform — `pnpm test` runs the whole thing in under a second.
 | `src/safety.ts` | The action classes, the mechanically checkable write rules, the inescapable clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
 | `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; required capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
 | `src/contract.ts` | Capability declarations with per-intent idempotency class; registry that feeds `parseConfig` | `design/modules/contract.md` §1 + the D23 amendments (experiments 6.3, 6.5) |
-| `src/ids.ts` | Separate branded webhook GUID and REST delivery-record id strings | `FINDING(delivery-id-precision)`, experiment 6.2 |
-| `src/failures.ts` | The failure catalogue as classification plus bounded retry advice, tested against observed response bodies | failure table in `design/operations/endpoint-permission-matrix.md` |
+| `src/github/ids.ts` | Separate branded webhook GUID and REST delivery-record id strings | `FINDING(delivery-id-precision)`, experiment 6.2 |
+| `src/github/failures.ts` | The failure catalogue as classification plus bounded retry advice, tested against observed response bodies | failure table in `design/operations/endpoint-permission-matrix.md` |
 | `src/runtime.ts` | The capability runtime boundary: closed observation/resolver/intent catalogues, `Capability`, `PlatformHandle`, `Intent`, the config projection, and the intent screens | `design/modules/contract.md` §2, §3, §6 + D61–D65, D71, D72 |
+
+`src/github/` is the one directory whose contents can go WRONG while nobody
+edits them — it holds what we measured about GitHub's live behaviour, and it
+carries its own [README](src/github/README.md) with the provenance table and
+the D40 re-probe obligation. Everything else in `core/` encodes a decision the
+project made, and stays true until someone decides differently.
 
 The sibling `store/` package holds the owned operational store (protocol
 6.5's decision) — it does I/O, so it lives outside this no-I/O track.

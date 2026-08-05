@@ -341,7 +341,17 @@ export function deriveIdempotencyKey(intent: {
     readonly operation: IntentOperation;
     readonly cause: DatedCause;
 }): string {
-    return [
+    /**
+     * JSON rather than a delimiter join. Every field except `cause` is
+     * constrained, but `cause` is capability-authored free text, so no
+     * printable separator is guaranteed absent from it — and a plain
+     * space join is actively wrong: capability "a b" with repo "c"
+     * produces the same key as capability "a" with repo "b c",
+     * silently making two effects one. JSON encodes the boundaries
+     * instead of hoping for them, and unlike a control-character
+     * delimiter it leaves the file readable to grep and diff tools.
+     */
+    return JSON.stringify([
         intent.capability,
         intent.repository.owner,
         intent.repository.repo,
@@ -350,7 +360,7 @@ export function deriveIdempotencyKey(intent: {
         intent.operation,
         intent.cause.cause,
         intent.cause.observedAt.toISOString(),
-    ].join(" ");
+    ]);
 }
 
 // ─── Typed declarations ──────────────────────────────────────────────
