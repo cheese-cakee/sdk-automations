@@ -10,6 +10,7 @@
  */
 
 import {
+    closureOf,
     declareCapability,
     deriveIdempotencyKey,
     type Capability,
@@ -53,7 +54,25 @@ export const intake: Capability<IntakeDeclaration> = {
     declaration: intakeDeclaration,
 
     async evaluate(observation, config, platform) {
-        if (observation.closed) return [];
+        /**
+         * A conflicted item has no position to reason from, and D35 forbids
+         * repairing one. Before D81 this case was invisible — the payload
+         * carried a bare meaning list, so an issue a human had put in two
+         * positions looked like an ordinary one and intake would have acted.
+         */
+        if (observation.position.kind === "conflict") {
+            platform.explain({
+                capability: "intake",
+                summary: "Skipped: the item holds more than one workflow position.",
+                detail: [
+                    `conflicting: ${observation.position.positions.join(", ")}`,
+                    "a conflict is reported, never repaired (D35)",
+                ],
+            });
+            return [];
+        }
+        if (closureOf(observation.position) !== null) return [];
+        const { state } = observation.position;
 
         /**
          * A capability may only use a meaning the repository has mapped
@@ -70,7 +89,7 @@ export const intake: Capability<IntakeDeclaration> = {
             return [];
         }
         // Already positioned somewhere — intake is the entry gate only.
-        if (observation.meanings.length > 0) return [];
+        if (state.meaning !== null) return [];
 
         const intents: IntentFor<IntakeDeclaration>[] = [];
 
@@ -85,7 +104,13 @@ export const intake: Capability<IntakeDeclaration> = {
                 meaningsAbsent: ["awaitingTriage"],
                 closed: false,
             },
-            desired: { meaning: "awaitingTriage" },
+            /**
+             * The map's answer: `[*] → awaitingTriage` for `intakeObserved`.
+             * This probe's own invented cause, `issueWithoutPosition`, is not
+             * on the map — closing the type is what forced the question, and
+             * the profile happened to have an edge for it (D78).
+             */
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
             cause: { cause: "issueWithoutPosition", observedAt: observation.observedAt },
             explanation: {
                 capability: "intake",

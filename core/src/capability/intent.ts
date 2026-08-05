@@ -9,6 +9,16 @@ import type { ActionClass } from "../safety/index.js";
 import type { IdempotencyClass } from "./catalogue.js";
 import type { MappableMeaning } from "../config/index.js";
 import {
+    canTransitionIssue,
+    canTransitionPr,
+    ISSUE_MEANINGS,
+    PR_MEANINGS,
+    type IssueCause,
+    type IssueMeaning,
+    type PrCause,
+    type PrMeaning,
+} from "../workflow/index.js";
+import {
     ACTION_CLASS_RANK,
     INTENT_OPERATIONS,
     type DatedCause,
@@ -153,6 +163,101 @@ export function checkAgainstCatalogue(d: TypedDeclaration): readonly string[] {
     return errors;
 }
 
+/**
+ * Is the move this intent would make on the profile's map?
+ *
+ * D29 says capabilities move along documented edges and humans may land
+ * anywhere — and nothing enforced the first half. The transition tables were
+ * exhaustively tested, checked against the design document, and corrected
+ * three times by D48's audit, with ZERO callers: a capability could put
+ * `readyToMerge`, a pull-request meaning, on an issue and both the screen and
+ * the safety engine would pass it (D78).
+ *
+ * Self-contained on purpose. Everything needed is already on the intent, and
+ * the claimed `from` is the same `expected` safety rechecks as
+ * `preconditionHolds`.
+ */
+function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
+    const own =
+        intent.item.kind === "issue"
+            ? (ISSUE_MEANINGS as readonly MappableMeaning[])
+            : (PR_MEANINGS as readonly MappableMeaning[]);
+
+    /**
+     * `blocked` is an orthogonal PAUSE FLAG, not a position (D28): an item
+     * keeps where it is while blocked, so applying it moves nothing and there
+     * is no edge to check. It is refused anyway, and for a different reason
+     * than a wrong entity — the distinction matters, because a maintainer
+     * reading a refusal deserves the true one.
+     *
+     * D79: pausing is the ONE write whose blast radius is other capabilities.
+     * `itemBlocked` is not a rule about the item, it is a rule about every
+     * capability's access to it — so a capability that could set it would
+     * hold a veto over the others, through shared state and without calling
+     * them. That is the coupling P3 forbids, in its least visible form: the
+     * vetoed capability sees `itemBlocked` and cannot learn who caused it.
+     *
+     * It is also the consistent reading. "Detect a problem, freeze the item"
+     * is an `immediatePreventive` action, which D54 already refuses outright
+     * pending an explanation-and-reversal gate. Letting a capability reach the
+     * same outcome by writing a label would be a hole in D54, and the repair
+     * is to close the label path rather than widen the gate.
+     */
+    if (intent.desired.meaning === "blocked") {
+        return {
+            ok: false,
+            code: "pauseNotCapabilityWritable",
+            reason: "pausing an item withholds it from every capability, so only a human may set `blocked` (D79); a capability that must stop work needs the immediatePreventive gate (D54)",
+        };
+    }
+
+    if (!own.includes(intent.desired.meaning)) {
+        return {
+            ok: false,
+            code: "meaningWrongEntity",
+            reason: `"${intent.desired.meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
+        };
+    }
+
+    // Own-flow only: a stray cross-entity label is noise to preserve (D35),
+    // not the position being moved away from.
+    const held = intent.expected.meaningsPresent.filter((m) => own.includes(m));
+    /**
+     * More than one own-flow position is a conflict, and `observe.ts` refuses
+     * to project one (D35). Treating it as "no position" here would silently
+     * check the wrong edge — the `[*] → to` one — so it is refused instead.
+     */
+    if (held.length > 1) {
+        return {
+            ok: false,
+            code: "positionConflict",
+            reason: `the item is claimed to hold ${held.join(" and ")}; a conflicted position has no edge to move along`,
+        };
+    }
+    const from = held.length === 1 ? held[0]! : null;
+
+    const verdict =
+        intent.item.kind === "issue"
+            ? canTransitionIssue({
+                  from: from as IssueMeaning | null,
+                  to: intent.desired.meaning as IssueMeaning,
+                  cause: intent.desired.cause as IssueCause,
+              })
+            : canTransitionPr({
+                  from: from as PrMeaning | null,
+                  to: intent.desired.meaning as PrMeaning,
+                  cause: intent.desired.cause as PrCause,
+              });
+
+    return verdict.allowed
+        ? { ok: true }
+        : {
+              ok: false,
+              code: "transitionNotOnMap",
+              reason: `${from ?? "no position"} → ${intent.desired.meaning} for "${intent.desired.cause}" is not a documented edge (${verdict.code})`,
+          };
+}
+
 export type IntentScreen =
     | { readonly ok: true }
     | { readonly ok: false; readonly code: string; readonly reason: string };
@@ -221,6 +326,9 @@ export function screenIntent(
             code: "warningWithoutDestructive",
             reason: `"${intent.operation}" carries a warning record but is declared "${intent.actionClass}" — no gate would check it`,
         };
+    }
+    if (intent.operation === "applyMappedLabel") {
+        return screenTransition(intent);
     }
     return { ok: true };
 }

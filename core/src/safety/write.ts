@@ -1,13 +1,23 @@
 /**
- * The public entry point for every action class EXCEPT
- * `clockTriggeredDestructive` — `design/core/safety.md` §2.
+ * The general entry point — every action class EXCEPT
+ * `clockTriggeredDestructive` (`design/core/safety.md` §2).
+ *
+ * **The rules themselves are in `rules.ts`.** This file is short on purpose,
+ * and the shortness is information: it holds only the policy belonging to
+ * THIS door — which classes it refuses outright — then hands off to the rules
+ * both doors share. `destructive.ts` is the other door, and it is long
+ * because eight §3 gates belong to it alone.
+ *
+ * Do not merge the three. The asymmetry records that the general path has
+ * almost no special policy while the destructive one is almost entirely
+ * special policy.
  */
 
 import type { RepositoryConfig } from "../config/index.js";
 import {
     evaluateGeneralRulesAfterPreflight,
     evaluatePreflight,
-} from "./internal.js";
+} from "./rules.js";
 import type { SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
 export function evaluateWrite(

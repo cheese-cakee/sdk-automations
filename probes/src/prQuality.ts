@@ -10,6 +10,7 @@
  */
 
 import {
+    closureOf,
     declareCapability,
     deriveIdempotencyKey,
     type Capability,
@@ -50,7 +51,14 @@ export const prQuality: Capability<PrQualityDeclaration> = {
     declaration: prQualityDeclaration,
 
     async evaluate(observation, config, platform) {
-        if (observation.closed || observation.merged) return [];
+        /**
+         * A conflicted pull request still gets its comment — this capability
+         * reads no position, so a conflict tells it nothing. But closure is
+         * carried on BOTH branches (D59), and reading it only from the
+         * position branch would have commented on a merged pull request whose
+         * labels happened to conflict.
+         */
+        if (closureOf(observation.position) !== null) return [];
 
         const linked = await platform.resolve("linkedIssues", {
             item: observation.item,
