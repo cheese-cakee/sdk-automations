@@ -51,6 +51,24 @@ a documented edge or rejected), destructive actions cannot fire without a
 recorded warning and an elapsed grace period, and one config error yields
 no configuration at all.
 
+## Where a test lives
+
+`test/` mirrors `src/`, and the mirror carries meaning rather than being
+tidiness:
+
+- **A test inside a subdirectory tests that subdirectory.**
+  `test/github/failures.test.ts` covers `src/github/failures.ts`.
+- **A test at the root spans modules, deliberately.** `invariants` and
+  `properties` compose several modules; `doc-drift` checks the design
+  documents against the tables. None of them belongs to one file, and the
+  absence of a directory is how they say so.
+
+So the rule reads in both directions: if you add a per-module test, it goes
+beside its module; if you cannot name the one module a test belongs to, it
+belongs at the root. `stryker.config.json` mutates `src/**/*.ts` — the
+recursive glob matters, because a single-level `src/*.ts` silently stops
+mutating a module the moment it moves into a subdirectory.
+
 ## What the tests prove — and what they do not
 
 The invariant tests prove the *decision logic* is coherent: given true

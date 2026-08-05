@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSecondsHeader } from "../src/github/rate-limits.js";
+import { parseSecondsHeader } from "../../src/github/rate-limits.js";
 
 describe("parseSecondsHeader", () => {
     it("distinguishes a missing header from a present zero", () => {
