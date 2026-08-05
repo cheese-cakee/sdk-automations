@@ -78,7 +78,7 @@ rather than against numbers that would have to be invented today.
 ## 2b. Capability-boundary and seam agenda
 
 **Venue:** the stage-four architecture review, alongside §2 — same session, because two of these rows
-change how the storage decision's retry rules are fed. **Evidence:** `core/src/runtime.ts`,
+change how the storage decision's retry rules are fed. **Evidence:** `core/src/capability/`,
 `executor/src/planner.ts`, and the three disposable probe capabilities with their boundary, toggle-matrix,
 and composition suites (`probes/`, 29 tests).
 

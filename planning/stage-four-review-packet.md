@@ -177,11 +177,11 @@ whichever candidate wins:
   report says so. Only never-existed names are validation errors.
   Without this rule, retiring a capability would silently drop every
   repository that enabled it to `observe` — a breaking change nobody
-  chose. Implemented in `core/src/contract.ts` (`retired`,
+  chose. Implemented in `core/src/capability/declaration.ts` (`retired`,
   `activeNames`).
 
 **Two further constraints on the winner (added 2026-08-05).** The
-capability runtime boundary now exists (`core/src/runtime.ts`), which
+capability runtime boundary now exists (`core/src/capability/`), which
 gives the ranking conversation a feasibility check it did not have when
 this packet was written:
 
