@@ -1,5 +1,8 @@
 # sdk-automations
 
+[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D23.4-blue)](https://github.com/hiero-hackers/sdk-automations/blob/main/package.json)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
 
 The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
