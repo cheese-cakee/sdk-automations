@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+    decide,
     deriveIdempotencyKey,
     evaluateWrite,
     normalizeDelivery,
@@ -178,5 +179,35 @@ describe("one real delivery, end to end", () => {
         );
         expect(dry).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
         expect(verdictFinding(dry, { kind: "repository" }).severity).toBe("notice");
+    });
+
+    /**
+     * D92 phase 2 — the parity gate. The engine must produce, from the same
+     * real delivery, exactly the findings this file assembled by hand. A
+     * mismatch STOPS the migration: it means either the engine or a
+     * hand-wiring is wrong, and both answers matter more than progress.
+     */
+    it("parity: decide() equals the hand wiring, finding for finding", async () => {
+        const asCapability = {
+            declaration: triage as never,
+            async evaluate() {
+                return [keyed];
+            },
+        };
+        const decision = await decide(
+            { kind: "delivery", repository: observation.repository, event: "issues", payload },
+            config,
+            [asCapability as never],
+            {
+                killSwitchActive: false,
+                installationGrants: ["issues:write"],
+                latestHumanChangeAt: () => null,
+            },
+        );
+        expect(decision.report.findings).toEqual(report.findings);
+        expect(decision.report.revision).toBe(report.revision);
+        expect(decision.report.mode).toBe(report.mode);
+        expect(decision.report.repository).toEqual(report.repository);
+        expect(decision.approved).toEqual([keyed]);
     });
 });
