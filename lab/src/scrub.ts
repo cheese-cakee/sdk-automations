@@ -23,6 +23,22 @@ const ID_KEYS = new Set(["id", "database_id", "installation_id", "hook_id"]);
 
 const EMAIL = /[^\s"@]+@[^\s"@]+\.[^\s"@]+/g;
 
+/**
+ * Full-length git object ids tie a fixture to sandbox history — not personal,
+ * but exactly the linkage 7.1 removes. Replaced deterministically so
+ * head/base/merge fields that repeat a sha keep repeating it.
+ */
+const GIT_SHA = /^[0-9a-f]{40}$/;
+
+/** Deterministic 40-hex placeholder: same input sha, same output sha. */
+function shaFor(sha: string, mapping: Mapping): string {
+    const existing = mapping.strings.get(sha);
+    if (existing !== undefined) return existing;
+    const stamped = String(mapping.strings.size + 1).padStart(40, "0");
+    mapping.strings.set(sha, stamped);
+    return stamped;
+}
+
 interface Mapping {
     readonly strings: Map<string, string>;
     readonly numbers: Map<number, number>;
@@ -87,6 +103,13 @@ function transform(value: unknown, mapping: Mapping): unknown {
         for (const [key, child] of Object.entries(value)) {
             if (key === "node_id" && typeof child === "string") {
                 out[key] = "SCRUBBED_NODE_ID";
+            } else if (key === "description" && typeof child === "string") {
+                // Free-prose metadata (repo/org/label descriptions): never
+                // identifier-shaped, so the identifier passes miss it, and
+                // never content the normalizer reads. Blanked wholesale.
+                out[key] = child === "" ? "" : "scrubbed-description";
+            } else if (typeof child === "string" && GIT_SHA.test(child)) {
+                out[key] = shaFor(child, mapping);
             } else if (typeof child === "number" && ID_KEYS.has(key)) {
                 out[key] = mapping.numbers.get(child) ?? child;
             } else {

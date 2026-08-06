@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
     parseConfig,
+    labelKey,
     classifyFailure,
     asDeliveryRecordId,
     MAPPABLE_MEANINGS,
@@ -26,7 +27,15 @@ const validConfig = fc
     .uniqueArray(fc.constantFrom(...MAPPABLE_MEANINGS), { maxLength: MAPPABLE_MEANINGS.length })
     .chain((meanings) =>
         fc
+            /**
+             * Unique by the VALIDATOR's judgment, not by exact string: the
+             * collision rule folds case (D55), so ["Abc", "abc"] is exact-
+             * unique yet labelNotInjective — a seed-dependent flake this
+             * property shipped with until 2026-08-07. Same fold, same
+             * function, third consumer.
+             */
             .uniqueArray(fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9: -]{0,20}[a-zA-Z0-9]$/), {
+                selector: labelKey,
                 minLength: meanings.length,
                 maxLength: meanings.length,
             })

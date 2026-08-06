@@ -7,10 +7,11 @@
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",
-        "capture": "node --experimental-strip-types src/capture.ts"
+        "capture": "tsx src/capture.ts"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",
+        "tsx": "^4.23.9",
         "typescript": "^5.6.0",
         "vitest": "^4.0.0"
     },
