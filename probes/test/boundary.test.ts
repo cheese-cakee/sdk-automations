@@ -43,7 +43,7 @@ describe("declarations", () => {
      * declaration layer alone accepts this, and the executor would then
      * blind-retry a comment create — experiment 6.5's duplication.
      */
-    it("a declaration that lies about idempotency passes validateDeclaration and fails the catalogue", () => {
+    it("registry construction reaches the catalogue check for a structurally valid liar", () => {
         const liar = declareCapability({
             name: "liar",
             triggers: [{ kind: "event", event: "issues" }],
@@ -67,7 +67,9 @@ describe("declarations", () => {
         });
 
         expect(validateDeclaration(liar)).toEqual([]);
-        const errors = checkAgainstCatalogue(liar);
+        const registry = createRegistry([liar]);
+        expect(registry.ok).toBe(false);
+        const errors = registry.ok ? [] : registry.errors;
         expect(errors).toHaveLength(1);
         expect(errors[0]).toContain("the platform owns this fact");
         // And the executor never reads the declared value anyway.

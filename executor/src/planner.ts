@@ -19,17 +19,19 @@ import {
     createDestructiveWarning,
     INTENT_OPERATIONS,
     finding,
+    screenFinding,
     verdictFinding,
     type Finding,
-    type RepositoryMode,
     type RepositoryRef,
     type Report,
+    type SafetyRefusalCode,
     type Subject,
     evaluateDestructive,
     evaluateWrite,
     idempotencyOf,
     screenIntent,
     type AnyIntent,
+    type IntentScreenRefusalCode,
     type RecordOnlyCode,
     type RepositoryConfig,
     type TypedDeclaration,
@@ -37,6 +39,13 @@ import {
     type WriteRequest,
 } from "@hiero-hackers/automation-core";
 import type { EffectPlan, PlannedCall } from "./recovery.js";
+
+export const PLANNER_REFUSAL_CODES = [
+    "duplicateIdempotencyKey",
+    "mixedRepositoryBatch",
+] as const;
+
+export type PlannerRefusalCode = (typeof PLANNER_REFUSAL_CODES)[number];
 
 export type Disposition =
     | { readonly kind: "plan"; readonly intent: AnyIntent; readonly plan: EffectPlan }
@@ -48,12 +57,31 @@ export type Disposition =
       }
     | {
           readonly kind: "refuse";
+          readonly origin: "safety";
           readonly intent: AnyIntent;
-          readonly code: string;
+          readonly code: SafetyRefusalCode;
+          readonly reason: string;
+      }
+    | {
+          readonly kind: "refuse";
+          readonly origin: "intent-screen";
+          readonly intent: AnyIntent;
+          readonly code: IntentScreenRefusalCode;
+          readonly reason: string;
+      }
+    | {
+          readonly kind: "refuse";
+          readonly origin: "planner";
+          readonly intent: AnyIntent;
+          readonly code: PlannerRefusalCode;
           readonly reason: string;
       };
 
 export interface PlanningResult {
+    /** Authoritative provenance captured from the inputs that produced this pass. */
+    readonly repository: RepositoryRef;
+    readonly mode: RepositoryConfig["mode"];
+    readonly revision: RepositoryConfig["revision"];
     /** One entry per input intent, in order — nothing is dropped silently. */
     readonly dispositions: readonly Disposition[];
     /** The `plan` dispositions' plans, for handing to `RecoveryExecutor`. */
@@ -62,6 +90,8 @@ export interface PlanningResult {
 
 export interface PlanningInputs {
     readonly declaration: TypedDeclaration;
+    /** The one repository this planning batch belongs to. */
+    readonly repository: RepositoryRef;
     /**
      * The reviewed configuration itself — not a copy of its mode.
      *
@@ -176,11 +206,46 @@ export function planIntents(
     const dispositions: Disposition[] = [];
     const keys = new Map<string, AnyIntent>();
 
+    const repository = { ...inputs.repository };
+    const buildResult = (): PlanningResult => ({
+        repository,
+        mode: inputs.config.mode,
+        revision: inputs.config.revision,
+        dispositions,
+        plans: dispositions.flatMap((d) => (d.kind === "plan" ? [d.plan] : [])),
+    });
+
+    const mixedRepository = intents.some(
+        (intent) =>
+            intent.repository.owner !== inputs.repository.owner ||
+            intent.repository.repo !== inputs.repository.repo,
+    );
+    if (mixedRepository) {
+        const targets = [
+            ...new Set(
+                intents.map(
+                    (intent) => `${intent.repository.owner}/${intent.repository.repo}`,
+                ),
+            ),
+        ].join(", ");
+        for (const intent of intents) {
+            dispositions.push({
+                kind: "refuse",
+                origin: "planner",
+                intent,
+                code: "mixedRepositoryBatch",
+                reason: `the batch is scoped to ${inputs.repository.owner}/${inputs.repository.repo}, but its intents target ${targets}; no intent was planned`,
+            });
+        }
+        return buildResult();
+    }
+
     for (const intent of intents) {
         const screen = screenIntent(intent, inputs.declaration);
         if (!screen.ok) {
             dispositions.push({
                 kind: "refuse",
+                origin: "intent-screen",
                 intent,
                 code: screen.code,
                 reason: screen.reason,
@@ -200,6 +265,7 @@ export function planIntents(
         if (clash !== undefined) {
             dispositions.push({
                 kind: "refuse",
+                origin: "planner",
                 intent,
                 code: "duplicateIdempotencyKey",
                 reason: `shares an idempotency key with the earlier "${clash.operation}" intent — the store would treat them as one effect`,
@@ -250,6 +316,7 @@ export function planIntents(
             case "refuse":
                 dispositions.push({
                     kind: "refuse",
+                    origin: "safety",
                     intent,
                     code: verdict.code,
                     reason: verdict.reason,
@@ -285,10 +352,7 @@ export function planIntents(
         }
     }
 
-    return {
-        dispositions,
-        plans: dispositions.flatMap((d) => (d.kind === "plan" ? [d.plan] : [])),
-    };
+    return buildResult();
 }
 
 /**
@@ -307,7 +371,6 @@ export function planIntents(
  */
 export function planningFindings(
     result: PlanningResult,
-    repository: RepositoryRef,
 ): readonly Finding[] {
     return result.dispositions.map((d) => {
         const subject: Subject = {
@@ -330,24 +393,45 @@ export function planningFindings(
                 d.intent.explanation.summary,
             ]);
         }
-        return verdictFinding(
-            { outcome: "refuse", code: d.code as never, reason: d.reason },
-            subject,
-        );
+        switch (d.origin) {
+            case "safety":
+                return verdictFinding(
+                    { outcome: "refuse", code: d.code, reason: d.reason },
+                    subject,
+                );
+            case "intent-screen":
+                return screenFinding(
+                    { ok: false, code: d.code, reason: d.reason },
+                    subject,
+                );
+            case "planner":
+                return plannerRefusalFinding(d, subject);
+        }
     });
+}
+
+function plannerRefusalFinding(
+    disposition: Extract<Disposition, { readonly origin: "planner" }>,
+    subject: Subject,
+): Finding {
+    switch (disposition.code) {
+        case "duplicateIdempotencyKey":
+            return finding("problem", disposition.code, disposition.reason, subject);
+        case "mixedRepositoryBatch":
+            return finding("problem", disposition.code, disposition.reason, {
+                kind: "repository",
+            });
+    }
 }
 
 /** The whole pass as a report, ready for a shell to render. */
 export function planningReport(
     result: PlanningResult,
-    repository: RepositoryRef,
-    mode: RepositoryMode,
-    revision: string,
 ): Report {
     return {
-        revision,
-        mode,
-        repository,
-        findings: planningFindings(result, repository),
+        revision: result.revision,
+        mode: result.mode,
+        repository: result.repository,
+        findings: planningFindings(result),
     };
 }

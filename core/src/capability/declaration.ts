@@ -24,6 +24,11 @@ import type {
     ObservationName,
     ResolverName,
 } from "./catalogue.js";
+import {
+    INTENT_OPERATIONS,
+    OBSERVATION_NAMES,
+    RESOLVER_NAMES,
+} from "./catalogue.js";
 
 
 
@@ -141,6 +146,58 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
     return errors;
 }
 
+function isIntentOperation(name: string): name is IntentOperation {
+    return Object.hasOwn(INTENT_OPERATIONS, name);
+}
+
+/**
+ * Validate names and operation-owned facts against the platform catalogues.
+ * Exported for focused diagnostics; `createRegistry` is the trusted operation
+ * that always combines this with structural validation.
+ */
+export function checkAgainstCatalogue(
+    declaration: CapabilityDeclaration,
+): readonly string[] {
+    const errors: string[] = [];
+    const at = `capability "${declaration.name}"`;
+
+    for (const observation of declaration.observations) {
+        if (!OBSERVATION_NAMES.some((name) => name === observation)) {
+            errors.push(
+                `${at}: observation "${observation}" is not in the observation catalogue`,
+            );
+        }
+    }
+    for (const resolver of declaration.resolvers) {
+        if (!RESOLVER_NAMES.some((name) => name === resolver)) {
+            errors.push(
+                `${at}: resolver "${resolver}" is not in the resolver catalogue`,
+            );
+        }
+    }
+    for (const intent of declaration.intents) {
+        if (!isIntentOperation(intent.name)) {
+            errors.push(
+                `${at}: intent "${intent.name}" is not in the operation catalogue`,
+            );
+            continue;
+        }
+        const facts = INTENT_OPERATIONS[intent.name];
+        if (facts.idempotencyClass !== intent.idempotencyClass) {
+            errors.push(
+                `${at}: intent "${intent.name}" declares idempotencyClass "${intent.idempotencyClass}" but the operation is "${facts.idempotencyClass}" — ` +
+                    `the platform owns this fact (FINDING(runtime-idempotency-declared-not-checked))`,
+            );
+        }
+        if (!intent.requiredPermissions.includes(facts.permission)) {
+            errors.push(
+                `${at}: intent "${intent.name}" must require "${facts.permission}"`,
+            );
+        }
+    }
+    return errors;
+}
+
 export interface CapabilityRegistry {
     /**
      * Every name ever shipped, retired included — the list
@@ -190,7 +247,10 @@ export type RegistryResult =
  * half-valid capability list.
  */
 export function createRegistry(declarations: readonly CapabilityDeclaration[]): RegistryResult {
-    const errors: string[] = declarations.flatMap((d) => [...validateDeclaration(d)]);
+    const errors: string[] = declarations.flatMap((d) => [
+        ...validateDeclaration(d),
+        ...checkAgainstCatalogue(d),
+    ]);
     for (const dup of duplicates(declarations.map((d) => d.name))) {
         errors.push(`duplicate capability name "${dup}" in the registry`);
     }

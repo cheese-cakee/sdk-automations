@@ -55,6 +55,14 @@ export interface DatedCause {
 
 // ─── The observation catalogue ───────────────────────────────────────
 
+export const OBSERVATION_NAMES = [
+    "issueUpdated",
+    "pullRequestUpdated",
+    "staleItemsDue",
+] as const;
+
+export type ObservationName = (typeof OBSERVATION_NAMES)[number];
+
 /**
  * What the platform hands a capability. Every payload carries `kind`, so
  * a capability declaring several observations receives a discriminated
@@ -66,7 +74,7 @@ export interface DatedCause {
  * capability sees positions and meanings, never the repository's words
  * for them.
  */
-export interface ObservationCatalogue {
+export interface ObservationCatalogue extends Record<ObservationName, unknown> {
     readonly issueUpdated: {
         readonly kind: "issueUpdated";
         readonly repository: RepositoryRef;
@@ -108,12 +116,19 @@ export interface ObservationCatalogue {
     };
 }
 
-export type ObservationName = keyof ObservationCatalogue & string;
+type AssertNever<T extends never> = T;
+type _ObservationCatalogueNamesAreExact = AssertNever<
+    Exclude<keyof ObservationCatalogue, ObservationName>
+>;
 
 // ─── The resolver catalogue ──────────────────────────────────────────
 
+export const RESOLVER_NAMES = ["linkedIssues", "isAutomationActor"] as const;
+
+export type ResolverName = (typeof RESOLVER_NAMES)[number];
+
 /** resolvers.md §2, narrowed to the resolvers the probes exercise. */
-export interface ResolverCatalogue {
+export interface ResolverCatalogue extends Record<ResolverName, unknown> {
     readonly linkedIssues: {
         readonly input: { readonly item: ItemRef };
         readonly output: readonly ItemRef[];
@@ -123,8 +138,9 @@ export interface ResolverCatalogue {
         readonly output: boolean;
     };
 }
-
-export type ResolverName = keyof ResolverCatalogue & string;
+type _ResolverCatalogueNamesAreExact = AssertNever<
+    Exclude<keyof ResolverCatalogue, ResolverName>
+>;
 export type ResolverInput<Q extends ResolverName> = ResolverCatalogue[Q]["input"];
 export type ResolverOutput<Q extends ResolverName> = ResolverCatalogue[Q]["output"];
 

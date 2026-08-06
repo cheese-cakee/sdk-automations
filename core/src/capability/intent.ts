@@ -139,31 +139,6 @@ export function deriveIdempotencyKey(intent: {
 // ─── Runtime screens ─────────────────────────────────────────────────
 
 /**
- * The catalogue check that `validateDeclaration` cannot perform, because
- * `contract.ts` knows nothing about operations. Run at registry build:
- * both findings above are caught here, before any effect exists.
- */
-export function checkAgainstCatalogue(d: TypedDeclaration): readonly string[] {
-    const errors: string[] = [];
-    const at = `capability "${d.name}"`;
-    for (const intent of d.intents) {
-        const facts = INTENT_OPERATIONS[intent.name];
-        if (facts.idempotencyClass !== intent.idempotencyClass) {
-            errors.push(
-                `${at}: intent "${intent.name}" declares idempotencyClass "${intent.idempotencyClass}" but the operation is "${facts.idempotencyClass}" — ` +
-                    `the platform owns this fact (FINDING(runtime-idempotency-declared-not-checked))`,
-            );
-        }
-        if (!intent.requiredPermissions.includes(facts.permission)) {
-            errors.push(
-                `${at}: intent "${intent.name}" must require "${facts.permission}"`,
-            );
-        }
-    }
-    return errors;
-}
-
-/**
  * Is the move this intent would make on the profile's map?
  *
  * D29 says capabilities move along documented edges and humans may land
@@ -258,9 +233,29 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
           };
 }
 
+export const INTENT_SCREEN_REFUSAL_CODES = [
+    "foreignCapability",
+    "undeclaredIntent",
+    "actionClassBelowFloor",
+    "invalidCause",
+    "destructiveWithoutWarning",
+    "warningWithoutDestructive",
+    "pauseNotCapabilityWritable",
+    "meaningWrongEntity",
+    "positionConflict",
+    "transitionNotOnMap",
+] as const;
+
+export type IntentScreenRefusalCode =
+    (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
+
 export type IntentScreen =
     | { readonly ok: true }
-    | { readonly ok: false; readonly code: string; readonly reason: string };
+    | {
+          readonly ok: false;
+          readonly code: IntentScreenRefusalCode;
+          readonly reason: string;
+      };
 
 /**
  * The per-intent screen, run on everything `evaluate` returns. The typed
