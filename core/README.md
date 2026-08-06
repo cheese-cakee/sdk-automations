@@ -94,15 +94,16 @@ tidiness:
 - **A test inside a subdirectory tests that subdirectory.**
   `test/github/failures.test.ts` covers `src/github/failures.ts`.
 - **A test at the root spans modules, deliberately.** `invariants` and
-  `properties` compose several modules; `doc-drift` checks the design
-  documents against the tables. None of them belongs to one file, and the
-  absence of a directory is how they say so.
+  `properties` compose several modules. Neither belongs to one file, and
+  the absence of a directory is how they say so. Tests about the
+  REPOSITORY rather than about core — docs, examples, design drift,
+  artifact invariants — live in the workspace's `checks/` package.
 
 So the rule reads in both directions: if you add a per-module test, it goes
 beside its module; if you cannot name the one module a test belongs to, it
 belongs at the root.
 
-`test/repo-artifacts.test.ts` holds the invariants that are not about
+The workspace's `checks/` package holds the invariants that are not about
 behaviour at all — source files stay free of control characters, and every
 module matches Stryker's mutate glob. Both exist because a regression got
 through: a NUL-delimited key made `capability/intent.ts` a binary file to grep, and a
@@ -189,7 +190,7 @@ code as its evidence:
   `readyToMerge → needsRevision` edge, the `reviewRequestedChanges`
   cause, and `approvalInvalidated` replacing the trigger-named
   `newCommitsInvalidatedApproval`. All three found by reading the tables
-  against `audit/`, not against the prose.
+  against `design/audit/`, not against the prose.
 - `FINDING(taxonomy-reopen)` → **D49** — reopening clears the closure
   and moves no position; a merged pull request can never reopen.
 - `FINDING(taxonomy-entity-scoped-causes)` → **D50** — issue and
@@ -226,7 +227,7 @@ The tables and rules here are hand copies of their source documents, so
 the working rule is: any edit to a document in the "source of truth"
 column above must touch the matching module and its tests.
 
-One of those copies is now checked automatically. `test/doc-drift.test.ts`
+One of those copies is now checked automatically. `checks/test/doc-drift.test.ts`
 parses the state diagrams out of `design/core/taxonomy.md` and asserts
 they match `ISSUE_EDGES`/`PR_EDGES` edge for edge, in both directions — a
 missing edge and an extra edge are the same defect from either side. It

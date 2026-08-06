@@ -1,5 +1,6 @@
 packages:
     - core
+    - checks
     - store
     - executor
     - probes

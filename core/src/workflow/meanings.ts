@@ -35,7 +35,7 @@ export type PrMeaning = (typeof PR_MEANINGS)[number];
  * from `closedByHuman` because downstream policy branches on it —
  * progression credits only a merged linked pull request
  * (`design/modules/progression.md`), and the audited C++ post-merge
- * cleanup is gated `merged == true` (`audit/services-cpp.md`).
+ * cleanup is gated `merged == true` (`design/audit/services-cpp.md`).
  *
  * FINDING(taxonomy-closure-reason), D47: taxonomy.md §5 wrote "The pull
  * request closes or merges" as ONE edge, discarding the distinction at
