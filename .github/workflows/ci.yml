@@ -1,7 +1,7 @@
 name: ci
 
-# `pull_request`, deliberately NOT `pull_request_target`: fork code runs with
-# no secrets and a read-only token. The mutation job below executes Stryker
+# `pull_request`, deliberately not the target variant: fork code runs with no
+# secrets and a read-only token. The mutation job below executes Stryker
 # against configuration a fork can edit, so the workflow must never hand that
 # code anything it could exfiltrate.
 on:
