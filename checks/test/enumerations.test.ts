@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repoRoot } from "./helpers.js";
+import { normalizeRepoPath, repoRoot } from "./helpers.js";
 
 /**
  * The fifth sighting of "one fact, two places" (D76) was `REPOSITORY_MODES`
@@ -21,7 +21,7 @@ describe("enumerations are declared once", () => {
     }) as string[])
         .filter((rel) => rel.endsWith(".ts"))
         .map((rel) => ({
-            file: `src/${rel.split("\\").join("/")}`,
+            file: `src/${normalizeRepoPath(rel)}`,
             text: readFileSync(join(repoRoot, "core", "src", rel), "utf8"),
         }));
 

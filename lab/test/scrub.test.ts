@@ -26,10 +26,16 @@ const payload = {
         node_id: "R_kgDOXyz789",
         name: "scratch-repo",
         full_name: "owner-sandbox/scratch-repo",
-        owner: { login: "owner-sandbox", id: 998877 },
+        owner: { login: "owner-sandbox", name: "Sandbox Owner", id: 998877 },
         labels_url: "https://api.github.com/repos/owner-sandbox/scratch-repo/labels{/name}",
+        license: { name: "MIT License", spdx_id: "MIT" },
+        nested: {
+            workflow: { name: "Release scratch artifacts" },
+            check_run: { name: "verify owner metadata" },
+        },
     },
     label: { id: 11, name: "status: triage" },
+    milestone: { id: 12, title: "scratch-repo launch" },
     sender: { login: "owner-sandbox", id: 998877 },
     installation: { id: 71234567, node_id: "MDIzOkludGVn" },
 } as const;
@@ -46,6 +52,7 @@ describe("identifiers leave", () => {
             "R_kgDOXyz789",
             "MDIzOkludGVn",
             "owner@real.example.com",
+            "Sandbox Owner",
             "998877",
             "71234567",
         ]) {
@@ -59,6 +66,7 @@ describe("structure survives", () => {
         expect(result.issue.user.login).toBe(result.sender.login);
         expect(result.issue.assignee.login).toBe(result.repository.owner.login);
         expect(result.issue.user.id).toBe(result.sender.id);
+        expect(result.repository.owner.name).toMatch(/^scrubbed-/);
     });
 
     it("URLs still contain the login and repo the payload names", () => {
@@ -81,6 +89,11 @@ describe("structure survives", () => {
         // A label's name is workflow content, not identity — the whole
         // point of the mapping layer is that these strings matter.
         expect(result.label.name).toBe("status: triage");
+        expect(result.repository.license.name).toBe("MIT License");
+        expect(result.repository.nested.workflow.name).toBe("Release scratch artifacts");
+        expect(result.repository.nested.check_run.name).toBe("verify owner metadata");
+        // Strings which repeat a collected identifier remain referential.
+        expect(result.milestone.title).toBe(`${result.repository.name} launch`);
     });
 
     it("is deterministic", () => {

@@ -40,11 +40,36 @@ import { configEnabling, runEnabled, type ProbeCapability } from "./world.js";
 
 let dir: string;
 let path: string;
+let stores: Store[];
 beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "probe-compose-"));
     path = join(dir, "store.sqlite");
+    stores = [];
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => {
+    const errors: unknown[] = [];
+    for (const store of stores.reverse()) {
+        try {
+            store.close();
+        } catch (error) {
+            errors.push(error);
+        }
+    }
+    try {
+        rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+        errors.push(error);
+    }
+    if (errors.length > 0) {
+        throw new AggregateError(errors, "composition cleanup failed");
+    }
+});
+
+function openStore(): Store {
+    const store = new Store(path);
+    stores.push(store);
+    return store;
+}
 
 const AT = new Date("2026-08-03T09:00:00.000Z");
 const NOW = new Date("2026-08-03T09:00:05.000Z");
@@ -140,7 +165,7 @@ describe("capability → planner → executor", () => {
         expect(result.plans).toHaveLength(2);
         expect(new Set(result.plans.map((p) => p.effectId)).size).toBe(2);
 
-        const store = new Store(path);
+        const store = openStore();
         const port = new CountingPort();
         const executor = new RecoveryExecutor(
             store,
@@ -174,7 +199,7 @@ describe("capability → planner → executor", () => {
         port.crashOn(plan, plan.calls[0]!);
 
         // First process dies mid-call; the claim is never released.
-        const first = new Store(path);
+        const first = openStore();
         await expect(
             new RecoveryExecutor(first, port, "w1", () => NOW.toISOString()).runEffect(
                 plan,
@@ -183,7 +208,7 @@ describe("capability → planner → executor", () => {
 
         // The restarted process takes the stale lease over and resolves.
         const later = new Date(NOW.getTime() + 30 * 60 * 1000);
-        const second = new Store(path);
+        const second = openStore();
         const result = await new RecoveryExecutor(
             second,
             port,
@@ -270,7 +295,7 @@ describe("the safety engine is on the path, not beside it", () => {
             code: "modeRecordsOnly",
         });
 
-        const store = new Store(path);
+        const store = openStore();
         for (const d of result.dispositions) {
             expect(d.kind).not.toBe("plan");
         }
@@ -450,7 +475,7 @@ describe("dry-run is now observable (Phase 1)", () => {
 
         // Nothing was planned, so nothing can be journalled.
         expect(result.plans).toEqual([]);
-        const store = new Store(path);
+        const store = openStore();
         expect(store.openIntents(NOW.toISOString())).toEqual([]);
 
         // But the pass is no longer silent: every intent is accounted for,

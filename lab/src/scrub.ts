@@ -35,26 +35,25 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /**
  * Pass one: collect every identifying value, mapping each to a stable
  * placeholder in order of first appearance. `name` and `full_name` are only
- * identifying under an object that carries a `login` or `slug` — a label's
- * `name` is content, an owner's `name` is identity — so collection is scoped
- * to objects that look like accounts or repositories.
+ * identifying only when the object that directly contains the field carries
+ * a `login`, `slug`, or `full_name` — a label's `name` is content, an owner's
+ * `name` is identity. That scope does not flow into nested domain content.
  */
-function collect(value: unknown, mapping: Mapping, identityScope: boolean): void {
+function collect(value: unknown, mapping: Mapping): void {
     if (Array.isArray(value)) {
-        for (const item of value) collect(item, mapping, identityScope);
+        for (const item of value) collect(item, mapping);
         return;
     }
     if (!isRecord(value)) return;
 
-    const scoped =
-        identityScope ||
+    const identityObject =
         typeof value["login"] === "string" ||
         typeof value["slug"] === "string" ||
         typeof value["full_name"] === "string";
 
     for (const [key, child] of Object.entries(value)) {
         if (typeof child === "string" && IDENTIFYING_KEYS.has(key)) {
-            if (!scoped && (key === "name" || key === "full_name")) continue;
+            if (!identityObject && (key === "name" || key === "full_name")) continue;
             for (const part of child.split("/")) {
                 if (part !== "" && !mapping.strings.has(part)) {
                     mapping.strings.set(part, `scrubbed-${mapping.strings.size + 1}`);
@@ -68,7 +67,7 @@ function collect(value: unknown, mapping: Mapping, identityScope: boolean): void
             }
             continue;
         }
-        collect(child, mapping, scoped && key !== "repository" ? scoped : scoped);
+        collect(child, mapping);
     }
 }
 
@@ -108,6 +107,6 @@ function transform(value: unknown, mapping: Mapping): unknown {
  */
 export function scrubPayload(payload: unknown): unknown {
     const mapping: Mapping = { strings: new Map(), numbers: new Map() };
-    collect(payload, mapping, false);
+    collect(payload, mapping);
     return transform(payload, mapping);
 }

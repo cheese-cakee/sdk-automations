@@ -19,18 +19,19 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BODY_PATTERNS } from "@hiero-hackers/automation-core";
+import { lines, normalizeNewlines } from "./helpers.js";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const tracked = (path: string): string[] =>
-    execSync(`git ls-files -- ${path}`, { cwd: repoRoot, encoding: "utf8" })
-        .split("\n")
-        .filter(Boolean);
+    lines(execSync(`git ls-files -- ${path}`, { cwd: repoRoot, encoding: "utf8" })).filter(
+        Boolean,
+    );
 
 describe("the lab's local-only layer stays out of the repository", () => {
     it(".gitignore still carries the rules", () => {
-        const lines = readFileSync(join(repoRoot, ".gitignore"), "utf8").split("\n");
+        const ignoreLines = lines(readFileSync(join(repoRoot, ".gitignore"), "utf8"));
         for (const rule of ["lab/harness/", "lab/evidence/", "lab/.env"]) {
-            expect(lines).toContain(rule);
+            expect(ignoreLines).toContain(rule);
         }
     });
 
@@ -57,9 +58,8 @@ describe("the lab's local-only layer stays out of the repository", () => {
  * One fact, two homes, kept honest the same way the docs tables are.
  */
 describe("the perishable-facts provenance table matches the code", () => {
-    const readme = readFileSync(
-        join(repoRoot, "core/src/github/README.md"),
-        "utf8",
+    const readme = normalizeNewlines(
+        readFileSync(join(repoRoot, "core/src/github/README.md"), "utf8"),
     );
     const row = readme
         .split("\n")

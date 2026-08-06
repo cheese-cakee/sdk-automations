@@ -8,7 +8,12 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repoRoot, workspacePackages } from "./helpers.js";
+import {
+    normalizeRepoPath,
+    repoRoot,
+    trackedFiles,
+    workspacePackages,
+} from "./helpers.js";
 
 /**
  * A citation that points at a file which no longer exists breaks nothing.
@@ -21,18 +26,8 @@ import { repoRoot, workspacePackages } from "./helpers.js";
  * than care.
  */
 describe("documents cite files that exist", () => {
-    const docs = (readdirSync(repoRoot, { recursive: true }) as string[])
-        .filter(
-            (rel) =>
-                rel.endsWith(".md") &&
-                !rel.includes("node_modules") &&
-                !rel.includes(".stryker-tmp") &&
-                // The lab's local-only layer (see lab/README.md) exists on
-                // some machines and not in CI. Scanning it would make this
-                // suite pass or fail by geography.
-                !rel.startsWith("lab/harness/") &&
-                !rel.startsWith("lab/evidence/"),
-        )
+    const docs = trackedFiles()
+        .filter((rel) => rel.endsWith(".md"))
         .map((rel) => ({ doc: rel, text: readFileSync(join(repoRoot, rel), "utf8") }));
 
     const PATH = /\b((?:core|store|executor|probes|checks)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
@@ -116,7 +111,10 @@ describe("documents name files that exist", () => {
                 for (const rel of readdirSync(join(repoRoot, pkg, dir), {
                     recursive: true,
                 }) as string[]) {
-                    if (rel.endsWith(".ts")) sourceNames.add(rel.split("/").pop()!);
+                    const normalized = normalizeRepoPath(rel);
+                    if (normalized.endsWith(".ts")) {
+                        sourceNames.add(normalized.split("/").pop()!);
+                    }
                 }
             } catch {
                 // a package need not have both directories
@@ -124,14 +122,7 @@ describe("documents name files that exist", () => {
         }
     }
 
-    const docs = (readdirSync(repoRoot, { recursive: true }) as string[]).filter(
-        (rel) =>
-            rel.endsWith(".md") &&
-            !rel.includes("node_modules") &&
-            !rel.includes(".stryker-tmp") &&
-            !rel.startsWith("lab/harness/") &&
-            !rel.startsWith("lab/evidence/"),
-    );
+    const docs = trackedFiles().filter((rel) => rel.endsWith(".md"));
 
     const NAME = /(?<![\w/.-])([a-z][a-z0-9-]*\.ts)(?![\w-])/g;
 
@@ -193,9 +184,10 @@ describe("code cites decisions that exist", () => {
 
     const sources: { file: string; text: string }[] = [];
     for (const pkg of ["core", "store", "executor"]) {
-        for (const rel of readdirSync(join(repoRoot, pkg, "src"), {
+        for (const rawRel of readdirSync(join(repoRoot, pkg, "src"), {
             recursive: true,
         }) as string[]) {
+            const rel = normalizeRepoPath(rawRel);
             if (rel.endsWith(".ts")) {
                 sources.push({
                     file: `${pkg}/src/${rel}`,
