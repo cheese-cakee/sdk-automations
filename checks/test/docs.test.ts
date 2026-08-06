@@ -24,11 +24,14 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { RecordOnlyCode, SafetyRefusalCode } from "@hiero-hackers/automation-core";
 import { verdictFinding, type Severity } from "@hiero-hackers/automation-core";
+import { normalizeNewlines } from "./helpers.js";
 
 const page = (name: string): string =>
-    readFileSync(
-        fileURLToPath(new URL(`../../docs/${name}`, import.meta.url)),
-        "utf8",
+    normalizeNewlines(
+        readFileSync(
+            fileURLToPath(new URL(`../../docs/${name}`, import.meta.url)),
+            "utf8",
+        ),
     );
 
 /** The first backtick-quoted token of each table row in one `## section`. */
@@ -50,6 +53,25 @@ function inlineCodes(markdown: string, heading: string): string[] {
     expect(section, `section "${heading}" exists`).toBeDefined();
     return [...(section ?? "").matchAll(/`([a-zA-Z]+)`/g)].map((m) => m[1]!);
 }
+
+describe("documentation parsing", () => {
+    it.each(["\n", "\r\n"])("reads tables with %j line endings", (newline) => {
+        const markdown = [
+            "## Codes",
+            "",
+            "| Code | Meaning |",
+            "| --- | --- |",
+            "| `first` | one |",
+            "| `second` | two |",
+            "",
+            "## Next",
+        ].join(newline);
+        expect(tableCodes(normalizeNewlines(markdown), "Codes")).toEqual([
+            "first",
+            "second",
+        ]);
+    });
+});
 
 describe("docs/quickstart.md", () => {
     /**

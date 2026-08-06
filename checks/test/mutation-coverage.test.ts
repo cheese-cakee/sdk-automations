@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repoRoot } from "./helpers.js";
+import { normalizeRepoPath, repoRoot } from "./helpers.js";
 
 /**
  * Minimal glob matcher — enough for the patterns Stryker configs use.
@@ -52,7 +52,7 @@ describe("mutation testing covers every core module", () => {
     const srcRoot = join(repoRoot, "core", "src");
     const modules = (readdirSync(srcRoot, { recursive: true }) as string[])
         .filter((rel) => rel.endsWith(".ts"))
-        .map((rel) => `src/${rel.split("\\").join("/")}`);
+        .map((rel) => `src/${normalizeRepoPath(rel)}`);
 
     it("finds the core modules", () => {
         expect(modules.length).toBeGreaterThan(5);
