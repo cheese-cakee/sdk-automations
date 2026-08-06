@@ -244,7 +244,17 @@ describe("documents cite files that exist", () => {
         )
         .map((rel) => ({ doc: rel, text: readFileSync(join(repoRoot, rel), "utf8") }));
 
-    const PATH = /\b((?:core|store|executor|probes)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
+    const PATH = /\b((?:core|store|executor|probes|checks)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
+
+    /**
+     * The blind spot the audit/planning consolidation exposed: sixteen
+     * documents cited `audit/…` and `planning/…` paths, the directories
+     * moved, and this suite stayed green — the regex above knows only
+     * TypeScript. Now that the top level is closed (every knowledge file
+     * lives under design/, docs/ or examples/), repo-rooted document paths
+     * are checkable with the same rigour as source paths.
+     */
+    const DOC_PATH = /\b((?:design|docs|examples)\/[A-Za-z0-9._/-]+\.(?:md|yml))\b/g;
 
     it("finds documents and citations to check", () => {
         expect(docs.length).toBeGreaterThan(5);
@@ -265,14 +275,69 @@ describe("documents cite files that exist", () => {
         expect(dangling).toEqual([]);
     });
 
+    it("every cited document path resolves to a real file", () => {
+        const dangling: string[] = [];
+        for (const { doc, text } of docs) {
+            for (const match of text.matchAll(DOC_PATH)) {
+                const cited = match[1]!;
+                if (!existsSync(join(repoRoot, cited))) {
+                    dangling.push(`${doc} -> ${cited}`);
+                }
+            }
+        }
+        expect([...new Set(dangling)]).toEqual([]);
+    });
+
     it("proves the check can fail", () => {
         // Negative control, both directions: the matcher must find a path and
         // the existence check must reject one that is not there.
-        const fake = "see `core/src/nonexistent.ts` for details";
-        const found = [...fake.matchAll(PATH)].map((m) => m[1]);
-        expect(found).toEqual(["core/src/nonexistent.ts"]);
-        expect(existsSync(join(repoRoot, found[0]!))).toBe(false);
+        const fake = "see `core/src/nonexistent.ts` and `design/audit/nope.md`";
+        expect([...fake.matchAll(PATH)].map((m) => m[1])).toEqual(["core/src/nonexistent.ts"]);
+        expect([...fake.matchAll(DOC_PATH)].map((m) => m[1])).toEqual(["design/audit/nope.md"]);
+        expect(existsSync(join(repoRoot, "core/src/nonexistent.ts"))).toBe(false);
+        expect(existsSync(join(repoRoot, "design/audit/nope.md"))).toBe(false);
         expect(existsSync(join(repoRoot, "core/src/index.ts"))).toBe(true);
+        expect(existsSync(join(repoRoot, "design/audit/services.md"))).toBe(true);
+    });
+});
+
+/**
+ * The consolidation's real product is a sentence: a top-level directory is a
+ * workspace package, or it is one of three knowledge roots — design/
+ * (internal), docs/ (users), examples/ (users, executable). audit/ and
+ * planning/ existed because no such rule did; this keeps the next five
+ * packages from re-growing the clutter.
+ */
+describe("the top level holds packages and three knowledge roots", () => {
+    const KNOWLEDGE = new Set(["design", "docs", "examples"]);
+    // On disk for some machines, never in the repository:
+    // experiments/ is the gitignored local lab (D32).
+    const LOCAL_ONLY = new Set(["node_modules", "experiments"]);
+
+    it("every top-level directory is a package or a named root", () => {
+        const packages = new Set(workspacePackages());
+        const offenders = readdirSync(repoRoot, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name)
+            .filter(
+                (name) =>
+                    !name.startsWith(".") &&
+                    !packages.has(name) &&
+                    !KNOWLEDGE.has(name) &&
+                    !LOCAL_ONLY.has(name),
+            );
+        expect(offenders).toEqual([]);
+    });
+
+    it("proves the rule can fail", () => {
+        // audit/ was a real offender until 2026-08-06; assert the predicate
+        // would still flag it rather than having gone vacuous.
+        const packages = new Set(workspacePackages());
+        for (const name of ["audit", "planning"]) {
+            expect(packages.has(name)).toBe(false);
+            expect(KNOWLEDGE.has(name)).toBe(false);
+            expect(LOCAL_ONLY.has(name)).toBe(false);
+        }
     });
 });
 

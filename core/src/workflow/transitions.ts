@@ -49,7 +49,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
     { from: null, to: "needsRevision", causes: ["checksFailed"] },
     /**
- * Three corrections found by reading these tables against `audit/` rather than
+ * Three corrections found by reading these tables against `design/audit/` rather than
  * against the prose: the missing `readyToMerge → needsRevision` edge, the added
  * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
  * that bundled a trigger with its consequence (D48).
@@ -78,7 +78,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
      * asserted commits had landed. Checks break without any push: the
      * audited Sibling Conflict Re-check re-reads every open PR's
      * `mergeable` state when a DIFFERENT pull request merges and swaps
-     * `needs review` ↔ `needs revision` (`audit/services-cpp.md`).
+     * `needs review` ↔ `needs revision` (`design/audit/services-cpp.md`).
      */
     { from: "readyToMerge", to: "needsRevision", causes: ["checksFailed"] },
     { from: "needsReview", to: null, causes: ["humanClosed", "merged"] },

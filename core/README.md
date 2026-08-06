@@ -190,7 +190,7 @@ code as its evidence:
   `readyToMerge → needsRevision` edge, the `reviewRequestedChanges`
   cause, and `approvalInvalidated` replacing the trigger-named
   `newCommitsInvalidatedApproval`. All three found by reading the tables
-  against `audit/`, not against the prose.
+  against `design/audit/`, not against the prose.
 - `FINDING(taxonomy-reopen)` → **D49** — reopening clears the closure
   and moves no position; a merged pull request can never reopen.
 - `FINDING(taxonomy-entity-scoped-causes)` → **D50** — issue and

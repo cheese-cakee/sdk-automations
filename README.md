@@ -16,7 +16,7 @@ that load-test the seam between the other three and give P3 its first run in cod
 
 ## Reading order
 
-1. [`planning/goals.md`](planning/goals.md) — the vision, the problem, and the hard limits.
+1. [`design/planning/goals.md`](design/planning/goals.md) — the vision, the problem, and the hard limits.
 2. [`design/architecture.md`](design/architecture.md) — the current architecture proposal and its open
    feasibility questions. [`design/decisions.md`](design/decisions.md) records accepted principles,
    hypotheses, and open decisions.
@@ -40,7 +40,7 @@ that load-test the seam between the other three and give P3 its first run in cod
 
 ## The evidence underneath
 
-[`planning/lessons-learned.md`](planning/lessons-learned.md) distills the coupling anti-patterns
-(classes A–E) out of the audit; the audit itself lives in [`audit/`](audit/) — the C++, Python, and
+[`design/planning/lessons-learned.md`](design/planning/lessons-learned.md) distills the coupling anti-patterns
+(classes A–E) out of the audit; the audit itself lives in [`design/audit/`](design/audit/) — the C++, Python, and
 JavaScript SDK automation read at pinned commits, with `file:line` citations — and
-[`audit/services.md`](audit/services.md) is the cross-SDK synthesis of what exists today.
+[`design/audit/services.md`](design/audit/services.md) is the cross-SDK synthesis of what exists today.

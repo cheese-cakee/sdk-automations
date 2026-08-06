@@ -106,7 +106,7 @@ records them as D48.
   no path to `needsRevision`, so the only way out asserted that new commits had arrived. Checks break with
   no push at all: the audited Sibling Conflict Re-check re-reads every open pull request's `mergeable`
   state whenever a *different* pull request merges, and swaps its status label
-  (`audit/services-cpp.md`).
+  (`design/audit/services-cpp.md`).
 - **`needsReview → needsRevision` needs a review cause, not only a failing check.** The audited PR Review
   Label Applicator performs exactly this move on a `changes_requested` review. Observing it requires the
   `pull_request_review` subscription the App currently lacks (experiment 6.6), so the cause exists in the
@@ -122,7 +122,7 @@ Closing is not a position and reopening is not a transition.
 Closing records **why** (§2: `merged`, `closedByHuman`, `completedByLinkedMerge`) and leaves every position
 label untouched, because the App does not clean up labels on close — see `manual-edits.md` §3 and the
 `status:*` strip that the audit found removing human-set `status: blocked` labels as a side effect
-(`audit/labels-cpp.md`). Downstream policy needs the reason: contributor progression credits a merged
+(`design/audit/labels-cpp.md`). Downstream policy needs the reason: contributor progression credits a merged
 linked pull request and not an abandoned one (`design/modules/progression.md`), and the audited post-merge
 cleanup is gated on `merged == true`.
 

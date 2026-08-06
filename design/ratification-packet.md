@@ -83,7 +83,7 @@ change how the storage decision's retry rules are fed. **Evidence:** `core/src/c
 and composition suites (`probes/`, 29 tests).
 
 Numbered `2b` deliberately: the packet's later section numbers are referenced from `decisions.md` and
-`planning/stage-four-review-packet.md`, so renumbering would break citations for no gain.
+`design/planning/stage-four-review-packet.md`, so renumbering would break citations for no gain.
 
 These rows come from a source the packet did not previously have — building the seam BETWEEN the
 finished packages rather than any one of them. Each package was individually correct and individually
