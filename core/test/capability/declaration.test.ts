@@ -10,11 +10,11 @@ const prQuality: CapabilityDeclaration = {
     name: "prQuality",
     triggers: [{ kind: "event", event: "pull_request" }],
     configKeys: ["checks"],
-    observations: ["prSnapshot"],
+    observations: ["pullRequestUpdated"],
     resolvers: [],
     intents: [
-        { name: "postSummaryComment", idempotencyClass: "nonIdempotent", requiredPermissions: ["issues:write"] },
-        { name: "applyStatusLabel", idempotencyClass: "idempotent", requiredPermissions: ["issues:write"] },
+        { name: "postManagedComment", idempotencyClass: "nonIdempotent", requiredPermissions: ["issues:write"] },
+        { name: "applyMappedLabel", idempotencyClass: "idempotent", requiredPermissions: ["issues:write"] },
     ],
     permissions: {
         repository: ["issues:write", "pull_requests:read"],
@@ -84,6 +84,67 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
     it("fails closed on duplicate names or any invalid declaration", () => {
         expect(createRegistry([prQuality, prQuality]).ok).toBe(false);
         expect(createRegistry([{ ...prQuality, triggers: [] }]).ok).toBe(false);
+    });
+
+    it("fails closed when an operation's idempotency class contradicts the catalogue", () => {
+        const result = createRegistry([
+            {
+                ...prQuality,
+                intents: [
+                    {
+                        name: "postManagedComment",
+                        idempotencyClass: "idempotent",
+                        requiredPermissions: ["issues:write"],
+                    },
+                ],
+            },
+        ]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain("the platform owns this fact");
+        }
+    });
+
+    it("fails closed when an intent omits its operation-owned permission", () => {
+        const result = createRegistry([
+            {
+                ...prQuality,
+                intents: [
+                    {
+                        name: "applyMappedLabel",
+                        idempotencyClass: "idempotent",
+                        requiredPermissions: [],
+                    },
+                ],
+            },
+        ]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain('must require "issues:write"');
+        }
+    });
+
+    it("fails closed on names outside the closed catalogues", () => {
+        const result = createRegistry([
+            {
+                ...prQuality,
+                observations: ["unknownObservation"],
+                resolvers: ["unknownResolver"],
+                intents: [
+                    {
+                        name: "unknownOperation",
+                        idempotencyClass: "idempotent",
+                        requiredPermissions: [],
+                    },
+                ],
+            },
+        ]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain("unknownObservation");
+            expect(result.errors.join()).toContain("unknownResolver");
+            expect(result.errors.join()).toContain("unknownOperation");
+        }
     });
 
     it("registry names feed parseConfig: the 6.3 escape (enabled unknown capability) is now rejected", () => {

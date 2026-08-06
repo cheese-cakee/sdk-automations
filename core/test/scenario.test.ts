@@ -21,11 +21,11 @@ const assignment: CapabilityDeclaration = {
     name: "assignment",
     triggers: [{ kind: "event", event: "issue_comment.created" }],
     configKeys: ["maxOpenAssignments"],
-    observations: ["issueLabels", "issueAssignees"],
-    resolvers: ["mayPerform"],
+    observations: ["issueUpdated"],
+    resolvers: [],
     intents: [
         {
-            name: "markInProgress",
+            name: "applyMappedLabel",
             idempotencyClass: "idempotent",
             requiredPermissions: ["issues:write"],
         },

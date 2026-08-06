@@ -50,7 +50,6 @@ const AT = new Date("2026-08-03T09:00:00.000Z");
 const NOW = new Date("2026-08-03T09:00:05.000Z");
 const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const NAMES = ["intake", "inactivity"];
-const REVISION = "rev-1";  // now stamped on the config itself (D77)
 
 /** Counts applications per call — the reference model for exactly-once. */
 class CountingPort implements EffectPort {
@@ -130,6 +129,7 @@ describe("capability → planner → executor", () => {
 
         const result = planIntents(intents, {
             declaration: intake.declaration,
+            repository: REPO,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -163,6 +163,7 @@ describe("capability → planner → executor", () => {
             await intentsFrom(intake, config, issueObservation),
             {
                 declaration: intake.declaration,
+                repository: REPO,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -225,6 +226,7 @@ describe("the safety engine is on the path, not beside it", () => {
         if (!raw.ok) throw new Error(raw.errors.map((e) => e.message).join("; "));
         return planIntents(await intentsFrom(intake, raw.config, issueObservation), {
             declaration: intake.declaration,
+            repository: REPO,
             config: raw.config,
             contextFor: context,
             now: NOW,
@@ -308,6 +310,7 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, staleObservation(warnedAt)),
             {
                 declaration: inactivity.declaration,
+                repository: REPO,
                 config,
                 contextFor: permissive(),
                 now,
@@ -340,6 +343,7 @@ describe("the destructive path", () => {
 
         const result = planIntents([drifted], {
             declaration: inactivity.declaration,
+            repository: REPO,
             config,
             contextFor: permissive(),
             now: NOW,
@@ -397,6 +401,7 @@ describe("the destructive path", () => {
             await intentsFrom(inactivity, config, observation),
             {
                 declaration: inactivity.declaration,
+                repository: REPO,
                 config,
                 contextFor: permissive(),
                 now: NOW,
@@ -435,12 +440,13 @@ describe("dry-run is now observable (Phase 1)", () => {
             await intentsFrom(intake, raw.config, issueObservation),
             {
                 declaration: intake.declaration,
+                repository: REPO,
                 config: raw.config,
                 contextFor: permissive(),
                 now: NOW,
             },
         );
-        const report = planningReport(result, REPO, "dry-run", REVISION);
+        const report = planningReport(result);
 
         // Nothing was planned, so nothing can be journalled.
         expect(result.plans).toEqual([]);
@@ -457,7 +463,9 @@ describe("dry-run is now observable (Phase 1)", () => {
             expect(f.summary.length).toBeGreaterThan(0);
             expect(f.subject.kind).toBe("effect");
         }
-        expect(report.revision).toBe(REVISION);
+        expect(report.revision).toBe(raw.config.revision);
+        expect(report.mode).toBe(raw.config.mode);
+        expect(report.repository).toEqual(REPO);
     });
 });
 
