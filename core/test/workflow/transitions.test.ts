@@ -17,7 +17,12 @@ import {
     type PrCause,
     type PrMeaning,
     type WorkItemState,
+    isIssueCause,
+    isIssueMeaning,
+    isPrCause,
+    isPrMeaning,
 } from "../../src/workflow/index.js";
+import { MAPPABLE_MEANINGS } from "../../src/config/index.js";
 
 /**
  * The exhaustive matrix: every (from, to, cause) triple is either exactly
@@ -398,5 +403,43 @@ describe("the profile tables are exported for the drift check", () => {
     it("PROFILE_EDGES mirrors the private tables, one entry per edge", () => {
         expect(PROFILE_EDGES.issue).toHaveLength(7);
         expect(PROFILE_EDGES.pullRequest).toHaveLength(10);
+    });
+});
+
+describe("the flow predicates — D90's replacement for the casts", () => {
+    /**
+     * Screen-level tests cannot kill mutants here: a predicate that wrongly
+     * ACCEPTS a foreign cause still ends in `transitionNotOnMap`, because the
+     * edge table backstops it. Only direct assertions see the predicate
+     * itself — which is fine, because the predicates are now the single
+     * place flow membership is decided.
+     */
+    it("cause predicates accept their own flow", () => {
+        expect(isIssueCause("triageCompleted")).toBe(true);
+        expect(isPrCause("reviewPolicySatisfied")).toBe(true);
+        // The one cause both flows share.
+        expect(isIssueCause("humanClosed")).toBe(true);
+        expect(isPrCause("humanClosed")).toBe(true);
+    });
+
+    it("cause predicates reject the other flow", () => {
+        expect(isIssueCause("merged")).toBe(false);
+        expect(isIssueCause("checksPassed")).toBe(false);
+        expect(isPrCause("triageCompleted")).toBe(false);
+        expect(isPrCause("intakeObserved")).toBe(false);
+    });
+
+    it("meaning predicates split the vocabulary exactly, with blocked in neither", () => {
+        const issues = MAPPABLE_MEANINGS.filter(isIssueMeaning);
+        const prs = MAPPABLE_MEANINGS.filter(isPrMeaning);
+        expect(issues).toEqual(["awaitingTriage", "ready", "inProgress"]);
+        expect(prs).toEqual(["needsReview", "needsRevision", "readyToMerge"]);
+        expect(isIssueMeaning("blocked")).toBe(false);
+        expect(isPrMeaning("blocked")).toBe(false);
+    });
+
+    it("the derived arrays are the predicate filters", () => {
+        expect(ISSUE_MEANINGS).toEqual(MAPPABLE_MEANINGS.filter(isIssueMeaning));
+        expect(PR_MEANINGS).toEqual(MAPPABLE_MEANINGS.filter(isPrMeaning));
     });
 });

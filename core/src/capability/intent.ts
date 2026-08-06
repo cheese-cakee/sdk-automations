@@ -11,12 +11,10 @@ import type { MappableMeaning } from "../config/index.js";
 import {
     canTransitionIssue,
     canTransitionPr,
-    ISSUE_MEANINGS,
-    PR_MEANINGS,
-    type IssueCause,
-    type IssueMeaning,
-    type PrCause,
-    type PrMeaning,
+    isIssueCause,
+    isIssueMeaning,
+    isPrCause,
+    isPrMeaning,
 } from "../workflow/index.js";
 import {
     ACTION_CLASS_RANK,
@@ -46,10 +44,16 @@ export interface ExpectedFacts {
 }
 
 /**
- * Required when the action class is `clockTriggeredDestructive`, absent
- * otherwise — and the reverse check is the dangerous one: a warning on a
- * non-destructive intent reads as a grace period no gate will consult
+ * The warning record a destructive intent must carry — required when the
+ * action class is `clockTriggeredDestructive`, absent otherwise, and the
+ * reverse check is the dangerous one: a warning on a non-destructive intent
+ * reads as a grace period no gate will consult
  * (`FINDING(runtime-destructive-intent-has-no-warning)`, D64).
+ *
+ * The warned CAUSE is carried separately because D60's branded warning cannot
+ * cross the store: rebuilding it from the current request would make the
+ * snapshot check compare a value with itself
+ * (`FINDING(runtime-warning-cannot-cross-the-store)`, D72).
  */
 export interface DestructiveDetail {
     readonly warnedAt: Date;
@@ -58,18 +62,6 @@ export interface DestructiveDetail {
     readonly cancelledBy: string;
     readonly reversesWith: string;
     readonly qualifyingActivitySinceWarning: boolean;
-    /**
- * The warning record a destructive intent must carry.
- *
- * `evaluateDestructive` refuses without one, and contract.md §3's intent had no
- * field for it, so a destructive intent could never pass its own gate
- * (`FINDING(runtime-destructive-intent-has-no-warning)`, D64).
- *
- * The warned CAUSE is carried separately because D60's branded warning cannot
- * cross the store: rebuilding it from the current request would make the
- * snapshot check compare a value with itself
- * (`FINDING(runtime-warning-cannot-cross-the-store)`, D72).
- */
     readonly warnedCause: string;
     readonly warnedCauseObservedAt: Date;
 }
@@ -153,11 +145,6 @@ export function deriveIdempotencyKey(intent: {
  * `preconditionHolds`.
  */
 function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
-    const own =
-        intent.item.kind === "issue"
-            ? (ISSUE_MEANINGS as readonly MappableMeaning[])
-            : (PR_MEANINGS as readonly MappableMeaning[]);
-
     /**
      * `blocked` is an orthogonal PAUSE FLAG, not a position (D28): an item
      * keeps where it is while blocked, so applying it moves nothing and there
@@ -186,51 +173,61 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
         };
     }
 
-    if (!own.includes(intent.desired.meaning)) {
-        return {
-            ok: false,
-            code: "meaningWrongEntity",
-            reason: `"${intent.desired.meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
-        };
-    }
-
-    // Own-flow only: a stray cross-entity label is noise to preserve (D35),
-    // not the position being moved away from.
-    const held = intent.expected.meaningsPresent.filter((m) => own.includes(m));
     /**
-     * More than one own-flow position is a conflict, and `observe.ts` refuses
-     * to project one (D35). Treating it as "no position" here would silently
-     * check the wrong edge — the `[*] → to` one — so it is refused instead.
+     * From here the two flows are handled symmetrically, and the predicates
+     * carry the narrowing the compiler needs — before D90 this crossing was
+     * six `as`-casts, each safe only because of a guard the type system
+     * could not see. Held meanings filter to own-flow only: a stray
+     * cross-entity label is noise to preserve (D35), not the position being
+     * moved away from; more than one own-flow position is a conflict
+     * `observe.ts` refuses to project, and treating it as "no position"
+     * would silently check the wrong edge.
      */
-    if (held.length > 1) {
-        return {
-            ok: false,
-            code: "positionConflict",
-            reason: `the item is claimed to hold ${held.join(" and ")}; a conflicted position has no edge to move along`,
-        };
+    const wrongEntity = (): IntentScreen => ({
+        ok: false,
+        code: "meaningWrongEntity",
+        reason: `"${intent.desired.meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
+    });
+    const conflicted = (held: readonly string[]): IntentScreen => ({
+        ok: false,
+        code: "positionConflict",
+        reason: `the item is claimed to hold ${held.join(" and ")}; a conflicted position has no edge to move along`,
+    });
+    const offMap = (from: string | null, detail: string): IntentScreen => ({
+        ok: false,
+        code: "transitionNotOnMap",
+        reason: `${from ?? "no position"} → ${intent.desired.meaning} for "${intent.desired.cause}" is not a documented edge (${detail})`,
+    });
+
+    if (intent.item.kind === "issue") {
+        if (!isIssueMeaning(intent.desired.meaning)) return wrongEntity();
+        const held = intent.expected.meaningsPresent.filter(isIssueMeaning);
+        if (held.length > 1) return conflicted(held);
+        const from = held.length === 1 ? held[0]! : null;
+        if (!isIssueCause(intent.desired.cause)) {
+            return offMap(from, "not an issue-flow cause");
+        }
+        const verdict = canTransitionIssue({
+            from,
+            to: intent.desired.meaning,
+            cause: intent.desired.cause,
+        });
+        return verdict.allowed ? { ok: true } : offMap(from, verdict.code);
     }
+
+    if (!isPrMeaning(intent.desired.meaning)) return wrongEntity();
+    const held = intent.expected.meaningsPresent.filter(isPrMeaning);
+    if (held.length > 1) return conflicted(held);
     const from = held.length === 1 ? held[0]! : null;
-
-    const verdict =
-        intent.item.kind === "issue"
-            ? canTransitionIssue({
-                  from: from as IssueMeaning | null,
-                  to: intent.desired.meaning as IssueMeaning,
-                  cause: intent.desired.cause as IssueCause,
-              })
-            : canTransitionPr({
-                  from: from as PrMeaning | null,
-                  to: intent.desired.meaning as PrMeaning,
-                  cause: intent.desired.cause as PrCause,
-              });
-
-    return verdict.allowed
-        ? { ok: true }
-        : {
-              ok: false,
-              code: "transitionNotOnMap",
-              reason: `${from ?? "no position"} → ${intent.desired.meaning} for "${intent.desired.cause}" is not a documented edge (${verdict.code})`,
-          };
+    if (!isPrCause(intent.desired.cause)) {
+        return offMap(from, "not a pull-request-flow cause");
+    }
+    const verdict = canTransitionPr({
+        from,
+        to: intent.desired.meaning,
+        cause: intent.desired.cause,
+    });
+    return verdict.allowed ? { ok: true } : offMap(from, verdict.code);
 }
 
 export const INTENT_SCREEN_REFUSAL_CODES = [

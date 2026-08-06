@@ -424,6 +424,22 @@ describe("the map is enforced (D78)", () => {
         expect(screenIntent(move(), declaration)).toEqual({ ok: true });
     });
 
+    /**
+     * A foreign-flow CAUSE, distinct from a foreign-flow meaning: the meaning
+     * is a legal issue position, but the cause belongs to the pull-request
+     * flow. Before D90 a cast slid this into the edge lookup; the predicate
+     * now refuses it by name, and this walks that branch — the predicate unit
+     * tests alone leave it uncovered.
+     */
+    it("refuses an issue move driven by a pull-request cause", () => {
+        const screen = screenIntent(
+            move({ desired: { meaning: "awaitingTriage", cause: "checksPassed" } }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!screen.ok) expect(screen.reason).toContain("issue-flow");
+    });
+
     it("refuses a move the profile does not document", () => {
         // ready → inProgress is an edge, but not for `intakeObserved`.
         const screen = screenIntent(
@@ -559,6 +575,20 @@ describe("what the map check must NOT break", () => {
 });
 
 describe("the map is enforced on both flows, not just issues", () => {
+    it("refuses a pull-request move driven by an issue cause", () => {
+        const screen = screenIntent(
+            intent({
+                item: { kind: "pullRequest", number: 9 },
+                operation: "applyMappedLabel",
+                actionClass: "reversibleStateChange",
+                desired: { meaning: "needsReview", cause: "triageCompleted" },
+            }),
+            declaration,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!screen.ok) expect(screen.reason).toContain("pull-request-flow");
+    });
+
     /**
      * Every test above uses an issue, so `canTransitionPr` was never reached
      * and half the profile went unexercised — the mutation gate caught it.

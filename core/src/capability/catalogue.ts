@@ -12,6 +12,7 @@
 
 
 import type { MappableMeaning } from "../config/index.js";
+import type { PermissionGrant } from "../github/index.js";
 import type { ActionClass } from "../safety/index.js";
 import type {
     EntityKind,
@@ -172,16 +173,6 @@ export interface IntentCatalogue {
         readonly body: string;
     };
     /**
-     * The one operation that MOVES an item, so it is the one that names a
-     * transition cause — from the closed, entity-scoped list in
-     * `workflow/meanings.ts`. `screenIntent` checks the resulting edge
-     * against the profile's tables (D78).
-     *
-     * The others do not move anything: a comment and an unassign have
-     * reasons but not transitions, and keep the free-text `DatedCause`
-     * that identifies the occasion.
-     */
-    /**
      * SET the item's position — not "add a label". The adapter removes the
      * position label the item previously held as part of realising this, per
      * D4's rule that the platform removes only named managed labels.
@@ -195,7 +186,10 @@ export interface IntentCatalogue {
      *
      * The one operation that MOVES an item, so the one that names a
      * transition cause from the closed, entity-scoped list in
-     * `workflow/meanings.ts`; `screenIntent` checks the edge (D78).
+     * `workflow/meanings.ts`; `screenIntent` checks the edge (D78). The
+     * others do not move anything: a comment and an unassign have reasons
+     * but not transitions, and keep the free-text `DatedCause` that
+     * identifies the occasion.
      */
     readonly applyMappedLabel: {
         readonly meaning: MappableMeaning;
@@ -204,7 +198,6 @@ export interface IntentCatalogue {
     readonly unassign: { readonly login: string };
 }
 
-import type { PermissionGrant } from "../github/index.js";
 
 export type IntentOperation = keyof IntentCatalogue & string;
 
