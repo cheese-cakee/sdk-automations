@@ -12,7 +12,7 @@ The stage-three exit-gate artifacts this packet draws on:
 - `design/operations/storage-decision.md` — the recovery-sources grid and
   the storage decision.
 - The per-protocol observation records and raw evidence logs
-  (`experiments/`, deliberately local and untracked — experiments
+  (`lab/harness/`, deliberately local and untracked — experiments
   produce evidence; their conclusions live in `design/`).
 
 ## 1. Configuration path and schema (Q14, D31)
@@ -221,7 +221,7 @@ Recorded so ratification is made with eyes open; none blocks the gate:
    two decision artifacts (endpoint matrix, storage decision) now live
    tracked under `design/operations/`; the per-protocol observation
    documents and raw JSONL evidence logs stay local and untracked
-   under `experiments/`. Evidence-log citation ids (`…T19-45-…#14`)
+   under `lab/harness/`. Evidence-log citation ids (`…T19-45-…#14`)
    in the tracked documents therefore refer to local files. The review
    must decide how that raw evidence reaches the approving maintainers
    — an archive attached to the gate pull request or a separate

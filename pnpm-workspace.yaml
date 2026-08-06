@@ -4,3 +4,4 @@ packages:
     - store
     - executor
     - probes
+    - lab

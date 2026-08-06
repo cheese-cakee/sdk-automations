@@ -10,7 +10,7 @@
  * added, and the assertions fail when the docs table does not follow. Both
  * directions: a docs row naming a code that does not exist fails too.
  *
- * Artifact genre — reads the repository, like `repo-artifacts.test.ts`.
+ * Artifact genre — reads the repository, like the citation invariants in this package.
  */
 
 import { describe, expect, it } from "vitest";

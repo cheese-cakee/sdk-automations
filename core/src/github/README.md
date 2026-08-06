@@ -47,7 +47,7 @@ without the other fails rather than drifting.
 
 | File | Probed by | Date | Goes stale when | First symptom |
 |---|---|---|---|---|
-| `failures.ts` | experiment 6.4 | 2026-07-23 | GitHub rewords error bodies | a rise in `forbiddenUnrecognized` classifications |
+| `failures.ts` | experiments 6.1, 6.4 | 2026-07-23 | GitHub rewords error bodies | a rise in `forbiddenUnrecognized` classifications |
 | `rate-limits.ts` | experiment 6.4 | 2026-07-23 | header semantics or the secondary-limit floor change | waits that are far too short, or absent |
 | `ids.ts` | experiment 6.2 | 2026-07-23 | delivery id format changes | duplicate deliveries surviving dedup |
 
