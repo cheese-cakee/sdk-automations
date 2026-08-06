@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in the workflows, checks, docs, or packages is broken or wrong
+labels: [ bug ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thanks for submitting a bug report!
+
+        Before submitting:
+        1. Search existing issues to see if it has already been reported
+        2. If this is a security vulnerability, use private vulnerability reporting instead of a public issue
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen? Name the workflow, check, document, or command involved.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run `pnpm -r test`
+        2. Run the workflow or command at ...
+        3. See the failure or wrong behavior
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, or command output relevant to the problem.
+      placeholder: |
+        ![Screenshot](bug.png)
+
+        ```
+        paste terminal output here
+        ```
