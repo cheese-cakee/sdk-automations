@@ -3,7 +3,7 @@
 Every file here is parsed by the test suite. They are not illustrations of the schema — they are the
 schema's only worked examples, and a change that breaks one fails the build.
 
-`core/test/config/examples.test.ts` reads this directory through `parseConfigDocument`, the same entry
+`checks/test/examples.test.ts` reads this directory through `parseConfigDocument`, the same entry
 point the shell will use on a real repository.
 
 ## The valid ones

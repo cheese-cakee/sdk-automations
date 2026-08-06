@@ -48,6 +48,31 @@ export type MappableMeaning = (typeof MAPPABLE_MEANINGS)[number];
  */
 export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
+/**
+ * The keys a document may carry, in the order a maintainer meets them.
+ *
+ * Here rather than in `validate.ts` because it is part of the SHAPE: the
+ * unknown-key rule reads it, but so does anything that needs to enumerate
+ * the configuration surface without parsing a document first.
+ *
+ * `satisfies` ties it to `RepositoryConfig` so the two cannot drift into a
+ * tenth one-fact-twice: a key listed here that the shape does not have is a
+ * compile error. `revision` is excluded because it is the parser's stamp
+ * (D77), not something a maintainer writes.
+ *
+ * The other direction — a field added to `RepositoryConfig` and forgotten
+ * here, which would make the unknown-key rule reject a legitimate key — is
+ * NOT covered, because an interface cannot be enumerated at runtime.
+ */
+export const TOP_LEVEL_KEYS = [
+    "schemaVersion",
+    "mode",
+    "capabilities",
+    "mappings",
+    "principals",
+] as const satisfies readonly (keyof Omit<RepositoryConfig, "revision">)[];
+export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
+
 export interface CapabilityConfig {
     readonly enabled: boolean;
     /** Opaque to the platform; validated by the capability's own contract. */

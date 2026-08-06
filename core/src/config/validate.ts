@@ -13,6 +13,7 @@ import {
     CAPABILITY_NAME_PATTERN,
     MAPPABLE_MEANINGS,
     REPOSITORY_MODES,
+    TOP_LEVEL_KEYS,
     type CapabilityConfig,
     type MappableMeaning,
     cleanRecord,
@@ -25,13 +26,7 @@ export function isPlainObject(v: unknown): v is Record<string, unknown> {
     return prototype === Object.prototype || prototype === null;
 }
 
-const TOP_LEVEL_KEYS = new Set([
-    "schemaVersion",
-    "mode",
-    "capabilities",
-    "mappings",
-    "principals",
-]);
+const KNOWN_TOP_LEVEL = new Set<string>(TOP_LEVEL_KEYS);
 
 /**
  * One configuration section's outcome: the value it contributes, and the
@@ -74,7 +69,7 @@ export function err(
 /** schema.md §2.7 — unknown top-level keys are rejected, never ignored. */
 export function checkTopLevelKeys(raw: Record<string, unknown>): readonly ConfigError[] {
     return Object.keys(raw)
-        .filter((key) => !TOP_LEVEL_KEYS.has(key))
+        .filter((key) => !KNOWN_TOP_LEVEL.has(key))
         .map((key) =>
             err(
                 "unknownKey",

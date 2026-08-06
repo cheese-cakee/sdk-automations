@@ -17,10 +17,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseConfigDocument } from "../../src/config/index.js";
+import { parseConfigDocument } from "@hiero-hackers/automation-core";
 
 const examplesDir = fileURLToPath(
-    new URL("../../../examples/config/", import.meta.url),
+    new URL("../../examples/config/", import.meta.url),
 );
 
 /**
