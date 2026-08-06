@@ -5,7 +5,7 @@
  * correct by nobody's doing. No code had ever read YAML, so a documented file
  * could stop parsing and the only signal would be a maintainer's confusion.
  *
- * An ARTIFACT test, the same genre as `repo-artifacts.test.ts`: it reads the
+ * An ARTIFACT test, the same genre as `citations.test.ts`: it reads the
  * repository, and it is deliberately not where `document.ts` earns its
  * coverage. Stryker's sandbox is `core/` and nothing above it, so nothing here
  * can kill a mutant — the rejection corpus lives in `documents.ts` for exactly

@@ -1,0 +1,113 @@
+/**
+ * The scrubber — protocol 7.1's rules as code.
+ *
+ * D87's named risk was captures leaking sandbox identifiers into tracked
+ * fixtures, and its rule was that the scrubbing exists BEFORE the first
+ * capture. This is that. `capture.ts` runs every payload through here before
+ * anything touches disk, so an unscrubbed body is unrepresentable rather
+ * than forbidden.
+ *
+ * The strategy is deterministic REPLACEMENT, not deletion: the normalizer's
+ * fixtures must keep their referential structure — the same account appearing
+ * as sender and assignee must still be the same account after scrubbing, and
+ * a URL must still contain the login its payload names. So identifiers map to
+ * stable placeholders within one payload, and every string value is rewritten
+ * with the same mapping.
+ */
+
+/** Keys whose STRING value names an account, org, or repository. */
+const IDENTIFYING_KEYS = new Set(["login", "slug", "name", "full_name"]);
+
+/** Keys whose NUMERIC value is a GitHub database id. */
+const ID_KEYS = new Set(["id", "database_id", "installation_id", "hook_id"]);
+
+const EMAIL = /[^\s"@]+@[^\s"@]+\.[^\s"@]+/g;
+
+interface Mapping {
+    readonly strings: Map<string, string>;
+    readonly numbers: Map<number, number>;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Pass one: collect every identifying value, mapping each to a stable
+ * placeholder in order of first appearance. `name` and `full_name` are only
+ * identifying under an object that carries a `login` or `slug` — a label's
+ * `name` is content, an owner's `name` is identity — so collection is scoped
+ * to objects that look like accounts or repositories.
+ */
+function collect(value: unknown, mapping: Mapping, identityScope: boolean): void {
+    if (Array.isArray(value)) {
+        for (const item of value) collect(item, mapping, identityScope);
+        return;
+    }
+    if (!isRecord(value)) return;
+
+    const scoped =
+        identityScope ||
+        typeof value["login"] === "string" ||
+        typeof value["slug"] === "string" ||
+        typeof value["full_name"] === "string";
+
+    for (const [key, child] of Object.entries(value)) {
+        if (typeof child === "string" && IDENTIFYING_KEYS.has(key)) {
+            if (!scoped && (key === "name" || key === "full_name")) continue;
+            for (const part of child.split("/")) {
+                if (part !== "" && !mapping.strings.has(part)) {
+                    mapping.strings.set(part, `scrubbed-${mapping.strings.size + 1}`);
+                }
+            }
+            continue;
+        }
+        if (typeof child === "number" && ID_KEYS.has(key)) {
+            if (!mapping.numbers.has(child)) {
+                mapping.numbers.set(child, mapping.numbers.size + 1);
+            }
+            continue;
+        }
+        collect(child, mapping, scoped && key !== "repository" ? scoped : scoped);
+    }
+}
+
+/** Longest-first, so `octo-org-repo` is not half-replaced via `octo-org`. */
+function rewrite(text: string, mapping: Mapping): string {
+    let out = text.replace(EMAIL, "scrubbed@example.invalid");
+    for (const original of [...mapping.strings.keys()].sort((a, b) => b.length - a.length)) {
+        out = out.split(original).join(mapping.strings.get(original)!);
+    }
+    return out;
+}
+
+function transform(value: unknown, mapping: Mapping): unknown {
+    if (Array.isArray(value)) return value.map((item) => transform(item, mapping));
+    if (isRecord(value)) {
+        const out: Record<string, unknown> = {};
+        for (const [key, child] of Object.entries(value)) {
+            if (key === "node_id" && typeof child === "string") {
+                out[key] = "SCRUBBED_NODE_ID";
+            } else if (typeof child === "number" && ID_KEYS.has(key)) {
+                out[key] = mapping.numbers.get(child) ?? child;
+            } else {
+                out[key] = transform(child, mapping);
+            }
+        }
+        return out;
+    }
+    if (typeof value === "string") return rewrite(value, mapping);
+    return value;
+}
+
+/**
+ * Scrub one webhook payload. Deterministic: the same payload always produces
+ * the same output, and within a payload the same identifier always produces
+ * the same placeholder — which is what keeps a fixture structurally faithful
+ * to the delivery it came from.
+ */
+export function scrubPayload(payload: unknown): unknown {
+    const mapping: Mapping = { strings: new Map(), numbers: new Map() };
+    collect(payload, mapping, false);
+    return transform(payload, mapping);
+}

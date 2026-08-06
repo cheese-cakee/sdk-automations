@@ -1,18 +1,31 @@
 # sdk-automations
 
-Design work for a hosted, configuration-driven GitHub App that replaces repeated repository automation.
+The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
 A repository enables only the capabilities it wants and maps them to its own workflow. The shared platform
 handles GitHub access, configuration, safety, recovery, and audit information.
 
 The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Three
-implementation packages exist as the parallel track the stage gates do not block (a pnpm workspace):
-[`core/`](core/README.md), the pure-logic state machine, safety engine, validators, and the capability
-runtime boundary; [`store/`](store/README.md), the owned operational store; and
-[`executor/`](executor/README.md), the recovery-loop engine with its automated crash grid and the
-intent-to-plan translator — all pending stage-four ratification of the decisions they encode. A fourth
-package, [`probes/`](probes/README.md), is **disposable**: three deliberately dissimilar capability stubs
-that load-test the seam between the other three and give P3 its first run in code.
+it. The module documents are candidates based on that audit. They are not a committed product list. Six
+packages exist as the parallel track the stage gates do not block (a pnpm workspace), all pending
+stage-four ratification of the decisions they encode:
+
+- [`core/`](core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
+  capability runtime boundary
+- [`store/`](store/README.md) — the owned operational store
+- [`executor/`](executor/README.md) — the recovery-loop engine with its automated crash grid and the
+  intent-to-plan translator
+- [`probes/`](probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
+  load-test the seam between the other three and give P3 its first run in code
+- `checks/` — tests about the repository rather than any package: docs, examples, and design documents
+  held to the code they describe
+- [`lab/`](lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
+  can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
+
+Beyond the packages and `design/`, two user-facing roots: [`docs/`](docs/README.md) — the configuration
+guide, every table locked to the code by `checks/` — and [`examples/config/`](examples/config/README.md),
+worked configurations parsed by the test suite on every commit. A top-level directory is a workspace
+package or one of `design/`, `docs/`, `examples/` — a rule the suite enforces, like the other sentences
+in this paragraph.
 
 ## Reading order
 

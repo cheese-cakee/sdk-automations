@@ -5,9 +5,9 @@ first capabilities need, with the permission that grants it and its
 **observed** behavior — filled from harness evidence logs, one citation
 per row. A row without a citation is a guess and does not close the gate.
 
-> Moved from `experiments/` on 2026-07-23: experiments produce evidence,
+> Moved from the lab (then `experiments/`) on 2026-07-23: experiments produce evidence,
 > their conclusions live in `design/`. The cited evidence logs
-> (`experiments/harness/evidence/*.jsonl`) are local and untracked.
+> (`lab/harness/evidence/*.jsonl`) are local and untracked.
 
 Status values: `confirmed` (observed in a run), `blocked` (observed to
 fail — cite the failure), `untested`.

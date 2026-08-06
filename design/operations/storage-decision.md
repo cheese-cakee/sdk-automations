@@ -1,8 +1,8 @@
 # Storage decision
 
-> Moved from `experiments/` on 2026-07-23: experiments produce evidence,
+> Moved from the lab (then `experiments/`) on 2026-07-23: experiments produce evidence,
 > their conclusions live in `design/`. The cited evidence logs are local
-> and untracked under `experiments/harness/evidence/`.
+> and untracked under `lab/harness/evidence/`.
 
 The stage-three exit-gate artifact for Q15, produced by protocol 6.5:
 what minimum owned operational state does recovery require? The answer
