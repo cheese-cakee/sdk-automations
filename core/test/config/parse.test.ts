@@ -373,3 +373,13 @@ describe("every error names its kind and its place (D75)", () => {
         expect(e).toMatchObject({ code: "notAMapping", path: null });
     });
 });
+
+describe("NO_CONFIG is inert all the way down", () => {
+    it("carries the empty revision — the parser stamps the real one", () => {
+        // `parseConfig` spreads NO_CONFIG and overwrites `revision` from its
+        // options, so this literal is only ever visible to code that uses
+        // NO_CONFIG directly — which must be able to tell it from any parsed
+        // configuration, and "" is that sentinel.
+        expect(NO_CONFIG.revision).toBe("");
+    });
+});

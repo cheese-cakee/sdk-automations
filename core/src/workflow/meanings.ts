@@ -15,17 +15,53 @@
  * (D76), so adding a member breaks compilation until every table is updated.
  */
 
-import type { MappableMeaning } from "../config/index.js";
+import {
+    MAPPABLE_MEANINGS,
+    MEANING_FACTS,
+    type EntityKind,
+    type MappableMeaning,
+} from "../config/index.js";
 
-export type EntityKind = "issue" | "pullRequest";
+export type { EntityKind };
 
-/** Issue-flow meanings — taxonomy.md §4. */
-export const ISSUE_MEANINGS = ["awaitingTriage", "ready", "inProgress"] as const;
-export type IssueMeaning = (typeof ISSUE_MEANINGS)[number];
+/**
+ * ── The derivation corner (D90) ──────────────────────────────────────
+ *
+ * Everything below this comment falls out of `MEANING_FACTS`; nothing
+ * restates it. The conditional type reads as: "keep K when its declared
+ * flow is F, else discard it" — dense, but you never need to read it to
+ * USE the types, and `invariants.test.ts` pins the results, so if the
+ * derivation ever misbehaves a test names the meaning that moved.
+ *
+ * Before D90 the unions below were hand-written arrays, related to
+ * `MappableMeaning` by nothing the compiler could see — which is why
+ * `screenTransition` needed six casts to cross between them.
+ */
+type MeaningsWithFlow<F extends EntityKind> = {
+    [K in MappableMeaning]: (typeof MEANING_FACTS)[K]["flow"] extends F
+        ? K
+        : never;
+}[MappableMeaning];
 
-/** Pull-request-flow meanings — taxonomy.md §5. */
-export const PR_MEANINGS = ["needsReview", "needsRevision", "readyToMerge"] as const;
-export type PrMeaning = (typeof PR_MEANINGS)[number];
+/** Issue-flow meanings — taxonomy.md §4. Derived; `blocked` excluded by construction. */
+export type IssueMeaning = MeaningsWithFlow<"issue">;
+
+/** Pull-request-flow meanings — taxonomy.md §5. Derived. */
+export type PrMeaning = MeaningsWithFlow<"pullRequest">;
+
+/** The one honest narrowing per flow — these replace every cast (D90). */
+export function isIssueMeaning(m: MappableMeaning): m is IssueMeaning {
+    return MEANING_FACTS[m].flow === "issue";
+}
+export function isPrMeaning(m: MappableMeaning): m is PrMeaning {
+    return MEANING_FACTS[m].flow === "pullRequest";
+}
+
+/** The same sets as runtime arrays, in `MAPPABLE_MEANINGS` order. */
+export const ISSUE_MEANINGS: readonly IssueMeaning[] =
+    MAPPABLE_MEANINGS.filter(isIssueMeaning);
+export const PR_MEANINGS: readonly PrMeaning[] =
+    MAPPABLE_MEANINGS.filter(isPrMeaning);
 
 /**
  * Why an item is closed, as GitHub reports it (`merged_at`,
@@ -105,6 +141,18 @@ export const PR_CAUSES = [
 export type PrCause = (typeof PR_CAUSES)[number];
 
 export type TransitionCause = IssueCause | PrCause;
+
+/**
+ * Cause narrowing, same shape as the meaning predicates (D90). `.some`
+ * rather than `.includes` because the latter demands the wider type up
+ * front — comparison narrows for free, no widening needed.
+ */
+export function isIssueCause(c: TransitionCause): c is IssueCause {
+    return ISSUE_CAUSES.some((x) => x === c);
+}
+export function isPrCause(c: TransitionCause): c is PrCause {
+    return PR_CAUSES.some((x) => x === c);
+}
 
 /**
  * The causes that may reach `to: null`. Every one maps to exactly one

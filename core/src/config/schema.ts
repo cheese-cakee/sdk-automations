@@ -38,6 +38,41 @@ export const MAPPABLE_MEANINGS = [
 ] as const;
 export type MappableMeaning = (typeof MAPPABLE_MEANINGS)[number];
 
+/** The two kinds of work item GitHub numbers in one sequence. */
+export const ENTITY_KINDS = ["issue", "pullRequest"] as const;
+export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/**
+ * Which flow each meaning belongs to — the fact that used to exist only as
+ * two hand-written unions in `workflow/meanings.ts`, related to this file's
+ * union by nothing the compiler could see (D90).
+ *
+ * `pause` is `blocked`'s flow: an orthogonal flag, never a position (D28) —
+ * which is why the derived position unions in `workflow/` exclude it by
+ * construction rather than by rule.
+ *
+ * Mapped over the union, so a meaning added to `MAPPABLE_MEANINGS` fails
+ * compilation here until its flow is stated, and vice versa.
+ */
+export type MeaningFlow = EntityKind | "pause";
+/**
+ * `satisfies`, not an annotation: an annotation would widen each `flow` to
+ * the union, and the derived types in `workflow/meanings.ts` would silently
+ * collapse to `never` — this is the one line the derivation's correctness
+ * hangs on.
+ */
+export const MEANING_FACTS = {
+    awaitingTriage: { flow: "issue" },
+    ready: { flow: "issue" },
+    inProgress: { flow: "issue" },
+    needsReview: { flow: "pullRequest" },
+    needsRevision: { flow: "pullRequest" },
+    readyToMerge: { flow: "pullRequest" },
+    blocked: { flow: "pause" },
+} as const satisfies {
+    readonly [K in MappableMeaning]: { readonly flow: MeaningFlow };
+};
+
 /**
  * Capability names must be usable as configuration keys
  * (`capabilities.<name>` in schema.md §3), so they share the camelCase
