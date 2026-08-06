@@ -9,3 +9,4 @@
 export * from "./schema.js";
 export { parseConfig } from "./parse.js";
 export { parseConfigDocument } from "./document.js";
+export { labelKey, meaningOfLabel, meaningsOfLabels } from "./mappings.js";

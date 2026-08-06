@@ -9,6 +9,7 @@
  */
 
 import type { ConfigError, ConfigErrorCode } from "./schema.js";
+import { labelKey } from "./mappings.js";
 import {
     CAPABILITY_NAME_PATTERN,
     MAPPABLE_MEANINGS,
@@ -238,7 +239,7 @@ export function parseMappings(
             errors.push(err("labelInvalid", `mappings.labels.${meaning}: label must be a non-empty string`, `mappings.labels.${meaning}`));
             continue;
         }
-        const key = label.trim().toLowerCase();
+        const key = labelKey(label);
         const owner = labelOwner.get(key);
         if (owner !== undefined) {
             const sameSpelling = owner.label === label;

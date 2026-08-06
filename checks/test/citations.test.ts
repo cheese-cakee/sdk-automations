@@ -133,7 +133,8 @@ describe("documents name files that exist", () => {
      * arriving forces the exemption to be deleted rather than lingering as
      * a permanent hole in the check.
      */
-    const PLANNED = new Set(["endpoints.ts", "events.ts"]);
+    // events.ts arrived 2026-08-07 (the slice) and left this list, as designed.
+    const PLANNED = new Set(["endpoints.ts"]);
 
     it("no planned filename has quietly started existing", () => {
         const arrived = [...PLANNED].filter((name) => sourceNames.has(name));
