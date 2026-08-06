@@ -384,7 +384,7 @@ describe("the destructive path", () => {
         const result = await planStale(null, NOW);
         expect(result.dispositions).toHaveLength(1);
         expect(result.dispositions[0]).toMatchObject({ kind: "plan" });
-        expect(result.plans[0]!.calls[0]!.intent).toBe("postManagedComment");
+        expect(result.plans[0]!.calls[0]!.command.operation).toBe("postManagedComment");
     });
 
     it("refuses the reclaim while the grace period is still running", async () => {
@@ -401,7 +401,7 @@ describe("the destructive path", () => {
         const warnedAt = new Date("2026-07-20T00:00:00.000Z"); // 14 days ago
         const result = await planStale(warnedAt, NOW);
         expect(result.dispositions[0]).toMatchObject({ kind: "plan" });
-        expect(result.plans[0]!.calls[0]!.intent).toBe("unassign");
+        expect(result.plans[0]!.calls[0]!.command.operation).toBe("unassign");
     });
 
     it("cancels the reclaim when the assignee came back during the grace period", async () => {
