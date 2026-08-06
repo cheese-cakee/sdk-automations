@@ -8,3 +8,4 @@
  */
 export * from "./schema.js";
 export { parseConfig } from "./parse.js";
+export { parseConfigDocument } from "./document.js";

@@ -113,6 +113,12 @@ export const NO_CONFIG: RepositoryConfig = {
  * message is for humans and is never asserted on, only its presence.
  */
 export type ConfigErrorCode =
+    /**
+     * Document-level: the file never became a mapping. Reported by
+     * `parseConfigDocument`, which is the only thing that sees text.
+     */
+    | "documentUnparseable"
+    | "duplicateKey"
     | "notAMapping"
     | "unknownKey"
     | "schemaVersionUnsupported"

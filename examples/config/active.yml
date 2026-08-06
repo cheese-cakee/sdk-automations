@@ -1,0 +1,42 @@
+# The same repository, writing.
+#
+# One line changed from `observe-only.yml` — the mode — plus a second
+# capability turned on. That is the intended shape of adoption: the diff that
+# goes live is small enough to read, because everything else was settled while
+# nothing could happen.
+#
+# `assignment` shows the staging pattern: its settings are present, validated
+# and dormant. Enabling it later is a one-word, pre-reviewed diff rather than a
+# new block of untested configuration.
+
+schemaVersion: 1
+mode: active
+
+capabilities:
+  intake:
+    enabled: true
+    settings:
+      announce: true
+
+  prQuality:
+    enabled: true
+    settings:
+      marker: "<!-- hiero-automation:prQuality -->"
+
+  assignment:
+    enabled: false
+    settings:
+      maxOpenAssignments: 2
+
+mappings:
+  labels:
+    awaitingTriage: "status: triage"
+    ready: "status: ready for dev"
+    inProgress: "status: in progress"
+    needsReview: "status: needs review"
+    needsRevision: "status: needs revision"
+    readyToMerge: "status: ready to merge"
+    blocked: "status: blocked"
+
+principals:
+  maintainerTeam: hiero-sdk-js-maintainers

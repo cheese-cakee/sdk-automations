@@ -30,6 +30,10 @@ The configuration system must follow these rules.
 
 ## 3. Candidate shape
 
+**The worked examples live in [`examples/config/`](../../examples/config/) and are parsed by the test
+suite** (D82). The blocks below show the concepts; the files there are the ones that cannot silently rot,
+including one per `ConfigErrorCode` demonstrating what each rejection looks like.
+
 The following YAML example shows the concepts that the first schema needs. It does not decide every
 capability key.
 
