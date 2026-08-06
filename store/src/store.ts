@@ -1,25 +1,74 @@
 /**
  * The owned operational store — `design/operations/storage-decision.md`
  * made real, with the exact crash semantics protocol 6.5 demonstrated.
- * **Ratification pending** under the stage-four review; the schema is
- * the decided four independent tables and nothing else.
+ * **Ratification pending** under the stage-four review. Durable webhook
+ * intake extends the original GUID-only `seen_delivery` record so an
+ * acknowledged delivery can never exist without retrievable work.
  *
  * Design rules carried over from the evidence:
  *
- * - Every write is one synchronous SQLite statement, so the on-disk
- *   state after `kill -9` is exactly "everything before the last call
- *   that returned" — the property the 6.5 harness relied on, and the
- *   property the crash tests here simulate by reopening the file in a
- *   fresh instance.
- * - The tables are independent: no foreign keys, no joins. Each hot
- *   path is a single INSERT or primary-key lookup.
+ * - Every state transition is a synchronous SQLite statement. Delivery
+ *   acceptance wraps its insert and duplicate classification in one
+ *   synchronous transaction, so a returned result is committed before
+ *   the caller can acknowledge it.
+ * - The tables are independent: no foreign keys and no joins.
  * - The journal alone cannot disambiguate a sent-but-unconfirmed write
  *   (`sentUnknown`) — the caller must resolve it against GitHub state
  *   before retrying, per the recovery loop in the storage decision.
  */
 
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { DeliveryGuid } from "@hiero-hackers/automation-core";
+import {
+    asDeliveryGuid,
+    type DeliveryGuid,
+} from "@hiero-hackers/automation-core";
+
+export type DeliveryState = "pending" | "processing" | "done";
+
+export interface AcceptDeliveryInput {
+    readonly deliveryId: DeliveryGuid;
+    readonly eventName: string;
+    readonly payload: Uint8Array;
+    readonly receivedAt: string;
+}
+
+export type AcceptDeliveryResult =
+    | {
+          readonly outcome: "accepted";
+          readonly state: "pending";
+          readonly payloadDigest: string;
+      }
+    | {
+          readonly outcome: "duplicate";
+          readonly state: DeliveryState;
+          readonly payloadDigest: string;
+      }
+    | {
+          readonly outcome: "conflict";
+          readonly state: DeliveryState;
+          readonly eventNameMismatch: boolean;
+          readonly payloadMismatch: boolean;
+      };
+
+export interface ClaimedDelivery {
+    readonly deliveryId: DeliveryGuid;
+    readonly eventName: string;
+    readonly payload: Uint8Array;
+    readonly payloadDigest: string;
+    readonly receivedAt: string;
+    readonly worker: string;
+    readonly claimedAt: string;
+    readonly claimToken: string;
+}
+
+export type CompleteDeliveryResult =
+    | { readonly outcome: "completed" }
+    | { readonly outcome: "notOwned" };
+
+export type ReleaseDeliveryResult =
+    | { readonly outcome: "released" }
+    | { readonly outcome: "notOwned" };
 
 export type EffectState =
     | { readonly state: "neverStarted" }
@@ -93,26 +142,92 @@ export function assertUtcInstant(value: string, param: string): void {
     }
 }
 
+function assertDeliveryGuid(value: DeliveryGuid): void {
+    if (asDeliveryGuid(value) === undefined) {
+        throw new TypeError("deliveryId must be a valid GitHub delivery GUID");
+    }
+}
+
+function assertNonEmpty(value: string, param: string): void {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        throw new TypeError(`${param} must be a non-empty string`);
+    }
+}
+
+function assertPayload(value: Uint8Array): void {
+    if (!(value instanceof Uint8Array)) {
+        throw new TypeError("payload must be bytes");
+    }
+}
+
+function payloadDigest(payload: Uint8Array): string {
+    return createHash("sha256").update(payload).digest("hex");
+}
+
+interface StoredDeliveryIdentity {
+    readonly event_name: string;
+    readonly payload_digest: string;
+    readonly state: DeliveryState;
+}
+
+interface ClaimedDeliveryRow {
+    readonly delivery_id: string;
+    readonly event_name: string;
+    readonly payload: Uint8Array;
+    readonly payload_digest: string;
+    readonly received_at: string;
+    readonly claim_token: string;
+}
 
 export class Store {
     private readonly db: DatabaseSync;
 
     constructor(path: string) {
         this.db = new DatabaseSync(path);
-        this.db.exec("PRAGMA busy_timeout = 2000");
-        // These two pragmas ARE the crash model — set explicitly, not
-        // inherited as defaults. DELETE-mode journal + synchronous FULL
-        // is what makes "everything before the last returned call
-        // survives kill -9 and power loss" true. WAL would trade that
-        // durability for concurrency this one-process design does not
-        // need; the config test pins both so the trade cannot happen
-        // silently.
-        this.db.exec("PRAGMA journal_mode = DELETE");
-        this.db.exec("PRAGMA synchronous = FULL");
-        this.db.exec(`
+        try {
+            this.db.exec("PRAGMA busy_timeout = 2000");
+            // These two pragmas ARE the crash model — set explicitly,
+            // not inherited as defaults. DELETE-mode journal +
+            // synchronous FULL is what makes "everything before the
+            // last returned call survives kill -9 and power loss" true.
+            // The config test pins both so this cannot change silently.
+            this.db.exec("PRAGMA journal_mode = DELETE");
+            this.db.exec("PRAGMA synchronous = FULL");
+            const existingDeliveryTable = this.db
+                .prepare(`
+                    SELECT 1
+                    FROM sqlite_schema
+                    WHERE type = 'table' AND name = 'seen_delivery'
+                `)
+                .get();
+            if (existingDeliveryTable !== undefined) {
+                this.assertDeliverySchema();
+            }
+            this.db.exec(`
             CREATE TABLE IF NOT EXISTS seen_delivery (
-                delivery_id TEXT PRIMARY KEY,
-                at          TEXT NOT NULL
+                delivery_id   TEXT PRIMARY KEY,
+                event_name    TEXT NOT NULL,
+                payload       BLOB,
+                payload_digest TEXT NOT NULL,
+                received_at   TEXT NOT NULL,
+                state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
+                claim_worker  TEXT,
+                claim_token   TEXT,
+                claimed_at    TEXT,
+                completed_at  TEXT,
+                CHECK (
+                    (state = 'pending' AND payload IS NOT NULL
+                        AND claim_worker IS NULL AND claim_token IS NULL
+                        AND claimed_at IS NULL AND completed_at IS NULL)
+                    OR
+                    (state = 'processing' AND payload IS NOT NULL
+                        AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
+                        AND claimed_at IS NOT NULL AND completed_at IS NULL)
+                    OR
+                    (state = 'done' AND payload IS NULL
+                        AND claim_worker IS NULL AND claim_token IS NULL
+                        AND claimed_at IS NULL AND completed_at IS NOT NULL)
+                )
             );
             CREATE TABLE IF NOT EXISTS effect_journal (
                 effect_id TEXT NOT NULL,
@@ -137,29 +252,239 @@ export class Store {
                 claimed_at  TEXT,
                 claim_token TEXT
             );
-            -- The journal has no retention policy yet (D43), so the
-            -- sweep's openIntents scan must not grow with all history
-            -- ever: this partial index keeps it O(open intents). The
-            -- schedule scans stay unindexed deliberately — that table
-            -- is bounded by live schedules.
-            CREATE INDEX IF NOT EXISTS open_intents
-                ON effect_journal(at) WHERE status = 'sent';
         `);
+            this.assertDeliverySchema();
+            this.db.exec(`
+                -- The journal has no retention policy yet (D43), so the
+                -- sweep's openIntents scan must not grow with all history
+                -- ever: this partial index keeps it O(open intents). The
+                -- schedule scans stay unindexed deliberately — that table
+                -- is bounded by live schedules.
+                CREATE INDEX IF NOT EXISTS open_intents
+                    ON effect_journal(at) WHERE status = 'sent';
+                CREATE INDEX IF NOT EXISTS delivery_work
+                    ON seen_delivery(state, received_at, delivery_id);
+            `);
+        } catch (error) {
+            try {
+                this.db.close();
+            } catch {
+                // Preserve the initialization error.
+            }
+            throw error;
+        }
     }
 
-    // ── Delivery deduplication ──────────────────────────────────────
+    private assertDeliverySchema(): void {
+        const columns = this.db
+            .prepare("PRAGMA table_info(seen_delivery)")
+            .all() as { name: string }[];
+        const names = new Set(columns.map((column) => column.name));
+        const required = [
+            "delivery_id",
+            "event_name",
+            "payload",
+            "payload_digest",
+            "received_at",
+            "state",
+            "claim_worker",
+            "claim_token",
+            "claimed_at",
+            "completed_at",
+        ];
+        if (required.some((column) => !names.has(column))) {
+            throw new Error(
+                "incompatible pre-ratification seen_delivery schema; use a fresh store database",
+            );
+        }
+    }
+
+    // ── Durable webhook intake ─────────────────────────────────────
 
     /**
-     * Record a delivery id; returns true iff never seen before. Keys
-     * on the GUID because redeliveries reuse it (6.2); the distinct
-     * numeric REST delivery-record id is not a deduplication key.
+     * Atomically persist a verified delivery's identity and exact
+     * bytes before an HTTP receiver acknowledges it. The transaction
+     * keeps duplicate classification and the row it describes under
+     * the same write lock, so a successful result always refers to a
+     * durable row. Neither duplicates nor conflicts mutate the first
+     * accepted delivery.
      */
-    firstSeen(deliveryId: DeliveryGuid, at: string): boolean {
-        assertUtcInstant(at, "at");
+    acceptDelivery(input: AcceptDeliveryInput): AcceptDeliveryResult {
+        assertDeliveryGuid(input.deliveryId);
+        assertNonEmpty(input.eventName, "eventName");
+        assertPayload(input.payload);
+        assertUtcInstant(input.receivedAt, "receivedAt");
+
+        const digest = payloadDigest(input.payload);
+        this.db.exec("BEGIN IMMEDIATE");
+        try {
+            const inserted = this.db
+                .prepare(`
+                    INSERT INTO seen_delivery (
+                        delivery_id, event_name, payload, payload_digest,
+                        received_at, state, claim_worker, claim_token,
+                        claimed_at, completed_at
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
+                    ON CONFLICT(delivery_id) DO NOTHING
+                `)
+                .run(
+                    input.deliveryId,
+                    input.eventName,
+                    input.payload,
+                    digest,
+                    input.receivedAt,
+                );
+
+            let result: AcceptDeliveryResult;
+            if (inserted.changes === 1) {
+                result = {
+                    outcome: "accepted",
+                    state: "pending",
+                    payloadDigest: digest,
+                };
+            } else {
+                const existing = this.db
+                    .prepare(`
+                        SELECT event_name, payload_digest, state
+                        FROM seen_delivery
+                        WHERE delivery_id = ?
+                    `)
+                    .get(input.deliveryId) as StoredDeliveryIdentity | undefined;
+                if (existing === undefined) {
+                    throw new Error("delivery conflict lookup did not find its durable row");
+                }
+
+                const eventNameMismatch = existing.event_name !== input.eventName;
+                const payloadMismatch = existing.payload_digest !== digest;
+                result = eventNameMismatch || payloadMismatch
+                    ? {
+                          outcome: "conflict",
+                          state: existing.state,
+                          eventNameMismatch,
+                          payloadMismatch,
+                      }
+                    : {
+                          outcome: "duplicate",
+                          state: existing.state,
+                          payloadDigest: existing.payload_digest,
+                      };
+            }
+
+            this.db.exec("COMMIT");
+            return result;
+        } catch (error) {
+            try {
+                this.db.exec("ROLLBACK");
+            } catch {
+                // Preserve the operation's original error.
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Claim one pending delivery, or atomically take over one stale
+     * processing claim. Selection is stable by receipt time then GUID.
+     * The generated 256-bit token, not the worker name, proves
+     * ownership to completion and release calls.
+     */
+    claimNextDelivery(
+        worker: string,
+        now: string,
+        staleBefore: string,
+    ): ClaimedDelivery | undefined {
+        assertNonEmpty(worker, "worker");
+        assertUtcInstant(now, "now");
+        assertUtcInstant(staleBefore, "staleBefore");
+        const row = this.db
+            .prepare(`
+                UPDATE seen_delivery
+                SET state = 'processing',
+                    claim_worker = ?,
+                    claim_token = lower(hex(randomblob(32))),
+                    claimed_at = ?
+                WHERE delivery_id = (
+                    SELECT delivery_id
+                    FROM seen_delivery
+                    WHERE state = 'pending'
+                       OR (state = 'processing' AND claimed_at <= ?)
+                    ORDER BY received_at, delivery_id
+                    LIMIT 1
+                )
+                RETURNING delivery_id, event_name, payload, payload_digest,
+                          received_at, claim_token
+            `)
+            .get(worker, now, staleBefore) as ClaimedDeliveryRow | undefined;
+        if (row === undefined) return undefined;
+        return {
+            deliveryId: row.delivery_id as DeliveryGuid,
+            eventName: row.event_name,
+            payload: Buffer.from(row.payload),
+            payloadDigest: row.payload_digest,
+            receivedAt: row.received_at,
+            worker,
+            claimedAt: now,
+            claimToken: row.claim_token,
+        };
+    }
+
+    /** Complete only work still owned by this token, clearing payload bytes atomically. */
+    completeDelivery(
+        deliveryId: DeliveryGuid,
+        claimToken: string,
+        completedAt: string,
+    ): CompleteDeliveryResult {
+        assertDeliveryGuid(deliveryId);
+        assertNonEmpty(claimToken, "claimToken");
+        assertUtcInstant(completedAt, "completedAt");
         const result = this.db
-            .prepare("INSERT OR IGNORE INTO seen_delivery VALUES (?, ?)")
-            .run(deliveryId, at);
-        return result.changes === 1;
+            .prepare(`
+                UPDATE seen_delivery
+                SET state = 'done', payload = NULL, claim_worker = NULL,
+                    claim_token = NULL, claimed_at = NULL, completed_at = ?
+                WHERE delivery_id = ? AND state = 'processing' AND claim_token = ?
+            `)
+            .run(completedAt, deliveryId, claimToken);
+        return result.changes === 1
+            ? { outcome: "completed" }
+            : { outcome: "notOwned" };
+    }
+
+    /** Return only this token's in-flight work to the pending queue. */
+    releaseDelivery(
+        deliveryId: DeliveryGuid,
+        claimToken: string,
+    ): ReleaseDeliveryResult {
+        assertDeliveryGuid(deliveryId);
+        assertNonEmpty(claimToken, "claimToken");
+        const result = this.db
+            .prepare(`
+                UPDATE seen_delivery
+                SET state = 'pending', claim_worker = NULL,
+                    claim_token = NULL, claimed_at = NULL
+                WHERE delivery_id = ? AND state = 'processing' AND claim_token = ?
+            `)
+            .run(deliveryId, claimToken);
+        return result.changes === 1
+            ? { outcome: "released" }
+            : { outcome: "notOwned" };
+    }
+
+    /** Requeue stale processing rows without exposing their payloads. */
+    requeueStuckDeliveries(claimedBefore: string): DeliveryGuid[] {
+        assertUtcInstant(claimedBefore, "claimedBefore");
+        const rows = this.db
+            .prepare(`
+                UPDATE seen_delivery
+                SET state = 'pending', claim_worker = NULL,
+                    claim_token = NULL, claimed_at = NULL
+                WHERE state = 'processing' AND claimed_at <= ?
+                RETURNING delivery_id
+            `)
+            .all(claimedBefore) as { delivery_id: string }[];
+        return rows
+            .map((row) => row.delivery_id as DeliveryGuid)
+            .sort((left, right) => left.localeCompare(right));
     }
 
     // ── Effect journal (detector) ───────────────────────────────────
@@ -394,11 +719,18 @@ export class Store {
 
     // ── Retention (the sweep's pruning half — D43's adopted windows) ─
 
-    /** Delete delivery-dedup rows recorded at or before `before`. Returns rows removed. */
-    pruneSeen(before: string): number {
+    /**
+     * Delete only completed delivery identities whose completion time
+     * reached the retention boundary. Pending and processing payloads
+     * are never eligible, regardless of their age.
+     */
+    pruneCompletedDeliveries(before: string): number {
         assertUtcInstant(before, "before");
         return this.db
-            .prepare("DELETE FROM seen_delivery WHERE at <= ?")
+            .prepare(`
+                DELETE FROM seen_delivery
+                WHERE state = 'done' AND completed_at <= ?
+            `)
             .run(before).changes as number;
     }
 

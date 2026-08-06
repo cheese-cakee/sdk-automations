@@ -41,19 +41,6 @@ describe("durability configuration — the crash model, pinned", () => {
     });
 });
 
-describe("delivery deduplication (6.2: redeliveries reuse the guid)", () => {
-    it("first sight is true, every repeat — including after a restart — is false", () => {
-        const a = new Store(path);
-        const guid = "0b989ba4-242f-11e5-81e1-c7b6966d2516";
-        expect(a.firstSeen(id(guid), "2026-07-23T10:00:00.000Z")).toBe(true);
-        expect(a.firstSeen(id(guid), "2026-07-23T10:00:01.000Z")).toBe(false);
-        a.close();
-        const restarted = new Store(path);
-        expect(restarted.firstSeen(id(guid), "2026-07-23T10:05:00.000Z")).toBe(false);
-        restarted.close();
-    });
-});
-
 describe("timestamp boundary — lexicographic order must BE chronological order", () => {
     it("rejects every non-UTC-Z timestamp loudly instead of misordering silently", () => {
         const s = new Store(path);
@@ -62,9 +49,12 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         expect(() => s.schedule("x", "2026-07-24T00:00:00+01:00", "sweep")).toThrow(TypeError);
         expect(() => s.claimDue("24 Jul 2026 12:00")).toThrow(TypeError);
         expect(() => s.intent("e1", 1, "read", "2026-07-23", "rev-1")).toThrow(TypeError);
-        expect(() =>
-            s.firstSeen(id("00000000-0000-0000-0000-000000000001"), ""),
-        ).toThrow(TypeError);
+        expect(() => s.acceptDelivery({
+            deliveryId: id("00000000-0000-0000-0000-000000000001"),
+            eventName: "issues",
+            payload: Buffer.from("{}"),
+            receivedAt: "",
+        })).toThrow(TypeError);
         expect(() => s.claim("e1", "w1", "2026-07-23T12:00:00.000Z", "not-a-time")).toThrow(TypeError);
         // Seconds-only Z is ALSO rejected: mixed precision breaks
         // lexicographic ordering ("…00Z" > "…00.500Z" as strings but
@@ -165,13 +155,9 @@ describe("effect journal — the 6.5 crash grid, restated as instance reopening"
     });
 });
 
-describe("retention pruning (D43's adopted windows)", () => {
-    it("prunes old dedup rows and done journal rows, but NEVER an open sent row", () => {
+describe("journal retention pruning (D43's adopted window)", () => {
+    it("prunes old done journal rows, but NEVER an open sent row", () => {
         const s = new Store(path);
-        const oldGuid = "00000000-0000-0000-0000-000000000111";
-        const recentGuid = "00000000-0000-0000-0000-000000000222";
-        s.firstSeen(id(oldGuid), "2026-04-01T00:00:00.000Z"); // old
-        s.firstSeen(id(recentGuid), "2026-07-20T00:00:00.000Z"); // recent
         s.intent("old-done", 1, "add-label", "2026-04-01T00:00:00.000Z", "rev-1");
         s.done("old-done", 1, "2026-04-01T00:00:00.001Z");
         s.intent("old-open", 1, "create-comment", "2026-04-01T00:00:00.000Z", "rev-1"); // unresolved, ancient
@@ -179,13 +165,8 @@ describe("retention pruning (D43's adopted windows)", () => {
         s.done("new-done", 1, "2026-07-20T00:00:00.001Z");
 
         const cutoff = "2026-04-27T00:00:00.000Z"; // ~90 days before "today"
-        expect(s.pruneSeen(cutoff)).toBe(1);
         expect(s.pruneDoneJournal(cutoff)).toBe(1);
 
-        // The recent dedup row still deduplicates.
-        expect(s.firstSeen(id(recentGuid), "2026-07-25T00:00:00.000Z")).toBe(false);
-        // The pruned one is forgotten — a redelivery would look new.
-        expect(s.firstSeen(id(oldGuid), "2026-07-25T00:00:00.000Z")).toBe(true);
         // The ancient OPEN intent survives pruning — still the sweep's problem.
         expect(s.openIntents("2026-07-25T00:00:00.000Z")).toMatchObject([
             { effectId: "old-open", seq: 1 },
