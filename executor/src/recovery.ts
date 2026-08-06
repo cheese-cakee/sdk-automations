@@ -9,14 +9,78 @@
  * 6.5 sandbox produced by hand — and every interleaving it didn't.
  */
 
-import type { IdempotencyClass } from "@hiero-hackers/automation-core";
+import type {
+    IdempotencyClass,
+    ItemRef,
+    MappableMeaning,
+    RepositoryRef,
+} from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { LEASE_MS } from "./policy.js";
+
+export interface ExpectedAdapterState {
+    readonly meaningsPresent: readonly MappableMeaning[];
+    readonly meaningsAbsent: readonly MappableMeaning[];
+    readonly closed: boolean | null;
+}
+
+export interface ConfiguredLabel {
+    readonly meaning: MappableMeaning;
+    readonly label: string;
+}
+
+interface AdapterCommandBase {
+    readonly repository: RepositoryRef;
+    readonly item: ItemRef;
+    /** The reviewed configuration revision that authorized this command. */
+    readonly configurationRevision: string;
+    readonly expected: ExpectedAdapterState;
+    /** Ordered by the platform catalogue, so an adapter need not load configuration. */
+    readonly configuredLabels: readonly ConfiguredLabel[];
+}
+
+export interface PostManagedCommentCommand extends AdapterCommandBase {
+    readonly operation: "postManagedComment";
+    readonly desired: {
+        readonly marker: string;
+        readonly body: string;
+    };
+    readonly readBack: {
+        readonly kind: "managedCommentMarker";
+    };
+}
+
+export interface ApplyMappedLabelCommand extends AdapterCommandBase {
+    readonly operation: "applyMappedLabel";
+    readonly desired: {
+        readonly meaning: MappableMeaning;
+        readonly label: string;
+    };
+    readonly readBack: {
+        readonly kind: "mappedLabel";
+    };
+}
+
+export interface UnassignCommand extends AdapterCommandBase {
+    readonly operation: "unassign";
+    readonly desired: {
+        readonly login: string;
+    };
+    readonly readBack: {
+        readonly kind: "assigneeAbsent";
+    };
+}
+
+/** Plain immutable data: the only values crossing into an effect adapter. */
+export type AdapterCommand =
+    | PostManagedCommentCommand
+    | ApplyMappedLabelCommand
+    | UnassignCommand;
 
 export interface PlannedCall {
     /** 1-based, contiguous — the journal's call_seq. */
     readonly seq: number;
-    readonly intent: string;
+    readonly command: AdapterCommand;
     readonly idempotencyClass: IdempotencyClass;
 }
 
@@ -68,6 +132,51 @@ export type RunResult =
  */
 export const MAX_CALL_ATTEMPTS = 5;
 
+/**
+ * Canonical journal identity for a command. The ordered tuple is independent
+ * of object-key insertion order and JSON escapes every field boundary.
+ * The command schema has no credential or client fields.
+ */
+export function commandIdentity(command: AdapterCommand): string {
+    const common = [
+        command.repository.owner,
+        command.repository.repo,
+        command.item.kind,
+        command.item.number,
+        command.configurationRevision,
+        [...command.expected.meaningsPresent],
+        [...command.expected.meaningsAbsent],
+        command.expected.closed,
+        command.configuredLabels.map(({ meaning, label }) => [meaning, label]),
+    ] as const;
+
+    switch (command.operation) {
+        case "postManagedComment":
+            return JSON.stringify([
+                command.operation,
+                common,
+                command.desired.marker,
+                command.desired.body,
+                command.readBack.kind,
+            ]);
+        case "applyMappedLabel":
+            return JSON.stringify([
+                command.operation,
+                common,
+                command.desired.meaning,
+                command.desired.label,
+                command.readBack.kind,
+            ]);
+        case "unassign":
+            return JSON.stringify([
+                command.operation,
+                common,
+                command.desired.login,
+                command.readBack.kind,
+            ]);
+    }
+}
+
 export class RecoveryExecutor {
     constructor(
         private readonly store: Store,
@@ -89,6 +198,11 @@ export class RecoveryExecutor {
             if (call.seq !== i + 1) {
                 throw new TypeError(
                     `plan "${plan.effectId}" calls must be contiguous from 1; call ${String(i)} has seq ${String(call.seq)}`,
+                );
+            }
+            if (call.command.configurationRevision !== plan.revision) {
+                throw new TypeError(
+                    `plan "${plan.effectId}" revision does not match call ${String(call.seq)} configuration revision`,
                 );
             }
         });
@@ -152,7 +266,10 @@ export class RecoveryExecutor {
                  * and surfaces; it never guesses a mapping between old
                  * and new plans.
                  */
-                if (call === undefined || call.intent !== state.intent) {
+                if (
+                    call === undefined ||
+                    commandIdentity(call.command) !== state.intent
+                ) {
                     return {
                         outcome: "unresolved",
                         seq: state.seq,
@@ -187,7 +304,7 @@ export class RecoveryExecutor {
             this.store.intent(
                 plan.effectId,
                 seq,
-                call.intent,
+                commandIdentity(call.command),
                 this.now(),
                 plan.revision,
             );

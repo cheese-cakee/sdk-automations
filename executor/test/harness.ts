@@ -8,6 +8,7 @@
 import { Store } from "@hiero-hackers/automation-store";
 import {
     RecoveryExecutor,
+    type AdapterCommand,
     type EffectPlan,
     type EffectPort,
     type PlannedCall,
@@ -17,6 +18,50 @@ import {
 export class Crash extends Error {}
 
 export type CrashMode = "beforeApply" | "afterApply";
+
+export function fixtureCommand(
+    operation: AdapterCommand["operation"],
+    suffix = "",
+): AdapterCommand {
+    const common = {
+        repository: { owner: "hiero-hackers", repo: "sandbox" },
+        item: { kind: "issue" as const, number: 7 },
+        configurationRevision: "config-sha-1",
+        expected: {
+            meaningsPresent: [] as const,
+            meaningsAbsent: [] as const,
+            closed: false,
+        },
+        configuredLabels: [
+            { meaning: "inProgress" as const, label: "status: doing" },
+        ],
+    };
+    switch (operation) {
+        case "postManagedComment": {
+            const marker = `<!-- managed${suffix} -->`;
+            return {
+                ...common,
+                operation,
+                desired: { marker, body: `body${suffix}` },
+                readBack: { kind: "managedCommentMarker" },
+            };
+        }
+        case "applyMappedLabel":
+            return {
+                ...common,
+                operation,
+                desired: { meaning: "inProgress", label: `status: doing${suffix}` },
+                readBack: { kind: "mappedLabel" },
+            };
+        case "unassign":
+            return {
+                ...common,
+                operation,
+                desired: { login: `alice${suffix}` },
+                readBack: { kind: "assigneeAbsent" },
+            };
+    }
+}
 
 /**
  * GitHub, reduced to what matters: which effects landed, how often.
@@ -30,7 +75,7 @@ export class FakeWorld {
     private readonly counts = new Map<string, number>();
 
     private key(plan: EffectPlan, call: PlannedCall): string {
-        return `${plan.effectId}:${String(call.seq)}:${call.intent}`;
+        return `${plan.effectId}:${String(call.seq)}:${call.command.operation}`;
     }
 
     apply(plan: EffectPlan, call: PlannedCall): void {
@@ -81,7 +126,7 @@ export class CrashingPort implements EffectPort {
         plan: EffectPlan,
         call: PlannedCall,
     ): Promise<"present" | "absent"> {
-        this.readBacks.push(`${String(call.seq)}:${call.intent}`);
+        this.readBacks.push(`${String(call.seq)}:${call.command.operation}`);
         return this.world.present(plan, call) ? "present" : "absent";
     }
 }

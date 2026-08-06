@@ -11,15 +11,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "@hiero-hackers/automation-store";
 import type { EffectPlan } from "../src/recovery.js";
-import { runToConvergence, prng, type CrashMode } from "./harness.js";
+import {
+    fixtureCommand,
+    runToConvergence,
+    prng,
+    type CrashMode,
+} from "./harness.js";
 
 const PLAN: EffectPlan = {
     effectId: "assign-issue-7",
     revision: "config-sha-1",
     calls: [
-        { seq: 1, intent: "list-comments", idempotencyClass: "idempotent" },
-        { seq: 2, intent: "create-comment", idempotencyClass: "nonIdempotent" },
-        { seq: 3, intent: "add-label", idempotencyClass: "idempotent" },
+        {
+            seq: 1,
+            command: fixtureCommand("applyMappedLabel"),
+            idempotencyClass: "idempotent",
+        },
+        {
+            seq: 2,
+            command: fixtureCommand("postManagedComment"),
+            idempotencyClass: "nonIdempotent",
+        },
+        {
+            seq: 3,
+            command: fixtureCommand("unassign"),
+            idempotencyClass: "idempotent",
+        },
     ],
 };
 

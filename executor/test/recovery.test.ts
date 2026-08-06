@@ -12,18 +12,36 @@ import { Store } from "@hiero-hackers/automation-store";
 import {
     RecoveryExecutor,
     MAX_CALL_ATTEMPTS,
+    commandIdentity,
     type EffectPort,
     type EffectPlan,
 } from "../src/recovery.js";
-import { FakeWorld, CrashingPort, LEASE_MS } from "./harness.js";
+import {
+    FakeWorld,
+    CrashingPort,
+    fixtureCommand,
+    LEASE_MS,
+} from "./harness.js";
 
 const PLAN: EffectPlan = {
     effectId: "e1",
     revision: "config-sha-1",
     calls: [
-        { seq: 1, intent: "list-comments", idempotencyClass: "idempotent" },
-        { seq: 2, intent: "create-comment", idempotencyClass: "nonIdempotent" },
-        { seq: 3, intent: "add-label", idempotencyClass: "idempotent" },
+        {
+            seq: 1,
+            command: fixtureCommand("applyMappedLabel"),
+            idempotencyClass: "idempotent",
+        },
+        {
+            seq: 2,
+            command: fixtureCommand("postManagedComment"),
+            idempotencyClass: "nonIdempotent",
+        },
+        {
+            seq: 3,
+            command: fixtureCommand("unassign"),
+            idempotencyClass: "idempotent",
+        },
     ],
 };
 const T = "2026-07-25T12:00:00.000Z";
@@ -63,7 +81,13 @@ describe("flowchart branches", () => {
 
     it("midSequence resumes after the last done call", async () => {
         const store = new Store(path);
-        store.intent("e1", 1, "list-comments", T, PLAN.revision);
+        store.intent(
+            "e1",
+            1,
+            commandIdentity(PLAN.calls[0]!.command),
+            T,
+            PLAN.revision,
+        );
         store.done("e1", 1, T);
         const world = new FakeWorld();
         const port = new CrashingPort(world, new Map());
@@ -78,23 +102,35 @@ describe("flowchart branches", () => {
         const store = new Store(path);
         const world = new FakeWorld();
         // The 6.5 lost-response case: the create landed, the response died.
-        store.intent("e1", 1, "list-comments", T, PLAN.revision);
+        store.intent(
+            "e1",
+            1,
+            commandIdentity(PLAN.calls[0]!.command),
+            T,
+            PLAN.revision,
+        );
         store.done("e1", 1, T);
-        store.intent("e1", 2, "create-comment", T, PLAN.revision);
+        store.intent(
+            "e1",
+            2,
+            commandIdentity(PLAN.calls[1]!.command),
+            T,
+            PLAN.revision,
+        );
         world.apply(PLAN, PLAN.calls[1]!); // landed on GitHub
         const port = new CrashingPort(world, new Map());
         await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1); // NOT duplicated
-        expect(port.readBacks).toEqual(["2:create-comment"]); // resolved, not guessed
+        expect(port.readBacks).toEqual(["2:postManagedComment"]); // resolved, not guessed
         store.close();
     });
 
     it("sentUnknown + absent re-sends that call, incrementing the durable attempt", async () => {
         const store = new Store(path);
         const world = new FakeWorld();
-        store.intent("e1", 1, "list-comments", T, PLAN.revision);
+        store.intent("e1", 1, commandIdentity(PLAN.calls[0]!.command), T, PLAN.revision);
         store.done("e1", 1, T);
-        store.intent("e1", 2, "create-comment", T, PLAN.revision); // died before the request left
+        store.intent("e1", 2, commandIdentity(PLAN.calls[1]!.command), T, PLAN.revision); // died before the request left
         const port = new CrashingPort(world, new Map());
         await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
@@ -128,6 +164,34 @@ describe("surfaced stops", () => {
         store.close();
     });
 
+    it("a materially changed command does not match an open journal entry", async () => {
+        const store = new Store(path);
+        const original = PLAN.calls[1]!;
+        store.intent(
+            PLAN.effectId,
+            original.seq,
+            commandIdentity(original.command),
+            T,
+            PLAN.revision,
+        );
+        const changed: EffectPlan = {
+            ...PLAN,
+            calls: PLAN.calls.map((call) =>
+                call.seq === original.seq
+                    ? { ...call, command: fixtureCommand("postManagedComment", "-changed") }
+                    : call,
+            ),
+        };
+        const port = new CrashingPort(new FakeWorld(), new Map());
+
+        await expect(executor(store, port).runEffect(changed)).resolves.toMatchObject({
+            outcome: "unresolved",
+            seq: original.seq,
+        });
+        expect(port.readBacks).toEqual([]);
+        store.close();
+    });
+
     /**
      * The counterpart, and the boundary of the revision guard: a
      * COMPLETE effect has nothing left to resume, so a later
@@ -141,7 +205,17 @@ describe("surfaced stops", () => {
         const world = new FakeWorld();
         await executor(store, new CrashingPort(world, new Map())).runEffect(PLAN);
 
-        const afterConfigEdit: EffectPlan = { ...PLAN, revision: "config-sha-2" };
+        const afterConfigEdit: EffectPlan = {
+            ...PLAN,
+            revision: "config-sha-2",
+            calls: PLAN.calls.map((call) => ({
+                ...call,
+                command: {
+                    ...call.command,
+                    configurationRevision: "config-sha-2",
+                },
+            })),
+        };
         const port = new CrashingPort(world, new Map());
         await expect(
             executor(store, port, "w2").runEffect(afterConfigEdit),
@@ -155,7 +229,7 @@ describe("surfaced stops", () => {
     it("a call at the attempt bound surfaces instead of retrying forever", async () => {
         const store = new Store(path);
         for (let i = 0; i < MAX_CALL_ATTEMPTS; i++) {
-            store.intent("e1", 1, "list-comments", T, PLAN.revision);
+            store.intent("e1", 1, commandIdentity(PLAN.calls[0]!.command), T, PLAN.revision);
         }
         const port = new CrashingPort(new FakeWorld(), new Map());
         const result = await executor(store, port).runEffect(PLAN);
@@ -171,7 +245,7 @@ describe("surfaced stops", () => {
         const world = new FakeWorld();
         const call = PLAN.calls[0]!;
         for (let i = 0; i < MAX_CALL_ATTEMPTS; i++) {
-            store.intent("e1", 1, call.intent, T, PLAN.revision);
+            store.intent("e1", 1, commandIdentity(call.command), T, PLAN.revision);
         }
         world.apply(PLAN, call);
         const port = new CrashingPort(world, new Map());
@@ -179,7 +253,7 @@ describe("surfaced stops", () => {
             outcome: "complete",
         });
         expect(world.applications(PLAN, call)).toBe(1);
-        expect(port.readBacks).toEqual(["1:list-comments"]);
+        expect(port.readBacks).toEqual(["1:applyMappedLabel"]);
         store.close();
     });
 
@@ -200,7 +274,33 @@ describe("surfaced stops", () => {
             executor(store, port).runEffect({
                 effectId: "bad",
                 revision: "config-sha-1",
-                calls: [{ seq: 2, intent: "x", idempotencyClass: "idempotent" }],
+                calls: [
+                    {
+                        seq: 2,
+                        command: fixtureCommand("unassign"),
+                        idempotencyClass: "idempotent",
+                    },
+                ],
+            }),
+        ).rejects.toThrow(TypeError);
+        store.close();
+    });
+
+    it("rejects a call authorized by a different configuration revision", async () => {
+        const store = new Store(path);
+        const port = new CrashingPort(new FakeWorld(), new Map());
+        await expect(
+            executor(store, port).runEffect({
+                ...PLAN,
+                calls: [
+                    {
+                        ...PLAN.calls[0]!,
+                        command: {
+                            ...PLAN.calls[0]!.command,
+                            configurationRevision: "other-revision",
+                        },
+                    },
+                ],
             }),
         ).rejects.toThrow(TypeError);
         store.close();
@@ -214,10 +314,10 @@ describe("why the read-back exists", () => {
         const store = new Store(path);
         const world = new FakeWorld();
         const call = PLAN.calls[1]!;
-        store.intent("e1", 2, call.intent, T, PLAN.revision);
+        store.intent("e1", 2, commandIdentity(call.command), T, PLAN.revision);
         world.apply(PLAN, call); // landed; response lost
         // Naive retry: no read-back, just send again.
-        store.intent("e1", 2, call.intent, T, PLAN.revision);
+        store.intent("e1", 2, commandIdentity(call.command), T, PLAN.revision);
         world.apply(PLAN, call);
         expect(world.applications(PLAN, call)).toBe(2); // the duplicate
         store.close();
@@ -241,7 +341,7 @@ describe("asynchronous adapter boundary", () => {
             calls: [
                 {
                     seq: 1,
-                    intent: "create-comment",
+                    command: fixtureCommand("postManagedComment"),
                     idempotencyClass: "nonIdempotent",
                 },
             ],

@@ -18,6 +18,7 @@
 import {
     createDestructiveWarning,
     INTENT_OPERATIONS,
+    MAPPABLE_MEANINGS,
     finding,
     screenFinding,
     verdictFinding,
@@ -38,10 +39,16 @@ import {
     type WriteContext,
     type WriteRequest,
 } from "@hiero-hackers/automation-core";
-import type { EffectPlan, PlannedCall } from "./recovery.js";
+import type {
+    AdapterCommand,
+    ConfiguredLabel,
+    EffectPlan,
+    PlannedCall,
+} from "./recovery.js";
 
 export const PLANNER_REFUSAL_CODES = [
     "duplicateIdempotencyKey",
+    "mappedLabelMissing",
     "mixedRepositoryBatch",
 ] as const;
 
@@ -175,11 +182,69 @@ function writeRequestFor(intent: AnyIntent): WriteRequest {
  * The class comes from the catalogue via `idempotencyOf`, never from the
  * declaration — FINDING(runtime-idempotency-declared-not-checked).
  */
-function callsFor(intent: AnyIntent): readonly PlannedCall[] {
+function configuredLabels(config: RepositoryConfig): readonly ConfiguredLabel[] {
+    return MAPPABLE_MEANINGS.flatMap((meaning) => {
+        const label = config.mappings.labels[meaning];
+        return label === undefined ? [] : [{ meaning, label }];
+    });
+}
+
+function commandFor(
+    intent: AnyIntent,
+    config: RepositoryConfig,
+): AdapterCommand {
+    const common = {
+        repository: { ...intent.repository },
+        item: { ...intent.item },
+        configurationRevision: config.revision,
+        expected: {
+            meaningsPresent: [...intent.expected.meaningsPresent],
+            meaningsAbsent: [...intent.expected.meaningsAbsent],
+            closed: intent.expected.closed,
+        },
+        configuredLabels: configuredLabels(config),
+    };
+
+    switch (intent.operation) {
+        case "postManagedComment":
+            return {
+                ...common,
+                operation: intent.operation,
+                desired: { ...intent.desired },
+                readBack: { kind: "managedCommentMarker" },
+            };
+        case "applyMappedLabel": {
+            const label = config.mappings.labels[intent.desired.meaning];
+            if (label === undefined) {
+                throw new TypeError(
+                    `cannot translate unmapped meaning "${intent.desired.meaning}"`,
+                );
+            }
+            return {
+                ...common,
+                operation: intent.operation,
+                desired: { meaning: intent.desired.meaning, label },
+                readBack: { kind: "mappedLabel" },
+            };
+        }
+        case "unassign":
+            return {
+                ...common,
+                operation: intent.operation,
+                desired: { ...intent.desired },
+                readBack: { kind: "assigneeAbsent" },
+            };
+    }
+}
+
+function callsFor(
+    intent: AnyIntent,
+    config: RepositoryConfig,
+): readonly PlannedCall[] {
     return [
         {
             seq: 1,
-            intent: intent.operation,
+            command: commandFor(intent, config),
             idempotencyClass: idempotencyOf(intent.operation),
         },
     ];
@@ -274,6 +339,20 @@ export function planIntents(
         }
         keys.set(intent.idempotencyKey, intent);
 
+        if (
+            intent.operation === "applyMappedLabel" &&
+            inputs.config.mappings.labels[intent.desired.meaning] === undefined
+        ) {
+            dispositions.push({
+                kind: "refuse",
+                origin: "planner",
+                intent,
+                code: "mappedLabelMissing",
+                reason: `meaning "${intent.desired.meaning}" has no configured label, so no adapter command can represent its desired state`,
+            });
+            continue;
+        }
+
         const context = inputs.contextFor(intent);
         const request = writeRequestFor(intent);
         const verdict =
@@ -345,7 +424,7 @@ export function planIntents(
                     plan: {
                         effectId: intent.idempotencyKey,
                         revision: inputs.config.revision,
-                        calls: callsFor(intent),
+                        calls: callsFor(intent, inputs.config),
                     },
                 });
                 break;
@@ -416,6 +495,8 @@ function plannerRefusalFinding(
 ): Finding {
     switch (disposition.code) {
         case "duplicateIdempotencyKey":
+            return finding("problem", disposition.code, disposition.reason, subject);
+        case "mappedLabelMissing":
             return finding("problem", disposition.code, disposition.reason, subject);
         case "mixedRepositoryBatch":
             return finding("problem", disposition.code, disposition.reason, {
