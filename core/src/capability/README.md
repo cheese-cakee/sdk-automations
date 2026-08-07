@@ -21,3 +21,69 @@ What is deliberately *not* here: label strings (a capability speaks meanings; th
 repository's words — `../config/`), the write rules (`../safety/`), and the transition tables the
 screen consults (`../workflow/`). This directory defines the *shape* of a capability; it contains no
 capability — those live outside core, and the disposable examples are in `probes/`.
+
+## Your first capability — the whole idiom in ~30 lines
+
+A capability is a declaration plus one pure async function. This one triages
+unpositioned issues; it is real — the engine's own tests run its twin:
+
+```ts
+import {
+    declareCapability,
+    intentFactoryFor,
+    type Capability,
+} from "@hiero-hackers/automation-core";
+
+export const triageDeclaration = declareCapability({
+    name: "triage",
+    triggers: [{ kind: "event", event: "issues" }],
+    configKeys: [],
+    observations: ["issueUpdated"],
+    resolvers: [],
+    intents: [
+        {
+            name: "applyMappedLabel",
+            idempotencyClass: "idempotent",
+            requiredPermissions: ["issues:write"],
+        },
+    ],
+    permissions: { repository: ["issues:write"], organization: [] },
+    operationalNeeds: {
+        schedule: false,
+        durableState: "none",
+        crossItemCoordination: false,
+        externalDelivery: false,
+    },
+});
+
+export const triage: Capability<typeof triageDeclaration> = {
+    declaration: triageDeclaration,
+    async evaluate(observation) {
+        if (observation.position.kind !== "position") return []; // conflicts are reported, never repaired
+        if (observation.position.state.meaning !== null) return []; // already positioned
+        const make = intentFactoryFor(triageDeclaration, {
+            repository: observation.repository,
+            item: observation.item,
+            observedAt: observation.observedAt,
+        });
+        return [
+            make({
+                operation: "applyMappedLabel",
+                actionClass: "reversibleStateChange",
+                desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+                cause: "issueWithoutPosition",
+                expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
+                explain: { summary: "New issue placed in triage." },
+            }),
+        ];
+    },
+};
+```
+
+What the shape gives you without asking: an undeclared operation is a compile
+error at the `make` call; the explanation is unskippable and becomes the
+report's story; the `expected` claim is checked against the observation by the
+engine (or at act time by the adapter); and everything you did NOT receive —
+labels, Octokit, other capabilities, the mode — is the isolation guarantee.
+Run it through `decide()` and you get a `Report` and, in `active` mode, one
+approved intent. The probes in `probes/src/` are three fuller worked examples.

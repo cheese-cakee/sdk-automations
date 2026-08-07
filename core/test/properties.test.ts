@@ -30,8 +30,10 @@ const validConfig = fc
             /**
              * Unique by the VALIDATOR's judgment, not by exact string: the
              * collision rule folds case (D55), so ["Abc", "abc"] is exact-
-             * unique yet labelNotInjective — a seed-dependent flake this
-             * property shipped with until 2026-08-07. Same fold, same
+             * unique yet labelNotInjective — a real collision class the
+             * exact-string uniqueness permitted — though the observed
+             * failures under a FIXED seed remain unexplained (see the
+             * failure handler below). Same fold, same
              * function, third consumer.
              */
             .uniqueArray(fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9: -]{0,20}[a-zA-Z0-9]$/), {
