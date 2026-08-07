@@ -51,6 +51,20 @@ development GitHub App run against a **personal sandbox repository**,
 producing the evidence the stage-three exit gate required. The design's
 assumptions met real GitHub API behavior here for the first time.
 
+## Capture run
+
+Copy `.env.example` to `.env` and fill in the values:
+
+```bash
+cp lab/.env.example lab/.env
+```
+
+Then run the capture receiver:
+
+```bash
+pnpm --filter @hiero-hackers/lab capture
+```
+
 ## Ground rules
 
 - **Personal sandbox only** (P8, D22 — both `supported`). The App installs
