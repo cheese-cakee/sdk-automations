@@ -18,6 +18,7 @@
  */
 
 import {
+    INTENT_OPERATIONS,
     projectCapabilityView,
     screenIntent,
     type AnyIntent,
@@ -222,14 +223,16 @@ export async function decide(
                           intent.expected.closed === null
                         : expectedHolds(intent.expected, projection);
 
-                const declared = declaration.intents.find(
-                    (i) => i.name === intent.operation,
-                );
                 const verdict = evaluateWrite(
                     {
                         capability: declaration.name,
                         actionClass: intent.actionClass,
-                        requiredPermissions: declared?.requiredPermissions ?? [],
+                        // From the catalogue — the platform owns what an
+                        // operation needs (D62); the declaration's copy is
+                        // the redundant restatement, not the authority.
+                        requiredPermissions: [
+                            INTENT_OPERATIONS[intent.operation].permission,
+                        ],
                         cause: intent.cause.cause,
                         causeObservedAt: intent.cause.observedAt,
                         target: {
