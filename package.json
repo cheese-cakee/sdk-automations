@@ -3,7 +3,7 @@
     "version": "0.0.0",
     "private": true,
     "packageManager": "pnpm@10.29.1",
-    "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), executor (recovery loop), probes (disposable).",
+    "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), executor (recovery loop), shell (transport), probes (disposable).",
     "scripts": {
         "test": "pnpm -r test",
         "audit": "pnpm audit --audit-level moderate"

@@ -27,12 +27,15 @@ import {
 } from "../capability/index.js";
 import type { PermissionGrant } from "../github/index.js";
 import { normalizeDelivery } from "./events.js";
-import type { RepositoryConfig } from "../config/index.js";
+import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
+import type { ObservationProjection } from "../workflow/index.js";
 import {
     createDestructiveWarning,
     deriveWorld,
     evaluateDestructive,
     evaluateWrite,
+    type WriteContext,
+    type WriteRequest,
 } from "../safety/index.js";
 import {
     explanationFinding,
@@ -151,7 +154,10 @@ export function describeChange(intent: AnyIntent): string {
     }
 }
 
-const projectionOf = (observation: EngineObservation) =>
+/** What the delivery showed about the item — `null` for unprojected sweeps. */
+type EngineProjection = ObservationProjection<MappableMeaning> | null;
+
+const projectionOf = (observation: EngineObservation): EngineProjection =>
     observation.kind === "staleItemsDue" ? null : observation.position;
 
 /**
@@ -161,7 +167,7 @@ const projectionOf = (observation: EngineObservation) =>
 function gateIntent(
     intent: AnyIntent,
     declaration: TypedDeclaration,
-    projection: Parameters<typeof deriveWorld>[0],
+    projection: EngineProjection,
     config: RepositoryConfig,
     externals: DecideExternals,
 ): { readonly findings: readonly Finding[]; readonly approved: AnyIntent | null } {
@@ -218,9 +224,9 @@ function gateIntent(
  */
 function destructiveOrWrite(
     intent: AnyIntent,
-    request: Parameters<typeof evaluateWrite>[0],
+    request: WriteRequest,
     config: RepositoryConfig,
-    context: Parameters<typeof evaluateWrite>[2],
+    context: WriteContext,
     now: Date,
 ) {
     if (intent.actionClass !== "clockTriggeredDestructive" || intent.destructive === undefined) {
@@ -298,6 +304,8 @@ export async function decide(
 
             const handle = new EngineHandle(declaration, externals);
             const view = projectCapabilityView(declaration, config);
+            // The `never`s are `toEngine`'s erasure showing through: its
+            // doc comment owns the soundness argument, once, for all three.
             const intents = await capability.evaluate(
                 observation as never,
                 view as never,

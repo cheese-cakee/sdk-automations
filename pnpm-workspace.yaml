@@ -5,3 +5,4 @@ packages:
     - executor
     - probes
     - lab
+    - shell
