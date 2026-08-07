@@ -14,7 +14,7 @@
 
 import {
     declareCapability,
-    intentFactory,
+    intentFactoryFor,
     type Capability,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
@@ -79,7 +79,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
 
             if (entry.warnedAt === null) {
                 // First stale observation warns. It never acts (§3).
-                const make = intentFactory("inactivity", {
+                const make = intentFactoryFor(inactivityDeclaration, {
                     repository: observation.repository,
                     item: entry.item,
                     observedAt: observation.observedAt,
@@ -98,7 +98,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
                             summary: "Warned before reclaiming a stale assignment.",
                             detail: [`grace period ${String(graceDays)} days`],
                         },
-                    }) as IntentFor<InactivityDeclaration>,
+                    }),
                 );
                 continue;
             }
@@ -116,7 +116,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
              * `entry.warnedAt` is that rule made structural.
              */
             const warnedCause = "assignmentWentStale";
-            const makeAct = intentFactory("inactivity", {
+            const makeAct = intentFactoryFor(inactivityDeclaration, {
                 repository: observation.repository,
                 item: entry.item,
                 observedAt: entry.warnedAt,
@@ -150,7 +150,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
                             `grace period ${String(graceDays)} days`,
                         ],
                     },
-                }) as IntentFor<InactivityDeclaration>,
+                }),
             );
         }
 

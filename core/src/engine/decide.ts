@@ -29,6 +29,7 @@ import {
     type ResolverInput,
     type ResolverName,
     type ResolverOutput,
+    type Capability,
     type StructuredExplanation,
     type TypedDeclaration,
 } from "../capability/index.js";
@@ -60,6 +61,19 @@ export interface EngineCapability {
         config: never,
         platform: never,
     ): Promise<readonly AnyIntent[]>;
+}
+
+/**
+ * The one blessed erasure (D92 cleanup). Sound because `never` in every
+ * parameter position is what any concrete `evaluate` accepts
+ * contravariantly — nothing widens, and the capability gains no reach it
+ * did not have. Fourteen call sites used to re-argue this inline with
+ * `as unknown as EngineCapability`; the argument now lives here once.
+ */
+export function toEngine<D extends TypedDeclaration>(
+    capability: Capability<D>,
+): EngineCapability {
+    return capability as unknown as EngineCapability;
 }
 
 export interface DecideExternals {
@@ -148,6 +162,110 @@ export function describeChange(intent: AnyIntent): string {
 const projectionOf = (observation: EngineObservation) =>
     observation.kind === "staleItemsDue" ? null : observation.position;
 
+/**
+ * One intent through every gate: the screen, the derived world, the write
+ * or destructive verdict — returning the findings that tell its story and
+ * the intent itself if it may act. Extracted from `decide`'s loop (D92
+ * cleanup): the stanzas had grown five levels deep, and the shell's author
+ * reads this file first.
+ */
+function gateIntent(
+    intent: AnyIntent,
+    declaration: TypedDeclaration,
+    projection: Parameters<typeof deriveWorld>[0],
+    config: RepositoryConfig,
+    externals: DecideExternals,
+): { readonly findings: readonly Finding[]; readonly approved: AnyIntent | null } {
+    const subject = {
+        kind: "item",
+        capability: declaration.name,
+        item: intent.item,
+    } as const;
+    const screen = screenIntent(intent, declaration);
+    if (!screen.ok) {
+        return { findings: [screenFinding(screen, subject)], approved: null };
+    }
+
+    const request = {
+        capability: declaration.name,
+        actionClass: intent.actionClass,
+        // From the catalogue — the platform owns what an operation needs
+        // (D62); the declaration's copy is the restatement, not the authority.
+        requiredPermissions: [INTENT_OPERATIONS[intent.operation].permission],
+        cause: intent.cause.cause,
+        causeObservedAt: intent.cause.observedAt,
+        target: {
+            item: `${intent.repository.owner}/${intent.repository.repo}#${String(intent.item.number)}`,
+            change: describeChange(intent),
+        },
+    };
+    const context = {
+        killSwitchActive: externals.killSwitchActive,
+        installationGrants: externals.installationGrants,
+        latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
+        world: deriveWorld(projection, intent.expected),
+    };
+    const verdict = destructiveOrWrite(intent, request, config, context, externals.now);
+
+    const findings: Finding[] = [];
+    /**
+     * An intent that ACTS (or would, in dry-run) tells its story; refusals
+     * keep their reasons unaccompanied (D92 3d).
+     */
+    if (verdict.outcome !== "refuse") {
+        findings.push(explanationFinding(intent.explanation, subject));
+    }
+    findings.push(
+        verdictFinding(verdict, {
+            kind: "effect",
+            capability: declaration.name,
+            item: intent.item,
+            operation: intent.operation,
+        }),
+    );
+    return { findings, approved: verdict.outcome === "apply" ? intent : null };
+}
+
+/**
+ * Destructive intents take the destructive gate; the warning is rebuilt
+ * from the STORED warned cause, never the current request — building it
+ * from the request would make D60's snapshot comparison compare a value
+ * with itself (D72).
+ */
+function destructiveOrWrite(
+    intent: AnyIntent,
+    request: Parameters<typeof evaluateWrite>[0],
+    config: RepositoryConfig,
+    context: Parameters<typeof evaluateWrite>[2],
+    now: Date,
+) {
+    if (intent.actionClass !== "clockTriggeredDestructive" || intent.destructive === undefined) {
+        return evaluateWrite(request, config, context);
+    }
+    return evaluateDestructive(
+        {
+            request,
+            warning: createDestructiveWarning({
+                request: {
+                    ...request,
+                    cause: intent.destructive.warnedCause,
+                    causeObservedAt: intent.destructive.warnedCauseObservedAt,
+                },
+                warnedAt: intent.destructive.warnedAt,
+                gracePeriodDays: intent.destructive.gracePeriodDays,
+                earliestActionAt: intent.destructive.earliestActionAt,
+                cancelledBy: intent.destructive.cancelledBy,
+                reversesWith: intent.destructive.reversesWith,
+            }),
+            qualifyingActivitySinceWarning:
+                intent.destructive.qualifyingActivitySinceWarning,
+        },
+        config,
+        context,
+        now,
+    );
+}
+
 export async function decide(
     input: DecideInput,
     config: RepositoryConfig,
@@ -222,105 +340,9 @@ export async function decide(
             }
 
             for (const intent of intents) {
-                const subject = {
-                    kind: "item",
-                    capability: declaration.name,
-                    item: intent.item,
-                } as const;
-                const screen = screenIntent(intent, declaration);
-                if (!screen.ok) {
-                    findings.push(screenFinding(screen, subject));
-                    continue;
-                }
-                /**
-                 * The derivation, not an assertion — where derivation is
-                 * possible. A projected observation yields the real check.
-                 * An UNPROJECTED one (staleItemsDue) shows the engine no
-                 * meanings to check against, so the claim passes through
-                 * UNVERIFIED-HERE rather than being refused: it rides
-                 * inside `AdapterCommand.expected`, and the adapter
-                 * rechecks it against live GitHub at write time — the only
-                 * place a sweep's openness claim can honestly be verified
-                 * (D92 3c, resolving the engine-matrix tension).
-                 */
-
-                const request = {
-                    capability: declaration.name,
-                    actionClass: intent.actionClass,
-                    // From the catalogue — the platform owns what an
-                    // operation needs (D62); the declaration's copy is
-                    // the redundant restatement, not the authority.
-                    requiredPermissions: [
-                        INTENT_OPERATIONS[intent.operation].permission,
-                    ],
-                    cause: intent.cause.cause,
-                    causeObservedAt: intent.cause.observedAt,
-                    target: {
-                        item: `${intent.repository.owner}/${intent.repository.repo}#${String(intent.item.number)}`,
-                        change: describeChange(intent),
-                    },
-                };
-                const context = {
-                    killSwitchActive: externals.killSwitchActive,
-                    installationGrants: externals.installationGrants,
-                    latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
-                    world: deriveWorld(projection, intent.expected),
-                };
-                /**
-                 * Destructive intents take the destructive gate (moved from
-                 * the planner, D92 3c). The warning is rebuilt from the
-                 * STORED warned cause, never from the current request —
-                 * building it from the request would make D60's snapshot
-                 * comparison compare a value with itself
-                 * (FINDING(runtime-warning-cannot-cross-the-store), D72).
-                 */
-                const verdict =
-                    intent.actionClass === "clockTriggeredDestructive" &&
-                    intent.destructive !== undefined
-                        ? evaluateDestructive(
-                              {
-                                  request,
-                                  warning: createDestructiveWarning({
-                                      request: {
-                                          ...request,
-                                          cause: intent.destructive.warnedCause,
-                                          causeObservedAt:
-                                              intent.destructive.warnedCauseObservedAt,
-                                      },
-                                      warnedAt: intent.destructive.warnedAt,
-                                      gracePeriodDays: intent.destructive.gracePeriodDays,
-                                      earliestActionAt: intent.destructive.earliestActionAt,
-                                      cancelledBy: intent.destructive.cancelledBy,
-                                      reversesWith: intent.destructive.reversesWith,
-                                  }),
-                                  qualifyingActivitySinceWarning:
-                                      intent.destructive.qualifyingActivitySinceWarning,
-                              },
-                              config,
-                              context,
-                              externals.now,
-                          )
-                        : evaluateWrite(request, config, context);
-                /**
-                 * An intent that ACTS (or would, in dry-run) tells its story:
-                 * the explanation the factory made unskippable becomes the
-                 * finding a managed comment and a dry-run report render.
-                 * Refusals keep their refusal reasons unaccompanied — an
-                 * explanation beside every refusal would drown the report
-                 * (D92 3d, resolving the phase-1 design note).
-                 */
-                if (verdict.outcome !== "refuse") {
-                    findings.push(explanationFinding(intent.explanation, subject));
-                }
-                findings.push(
-                    verdictFinding(verdict, {
-                        kind: "effect",
-                        capability: declaration.name,
-                        item: intent.item,
-                        operation: intent.operation,
-                    }),
-                );
-                if (verdict.outcome === "apply") approved.push(intent);
+                const gated = gateIntent(intent, declaration, projection, config, externals);
+                findings.push(...gated.findings);
+                if (gated.approved !== null) approved.push(gated.approved);
             }
         }
     }

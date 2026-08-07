@@ -12,7 +12,7 @@
 import {
     closureOf,
     declareCapability,
-    intentFactory,
+    intentFactoryFor,
     type Capability,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
@@ -96,7 +96,7 @@ export const intake: Capability<IntakeDeclaration> = {
          * below were ~60 lines of hand-assembled record; every line that
          * survives is a decision, not plumbing.
          */
-        const make = intentFactory("intake", {
+        const make = intentFactoryFor(intakeDeclaration, {
             repository: observation.repository,
             item: observation.item,
             observedAt: observation.observedAt,
@@ -119,7 +119,7 @@ export const intake: Capability<IntakeDeclaration> = {
                     summary: "New issue placed in triage.",
                     detail: ["the issue carried no mapped workflow meaning"],
                 },
-            }) as IntentFor<IntakeDeclaration>,
+            }),
         );
 
         if (config.settings.announce === true) {
@@ -137,7 +137,7 @@ export const intake: Capability<IntakeDeclaration> = {
                         summary: "Announced the triage placement.",
                         detail: ["announce is enabled for this repository"],
                     },
-                }) as IntentFor<IntakeDeclaration>,
+                }),
             );
         }
 

@@ -27,7 +27,7 @@ import {
     problems,
     type DecideExternals,
     type Decision,
-    type EngineCapability,
+    toEngine,
     type IssueMeaning,
     type ObservationProjection,
     type RepositoryConfig,
@@ -81,8 +81,7 @@ const externals: DecideExternals = {
     resolve: async () => ({ ok: true, value: false }) as never,
 };
 
-const engineCaps = (...caps: object[]) =>
-    caps.map((c) => c as EngineCapability);
+const engineCaps = () => [toEngine(intake), toEngine(inactivity)];
 
 async function decideOn(
     config: RepositoryConfig,
@@ -92,7 +91,7 @@ async function decideOn(
     return decide(
         { kind: "observation", observation },
         config,
-        engineCaps(intake, inactivity),
+        engineCaps(),
         { ...externals, ...over },
     );
 }

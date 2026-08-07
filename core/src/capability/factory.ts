@@ -19,6 +19,7 @@
  */
 
 import type { ActionClass } from "../safety/index.js";
+import type { TypedDeclaration } from "./declaration.js";
 import type { ItemRef, RepositoryRef } from "./catalogue.js";
 import type { IntentCatalogue, IntentOperation } from "./catalogue.js";
 import {
@@ -80,4 +81,22 @@ export function intentFactory(
             idempotencyKey: deriveIdempotencyKey(base),
         };
     };
+}
+
+/**
+ * The declaration-aware factory — D92 3(d), completed by unification
+ * rather than deletion. `intentFactory` accepts any catalogue operation;
+ * this one constrains `K` to the operations the DECLARATION carries, so
+ * its output is assignable to `IntentFor<D>` with no cast — an undeclared
+ * operation fails at the call site, at compile time, in the capability's
+ * own file. The screens still re-check at runtime; this is ergonomics,
+ * they are enforcement.
+ */
+export function intentFactoryFor<const D extends TypedDeclaration>(
+    declaration: D,
+    occasion: IntentOccasion,
+): <K extends D["intents"][number]["name"] & IntentOperation>(
+    spec: IntentSpec<K>,
+) => Intent<K> {
+    return intentFactory(declaration.name, occasion);
 }

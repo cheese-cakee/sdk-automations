@@ -20,15 +20,13 @@ import {
     type AnyIntent,
     type DecideExternals,
     type Decision,
-    type EngineCapability,
+    toEngine,
     type Finding,
 } from "@hiero-hackers/automation-core";
 import { inactivity, intake, prQuality } from "../src/index.js";
 import { configEnabling, subsets, type AnyObservation } from "./world.js";
 
-const ALL = [prQuality, intake, inactivity].map(
-    (c) => c as unknown as EngineCapability,
-);
+const ALL = [toEngine(prQuality), toEngine(intake), toEngine(inactivity)];
 const NAMES = ["prQuality", "intake", "inactivity"];
 
 const AT = new Date("2026-08-03T09:00:00.000Z");

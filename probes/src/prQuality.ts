@@ -12,7 +12,7 @@
 import {
     closureOf,
     declareCapability,
-    intentFactory,
+    intentFactoryFor,
     type Capability,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
@@ -84,7 +84,7 @@ export const prQuality: Capability<PrQualityDeclaration> = {
                 ? config.settings.marker
                 : DEFAULT_MARKER;
 
-        const make = intentFactory("prQuality", {
+        const make = intentFactoryFor(prQualityDeclaration, {
             repository: observation.repository,
             item: observation.item,
             observedAt: observation.observedAt,
@@ -103,7 +103,7 @@ export const prQuality: Capability<PrQualityDeclaration> = {
                     summary: "No linked issue found on this pull request.",
                     detail: ["checked via the linkedIssues resolver"],
                 },
-            }) as IntentFor<PrQualityDeclaration>,
+            }),
         ];
     },
 };
