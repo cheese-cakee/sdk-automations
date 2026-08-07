@@ -1,8 +1,8 @@
 {
-    "name": "@hiero-hackers/automation-probes",
+    "name": "@hiero-hackers/automation-shell",
     "version": "0.0.0",
     "private": true,
-    "description": "DISPOSABLE. Three deliberately different capability stubs that exist to test the runtime boundary, the intent-to-plan seam, and P3 isolation — not to ship. Deleted when stage four names the first real capability. See README.md.",
+    "description": "The transport shell: webhook in → verify → durably accept → 202 → decide() → report persisted. Owns ordering, decides nothing — see README.md and D93.",
     "type": "module",
     "exports": {
         ".": {
@@ -15,15 +15,17 @@
     },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "start": "tsx src/main.ts"
     },
     "dependencies": {
         "@hiero-hackers/automation-core": "workspace:*",
-        "@hiero-hackers/automation-executor": "workspace:*",
+        "@hiero-hackers/automation-probes": "workspace:*",
         "@hiero-hackers/automation-store": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",
+        "tsx": "^4.23.9",
         "typescript": "^5.6.0",
         "vitest": "^4.0.0"
     }

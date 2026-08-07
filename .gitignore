@@ -8,3 +8,7 @@ lab/.env
 node_modules/
 .stryker-tmp/
 reports/
+
+# The shell's operational home: SQLite store, the operator's config copy,
+# and the decision journal. Local state, never tracked.
+shell/data/

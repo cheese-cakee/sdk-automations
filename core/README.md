@@ -52,6 +52,9 @@ two aren't forced to coincide).
 
 ## Reading path — 30 minutes to the whole machine
 
+0. [`design/trace.md`](../design/trace.md) — one REAL delivery followed from
+   the shell's socket to the persisted report, introducing every term at the
+   moment it acts. Start here if the glossary below feels like a wall.
 1. [`src/capability/README.md`](src/capability/README.md) — what a capability
    is, and the walkthrough of writing one.
 2. [`test/slice.test.ts`](test/slice.test.ts) — a real delivery, end to end,

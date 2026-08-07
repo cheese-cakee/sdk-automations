@@ -30,7 +30,14 @@ describe("documents cite files that exist", () => {
         .filter((rel) => rel.endsWith(".md"))
         .map((rel) => ({ doc: rel, text: readFileSync(join(repoRoot, rel), "utf8") }));
 
-    const PATH = /\b((?:core|store|executor|probes|checks)\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b/g;
+    // Package alternation from the workspace file, not a literal: the day
+    // shell/ arrived, a hardcoded list left every `shell/src/…` and
+    // `lab/src/…` citation silently unchecked — the mutate-glob failure in
+    // yet another coat, caught in the same file that documents the last one.
+    const PATH = new RegExp(
+        String.raw`\b((?:${workspacePackages().join("|")})\/(?:src|test)\/[A-Za-z0-9._/-]+\.ts)\b`,
+        "g",
+    );
 
     /**
      * The blind spot the audit/planning consolidation exposed: sixteen
@@ -186,10 +193,19 @@ describe("code cites decisions that exist", () => {
     );
 
     const sources: { file: string; text: string }[] = [];
-    for (const pkg of ["core", "store", "executor"]) {
-        for (const rawRel of readdirSync(join(repoRoot, pkg, "src"), {
-            recursive: true,
-        }) as string[]) {
+    // Every workspace package, same reason as the filename check above: a
+    // hardcoded trio left probes', lab's and then shell's D-citations
+    // pointing at rows nobody had verified exist.
+    for (const pkg of workspacePackages()) {
+        let rels: string[];
+        try {
+            rels = readdirSync(join(repoRoot, pkg, "src"), {
+                recursive: true,
+            }) as string[];
+        } catch {
+            continue; // a package need not have src/
+        }
+        for (const rawRel of rels) {
             const rel = normalizeRepoPath(rawRel);
             if (rel.endsWith(".ts")) {
                 sources.push({
