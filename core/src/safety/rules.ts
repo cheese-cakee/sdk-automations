@@ -114,7 +114,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
     [
         "itemBlocked",
         (f) =>
-            isBlocked(f.context.observedMeanings)
+            isBlocked(f.context.world.observedMeanings)
                 ? refuse(
                       "itemBlocked",
                       "the item is blocked — capability writes are paused (§5)",
@@ -124,7 +124,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
     [
         "preconditionStale",
         (f) =>
-            f.context.preconditionHolds
+            f.context.world.preconditionHolds
                 ? null
                 : refuse(
                       "preconditionStale",

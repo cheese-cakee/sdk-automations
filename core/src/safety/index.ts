@@ -12,3 +12,16 @@ export { evaluateWrite } from "./write.js";
 // assert directly. The rules themselves stay internal.
 export { GENERAL_RULES } from "./rules.js";
 export * from "./destructive.js";
+/**
+ * The derived world (D92 phase 4): the type, the derivation, and its two
+ * ingredients — but never `DERIVED` (the brand) or `assertedWorld` (the
+ * rule-suite constructor). Outside this package there is exactly one way
+ * to make a world: derive it.
+ */
+export {
+    deriveWorld,
+    expectedHolds,
+    observedMeaningsOf,
+    type ClaimedFacts,
+    type DerivedWorld,
+} from "./world.js";

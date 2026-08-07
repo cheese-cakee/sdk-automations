@@ -4,7 +4,7 @@
  * The reviewed file maps meaning → label, because that is the direction a
  * maintainer thinks in. A webhook delivery arrives speaking the other way:
  * it carries the repository's label strings, and the normalizer
- * (`github/events.ts`, the vertical slice) must ask "which meaning, if any,
+ * (`engine/events.ts`, the vertical slice) must ask "which meaning, if any,
  * is this label?". This is that question, answered once.
  *
  * The lookup is total and closed: an unmapped label answers `null`, never a

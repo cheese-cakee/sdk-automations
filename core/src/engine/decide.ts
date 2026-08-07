@@ -32,10 +32,12 @@ import {
     type StructuredExplanation,
     type TypedDeclaration,
 } from "../capability/index.js";
-import { normalizeDelivery, type PermissionGrant } from "../github/index.js";
+import type { PermissionGrant } from "../github/index.js";
+import { normalizeDelivery } from "./events.js";
 import type { RepositoryConfig } from "../config/index.js";
 import {
     createDestructiveWarning,
+    deriveWorld,
     evaluateDestructive,
     evaluateWrite,
 } from "../safety/index.js";
@@ -47,7 +49,6 @@ import {
     type Finding,
     type Report,
 } from "../report/index.js";
-import { expectedHolds, observedMeaningsOf } from "./preconditions.js";
 
 export type EngineObservation = ObservationCatalogue[keyof ObservationCatalogue];
 
@@ -187,8 +188,6 @@ export async function decide(
 
     if (observation !== null) {
         const projection = projectionOf(observation);
-        const observedMeanings =
-            projection === null ? [] : observedMeaningsOf(projection);
 
         for (const capability of capabilities) {
             const declaration = capability.declaration;
@@ -244,8 +243,6 @@ export async function decide(
                  * place a sweep's openness claim can honestly be verified
                  * (D92 3c, resolving the engine-matrix tension).
                  */
-                const preconditionHolds =
-                    projection === null || expectedHolds(intent.expected, projection);
 
                 const request = {
                     capability: declaration.name,
@@ -266,9 +263,8 @@ export async function decide(
                 const context = {
                     killSwitchActive: externals.killSwitchActive,
                     installationGrants: externals.installationGrants,
-                    observedMeanings,
-                    preconditionHolds,
                     latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
+                    world: deriveWorld(projection, intent.expected),
                 };
                 /**
                  * Destructive intents take the destructive gate (moved from

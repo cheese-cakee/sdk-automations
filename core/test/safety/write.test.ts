@@ -12,6 +12,7 @@ import {
     type DestructiveWarningInput,
 } from "../../src/safety/index.js";
 import { REPOSITORY_MODES, type RepositoryConfig } from "../../src/config/index.js";
+import { assertedWorld } from "../../src/safety/world.js";
 
 const request = (over?: Partial<WriteRequest>): WriteRequest => ({
     actionClass: "reversibleStateChange",
@@ -66,9 +67,8 @@ const evalDestructive = (
 const context = (over?: Partial<WriteContext>): WriteContext => ({
     installationGrants: ["issues:write"],
     killSwitchActive: false,
-    observedMeanings: [],
-    preconditionHolds: true,
     latestHumanChangeAt: null,
+    world: assertedWorld([], true),
     ...over,
 });
 
@@ -94,8 +94,8 @@ describe("evaluateWrite (safety.md §2)", () => {
     it.each([
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
         ["missing permission (rule 2)", { installationGrants: [] as const }, "permissionMissing"],
-        ["blocked item (§5)", { observedMeanings: ["blocked"] as const }, "itemBlocked"],
-        ["failed precondition recheck (rule 4)", { preconditionHolds: false }, "preconditionStale"],
+        ["blocked item (§5)", { world: assertedWorld(["blocked"], true) }, "itemBlocked"],
+        ["failed precondition recheck (rule 4)", { world: assertedWorld([], false) }, "preconditionStale"],
         [
             "newer human change (rule 5)",
             { latestHumanChangeAt: new Date("2026-07-01T00:00:01Z") },
@@ -128,8 +128,7 @@ describe("evaluateWrite (safety.md §2)", () => {
             context({
                 killSwitchActive: true,
                 installationGrants: [],
-                observedMeanings: ["blocked"],
-                preconditionHolds: false,
+                world: assertedWorld(["blocked"], false),
             }),
             config({
                 mode: "disabled",
@@ -618,8 +617,7 @@ describe("the check order is contract, and now assertable directly", () => {
             request(),
             context({
                 installationGrants: [],
-                preconditionHolds: false,
-                observedMeanings: ["blocked"],
+                world: assertedWorld(["blocked"], false),
                 latestHumanChangeAt: "unknown",
             }),
             capabilityOff,

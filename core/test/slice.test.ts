@@ -28,6 +28,7 @@ import {
     type CapabilityDeclaration,
     type Report,
 } from "../src/index.js";
+import { assertedWorld } from "../src/safety/world.js";
 
 const payload = JSON.parse(
     readFileSync(
@@ -130,8 +131,7 @@ describe("one real delivery, end to end", () => {
         {
             installationGrants: ["issues:write"],
             killSwitchActive: false,
-            observedMeanings: [],
-            preconditionHolds: true,
+            world: assertedWorld([], true),
             latestHumanChangeAt: null,
         },
     );
@@ -185,8 +185,7 @@ describe("one real delivery, end to end", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                observedMeanings: [],
-                preconditionHolds: true,
+                world: assertedWorld([], true),
                 latestHumanChangeAt: null,
             },
         );

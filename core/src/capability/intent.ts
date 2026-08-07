@@ -5,7 +5,7 @@
  * into calls is the executor's planner, deliberately outside `core/`.
  */
 
-import type { ActionClass } from "../safety/index.js";
+import type { ActionClass, ClaimedFacts } from "../safety/index.js";
 import type { IdempotencyClass } from "./catalogue.js";
 import type { MappableMeaning } from "../config/index.js";
 import {
@@ -31,17 +31,11 @@ import type { TypedDeclaration } from "./declaration.js";
 // ─── Intents ─────────────────────────────────────────────────────────
 
 /**
- * contract.md §3 `expected`: the facts the capability believes hold. The
- * policy layer rechecks them immediately before the write and refuses on
- * mismatch (`preconditionStale`), which is how a capability's stale view
- * of the world stops being a write.
+ * contract.md §3 `expected`: the facts the capability believes hold. Now an
+ * alias of safety's `ClaimedFacts` (D92 phase 4) — the claim and the
+ * derivation that checks it share one definition, in the checker's module.
  */
-export interface ExpectedFacts {
-    readonly meaningsPresent: readonly MappableMeaning[];
-    readonly meaningsAbsent: readonly MappableMeaning[];
-    /** `null` when the capability does not care about open/closed. */
-    readonly closed: boolean | null;
-}
+export type ExpectedFacts = ClaimedFacts;
 
 /**
  * The warning record a destructive intent must carry — required when the
