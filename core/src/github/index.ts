@@ -8,4 +8,3 @@ export * from "./ids.js";
 export * from "./rate-limits.js";
 export * from "./permissions.js";
 export * from "./signatures.js";
-export * from "./events.js";

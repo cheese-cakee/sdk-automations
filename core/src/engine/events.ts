@@ -15,12 +15,11 @@
  * consumes but cannot read is `malformed` (loud — GitHub changed shape, or
  * the shell handed us something that is not a webhook body). Nothing throws.
  *
- * DEPENDENCY NOTE: this file type-imports the observation shapes from
- * `../capability/`, which type-imports `PermissionGrant` from here — a
- * type-only edge in each direction, erased at compile time, no runtime
- * cycle. Named as a cost in D91 rather than hidden: the alternative was
- * duplicating the payload shapes, and one fact in two places loses to a
- * type edge every time.
+ * Lives in `engine/` (D92 phase 5): normalization is the pipeline's first
+ * stage, and the move retired the capability⇄github type-only cycle D91
+ * had named as a cost — the engine imports both sides freely. What stays
+ * in `github/` is observed knowledge about GitHub; what a delivery BECOMES
+ * is the engine's business.
  */
 
 import type { ObservationCatalogue } from "../capability/index.js";

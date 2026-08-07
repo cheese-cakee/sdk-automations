@@ -5,7 +5,7 @@
  * into calls is the executor's planner, deliberately outside `core/`.
  */
 
-import type { ActionClass } from "../safety/index.js";
+import type { ActionClass, ClaimedFacts } from "../safety/index.js";
 import type { IdempotencyClass } from "./catalogue.js";
 import type { MappableMeaning } from "../config/index.js";
 import {
@@ -31,29 +31,17 @@ import type { TypedDeclaration } from "./declaration.js";
 // ─── Intents ─────────────────────────────────────────────────────────
 
 /**
- * contract.md §3 `expected`: the facts the capability believes hold. The
- * policy layer rechecks them immediately before the write and refuses on
- * mismatch (`preconditionStale`), which is how a capability's stale view
- * of the world stops being a write.
+ * contract.md §3 `expected`: the facts the capability believes hold. Now an
+ * alias of safety's `ClaimedFacts` (D92 phase 4) — the claim and the
+ * derivation that checks it share one definition, in the checker's module.
  */
-export interface ExpectedFacts {
-    readonly meaningsPresent: readonly MappableMeaning[];
-    readonly meaningsAbsent: readonly MappableMeaning[];
-    /** `null` when the capability does not care about open/closed. */
-    readonly closed: boolean | null;
-}
+export type ExpectedFacts = ClaimedFacts;
 
 /**
- * The warning record a destructive intent must carry — required when the
- * action class is `clockTriggeredDestructive`, absent otherwise, and the
- * reverse check is the dangerous one: a warning on a non-destructive intent
- * reads as a grace period no gate will consult
- * (`FINDING(runtime-destructive-intent-has-no-warning)`, D64).
- *
- * The warned CAUSE is carried separately because D60's branded warning cannot
- * cross the store: rebuilding it from the current request would make the
- * snapshot check compare a value with itself
- * (`FINDING(runtime-warning-cannot-cross-the-store)`, D72).
+ * The warning record a destructive intent must carry (D64). The warned CAUSE
+ * rides separately because the branded warning cannot cross the store —
+ * rebuilding from the current request would compare a value with itself
+ * (D60, D72).
  */
 export interface DestructiveDetail {
     readonly warnedAt: Date;
@@ -106,16 +94,9 @@ export function deriveIdempotencyKey(intent: {
     readonly operation: IntentOperation;
     readonly cause: DatedCause;
 }): string {
-    /**
-     * JSON rather than a delimiter join. Every field except `cause` is
-     * constrained, but `cause` is capability-authored free text, so no
-     * printable separator is guaranteed absent from it — and a plain
-     * space join is actively wrong: capability "a b" with repo "c"
-     * produces the same key as capability "a" with repo "b c",
-     * silently making two effects one. JSON encodes the boundaries
-     * instead of hoping for them, and unlike a control-character
-     * delimiter it leaves the file readable to grep and diff tools.
-     */
+    // JSON, not a delimiter join: `cause` is free text, so no separator is
+    // guaranteed absent, and a space-join collides "a b"+"c" with "a"+"b c"
+    // — silently one effect. JSON encodes the boundaries (D65, D74).
     return JSON.stringify([
         intent.capability,
         intent.repository.owner,
@@ -131,40 +112,15 @@ export function deriveIdempotencyKey(intent: {
 // ─── Runtime screens ─────────────────────────────────────────────────
 
 /**
- * Is the move this intent would make on the profile's map?
- *
- * D29 says capabilities move along documented edges and humans may land
- * anywhere — and nothing enforced the first half. The transition tables were
- * exhaustively tested, checked against the design document, and corrected
- * three times by D48's audit, with ZERO callers: a capability could put
- * `readyToMerge`, a pull-request meaning, on an issue and both the screen and
- * the safety engine would pass it (D78).
- *
- * Self-contained on purpose. Everything needed is already on the intent, and
- * the claimed `from` is the same `expected` safety rechecks as
- * `preconditionHolds`.
+ * Is the move this intent would make on the profile's map? Capabilities move
+ * along documented edges; humans may land anywhere (D29, enforced by D78).
+ * Self-contained: the claimed `from` is the same `expected` that safety
+ * rechecks as the derived world.
  */
 function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
-    /**
-     * `blocked` is an orthogonal PAUSE FLAG, not a position (D28): an item
-     * keeps where it is while blocked, so applying it moves nothing and there
-     * is no edge to check. It is refused anyway, and for a different reason
-     * than a wrong entity — the distinction matters, because a maintainer
-     * reading a refusal deserves the true one.
-     *
-     * D79: pausing is the ONE write whose blast radius is other capabilities.
-     * `itemBlocked` is not a rule about the item, it is a rule about every
-     * capability's access to it — so a capability that could set it would
-     * hold a veto over the others, through shared state and without calling
-     * them. That is the coupling P3 forbids, in its least visible form: the
-     * vetoed capability sees `itemBlocked` and cannot learn who caused it.
-     *
-     * It is also the consistent reading. "Detect a problem, freeze the item"
-     * is an `immediatePreventive` action, which D54 already refuses outright
-     * pending an explanation-and-reversal gate. Letting a capability reach the
-     * same outcome by writing a label would be a hole in D54, and the repair
-     * is to close the label path rather than widen the gate.
-     */
+    // `blocked` is a pause flag, not a position (D28); only a human may set
+    // it — a capability that could would hold a veto over every other
+    // capability (D79), and a freeze-by-label would bypass D54's gate.
     if (intent.desired.meaning === "blocked") {
         return {
             ok: false,
@@ -174,14 +130,9 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
     }
 
     /**
-     * From here the two flows are handled symmetrically, and the predicates
-     * carry the narrowing the compiler needs — before D90 this crossing was
-     * six `as`-casts, each safe only because of a guard the type system
-     * could not see. Held meanings filter to own-flow only: a stray
-     * cross-entity label is noise to preserve (D35), not the position being
-     * moved away from; more than one own-flow position is a conflict
-     * `observe.ts` refuses to project, and treating it as "no position"
-     * would silently check the wrong edge.
+     * Two flows, symmetric; the predicates carry the narrowing (D90). Held
+     * meanings filter to own-flow — cross-entity labels are preserved noise
+     * (D35) — and >1 own-flow position is a conflict with no edge to check.
      */
     const wrongEntity = (): IntentScreen => ({
         ok: false,
@@ -297,13 +248,8 @@ export function screenIntent(
             reason: "the intent's cause carries an invalid timestamp",
         };
     }
-    /**
-     * Both directions are errors. A destructive intent with no warning
-     * would reach `evaluateDestructive` and be refused there anyway; a
-     * NON-destructive intent carrying a warning is the dangerous one — it
-     * reads as a grace period that no gate will ever check, because
-     * `evaluateWrite` does not look at the field.
-     */
+    // Both directions are errors; the dangerous one is a warning on a
+    // NON-destructive intent — a grace period no gate will check (D64).
     const destructive = intent.actionClass === "clockTriggeredDestructive";
     if (destructive && intent.destructive === undefined) {
         return {

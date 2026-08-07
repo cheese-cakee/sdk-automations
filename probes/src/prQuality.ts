@@ -12,9 +12,8 @@
 import {
     closureOf,
     declareCapability,
-    deriveIdempotencyKey,
+    intentFactoryFor,
     type Capability,
-    type Intent,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
 
@@ -85,33 +84,26 @@ export const prQuality: Capability<PrQualityDeclaration> = {
                 ? config.settings.marker
                 : DEFAULT_MARKER;
 
-        const draft = {
-            capability: "prQuality",
+        const make = intentFactoryFor(prQualityDeclaration, {
             repository: observation.repository,
             item: observation.item,
-            operation: "postManagedComment",
-            actionClass: "humanFacingOutput",
-            expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
-            desired: {
-                marker,
-                body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",
-            },
-            cause: {
-                cause: "pullRequestWithoutLinkedIssue",
-                observedAt: observation.observedAt,
-            },
-            explanation: {
-                capability: "prQuality",
-                summary: "No linked issue found on this pull request.",
-                detail: ["checked via the linkedIssues resolver"],
-            },
-        } as const satisfies Omit<Intent<"postManagedComment">, "idempotencyKey">;
-
+            observedAt: observation.observedAt,
+        });
         return [
-            {
-                ...draft,
-                idempotencyKey: deriveIdempotencyKey(draft),
-            } satisfies IntentFor<PrQualityDeclaration>,
+            make({
+                operation: "postManagedComment",
+                actionClass: "humanFacingOutput",
+                desired: {
+                    marker,
+                    body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",
+                },
+                cause: "pullRequestWithoutLinkedIssue",
+                expected: { closed: false },
+                explain: {
+                    summary: "No linked issue found on this pull request.",
+                    detail: ["checked via the linkedIssues resolver"],
+                },
+            }),
         ];
     },
 };

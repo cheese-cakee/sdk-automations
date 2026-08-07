@@ -76,7 +76,7 @@ at which point subdirectories may start to earn their keep:
   `design/operations/endpoint-permission-matrix.md`.
 - `permissions.ts` — the ratified permission ceiling, currently a loose
   template type in `capability/declaration.ts`.
-- `events.ts` — the webhook subscription list, including the
+- `subscriptions.ts` — the webhook subscription list, including the
   `pull_request_review` gap experiment 6.6 found.
 - the read-after-write freshness rule (D46, experiment 6.7), which today sits
   in `executor/src/policy.ts` mixed in with adopted *decisions* like the lease
@@ -131,7 +131,7 @@ which bites while there is one real consumer.
 The adapter is *entirely* GitHub-observed knowledge, so it is the consumer
 that makes an enforced boundary pay for itself. It will want every file in the
 list above: `endpoints.ts` from the permission matrix, `permissions.ts` for
-the ratified ceiling, `events.ts` for the subscription list, and the
+the ratified ceiling, `subscriptions.ts` for the subscription list, and the
 read-after-write freshness rule — which today sits in `executor/src/policy.ts`
 next to adopted *decisions* like the lease duration and the retention window.
 Those two kinds of constant have different owners and different reasons to

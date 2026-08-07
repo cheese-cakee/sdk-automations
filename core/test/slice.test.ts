@@ -15,10 +15,12 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+    decide,
     deriveIdempotencyKey,
     evaluateWrite,
     normalizeDelivery,
     parseConfig,
+    explanationFinding,
     problems,
     screenIntent,
     verdictFinding,
@@ -26,6 +28,7 @@ import {
     type CapabilityDeclaration,
     type Report,
 } from "../src/index.js";
+import { assertedWorld } from "../src/safety/world.js";
 
 const payload = JSON.parse(
     readFileSync(
@@ -128,8 +131,7 @@ describe("one real delivery, end to end", () => {
         {
             installationGrants: ["issues:write"],
             killSwitchActive: false,
-            observedMeanings: [],
-            preconditionHolds: true,
+            world: assertedWorld([], true),
             latestHumanChangeAt: null,
         },
     );
@@ -143,6 +145,15 @@ describe("one real delivery, end to end", () => {
         mode: config.mode,
         repository: observation.repository,
         findings: [
+            /**
+             * D92 3d: an intent that acts tells its story — the explanation
+             * joins the report beside the verdict, on both wirings.
+             */
+            explanationFinding(keyed.explanation, {
+                kind: "item",
+                capability: "triage",
+                item: observation.item,
+            }),
             verdictFinding(verdict, {
                 kind: "effect",
                 capability: "triage",
@@ -152,7 +163,10 @@ describe("one real delivery, end to end", () => {
         ],
     };
     it("the report closes clean: nothing needs a human", () => {
-        expect(report.findings[0]).toMatchObject({ severity: "info", code: "applied" });
+        expect(report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
         expect(problems(report)).toEqual([]);
     });
 
@@ -171,12 +185,42 @@ describe("one real delivery, end to end", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                observedMeanings: [],
-                preconditionHolds: true,
+                world: assertedWorld([], true),
                 latestHumanChangeAt: null,
             },
         );
         expect(dry).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
         expect(verdictFinding(dry, { kind: "repository" }).severity).toBe("notice");
+    });
+
+    /**
+     * D92 phase 2 — the parity gate. The engine must produce, from the same
+     * real delivery, exactly the findings this file assembled by hand. A
+     * mismatch STOPS the migration: it means either the engine or a
+     * hand-wiring is wrong, and both answers matter more than progress.
+     */
+    it("parity: decide() equals the hand wiring, finding for finding", async () => {
+        const asCapability = {
+            declaration: triage as never,
+            async evaluate() {
+                return [keyed];
+            },
+        };
+        const decision = await decide(
+            { kind: "delivery", repository: observation.repository, event: "issues", payload },
+            config,
+            [asCapability as never],
+            {
+                now: new Date("2026-08-07T02:00:00Z"),
+                killSwitchActive: false,
+                installationGrants: ["issues:write"],
+                latestHumanChangeAt: () => null,
+            },
+        );
+        expect(decision.report.findings).toEqual(report.findings);
+        expect(decision.report.revision).toBe(report.revision);
+        expect(decision.report.mode).toBe(report.mode);
+        expect(decision.report.repository).toEqual(report.repository);
+        expect(decision.approved).toEqual([keyed]);
     });
 });

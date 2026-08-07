@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { RepositoryConfig } from "../src/config/index.js";
+import { assertedWorld } from "../src/safety/world.js";
 import {
     evaluateWrite,
     retryAdvice,
@@ -91,8 +92,10 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                                 ? (["issues:write"] as const)
                                                 : [],
                                             killSwitchActive,
-                                            observedMeanings: itemBlocked ? (["blocked"] as const) : [],
-                                            preconditionHolds,
+                                            world: assertedWorld(
+                                                itemBlocked ? (["blocked"] as const) : [],
+                                                preconditionHolds,
+                                            ),
                                             latestHumanChangeAt,
                                         };
                                         const verdict = evaluateWrite(

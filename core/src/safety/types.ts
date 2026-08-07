@@ -7,7 +7,8 @@
  * depend on this without depending on each other.
  */
 
-import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
+import type { RepositoryConfig } from "../config/index.js";
+import type { DerivedWorld } from "./world.js";
 import type { PermissionGrant } from "../github/index.js";
 export type { RepositoryMode } from "../config/index.js";
 
@@ -43,47 +44,32 @@ export interface WriteRequest {
      */
 export type HumanChangeOrdering = Date | null | "unknown";
 
-/** The facts the platform rechecked immediately before the write. */
 /**
- * The facts a shell must RECHECK immediately before a write, and nothing else.
- *
- * Mode, capability, enablement and blocked-ness used to live here too, copied
- * alongside sources that already held them. All four are now derived
- * (`FINDING(safety-context-derived)`, D73, D77).
+ * What a write evaluation needs beyond the request and the config: the
+ * three facts that are genuinely EXTERNAL — nothing else. The two facts
+ * callers used to assert here (`observedMeanings`, `preconditionHolds`)
+ * are now the branded `DerivedWorld`, constructible only by derivation
+ * from the observation (D92 phase 4) — a shell cannot assert a world that
+ * contradicts the one it delivered, because it has no type to assert it
+ * with.
  */
 export interface WriteContext {
     /**
      * What GitHub GRANTED this installation — not whether it is enough.
      * The engine computes sufficiency from the request's requirements, so a
-     * refusal can name the missing permission instead of saying only that
-     * one was missing (D77).
+     * refusal can name the missing permission (D77).
      */
     readonly installationGrants: readonly PermissionGrant[];
     /** Kill switches: global / installation / repository / capability (safety.md §5). */
     readonly killSwitchActive: boolean;
     /**
-     * The mapped meanings the shell OBSERVED on the item. Whether that means
-     * the item is paused is `isBlocked`'s decision, made once in
-     * `workflow/meanings.ts` — the projection already computed it from the
-     * same input, and a separate boolean here was free to disagree (D77).
-     */
-    readonly observedMeanings: readonly MappableMeaning[];
-    /**
-     * Shell attestation, not a fact the core can verify — the
-     * precondition's shape is capability-specific. Executor tests own
-     * this boundary; the workflow-state case is verified by
-     * `applyTransition`'s stale-precondition guard.
-     */
-    readonly preconditionHolds: boolean;
-    /**
-     * When the newest HUMAN change on the touched state was made,
-     * `null` if the shell checked and found none, `"unknown"` if it
-     * could not establish ordering. The core compares this against
-     * `causeObservedAt` (rule 5). The shell must exclude the causing
-     * event itself when computing it — a human edit that triggers the
-     * request is the cause, not a conflict.
+     * When the newest HUMAN change on the touched state was made, `null`
+     * if the shell checked and found none, `"unknown"` if it could not
+     * establish ordering. The shell must exclude the causing event itself.
      */
     readonly latestHumanChangeAt: HumanChangeOrdering;
+    /** The derived facts — see `world.ts`. */
+    readonly world: DerivedWorld;
 }
 
 /**

@@ -1,37 +1,86 @@
 # automation-core (pure logic)
 
-The parallel track from `design/build-plan.md` ("Parallel work the gates do
-not block"): the work-item state machine, the safety engine, and the
-configuration validator as typed code with invariant tests. No I/O, no
-GitHub, no platform — `pnpm test` runs the whole thing in under a second.
+The decision engine of the platform: everything between a webhook payload
+and a verdict, with no I/O anywhere — `pnpm test` runs the whole thing in
+seconds, and a real captured GitHub delivery travels payload → report inside
+a unit test (`test/slice.test.ts`).
+
+**The front door is one verb.** A shell hands `decide()` a delivery, the
+parsed configuration, the enabled capabilities, and the few facts core
+cannot know (the clock, the kill switch, the installation's grants, human
+edit ordering); it gets back a `Report` and the approved intents. Everything
+else in this package is what that verb composes:
+
+```mermaid
+flowchart LR
+    D["delivery"] --> N["engine/events.ts
+normalize"]
+    N --> P["workflow/project.ts
+labels → position"]
+    P --> E["capability evaluate
+(via its view + handle)"]
+    E --> S["capability/intent.ts
+screens"]
+    S --> W["safety/world.ts
+derive the world"]
+    W --> G["safety rules + gates"]
+    G --> R["report/ findings"]
+    G --> A["approved intents
+→ executor's planner"]
+```
 
 | Directory | The question it answers | Files |
 |---|---|---|
-| `src/config/` | What did this repository ask for? | `schema.ts` (shape and enumerations), `validate.ts` (the six section validators), `parse.ts` (`parseConfig`) |
-| `src/workflow/` | What states exist, and how do they move? | `meanings.ts` (vocabulary), `transitions.ts` (the diagrams as tables), `apply.ts` (the rules that walk them), `project.ts` (observed labels → position) |
-| `src/capability/` | What may a capability declare and do? | `declaration.ts` (what it is), `catalogue.ts` (the closed vocabularies), `boundary.ts` (how the platform calls it), `intent.ts` (what it asks for, and the screens) |
-| `src/safety/` | May this write happen? | `write.ts` (the general rules), `destructive.ts` (the §3 warning and grace gates, a separate entry point by D52) |
-| `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts` — and its own [README](src/github/README.md) |
+| `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation) |
+| `src/config/` | What did this repository ask for? | `schema.ts`, `validate.ts`, `parse.ts`, `document.ts` (YAML in), `mappings.ts` (label ↔ meaning, both directions) |
+| `src/workflow/` | What states exist, and how do they move? | `meanings.ts` (vocabulary, derived from the facts table), `transitions.ts` (the diagrams as tables), `apply.ts`, `project.ts` |
+| `src/capability/` | What may a capability declare and do? | `declaration.ts`, `catalogue.ts` (the closed vocabularies — and the add-an-operation checklist), `boundary.ts` (how it is called), `intent.ts` (what it asks, and the screens), `factory.ts` (how one is built without ceremony) |
+| `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) |
+| `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — and its own [README](src/github/README.md) with the provenance table |
+| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) |
 
 Directories are named for the question a maintainer arrives with, not for a
 technical kind. There is no `types/` or `utils/`: naming by kind forces you to
 already know the answer in order to find it.
 
-`src/github/` is the one directory whose contents can go WRONG while nobody
-edits them — it holds what we measured about GitHub's live behaviour, and it
-carries the provenance table and the D40 re-probe obligation. Everything else
-in `core/` encodes a decision the project made, and stays true until someone
-decides differently.
+**Four stories, seven directories.** Read core as: *vocabulary* (catalogue +
+meanings + the facts tables), *rules* (safety + the screens + the map),
+*engine* (events + decide), *report* — with config as the input gate and
+github as the observed-world annex. The stories are the reading; the
+directories are where the files happen to live (D92 phase 5 records why the
+two aren't forced to coincide).
 
-Each directory has an `index.ts` barrel, so consumers name the CONCERN rather
-than the file inside it: a capability cares that configuration was validated,
-not which of three files did which part.
+## Reading path — 30 minutes to the whole machine
 
-The sibling `store/` package holds the owned operational store (protocol
-6.5's decision) — it does I/O, so it lives outside this no-I/O track.
+1. [`src/capability/README.md`](src/capability/README.md) — what a capability
+   is, and the walkthrough of writing one.
+2. [`test/slice.test.ts`](test/slice.test.ts) — a real delivery, end to end,
+   ~180 lines; the parity test at its bottom is `decide()`'s specification.
+3. [`src/safety/rules.ts`](src/safety/rules.ts) — the ten rules as an ordered
+   array; the order is contract and the tests assert it directly.
 
-The sibling `store/` package holds the owned operational store (protocol
-6.5's decision) — it does I/O, so it lives outside this no-I/O track.
+After those three, every other file is a detail of something you have
+already seen working.
+
+## Glossary — the fifteen words that are the learning curve
+
+| Term | One line |
+|---|---|
+| **observation** | A normalized fact about a repository item, from the catalogue — never a raw payload. |
+| **meaning** | A platform position word (`awaitingTriage`, `ready`, …); repositories map their own labels onto these. |
+| **mapping** | The reviewed label ↔ meaning table; the only bridge between a repository's words and the platform's. |
+| **position** | The single meaning an item occupies in its flow — or `null`, or a conflict. |
+| **projection** | The observed label set turned into a position (or a conflict): `ObservationProjection`. |
+| **blocked** | An orthogonal human-set pause flag — never a position, never capability-writable. |
+| **capability** | A unit of automation: a declaration plus a pure `evaluate` that returns intents. |
+| **declaration** | A capability's self-description — what it watches, asks, does, and needs. |
+| **intent** | A desired outcome a capability requests; never an API call. |
+| **occasion** | Where and when an intent arose (repository, item, observed time) — bound once by the factory. |
+| **claim / expected** | The facts a capability believes hold (`ClaimedFacts`); checked by derivation, or at act time. |
+| **world** | The derived, unforgeable safety facts (`DerivedWorld`) — what was observed, whether the claim holds. |
+| **screen** | A runtime check on a returned intent (attribution, floors, the map) — enforcement, not ergonomics. |
+| **verdict** | The safety engine's answer: apply, record-only, or a coded refusal. |
+| **finding** | One record in a report: severity, machine code, prose, subject. `problems()` is the operator surface. |
 
 ## How the pieces connect
 

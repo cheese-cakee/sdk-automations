@@ -12,9 +12,8 @@
 import {
     closureOf,
     declareCapability,
-    deriveIdempotencyKey,
+    intentFactoryFor,
     type Capability,
-    type Intent,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
 
@@ -92,66 +91,54 @@ export const intake: Capability<IntakeDeclaration> = {
         if (state.meaning !== null) return [];
 
         const intents: IntentFor<IntakeDeclaration>[] = [];
-
-        const label = {
-            capability: "intake",
+        /**
+         * D92 3d: the factory binds the occasion once. The two intents
+         * below were ~60 lines of hand-assembled record; every line that
+         * survives is a decision, not plumbing.
+         */
+        const make = intentFactoryFor(intakeDeclaration, {
             repository: observation.repository,
             item: observation.item,
-            operation: "applyMappedLabel",
-            actionClass: "reversibleStateChange",
-            expected: {
-                meaningsPresent: [],
-                meaningsAbsent: ["awaitingTriage"],
-                closed: false,
-            },
-            /**
-             * The map's answer: `[*] → awaitingTriage` for `intakeObserved`.
-             * This probe's own invented cause, `issueWithoutPosition`, is not
-             * on the map — closing the type is what forced the question, and
-             * the profile happened to have an edge for it (D78).
-             */
-            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-            cause: { cause: "issueWithoutPosition", observedAt: observation.observedAt },
-            explanation: {
-                capability: "intake",
-                summary: "New issue placed in triage.",
-                detail: ["the issue carried no mapped workflow meaning"],
-            },
-        } as const satisfies Omit<Intent<"applyMappedLabel">, "idempotencyKey">;
+            observedAt: observation.observedAt,
+        });
 
-        intents.push({ ...label, idempotencyKey: deriveIdempotencyKey(label) });
+        intents.push(
+            make({
+                operation: "applyMappedLabel",
+                actionClass: "reversibleStateChange",
+                /**
+                 * The map's answer: `[*] → awaitingTriage` for
+                 * `intakeObserved`. This probe's own invented cause,
+                 * `issueWithoutPosition`, is not on the map — closing the
+                 * type is what forced the question (D78).
+                 */
+                desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+                cause: "issueWithoutPosition",
+                expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
+                explain: {
+                    summary: "New issue placed in triage.",
+                    detail: ["the issue carried no mapped workflow meaning"],
+                },
+            }),
+        );
 
         if (config.settings.announce === true) {
-            const comment = {
-                capability: "intake",
-                repository: observation.repository,
-                item: observation.item,
-                operation: "postManagedComment",
-                actionClass: "humanFacingOutput",
-                expected: {
-                    meaningsPresent: [],
-                    meaningsAbsent: ["awaitingTriage"],
-                    closed: false,
-                },
-                desired: {
-                    marker: "<!-- hiero-automation:intake -->",
-                    body: "Thanks for opening this. It has been placed in the triage queue.",
-                },
-                cause: {
+            intents.push(
+                make({
+                    operation: "postManagedComment",
+                    actionClass: "humanFacingOutput",
+                    desired: {
+                        marker: "<!-- hiero-automation:intake -->",
+                        body: "Thanks for opening this. It has been placed in the triage queue.",
+                    },
                     cause: "issueWithoutPosition",
-                    observedAt: observation.observedAt,
-                },
-                explanation: {
-                    capability: "intake",
-                    summary: "Announced the triage placement.",
-                    detail: ["announce is enabled for this repository"],
-                },
-            } as const satisfies Omit<Intent<"postManagedComment">, "idempotencyKey">;
-
-            intents.push({
-                ...comment,
-                idempotencyKey: deriveIdempotencyKey(comment),
-            });
+                    expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
+                    explain: {
+                        summary: "Announced the triage placement.",
+                        detail: ["announce is enabled for this repository"],
+                    },
+                }),
+            );
         }
 
         return intents;

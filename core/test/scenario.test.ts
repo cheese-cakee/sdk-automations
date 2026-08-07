@@ -16,6 +16,7 @@ import {
     type WorkItemState,
     type IssueMeaning,
 } from "../src/index.js";
+import { assertedWorld } from "../src/safety/world.js";
 
 const assignment: CapabilityDeclaration = {
     name: "assignment",
@@ -96,8 +97,7 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"], // shell fact, from the App's grants
                 killSwitchActive: false,
-                observedMeanings: state.blocked ? (["blocked"] as const) : [],
-                preconditionHolds: true,
+                world: assertedWorld(state.blocked ? (["blocked"] as const) : [], true),
                 latestHumanChangeAt: new Date("2026-07-25T09:59:00Z"), // older: no conflict
             },
         );
@@ -134,8 +134,7 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                observedMeanings: [],
-                preconditionHolds: false, // recheck saw the close
+                world: assertedWorld([], false), // recheck saw the close
                 latestHumanChangeAt: new Date("2026-07-25T10:05:00Z"), // the close
             },
         );
@@ -176,8 +175,7 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                observedMeanings: [],
-                preconditionHolds: true,
+                world: assertedWorld([], true),
                 latestHumanChangeAt: null,
             },
         );

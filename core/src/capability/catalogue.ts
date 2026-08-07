@@ -3,6 +3,12 @@
  * receive, every resolver it may ask, every intent it may express — plus the
  * facts the PLATFORM owns about each operation.
  *
+ * ADDING AN OPERATION touches five exhaustive switches, each compile-checked,
+ * jointly a checklist: `INTENT_OPERATIONS` and `IntentCatalogue` here,
+ * `describeChange` in the engine, `commandFor` in the executor's planner, and
+ * the command identity in the executor's recovery module. Named here so the
+ * hunt has a map; consolidate when a real fourth operation arrives.
+ *
  * D61: a capability chooses from these; it cannot extend them. The
  * alternative is unimplementable at the far end, because the adapter would
  * need an executor for a type it has never seen. Isolation (P3) falls out:
