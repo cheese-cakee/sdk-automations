@@ -9,9 +9,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { lines, trackedFiles } from "./helpers.js";
+import { lines, repoRoot, trackedFiles } from "./helpers.js";
 
-const repoRoot = new URL("../../", import.meta.url);
 const workflows = trackedFiles().filter((path) =>
     path.startsWith(".github/workflows/") && /\.ya?ml$/.test(path),
 );
@@ -27,7 +26,7 @@ const WRITE_ALLOWLIST = new Set([
 ]);
 
 function workflowLines(path: string): string[] {
-    return lines(readFileSync(join(repoRoot.pathname, path), "utf8"));
+    return lines(readFileSync(join(repoRoot, path), "utf8"));
 }
 
 function permissionWrites(path: string): string[] {
