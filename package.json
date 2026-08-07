@@ -6,10 +6,12 @@
     "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), executor (recovery loop), shell (transport), probes (disposable).",
     "scripts": {
         "test": "pnpm -r test",
+        "test:coverage": "pnpm -r test:coverage",
         "lint": "eslint .",
         "audit": "pnpm audit --audit-level moderate"
     },
     "devDependencies": {
+        "@vitest/coverage-v8": "^4.1.10",
         "eslint": "^9.39.5",
         "typescript-eslint": "^8.46.0"
     },

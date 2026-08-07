@@ -12,7 +12,8 @@
     },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:coverage": "tsc --noEmit && vitest run --coverage --testTimeout=15000"
     },
     "devDependencies": {
         "@stryker-mutator/core": "^9.6.1",
