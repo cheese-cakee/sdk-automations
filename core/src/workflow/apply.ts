@@ -5,7 +5,6 @@
 
 import {
     closureReasonFor,
-    type ClosureReason,
     type IssueCause,
     type IssueMeaning,
     type PrCause,

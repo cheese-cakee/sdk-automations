@@ -88,7 +88,7 @@ export function parseConfigDocument(
     let value: unknown;
     try {
         value = document.toJS({ maxAliasCount: MAX_ALIAS_COUNT });
-    } catch (cause) {
+    } catch (_cause) {
         return {
             ok: false,
             errors: [

@@ -14,7 +14,6 @@ import {
     declareCapability,
     intentFactoryFor,
     type Capability,
-    type IntentFor,
 } from "@hiero-hackers/automation-core";
 
 export const prQualityDeclaration = declareCapability({
