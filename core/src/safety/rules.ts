@@ -1,18 +1,9 @@
 /**
  * The general rules every write passes, and the preflight before them.
- *
- * **If you are asking "why was my write refused?", this is the file.** Both
- * entry points — `write.ts` and `destructive.ts` — arrive here after applying
- * their own door policy.
- *
- * Only `GENERAL_RULES` is exported onward, because the ORDER is contract
- * (D39, D52); the rules themselves are not public API.
- *
- * `evaluateWrite` and `evaluateDestructive` answer different questions and are
- * not interchangeable — the general path REFUSES a destructive request outright
- * (`FINDING(safety-destructive-entry-point)`, D52) — but they share a preflight
- * and the general rules, so the pair are peers over a common middle rather than
- * one reaching into the other.
+ * **If you are asking "why was my write refused?", this is the file.**
+ * Both doors — `write.ts` and `destructive.ts` — arrive here after their
+ * own policy; only the rule ORDER is exported, because order is contract
+ * (D39, D52).
  */
 
 import type { RepositoryConfig } from "../config/index.js";
@@ -29,11 +20,7 @@ import type {
 export function evaluatePreflight(
     context: WriteContext,
 ): SafetyVerdict | null {
-    /**
-     * FINDING(safety-killswitch-observations), D39: checked before the
-     * observation short-circuit — an active kill switch refuses even
-     * pure observations. "Stop" stops reading-and-recording too.
-     */
+    // Before the observation short-circuit: "stop" stops reads too (D39).
     if (context.killSwitchActive) {
         return {
             outcome: "refuse",
@@ -69,18 +56,9 @@ const record = (code: RecordOnlyCode, reason: string): SafetyVerdict => ({
 });
 
 /**
- * The general rules, IN ORDER — and the order is contract, not style.
- *
- * Expressed as data rather than a sequence of `if`s because precedence bugs
- * are a demonstrated class here: D52 was one. The kill switch was checked last
- * on the destructive path, so an operator who had pulled the emergency brake
- * was told "no recorded warning" instead. The outcome was a refusal either
- * way; the reported CODE contradicted the register, and D39 makes codes
- * contract.
- *
- * A sequence can only be tested by constructing inputs that trigger several
- * rules and observing which wins. A list can be asserted directly, which is
- * what `write.test.ts` now does.
+ * The general rules, IN ORDER — order is contract, not style (D39, D52).
+ * Data rather than `if`s so precedence is asserted directly by the tests
+ * instead of inferred from contrived multi-trigger inputs.
  */
 export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
     [

@@ -2,19 +2,11 @@
  * decide() — the one verb (D92). A delivery or observation goes in; a
  * report and the approved intents come out; nothing else escapes.
  *
- * This file OWNS the composition that was previously hand-wired in four
- * places (the slice test, the scenario test, the probes harness, and the
- * shell-to-be): normalize → evaluate the enabled capabilities → screen
- * every intent → derive the safety context → gate every write → collect
- * every explanation. The wiring was the most duplicated un-owned thing in
- * the project, and the place its bugs lived.
- *
- * Externals are exactly the facts core cannot know — the kill switch, the
- * installation's grants, human-change ordering, resolver answers — supplied
- * as data and lookups, never I/O. Everything else the old API asked callers
- * to restate (`observedMeanings`, `preconditionHolds`) is now derived from
- * the observation by `preconditions.ts`, so a caller cannot assert a world
- * that contradicts the one it just delivered.
+ * This file OWNS the composition: normalize → evaluate → screen → derive
+ * the world → gate → report. Externals are only the facts core cannot know
+ * (clock, kill switch, grants, human ordering, resolver answers) as data
+ * and lookups, never I/O; everything derivable is derived, so a caller
+ * cannot assert a world that contradicts the one it delivered.
  */
 
 import {
@@ -163,11 +155,8 @@ const projectionOf = (observation: EngineObservation) =>
     observation.kind === "staleItemsDue" ? null : observation.position;
 
 /**
- * One intent through every gate: the screen, the derived world, the write
- * or destructive verdict — returning the findings that tell its story and
- * the intent itself if it may act. Extracted from `decide`'s loop (D92
- * cleanup): the stanzas had grown five levels deep, and the shell's author
- * reads this file first.
+ * One intent through every gate — screen, derived world, verdict —
+ * returning its findings and, if it may act, the intent itself.
  */
 function gateIntent(
     intent: AnyIntent,
@@ -208,10 +197,7 @@ function gateIntent(
     const verdict = destructiveOrWrite(intent, request, config, context, externals.now);
 
     const findings: Finding[] = [];
-    /**
-     * An intent that ACTS (or would, in dry-run) tells its story; refusals
-     * keep their reasons unaccompanied (D92 3d).
-     */
+    // Acting intents tell their story; refusals keep their reasons alone (D92 3d).
     if (verdict.outcome !== "refuse") {
         findings.push(explanationFinding(intent.explanation, subject));
     }
@@ -227,10 +213,8 @@ function gateIntent(
 }
 
 /**
- * Destructive intents take the destructive gate; the warning is rebuilt
- * from the STORED warned cause, never the current request — building it
- * from the request would make D60's snapshot comparison compare a value
- * with itself (D72).
+ * Destructive intents take the destructive gate; the warning rebuilds from
+ * the STORED warned cause, never the current request (D60, D72).
  */
 function destructiveOrWrite(
     intent: AnyIntent,
