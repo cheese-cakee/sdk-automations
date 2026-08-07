@@ -7,7 +7,6 @@
 
 import type { ActionClass, ClaimedFacts } from "../safety/index.js";
 import type { IdempotencyClass } from "./catalogue.js";
-import type { MappableMeaning } from "../config/index.js";
 import {
     canTransitionIssue,
     canTransitionPr,

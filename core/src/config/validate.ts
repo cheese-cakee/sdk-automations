@@ -17,7 +17,6 @@ import {
     TOP_LEVEL_KEYS,
     type CapabilityConfig,
     type MappableMeaning,
-    cleanRecord,
     type RepositoryMode,
 } from "./schema.js";
 

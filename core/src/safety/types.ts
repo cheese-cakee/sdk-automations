@@ -7,7 +7,6 @@
  * depend on this without depending on each other.
  */
 
-import type { RepositoryConfig } from "../config/index.js";
 import type { DerivedWorld } from "./world.js";
 import type { PermissionGrant } from "../github/index.js";
 export type { RepositoryMode } from "../config/index.js";

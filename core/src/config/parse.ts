@@ -8,7 +8,6 @@ import {
     NO_CONFIG,
     type ConfigResult,
     type ParseConfigOptions,
-    type RepositoryMode,
 } from "./schema.js";
 import {
     checkSchemaVersion,

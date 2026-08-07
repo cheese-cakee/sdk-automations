@@ -10,9 +10,7 @@
 import type { TypedDeclaration } from "./declaration.js";
 import type { RepositoryConfig, MappableMeaning } from "../config/index.js";
 import type {
-    IntentOperation,
     ObservationCatalogue,
-    ObservationName,
     ResolverAnswer,
     ResolverInput,
     ResolverName,

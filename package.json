@@ -6,12 +6,20 @@
     "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), executor (recovery loop), shell (transport), probes (disposable).",
     "scripts": {
         "test": "pnpm -r test",
+        "test:coverage": "pnpm -r test:coverage",
+        "lint": "eslint .",
         "audit": "pnpm audit --audit-level moderate"
+    },
+    "devDependencies": {
+        "@vitest/coverage-v8": "^4.1.10",
+        "eslint": "^9.39.5",
+        "typescript-eslint": "^8.46.0"
     },
     "pnpm": {
         "overrides": {
             "brace-expansion@<5.0.9": ">=5.0.9",
             "fast-uri@<3.1.5": ">=3.1.5",
+            "nanoid@<3.3.17": ">=3.3.17 <4",
             "qs@<6.15.2": ">=6.15.2"
         }
     }
