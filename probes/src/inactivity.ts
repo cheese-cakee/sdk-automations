@@ -14,9 +14,8 @@
 
 import {
     declareCapability,
-    deriveIdempotencyKey,
+    intentFactory,
     type Capability,
-    type Intent,
     type IntentFor,
 } from "@hiero-hackers/automation-core";
 
@@ -80,38 +79,27 @@ export const inactivity: Capability<InactivityDeclaration> = {
 
             if (entry.warnedAt === null) {
                 // First stale observation warns. It never acts (§3).
-                const warning = {
-                    capability: "inactivity",
+                const make = intentFactory("inactivity", {
                     repository: observation.repository,
                     item: entry.item,
-                    operation: "postManagedComment",
-                    actionClass: "humanFacingOutput",
-                    expected: {
-                        meaningsPresent: [],
-                        meaningsAbsent: [],
-                        closed: false,
-                    },
-                    desired: {
-                        marker: "<!-- hiero-automation:inactivity -->",
-                        body: `This has been assigned to @${entry.assignee} without activity for a while. It will be unassigned in ${String(graceDays)} days unless there is a comment or a commit.`,
-                    },
-                    cause: {
-                        cause: "assignmentWentStale",
-                        observedAt: observation.observedAt,
-                    },
-                    explanation: {
-                        capability: "inactivity",
-                        summary: "Warned before reclaiming a stale assignment.",
-                        detail: [`grace period ${String(graceDays)} days`],
-                    },
-                } as const satisfies Omit<
-                    Intent<"postManagedComment">,
-                    "idempotencyKey"
-                >;
-                intents.push({
-                    ...warning,
-                    idempotencyKey: deriveIdempotencyKey(warning),
+                    observedAt: observation.observedAt,
                 });
+                intents.push(
+                    make({
+                        operation: "postManagedComment",
+                        actionClass: "humanFacingOutput",
+                        desired: {
+                            marker: "<!-- hiero-automation:inactivity -->",
+                            body: `This has been assigned to @${entry.assignee} without activity for a while. It will be unassigned in ${String(graceDays)} days unless there is a comment or a commit.`,
+                        },
+                        cause: "assignmentWentStale",
+                        expected: { closed: false },
+                        explain: {
+                            summary: "Warned before reclaiming a stale assignment.",
+                            detail: [`grace period ${String(graceDays)} days`],
+                        },
+                    }) as IntentFor<InactivityDeclaration>,
+                );
                 continue;
             }
 
@@ -119,65 +107,51 @@ export const inactivity: Capability<InactivityDeclaration> = {
              * The grace arithmetic is deliberately NOT repeated here —
              * `evaluateDestructive` owns it, including the floor and the
              * qualifying-activity cancellation. The capability states the
-             * warning it recorded and lets the gate decide; a capability
-             * that computed its own elapsed time would be able to disagree
-             * with the engine that is supposed to be authoritative.
-             */
-            /**
-             * The cause is the ORIGINAL stale observation, not this
-             * sweep. D60 authorizes a warning against one causal
-             * observation, so an act carrying a fresh cause is not the
-             * act that was warned about — the first draft of this probe
-             * used `gracePeriodElapsed` at the current sweep time and
-             * would now be refused as `warningRequestMismatch`, which is
-             * the check working rather than failing.
+             * warning it recorded and lets the gate decide.
+             *
+             * The occasion is the ORIGINAL stale observation, not this
+             * sweep: D60 authorizes a warning against one causal
+             * observation, so an act carrying a fresh cause is not the act
+             * that was warned about — the factory binding `observedAt` to
+             * `entry.warnedAt` is that rule made structural.
              */
             const warnedCause = "assignmentWentStale";
-            const reclaim = {
-                capability: "inactivity",
+            const makeAct = intentFactory("inactivity", {
                 repository: observation.repository,
                 item: entry.item,
-                operation: "unassign",
-                actionClass: "clockTriggeredDestructive",
-                destructive: {
-                    warnedAt: entry.warnedAt,
-                    gracePeriodDays: graceDays,
-                    earliestActionAt: new Date(
-                        entry.warnedAt.getTime() + graceDays * 24 * 60 * 60 * 1000,
-                    ),
-                    cancelledBy: "a comment or commit from the assignee",
-                    reversesWith: "reassigning the item to the same person",
-                    qualifyingActivitySinceWarning:
-                        entry.lastHumanActivityAt !== null &&
-                        entry.lastHumanActivityAt.getTime() >
-                            entry.warnedAt.getTime(),
-                    warnedCause,
-                    warnedCauseObservedAt: entry.warnedAt,
-                },
-                expected: {
-                    meaningsPresent: [],
-                    meaningsAbsent: [],
-                    closed: false,
-                },
-                desired: { login: entry.assignee },
-                cause: {
-                    cause: warnedCause,
-                    observedAt: entry.warnedAt,
-                },
-                explanation: {
-                    capability: "inactivity",
-                    summary: "Reclaimed a stale assignment after the grace period.",
-                    detail: [
-                        `warned at ${entry.warnedAt.toISOString()}`,
-                        `grace period ${String(graceDays)} days`,
-                    ],
-                },
-            } as const satisfies Omit<Intent<"unassign">, "idempotencyKey">;
-
-            intents.push({
-                ...reclaim,
-                idempotencyKey: deriveIdempotencyKey(reclaim),
+                observedAt: entry.warnedAt,
             });
+            intents.push(
+                makeAct({
+                    operation: "unassign",
+                    actionClass: "clockTriggeredDestructive",
+                    desired: { login: entry.assignee },
+                    cause: warnedCause,
+                    expected: { closed: false },
+                    destructive: {
+                        warnedAt: entry.warnedAt,
+                        gracePeriodDays: graceDays,
+                        earliestActionAt: new Date(
+                            entry.warnedAt.getTime() + graceDays * 24 * 60 * 60 * 1000,
+                        ),
+                        cancelledBy: "a comment or commit from the assignee",
+                        reversesWith: "reassigning the item to the same person",
+                        qualifyingActivitySinceWarning:
+                            entry.lastHumanActivityAt !== null &&
+                            entry.lastHumanActivityAt.getTime() >
+                                entry.warnedAt.getTime(),
+                        warnedCause,
+                        warnedCauseObservedAt: entry.warnedAt,
+                    },
+                    explain: {
+                        summary: "Reclaimed a stale assignment after the grace period.",
+                        detail: [
+                            `warned at ${entry.warnedAt.toISOString()}`,
+                            `grace period ${String(graceDays)} days`,
+                        ],
+                    },
+                }) as IntentFor<InactivityDeclaration>,
+            );
         }
 
         return intents;

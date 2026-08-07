@@ -118,11 +118,12 @@ describe("the apply path, on a real delivery", () => {
             operation: "applyMappedLabel",
             item: { kind: "issue", number: 164 },
         });
-        // The intent's own explanation is NOT a finding today — parity with
-        // the hand-wirings, which surfaced only verdicts. Whether approved
-        // intents' explanations should reach the report is a phase-3 design
-        // note, recorded in D92's row when it lands.
-        expect(decision.report.findings.map((f) => f.code)).toEqual(["applied"]);
+        // D92 3d resolved the phase-1 note: an acting intent's explanation
+        // IS a finding, beside its verdict.
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
         expect(problems(decision.report)).toEqual([]);
         expect(decision.report.revision).toBe("rev-engine-1");
     });
@@ -131,6 +132,7 @@ describe("the apply path, on a real delivery", () => {
         const decision = await decide(delivery("issues.opened.json"), configIn("dry-run"), [triage], externals);
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings.map((f) => `${f.code}:${f.severity}`)).toEqual([
+            "capabilityExplained:info",
             "modeRecordsOnly:notice",
         ]);
     });
@@ -435,7 +437,10 @@ describe("paths the delivery tests never walk", () => {
             [sweeper({ meaningsPresent: [], meaningsAbsent: [], closed: null })],
             externals,
         );
-        expect(vacuous.report.findings.map((f) => f.code)).toEqual(["applied"]);
+        expect(vacuous.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
 
         const claiming = await decide(
             { kind: "observation", observation },

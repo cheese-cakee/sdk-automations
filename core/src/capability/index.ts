@@ -9,3 +9,4 @@ export * from "./declaration.js";
 export * from "./catalogue.js";
 export * from "./boundary.js";
 export * from "./intent.js";
+export * from "./factory.js";

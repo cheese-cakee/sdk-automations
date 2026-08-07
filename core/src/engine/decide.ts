@@ -246,6 +246,17 @@ export async function decide(
                         latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
                     },
                 );
+                /**
+                 * An intent that ACTS (or would, in dry-run) tells its story:
+                 * the explanation the factory made unskippable becomes the
+                 * finding a managed comment and a dry-run report render.
+                 * Refusals keep their refusal reasons unaccompanied — an
+                 * explanation beside every refusal would drown the report
+                 * (D92 3d, resolving the phase-1 design note).
+                 */
+                if (verdict.outcome !== "refuse") {
+                    findings.push(explanationFinding(intent.explanation, subject));
+                }
                 findings.push(
                     verdictFinding(verdict, {
                         kind: "effect",

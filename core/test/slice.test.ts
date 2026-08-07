@@ -20,6 +20,7 @@ import {
     evaluateWrite,
     normalizeDelivery,
     parseConfig,
+    explanationFinding,
     problems,
     screenIntent,
     verdictFinding,
@@ -144,6 +145,15 @@ describe("one real delivery, end to end", () => {
         mode: config.mode,
         repository: observation.repository,
         findings: [
+            /**
+             * D92 3d: an intent that acts tells its story — the explanation
+             * joins the report beside the verdict, on both wirings.
+             */
+            explanationFinding(keyed.explanation, {
+                kind: "item",
+                capability: "triage",
+                item: observation.item,
+            }),
             verdictFinding(verdict, {
                 kind: "effect",
                 capability: "triage",
@@ -153,7 +163,10 @@ describe("one real delivery, end to end", () => {
         ],
     };
     it("the report closes clean: nothing needs a human", () => {
-        expect(report.findings[0]).toMatchObject({ severity: "info", code: "applied" });
+        expect(report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
         expect(problems(report)).toEqual([]);
     });
 
