@@ -44,7 +44,7 @@ If the boundary holds for all three, it holds for anything in
 | Suite | Claim |
 |---|---|
 | `test/boundary.test.ts` | Declarations are catalogue-consistent; the config projection leaks neither another capability's block nor a repository label string; the intent screen refuses undeclared, misattributed, under-classified, and malformed-destructive intents |
-| `test/toggle-matrix.test.ts` | **P3**, tested: all eight subsets, each capability's behaviour identical regardless of neighbours, disabled capabilities never evaluated, with a negative control so the matrix cannot pass vacuously |
+| `test/engine-matrix.test.ts` | **P3**, tested: all eight subsets, each capability's behaviour identical regardless of neighbours, disabled capabilities never evaluated, with a negative control so the matrix cannot pass vacuously |
 | `test/composition.test.ts` | The full path — real config, real projection, real capability, real safety engine, real SQLite store, real recovery loop — including exactly-once across a crash, and dry-run leaving the journal empty |
 
 The P3 run is the one worth flagging: [`build-plan.md`](../design/build-plan.md)

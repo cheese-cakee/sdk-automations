@@ -8,12 +8,10 @@
  * C, C's OBSERVABLE DECISION — its approved intents and its findings — is
  * identical to C running alone. Enabling a neighbour changes nothing.
  *
- * One honest asymmetry against the old matrix, documented not hidden: under
- * the engine's derived preconditions, `inactivity`'s intents (which claim
- * `closed: false` on the unprojected `staleItemsDue`) are refused
- * `preconditionStale` — the planner's per-intent recheck used to vouch for
- * them. That tension is 3(c)'s agenda; here it holds for every subset
- * equally, so isolation is still fully measured.
+ * The 3(b) run surfaced a tension here (unprojected claims were refused
+ * `preconditionStale`); 3(c) resolved it by act-time deferral — the claim
+ * rides to the adapter's write-time recheck — so `inactivity` now warns
+ * through the engine like everything else.
  */
 
 import { describe, expect, it } from "vitest";
@@ -81,6 +79,7 @@ const SETTINGS = {
 };
 
 const externals: DecideExternals = {
+    now: new Date("2026-08-03T09:00:05.000Z"),
     killSwitchActive: false,
     installationGrants: ["issues:write"],
     latestHumanChangeAt: () => null,
@@ -159,12 +158,13 @@ describe("P3 through the engine", () => {
         expect(intakeAlone.approved.length).toBeGreaterThan(0);
         const prAlone = sliceFor(await runAll(["prQuality"]), "prQuality");
         expect(prAlone.approved.length).toBeGreaterThan(0);
-        // inactivity's share is refusals under the engine's derived
-        // preconditions — nonzero, and the 3(c) tension made visible.
+        // 3(c): the warning now travels the engine — approved, explained.
         const staleAlone = sliceFor(await runAll(["inactivity"]), "inactivity");
-        expect(staleAlone.approved).toEqual([]);
-        expect(
-            staleAlone.findings.some((f) => f.code === "preconditionStale"),
-        ).toBe(true);
+        expect(staleAlone.approved).toHaveLength(1);
+        expect(staleAlone.approved[0]).toMatchObject({ operation: "postManagedComment" });
+        expect(staleAlone.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
     });
 });

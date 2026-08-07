@@ -212,6 +212,7 @@ describe("one real delivery, end to end", () => {
             config,
             [asCapability as never],
             {
+                now: new Date("2026-08-07T02:00:00Z"),
                 killSwitchActive: false,
                 installationGrants: ["issues:write"],
                 latestHumanChangeAt: () => null,

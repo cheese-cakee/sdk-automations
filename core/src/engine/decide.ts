@@ -34,7 +34,11 @@ import {
 } from "../capability/index.js";
 import { normalizeDelivery, type PermissionGrant } from "../github/index.js";
 import type { RepositoryConfig } from "../config/index.js";
-import { evaluateWrite } from "../safety/index.js";
+import {
+    createDestructiveWarning,
+    evaluateDestructive,
+    evaluateWrite,
+} from "../safety/index.js";
 import {
     explanationFinding,
     finding,
@@ -58,6 +62,8 @@ export interface EngineCapability {
 }
 
 export interface DecideExternals {
+    /** The caller's clock — the destructive grace comparison needs one. */
+    readonly now: Date;
     readonly killSwitchActive: boolean;
     readonly installationGrants: readonly PermissionGrant[];
     /** Ordering evidence per item; `"unknown"` is a safe conflict (manual-edits.md §2). */
@@ -117,6 +123,24 @@ class EngineHandle {
 
     explain(explanation: StructuredExplanation): void {
         this.explanations.push(explanation);
+    }
+}
+
+/**
+ * safety.md §2.6 wants "the exact item and value the adapter may change".
+ * Moved here from the planner (D92 3c) — the exhaustive switch means a new
+ * catalogue operation fails to compile until someone states what it changes.
+ */
+export function describeChange(intent: AnyIntent): string {
+    switch (intent.operation) {
+        case "postManagedComment":
+            return `managed comment ${intent.desired.marker}`;
+        case "applyMappedLabel":
+            // "set", not "add": the adapter swaps the previous position
+            // label as part of realising this (D4, D80).
+            return `set mapped position ${intent.desired.meaning}`;
+        case "unassign":
+            return `unassign ${intent.desired.login}`;
     }
 }
 
@@ -210,45 +234,77 @@ export async function decide(
                     continue;
                 }
                 /**
-                 * The derivation, not an assertion. A projected observation
-                 * yields the real check; an unprojected one (staleItemsDue)
-                 * can honestly support only a vacuous claim — a capability
-                 * claiming meaning-facts it was never shown is stale by
-                 * construction.
+                 * The derivation, not an assertion — where derivation is
+                 * possible. A projected observation yields the real check.
+                 * An UNPROJECTED one (staleItemsDue) shows the engine no
+                 * meanings to check against, so the claim passes through
+                 * UNVERIFIED-HERE rather than being refused: it rides
+                 * inside `AdapterCommand.expected`, and the adapter
+                 * rechecks it against live GitHub at write time — the only
+                 * place a sweep's openness claim can honestly be verified
+                 * (D92 3c, resolving the engine-matrix tension).
                  */
                 const preconditionHolds =
-                    projection === null
-                        ? intent.expected.meaningsPresent.length === 0 &&
-                          intent.expected.meaningsAbsent.length === 0 &&
-                          intent.expected.closed === null
-                        : expectedHolds(intent.expected, projection);
+                    projection === null || expectedHolds(intent.expected, projection);
 
-                const verdict = evaluateWrite(
-                    {
-                        capability: declaration.name,
-                        actionClass: intent.actionClass,
-                        // From the catalogue — the platform owns what an
-                        // operation needs (D62); the declaration's copy is
-                        // the redundant restatement, not the authority.
-                        requiredPermissions: [
-                            INTENT_OPERATIONS[intent.operation].permission,
-                        ],
-                        cause: intent.cause.cause,
-                        causeObservedAt: intent.cause.observedAt,
-                        target: {
-                            item: `${intent.item.kind} #${intent.item.number}`,
-                            change: intent.operation,
-                        },
+                const request = {
+                    capability: declaration.name,
+                    actionClass: intent.actionClass,
+                    // From the catalogue — the platform owns what an
+                    // operation needs (D62); the declaration's copy is
+                    // the redundant restatement, not the authority.
+                    requiredPermissions: [
+                        INTENT_OPERATIONS[intent.operation].permission,
+                    ],
+                    cause: intent.cause.cause,
+                    causeObservedAt: intent.cause.observedAt,
+                    target: {
+                        item: `${intent.repository.owner}/${intent.repository.repo}#${String(intent.item.number)}`,
+                        change: describeChange(intent),
                     },
-                    config,
-                    {
-                        killSwitchActive: externals.killSwitchActive,
-                        installationGrants: externals.installationGrants,
-                        observedMeanings,
-                        preconditionHolds,
-                        latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
-                    },
-                );
+                };
+                const context = {
+                    killSwitchActive: externals.killSwitchActive,
+                    installationGrants: externals.installationGrants,
+                    observedMeanings,
+                    preconditionHolds,
+                    latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
+                };
+                /**
+                 * Destructive intents take the destructive gate (moved from
+                 * the planner, D92 3c). The warning is rebuilt from the
+                 * STORED warned cause, never from the current request —
+                 * building it from the request would make D60's snapshot
+                 * comparison compare a value with itself
+                 * (FINDING(runtime-warning-cannot-cross-the-store), D72).
+                 */
+                const verdict =
+                    intent.actionClass === "clockTriggeredDestructive" &&
+                    intent.destructive !== undefined
+                        ? evaluateDestructive(
+                              {
+                                  request,
+                                  warning: createDestructiveWarning({
+                                      request: {
+                                          ...request,
+                                          cause: intent.destructive.warnedCause,
+                                          causeObservedAt:
+                                              intent.destructive.warnedCauseObservedAt,
+                                      },
+                                      warnedAt: intent.destructive.warnedAt,
+                                      gracePeriodDays: intent.destructive.gracePeriodDays,
+                                      earliestActionAt: intent.destructive.earliestActionAt,
+                                      cancelledBy: intent.destructive.cancelledBy,
+                                      reversesWith: intent.destructive.reversesWith,
+                                  }),
+                                  qualifyingActivitySinceWarning:
+                                      intent.destructive.qualifyingActivitySinceWarning,
+                              },
+                              config,
+                              context,
+                              externals.now,
+                          )
+                        : evaluateWrite(request, config, context);
                 /**
                  * An intent that ACTS (or would, in dry-run) tells its story:
                  * the explanation the factory made unskippable becomes the
