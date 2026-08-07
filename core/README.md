@@ -168,7 +168,14 @@ taste: when the capability boundary had no tests in this package at all, the sco
 89.27 — so 90 is the value that would have failed the build for the regression
 that actually happened. It catches a module losing its coverage wholesale. It
 does *not* catch a module half-losing it, which is the weaker guarantee and is
-stated here rather than assumed. Today's score is 98.89.
+stated here rather than assumed. Today's score is 96.63.
+
+A line-coverage floor sits beneath the mutation gate: `vitest run --coverage`
+(`core`'s `test:coverage`) holds lines, branches, functions, and statements
+at 80 against `src/**`, excluding the `src/index.ts` barrel, and reports
+99.64% lines. It is a local floor, not a CI gate — only Stryker's break
+threshold fails the build — and is stated here because a number a contributor
+can re-run is the kind of evidence that stays honest.
 
 ## What the tests prove — and what they do not
 
