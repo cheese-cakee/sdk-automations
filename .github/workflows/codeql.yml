@@ -1,0 +1,74 @@
+name: codeql
+
+# A committed workflow rather than GitHub's default setup: the same reason
+# every action here is SHA-pinned — what runs against this repository should
+# be reviewable in a pull request, not configured out of band (#42).
+#
+# The timing is the argument. This workspace was pure logic with almost no
+# sink surface until `packages/shell/` landed an HTTP endpoint that parses
+# webhook bodies from anyone and handles a signing secret; the adapter brings
+# credential handling next. Scanning starts now so that code is born scanned
+# rather than retrofitted.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published query finds this code without waiting for
+    # someone to open a pull request. Offset off the hour: scheduled runs
+    # cluster on GitHub's shared runners at :00 and get delayed.
+    - cron: "37 5 * * 2"
+
+# Least privilege, same as ci.yml: the analyze job below raises exactly one
+# permission, and only for itself.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # The SARIF upload, and nothing else. Scoped to this job rather than
+      # the workflow so no other step ever inherits a write.
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # `actions` is not padding: this repository makes security claims
+        # about its own workflows — SHA pinning, no privileged fork trigger,
+        # read-only permissions, no persisted token — and those claims live
+        # in YAML that deserves the same scrutiny as the TypeScript.
+        # (Naming that trigger literally here would trip the hygiene
+        # invariant, which greps rather than parses. Bluntness is the point.)
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+          # No compilation step: this workspace typechecks but never emits.
+          build-mode: none
+          # `paths-ignore` here excludes from ANALYSIS, which is different
+          # from the trigger-level key of the same name. Both trees are
+          # untracked so CI never checks them out — the exclusion documents
+          # intent, and stops a future contributor's local run drowning in
+          # findings from disposable era-1 harness code (D99).
+          config: |
+            paths-ignore:
+              - packages/lab/harness
+              - packages/shell/data
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          category: "/language:${{ matrix.language }}"
