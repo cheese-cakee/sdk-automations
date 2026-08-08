@@ -3,7 +3,7 @@
 Every file here is parsed by the test suite. They are not illustrations of the schema — they are the
 schema's only worked examples, and a change that breaks one fails the build.
 
-`checks/test/examples.test.ts` reads this directory through `parseConfigDocument`, the same entry
+`packages/checks/test/examples.test.ts` reads this directory through `parseConfigDocument`, the same entry
 point the shell will use on a real repository.
 
 ## The valid ones
@@ -21,7 +21,7 @@ writing is not staging its adoption, it is guessing.
 
 ## Where the rejections live
 
-Not here. Every way a configuration can be *wrong* is in `core/test/config/documents.ts` — thirty
+Not here. Every way a configuration can be *wrong* is in `packages/core/test/config/documents.ts` — thirty
 documents, at least one per `ConfigErrorCode`, each asserted to produce that code and no other. Adding a
 member to `ConfigErrorCode` fails compilation until a document reaches it.
 

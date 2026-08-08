@@ -2,9 +2,9 @@
 # node_modules), capture staging, and sandbox App credentials. Tracked:
 # protocols/, src/, test/. Reviewed captures go STRAIGHT to
 # core/test/github/fixtures/ — see lab/README.md and D88.
-lab/harness/
-lab/evidence/
-lab/.env
+packages/lab/harness/
+packages/lab/evidence/
+packages/lab/.env
 node_modules/
 .stryker-tmp/
 coverage/
@@ -12,4 +12,4 @@ reports/
 
 # The shell's operational home: SQLite store, the operator's config copy,
 # and the decision journal. Local state, never tracked.
-shell/data/
+packages/shell/data/

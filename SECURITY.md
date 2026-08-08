@@ -18,7 +18,7 @@ rather than aspirationally.
   repository to `observe`, where the platform reads and reports but performs
   no workflow-changing writes.
 - Webhook signature verification is implemented and tested in
-  [`core/src/github/signatures.ts`](core/src/github/signatures.ts).
+  [`packages/core/src/github/signatures.ts`](packages/core/src/github/signatures.ts).
 - The recovery design treats effect claims as leases and relies on journaling
   plus GitHub re-reads rather than assuming a single in-flight worker. The
   overlap contract and retention windows are still open decisions in
