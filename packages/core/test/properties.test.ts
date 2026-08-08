@@ -18,6 +18,22 @@ import {
 
 const SEED = 20260725;
 
+/**
+ * Headroom for the two heavy properties, applied PER TEST rather than to
+ * core's vitest config, so a genuine hang anywhere else still fails fast.
+ *
+ * These two run 300 generated cases each and measure 1.5-1.9 s on an idle
+ * machine — a 3x margin under vitest's 5 s default. `pnpm -r test` runs
+ * seven packages concurrently over core's own parallel workers, and a 3x
+ * slowdown there is ordinary, which is the best explanation of the
+ * intermittent failures this file produced across 2026-08-07/08: the seed
+ * is FIXED, so the inputs are identical on every run and an
+ * input-dependent counterexample is impossible, while a timeout is
+ * load-dependent by nature. The earlier "seed-dependent flake" reading
+ * was wrong for exactly that reason (D98).
+ */
+const PROPERTY_TIMEOUT_MS = 30_000;
+
 // ── Generators ─────────────────────────────────────────────────────
 
 const camelName = fc.stringMatching(/^[a-z][a-zA-Z0-9]{0,10}$/);
@@ -31,10 +47,9 @@ const validConfig = fc
              * Unique by the VALIDATOR's judgment, not by exact string: the
              * collision rule folds case (D55), so ["Abc", "abc"] is exact-
              * unique yet labelNotInjective — a real collision class the
-             * exact-string uniqueness permitted — though the observed
-             * failures under a FIXED seed remain unexplained (see the
-             * failure handler below). Same fold, same
-             * function, third consumer.
+             * exact-string uniqueness permitted. Same fold, same function,
+             * third consumer. (The intermittent failures once blamed on
+             * this generator were a timeout, not a counterexample — D98.)
              */
             .uniqueArray(fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9: -]{0,20}[a-zA-Z0-9]$/), {
                 selector: labelKey,
@@ -88,7 +103,7 @@ describe("parseConfig properties", () => {
             }),
             { seed: SEED, numRuns: 300 },
         );
-    });
+    }, PROPERTY_TIMEOUT_MS);
 
     it("is a fixed point: re-parsing an accepted config yields the identical config", () => {
         // Catches silent normalization drift — whatever parseConfig
@@ -116,7 +131,7 @@ describe("parseConfig properties", () => {
             }),
             { seed: SEED, numRuns: 300 },
         );
-    });
+    }, PROPERTY_TIMEOUT_MS);
 });
 
 describe("classifyFailure properties", () => {

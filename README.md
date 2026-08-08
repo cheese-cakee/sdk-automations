@@ -10,7 +10,7 @@ A repository enables only the capabilities it wants and maps them to its own wor
 handles GitHub access, configuration, safety, recovery, and audit information.
 
 The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Six
+it. The module documents are candidates based on that audit. They are not a committed product list. Seven
 packages live under [`packages/`](packages/) as the parallel track the stage gates do not block (a pnpm
 workspace), all pending stage-four ratification of the decisions they encode:
 
@@ -28,11 +28,10 @@ workspace), all pending stage-four ratification of the decisions they encode:
 - [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
   can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
 
-Beyond `packages/` and `design/`, two user-facing roots: [`docs/`](docs/README.md) — the configuration
-guide, every table locked to the code by `checks/` — and [`examples/config/`](examples/config/README.md),
-worked configurations parsed by the test suite on every commit. A top-level directory holds workspace
-packages or is one of `design/`, `docs/`, `examples/` — a rule the suite enforces, like the other
-sentences in this paragraph.
+Beyond `packages/` and `design/`, one user-facing root: [`docs/`](docs/README.md) — the configuration
+guide, every table locked to the code by `checks/`, and [`docs/examples/`](docs/examples/README.md), worked
+configurations parsed by the test suite on every commit. A top-level directory holds workspace packages
+or is one of `design/`, `docs/` — a rule the suite enforces, like the other sentences in this paragraph.
 
 New here? [`design/trace.md`](design/trace.md) follows one real delivery through every stage of the
 system, introducing each term at the moment it acts.

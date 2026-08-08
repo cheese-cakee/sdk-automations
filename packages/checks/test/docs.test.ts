@@ -107,12 +107,12 @@ describe("docs/quickstart.md", () => {
     it("offers every tested example, and links no phantom ones", () => {
         const quickstart = page("quickstart.md");
         const shipped = readdirSync(
-            fileURLToPath(new URL("../../../examples/config/", import.meta.url)),
+            fileURLToPath(new URL("../../../docs/examples/", import.meta.url)),
         )
             .filter((f) => f.endsWith(".yml"))
             .sort();
         const linked = [
-            ...quickstart.matchAll(/\]\(\.\.\/examples\/config\/([a-z-]+\.yml)\)/g),
+            ...quickstart.matchAll(/\]\(examples\/([a-z-]+\.yml)\)/g),
         ]
             .map((m) => m[1]!)
             .sort();

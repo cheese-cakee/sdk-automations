@@ -1,6 +1,6 @@
 /**
- * The top level holds `packages/` and three knowledge roots — D86's
- * sentence, tightened by D95. Split from repo-artifacts.test.ts (D89).
+ * The top level holds `packages/` and two knowledge roots — D86's
+ * sentence, tightened by D95 and D97. Split from repo-artifacts.test.ts (D89).
  *
  * The allowed package root is DERIVED from the workspace file rather than
  * spelled `packages`: the rule is "a directory is where workspace packages
@@ -36,13 +36,13 @@ function topLevelOffenders(
 
 /**
  * The consolidation's real product is a sentence: a top-level directory
- * holds workspace packages, or it is one of three knowledge roots —
- * design/ (internal), docs/ (users), examples/ (users, executable).
- * audit/ and planning/ existed because no such rule did; this keeps the
- * next five packages from re-growing the clutter.
+ * holds workspace packages, or it is one of two knowledge roots —
+ * design/ (internal why) and docs/ (users, including the executable
+ * examples). audit/ and planning/ existed because no such rule did; this
+ * keeps the next five packages from re-growing the clutter.
  */
-describe("the top level holds packages and three knowledge roots", () => {
-    const KNOWLEDGE = new Set(["design", "docs", "examples"]);
+describe("the top level holds packages and two knowledge roots", () => {
+    const KNOWLEDGE = new Set(["design", "docs"]);
 
     it("every top-level directory is a package root or a named root", () => {
         const packages = packageRoots(workspacePackages());

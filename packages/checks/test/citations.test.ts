@@ -47,7 +47,12 @@ describe("documents cite files that exist", () => {
      * lives under design/, docs/ or examples/), repo-rooted document paths
      * are checkable with the same rigour as source paths.
      */
-    const DOC_PATH = /\b((?:design|docs|examples)\/[A-Za-z0-9._/-]+\.(?:md|yml))\b/g;
+    // Exactly the top-level knowledge roots. `examples` left this list when
+    // it moved under docs/ (D97): a bare `examples/x.yml` is no longer a
+    // repo-rooted path, it is a docs-RELATIVE link, and claiming otherwise
+    // made this check report four links that resolve perfectly. Relative
+    // targets are `links.test.ts`'s job; `docs/examples/…` still matches here.
+    const DOC_PATH = /\b((?:design|docs)\/[A-Za-z0-9._/-]+\.(?:md|yml))\b/g;
 
     it("finds documents and citations to check", () => {
         expect(docs.length).toBeGreaterThan(5);

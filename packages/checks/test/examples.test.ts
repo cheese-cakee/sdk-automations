@@ -1,5 +1,5 @@
 /**
- * `examples/config/` is documentation that runs.
+ * `docs/examples/` is documentation that runs.
  *
  * The examples in `design/config/schema.md` §3 were correct when checked — and
  * correct by nobody's doing. No code had ever read YAML, so a documented file
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { parseConfigDocument } from "@hiero-hackers/automation-core";
 
 const examplesDir = fileURLToPath(
-    new URL("../../../examples/config/", import.meta.url),
+    new URL("../../../docs/examples/", import.meta.url),
 );
 
 /**

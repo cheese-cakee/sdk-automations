@@ -41,7 +41,7 @@
 
 ## Examples: deliberately few, for now
 
-`examples/config/` stays at four. The tempting additions are mode variants (`dry-run.yml`) and
+`docs/examples/` stays at four. The tempting additions are mode variants (`dry-run.yml`) and
 setting variants — both wrong: mode is a documented one-word change, and settings belong to
 capabilities that do not ship yet, so more files now would document fiction and multiply maintenance
 without adding a decision a user can copy. The trigger for growth is the first shipped capability;
