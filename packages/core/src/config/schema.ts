@@ -1,11 +1,12 @@
 /**
- * The reviewed repository configuration: its shape, its enumerations, and
- * the results of validating it — `design/config/schema.md` §2–§4.
+ * The reviewed repository configuration: its shape, its enumerations, and the
+ * results of validating it. See `design/config/schema.md` §2–§4.
  *
  * Types and constants only. The rules that check a document live in
- * `validate.ts`; the entry point that runs them lives in `parse.ts`.
+ * `validate.ts`. The entry point that runs them lives in `parse.ts`.
  */
 
+/** The blast-radius ladder a repository chooses from, least to most. */
 export const REPOSITORY_MODES = [
     "disabled",
     "observe",
@@ -13,20 +14,10 @@ export const REPOSITORY_MODES = [
     "active",
 ] as const;
 
-/**
- * Derived, never restated. `MAPPABLE_MEANINGS` two declarations below has
- * always done this; the mode did not, and kept its union hand-written in
- * `safety.ts` — the same four strings in two files with nothing linking
- * them, and a `value as RepositoryMode` cast in this file quietly covering
- * the seam. Adding a mode to the array alone would have let `parseConfig`
- * accept a value the safety engine's type had never heard of.
- *
- * FINDING(config-mode-union-derived), D76 — the fifth sighting of one fact
- * stored twice, after D53, D62, D67 and D73.
- */
+/** Derived from the array, so a new mode needs no edit anywhere else (D76). */
 export type RepositoryMode = (typeof REPOSITORY_MODES)[number];
 
-/** The meanings a repository may map — design/core/taxonomy.md §2. */
+/** The meanings a repository may map. See design/core/taxonomy.md §2. */
 export const MAPPABLE_MEANINGS = [
     "awaitingTriage",
     "ready",
@@ -38,28 +29,21 @@ export const MAPPABLE_MEANINGS = [
 ] as const;
 export type MappableMeaning = (typeof MAPPABLE_MEANINGS)[number];
 
-/** The two kinds of work item GitHub numbers in one sequence. */
 export const ENTITY_KINDS = ["issue", "pullRequest"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
-/**
- * Which flow each meaning belongs to — the fact that used to exist only as
- * two hand-written unions in `workflow/meanings.ts`, related to this file's
- * union by nothing the compiler could see (D90).
- *
- * `pause` is `blocked`'s flow: an orthogonal flag, never a position (D28) —
- * which is why the derived position unions in `workflow/` exclude it by
- * construction rather than by rule.
- *
- * Mapped over the union, so a meaning added to `MAPPABLE_MEANINGS` fails
- * compilation here until its flow is stated, and vice versa.
- */
+/** `blocked` is a flag rather than a position, so its flow is `pause` (D28). */
 export type MeaningFlow = EntityKind | "pause";
+
 /**
- * `satisfies`, not an annotation: an annotation would widen each `flow` to
- * the union, and the derived types in `workflow/meanings.ts` would silently
- * collapse to `never` — this is the one line the derivation's correctness
- * hangs on.
+ * Which flow each meaning belongs to. `workflow/meanings.ts` builds the
+ * per-entity position types from this table by matching on the flow values,
+ * so those values have to stay literal.
+ *
+ * That is what `satisfies` protects. A `:` annotation would type every `flow`
+ * as the whole `MeaningFlow` union instead of `"issue"` or `"pullRequest"`.
+ * Nothing would match, both derived unions would become `never`, and this
+ * line would still compile (D90).
  */
 export const MEANING_FACTS = {
     awaitingTriage: { flow: "issue" },
@@ -74,30 +58,18 @@ export const MEANING_FACTS = {
 };
 
 /**
- * Capability names must be usable as configuration keys
- * (`capabilities.<name>` in schema.md §3), so they share the camelCase
- * shape of the shipped examples (`prQuality`, `assignment`). Exported
- * because `parseConfig` enforces the same shape on config keys — a key
- * this pattern rejects can never name a shipped capability, and
- * rejecting it also closes the `__proto__`-style key hole.
+ * Capability names double as configuration keys (`capabilities.<name>`,
+ * schema.md §3). One shape covers both ends: `declaration.ts` checks shipped
+ * names, `validate.ts` checks the keys it reads from a document.
  */
 export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
 /**
  * The keys a document may carry, in the order a maintainer meets them.
+ * `revision` is excluded: the parser stamps it, nobody writes it (D77).
  *
- * Here rather than in `validate.ts` because it is part of the SHAPE: the
- * unknown-key rule reads it, but so does anything that needs to enumerate
- * the configuration surface without parsing a document first.
- *
- * `satisfies` ties it to `RepositoryConfig` so the two cannot drift into a
- * tenth one-fact-twice: a key listed here that the shape does not have is a
- * compile error. `revision` is excluded because it is the parser's stamp
- * (D77), not something a maintainer writes.
- *
- * The other direction — a field added to `RepositoryConfig` and forgotten
- * here, which would make the unknown-key rule reject a legitimate key — is
- * NOT covered, because an interface cannot be enumerated at runtime.
+ * Adding a field to `RepositoryConfig` does not add it here. Only the reverse
+ * is a compile error.
  */
 export const TOP_LEVEL_KEYS = [
     "schemaVersion",
@@ -108,21 +80,22 @@ export const TOP_LEVEL_KEYS = [
 ] as const satisfies readonly (keyof Omit<RepositoryConfig, "revision">)[];
 export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
 
+/** One capability's block in a configuration file. */
 export interface CapabilityConfig {
     readonly enabled: boolean;
-    /** Opaque to the platform; validated by the capability's own contract. */
+    /** Opaque to the platform. The capability's own contract validates it. */
     readonly settings: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * A validated configuration, plus the revision it was read from.
+ *
+ * `revision` is the sha of the file, and the one field nobody writes: the
+ * shell supplies it through `ParseConfigOptions`. The executor guards
+ * in-flight effects on it, so an intent from an older revision cannot
+ * resume (D45, D77).
+ */
 export interface RepositoryConfig {
-        /**
-     * Which version of the reviewed file this is — the sha the shell fetched.
-     *
-     * The executor guards every in-flight effect on this string and D45 rules
-     * old-revision intents unresumable, yet the parsed configuration once
-     * carried no identity at all (`FINDING(config-revision-detached)`, D77).
-     * An OBSERVATION, so it arrives through `ParseConfigOptions`.
-     */
     readonly revision: string;
     readonly schemaVersion: 1;
     readonly mode: RepositoryMode;
@@ -133,12 +106,10 @@ export interface RepositoryConfig {
     readonly principals: Readonly<Record<string, string>>;
 }
 
-/** schema.md §2.2 — no configuration causes no workflow-changing writes. */
 /**
- * A null-prototype record: absent-key lookups are always `undefined`.
- * With a normal prototype, `capabilities["constructor"]` would be
- * truthy for an unconfigured name — inherited Object.prototype
- * members must never masquerade as configuration.
+ * A null-prototype record, so a key nobody set always reads `undefined`.
+ * Otherwise `capabilities["constructor"]` is truthy for a capability that
+ * does not exist.
  */
 export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
     const record: Record<string, V> = Object.create(null);
@@ -146,6 +117,14 @@ export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Read
     return record;
 }
 
+/**
+ * What a repository with no configuration file gets. schema.md §2.2 says no
+ * configuration causes no workflow-changing writes.
+ *
+ * FINDING(config-no-config-mode): §2.2 does not say which mode that is.
+ * `observe` obeys the rule and still shows findings. `disabled` is the
+ * stricter reading. Undecided, and this constant is where the assumption sits.
+ */
 export const NO_CONFIG: RepositoryConfig = {
     revision: "",
     schemaVersion: 1,
@@ -155,28 +134,10 @@ export const NO_CONFIG: RepositoryConfig = {
     principals: cleanRecord([]),
 };
 
-/**
- * FINDING(config-no-config-mode): schema.md §2.2 says "no configuration
- * causes no workflow-changing writes" but does not say which *mode* an
- * unconfigured repository is in. `observe` (chosen here) satisfies the rule
- * — observe never writes — while still letting operators see findings;
- * `disabled` is the stricter reading. Register decision needed; the
- * constant above makes today's assumption explicit and greppable.
- */
-
-/**
- * Why a configuration was rejected, in a form a report can USE.
- *
- * D38's fail-closed granularity was accepted conditional on the configuration
- * report and the PR-time check, and bare prose left both able only to echo
- * text (`FINDING(config-error-codes)`, D75). The code is contract; the
- * message is for humans and is never asserted on, only its presence.
- */
+/** Why a configuration was rejected, in a form a report can use (D75). */
 export type ConfigErrorCode =
-    /**
-     * Document-level: the file never became a mapping. Reported by
-     * `parseConfigDocument`, which is the only thing that sees text.
-     */
+    /** Document-level. Only `parseConfigDocument` sees text, so only it
+     * reports these. */
     | "documentUnparseable"
     | "duplicateKey"
     | "notAMapping"
@@ -191,33 +152,37 @@ export type ConfigErrorCode =
     | "labelNotInjective"
     | "principalNotAString";
 
+/**
+ * One reason a document was rejected.
+ *
+ * `path` is dotted, like `capabilities.intake.enabled`, or `null` for a
+ * whole-document problem. A check run uses it to annotate one line instead
+ * of pasting a paragraph.
+ */
 export interface ConfigError {
     readonly code: ConfigErrorCode;
-    /** Prose for a maintainer. Never asserted on, only its presence. */
+    /** For a maintainer. Never asserted on, only its presence. */
     readonly message: string;
-    /**
-     * Dotted path into the reviewed file — `capabilities.intake.enabled` —
-     * or `null` for a whole-document problem. This is what lets a check run
-     * annotate a line rather than paste a paragraph.
-     */
     readonly path: string | null;
 }
 
+/** Parsed, or rejected with reasons. Never both. */
 export type ConfigResult =
     | { readonly ok: true; readonly config: RepositoryConfig }
     | { readonly ok: false; readonly errors: readonly ConfigError[] };
 
+/**
+ * What the caller knows that the document does not say.
+ *
+ * `knownCapabilities` is the platform's shipped names. An enabled capability
+ * outside the list is an error; a disabled one is not, so retiring a
+ * capability never breaks a configuration that still names it. It is
+ * required rather than optional because an absent registry used to mean both
+ * "skip the check" and "nothing is known", and forgetting the argument
+ * reached either one (D58).
+ */
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */
     readonly revision: string;
-        /**
-     * The platform's shipped capability names. An ENABLED capability outside
-     * this list is a validation error; a disabled unknown one stays dormant,
-     * so retiring a capability never breaks a config that still mentions it.
-     *
-     * Required, not optional: an absent registry once meant "skip the check"
-     * and later "nothing is known", and both were reachable by forgetting an
-     * argument (`FINDING(config-capability-registry-gap)`, D58, experiment 6.3).
-     */
     readonly knownCapabilities: readonly string[];
 }
