@@ -122,8 +122,12 @@ jobs:
           fail-on-severity: moderate
 
   mutation:
-    name: mutation testing (core)
+    name: mutation testing (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, shell, store, executor]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,8 +138,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Fails the build below `thresholds.break` in packages/core/stryker.config.json.
-      # That number is load-bearing: a module can leave the mutate glob, or
-      # lose its tests to another package, without a single test failing —
-      # both have happened, and only the score showed it.
-      - run: pnpm --filter @hiero-hackers/automation-core exec stryker run
+      # Each package owns its mutation scope and threshold; the checks package
+      # locks this static matrix to the set of tracked Stryker configs.
+      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run

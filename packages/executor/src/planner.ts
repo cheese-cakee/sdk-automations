@@ -72,10 +72,14 @@ function configuredLabels(config: RepositoryConfig): readonly ConfiguredLabel[] 
     });
 }
 
+type CommandTranslation =
+    | { readonly ok: true; readonly command: AdapterCommand }
+    | { readonly ok: false; readonly missingMeaning: string };
+
 function commandFor(
     intent: AnyIntent,
     config: RepositoryConfig,
-): AdapterCommand {
+): CommandTranslation {
     const common = {
         repository: { ...intent.repository },
         item: { ...intent.item },
@@ -91,31 +95,38 @@ function commandFor(
     switch (intent.operation) {
         case "postManagedComment":
             return {
-                ...common,
-                operation: intent.operation,
-                desired: { ...intent.desired },
-                readBack: { kind: "managedCommentMarker" },
+                ok: true,
+                command: {
+                    ...common,
+                    operation: intent.operation,
+                    desired: { ...intent.desired },
+                    readBack: { kind: "managedCommentMarker" },
+                },
             };
         case "applyMappedLabel": {
             const label = config.mappings.labels[intent.desired.meaning];
             if (label === undefined) {
-                throw new TypeError(
-                    `cannot translate unmapped meaning "${intent.desired.meaning}"`,
-                );
+                return { ok: false, missingMeaning: intent.desired.meaning };
             }
             return {
-                ...common,
-                operation: intent.operation,
-                desired: { meaning: intent.desired.meaning, label },
-                readBack: { kind: "mappedLabel" },
+                ok: true,
+                command: {
+                    ...common,
+                    operation: intent.operation,
+                    desired: { meaning: intent.desired.meaning, label },
+                    readBack: { kind: "mappedLabel" },
+                },
             };
         }
         case "unassign":
             return {
-                ...common,
-                operation: intent.operation,
-                desired: { ...intent.desired },
-                readBack: { kind: "assigneeAbsent" },
+                ok: true,
+                command: {
+                    ...common,
+                    operation: intent.operation,
+                    desired: { ...intent.desired },
+                    readBack: { kind: "assigneeAbsent" },
+                },
             };
     }
 }
@@ -130,14 +141,21 @@ function commandFor(
 function callsFor(
     intent: AnyIntent,
     config: RepositoryConfig,
-): readonly PlannedCall[] {
-    return [
-        {
-            seq: 1,
-            command: commandFor(intent, config),
-            idempotencyClass: idempotencyOf(intent.operation),
-        },
-    ];
+):
+    | { readonly ok: true; readonly calls: readonly PlannedCall[] }
+    | { readonly ok: false; readonly missingMeaning: string } {
+    const translated = commandFor(intent, config);
+    if (!translated.ok) return translated;
+    return {
+        ok: true,
+        calls: [
+            {
+                seq: 1,
+                command: translated.command,
+                idempotencyClass: idempotencyOf(intent.operation),
+            },
+        ],
+    };
 }
 
 /**
@@ -195,14 +213,12 @@ export function planApproved(
         }
         keys.set(intent.idempotencyKey, intent);
 
-        if (
-            intent.operation === "applyMappedLabel" &&
-            inputs.config.mappings.labels[intent.desired.meaning] === undefined
-        ) {
+        const translated = callsFor(intent, inputs.config);
+        if (!translated.ok) {
             refusals.push({
                 intent,
                 code: "mappedLabelMissing",
-                reason: `meaning "${intent.desired.meaning}" has no configured label, so no adapter command can represent its desired state`,
+                reason: `meaning "${translated.missingMeaning}" has no configured label, so no adapter command can represent its desired state`,
             });
             continue;
         }
@@ -210,7 +226,7 @@ export function planApproved(
         plans.push({
             effectId: intent.idempotencyKey,
             revision: inputs.config.revision,
-            calls: callsFor(intent, inputs.config),
+            calls: translated.calls,
         });
     }
 

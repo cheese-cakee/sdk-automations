@@ -1,23 +1,31 @@
 /**
- * Stryker's mutate globs cover every core module — the invariant born from
- * `src/*.ts` silently skipping three modules the day they moved into a
- * directory. Split from repo-artifacts.test.ts (D89).
+ * Every package that owns a Stryker config owns a real recursive source
+ * scope and a numeric gate, and CI runs that exact package set. This is the
+ * repository-level lock against a config or matrix entry drifting alone.
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { normalizeRepoPath, repoRoot } from "./helpers.js";
+import { readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import {
+    normalizeRepoPath,
+    repoRoot,
+    trackedFiles,
+    workspacePackages,
+} from "./helpers.js";
 
-/**
- * Minimal glob matcher — enough for the patterns Stryker configs use.
- *
- * Single pass, deliberately. The obvious implementation is a chain of
- * `.replace()` calls, and it is wrong: expanding `**​/` inserts `(?:…/)*`
- * into the string, and the *next* replacement then rewrites the `*` and `?`
- * of the token just emitted. The first draft here did exactly that and
- * produced a regex matching nothing at all.
- */
+interface StrykerConfig {
+    readonly mutate: readonly string[];
+    readonly thresholds: { readonly break: unknown };
+}
+
+interface ConfiguredPackage {
+    readonly name: string;
+    readonly path: string;
+    readonly config: StrykerConfig;
+    readonly sources: readonly string[];
+}
+
 function globToRegExp(glob: string): RegExp {
     let body = "";
     for (let i = 0; i < glob.length; i++) {
@@ -25,14 +33,14 @@ function globToRegExp(glob: string): RegExp {
         if (char === "*") {
             if (glob[i + 1] === "*") {
                 if (glob[i + 2] === "/") {
-                    body += "(?:[^/]+/)*"; // any number of directories
+                    body += "(?:[^/]+/)*";
                     i += 2;
                 } else {
                     body += ".*";
                     i += 1;
                 }
             } else {
-                body += "[^/]*"; // one segment only
+                body += "[^/]*";
             }
         } else if (char === "?") {
             body += "[^/]";
@@ -43,56 +51,99 @@ function globToRegExp(glob: string): RegExp {
     return new RegExp(`^${body}$`);
 }
 
-describe("mutation testing covers every core module", () => {
-    const config = JSON.parse(
-        readFileSync(join(repoRoot, "packages", "core", "stryker.config.json"), "utf8"),
-    ) as { mutate: string[]; thresholds: { break: number | null } };
+function unmatchedSources(
+    sources: readonly string[],
+    mutate: readonly string[],
+): string[] {
+    const patterns = mutate.map(globToRegExp);
+    return sources.filter(
+        (source) => !patterns.some((pattern) => pattern.test(source)),
+    );
+}
 
-    const patterns = config.mutate.map(globToRegExp);
-    const srcRoot = join(repoRoot, "packages", "core", "src");
-    const modules = (readdirSync(srcRoot, { recursive: true }) as string[])
-        .filter((rel) => rel.endsWith(".ts"))
-        .map((rel) => `src/${normalizeRepoPath(rel)}`);
+function matrixDrift(
+    configured: readonly string[],
+    matrix: readonly string[],
+): { missing: string[]; extra: string[] } {
+    const configuredSet = new Set(configured);
+    const matrixSet = new Set(matrix);
+    return {
+        missing: configured.filter((name) => !matrixSet.has(name)).sort(),
+        extra: matrix.filter((name) => !configuredSet.has(name)).sort(),
+    };
+}
 
-    it("finds the core modules", () => {
-        expect(modules.length).toBeGreaterThan(5);
-        // The move that caused the regression: a nested module must exist,
-        // or this test cannot detect a single-level glob at all.
-        expect(modules).toContain("src/github/failures.ts");
+const tracked = trackedFiles();
+const trackedSet = new Set(tracked);
+const configuredPackages: ConfiguredPackage[] = workspacePackages()
+    .filter((packagePath) => trackedSet.has(`${packagePath}/stryker.config.json`))
+    .map((packagePath) => {
+        const configPath = `${packagePath}/stryker.config.json`;
+        const config = JSON.parse(
+            readFileSync(join(repoRoot, configPath), "utf8"),
+        ) as StrykerConfig;
+        const prefix = `${packagePath}/`;
+        const sources = tracked
+            .filter((path) => path.startsWith(`${prefix}src/`) && path.endsWith(".ts"))
+            .map((path) => normalizeRepoPath(path.slice(prefix.length)));
+        return { name: basename(packagePath), path: packagePath, config, sources };
     });
 
-    it("matches every module against the mutate globs", () => {
-        const unmatched = modules.filter(
-            (module) => !patterns.some((pattern) => pattern.test(module)),
+const ci = readFileSync(join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+const mutationJob = /\n  mutation:\s*\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\s*\n|$)/.exec(ci)?.[1] ?? "";
+const mutationMatrix = /\bpackage:\s*\[([^\]]+)\]/.exec(mutationJob)?.[1]
+    ?.split(",")
+    .map((name) => name.trim())
+    .filter(Boolean) ?? [];
+
+describe("mutation policy stays complete across packages and CI", () => {
+    it("discovers every configured workspace package", () => {
+        expect(configuredPackages.map(({ name }) => name).sort()).toEqual([
+            "core",
+            "executor",
+            "shell",
+            "store",
+        ]);
+    });
+
+    it("mutates every tracked TypeScript source recursively", () => {
+        for (const subject of configuredPackages) {
+            expect(subject.config.mutate, subject.path).toEqual(["src/**/*.ts"]);
+            expect(subject.sources.length, subject.path).toBeGreaterThan(0);
+            expect(unmatchedSources(subject.sources, subject.config.mutate), subject.path)
+                .toEqual([]);
+        }
+    });
+
+    it("sets a numeric break threshold in every package policy", () => {
+        for (const subject of configuredPackages) {
+            expect(typeof subject.config.thresholds.break, subject.path).toBe("number");
+        }
+    });
+
+    it("runs every configured package independently in the mutation matrix", () => {
+        expect(mutationJob).toContain("name: mutation testing (${{ matrix.package }})");
+        expect(mutationJob).toContain(
+            "pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run",
         );
-        expect(unmatched).toEqual([]);
+        expect(matrixDrift(
+            configuredPackages.map(({ name }) => name),
+            mutationMatrix,
+        )).toEqual({ missing: [], extra: [] });
     });
 
-    /**
-     * Negative control, in both directions. The first draft asserted only
-     * that a single-level glob REJECTS a nested path — and passed while the
-     * matcher was so broken it rejected everything, including the paths it
-     * was supposed to accept. A control that can only observe rejection
-     * cannot tell "correctly strict" from "entirely broken".
-     */
-    it("proves the matcher can both accept and reject", () => {
-        const singleLevel = globToRegExp("src/*.ts");
-        expect(singleLevel.test("src/config.ts")).toBe(true);
-        expect(singleLevel.test("src/github/failures.ts")).toBe(false);
-
+    it("proves misspelled scopes and CI paths fail in both directions", () => {
         const recursive = globToRegExp("src/**/*.ts");
-        expect(recursive.test("src/config.ts")).toBe(true);
-        expect(recursive.test("src/github/failures.ts")).toBe(true);
-        expect(recursive.test("src/github/deep/nested.ts")).toBe(true);
-        expect(recursive.test("test/config.test.ts")).toBe(false);
-    });
-
-    /**
-     * D40's sibling question, answered in config rather than convention: a
-     * `break` of `null` means the mutation score can never fail anything, so
-     * a module could drop to zero in CI and pass. It has to be a number.
-     */
-    it("sets a break threshold, so the score can fail a build", () => {
-        expect(typeof config.thresholds.break).toBe("number");
+        expect(recursive.test("src/store.ts")).toBe(true);
+        expect(recursive.test("src/github/deep/file.ts")).toBe(true);
+        expect(recursive.test("test/store.test.ts")).toBe(false);
+        expect(unmatchedSources(
+            ["src/store.ts", "src/nested/file.ts"],
+            ["src/*.ts"],
+        )).toEqual(["src/nested/file.ts"]);
+        expect(matrixDrift(
+            ["core", "shell", "store"],
+            ["core", "shell", "stroe"],
+        )).toEqual({ missing: ["store"], extra: ["stroe"] });
     });
 });

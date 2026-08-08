@@ -95,7 +95,10 @@ function buildWorkerStoreModule(): string {
         module: ts.ModuleKind.ESNext,
     };
     const idsSource = readFileSync(
-        new URL("../../core/src/github/ids.ts", import.meta.url),
+        new URL(
+            "github/ids.ts",
+            import.meta.resolve("@hiero-hackers/automation-core"),
+        ),
         "utf8",
     );
     const storeSource = readFileSync(new URL("../src/store.ts", import.meta.url), "utf8");
@@ -357,6 +360,26 @@ describe("delivery claims and recovery", () => {
         )).toEqual({ outcome: "notOwned" });
         store.close();
     });
+
+    it("returns every requeued delivery in deterministic GUID order", () => {
+        const store = new Store(path);
+        accept(store, THIRD_ID);
+        accept(store, SECOND_ID);
+        accept(store, FIRST_ID);
+        for (const worker of ["worker-a", "worker-b", "worker-c"]) {
+            expect(store.claimNextDelivery(
+                worker,
+                "2026-08-01T10:02:00.000Z",
+                "2026-08-01T09:00:00.000Z",
+            )).toBeDefined();
+        }
+        expect(store.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([
+            FIRST_ID,
+            SECOND_ID,
+            THIRD_ID,
+        ]);
+        store.close();
+    });
 });
 
 describe("delivery completion and retention", () => {
@@ -450,15 +473,22 @@ describe("delivery intake boundaries", () => {
         expect(asDeliveryGuid("")).toBeUndefined();
         expect(asDeliveryGuid("123")).toBeUndefined();
         const store = new Store(path);
-        expect(() => accept(store, "" as DeliveryGuid)).toThrow(TypeError);
-        expect(() => accept(store, FIRST_ID, " ")).toThrow(TypeError);
+        expect(() => accept(store, "" as DeliveryGuid)).toThrow(/deliveryId/);
+        expect(() => accept(store, FIRST_ID, " ")).toThrow(/eventName/);
+        expect(() => store.acceptDelivery({
+            deliveryId: FIRST_ID,
+            // @ts-expect-error Runtime callers can violate the typed boundary.
+            eventName: 42,
+            payload: Buffer.from("work"),
+            receivedAt: RECEIVED,
+        })).toThrow(/eventName/);
         expect(() => store.acceptDelivery({
             deliveryId: FIRST_ID,
             eventName: "issues",
             // @ts-expect-error Runtime callers can violate the typed boundary.
             payload: "not bytes",
             receivedAt: RECEIVED,
-        })).toThrow(TypeError);
+        })).toThrow(/payload/);
         expect(() => accept(store, FIRST_ID, "issues", Buffer.from("secret-payload"), "invalid"))
             .toThrowError(/receivedAt/);
         try {
@@ -466,13 +496,14 @@ describe("delivery intake boundaries", () => {
         } catch (error) {
             expect(String(error)).not.toContain("secret-payload");
         }
-        expect(() => store.claimNextDelivery("worker", "invalid", RECEIVED)).toThrow(TypeError);
-        expect(() => store.claimNextDelivery("worker", RECEIVED, "invalid")).toThrow(TypeError);
-        expect(() => store.requeueStuckDeliveries("invalid")).toThrow(TypeError);
-        expect(() => store.completeDelivery(FIRST_ID, "token", "invalid")).toThrow(TypeError);
-        expect(() => store.pruneCompletedDeliveries("invalid")).toThrow(TypeError);
-        expect(() => store.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(TypeError);
-        expect(() => store.releaseDelivery(FIRST_ID, "")).toThrow(TypeError);
+        expect(() => store.claimNextDelivery("worker", "invalid", RECEIVED)).toThrow(/now/);
+        expect(() => store.claimNextDelivery("worker", RECEIVED, "invalid")).toThrow(/staleBefore/);
+        expect(() => store.requeueStuckDeliveries("invalid")).toThrow(/claimedBefore/);
+        expect(() => store.completeDelivery(FIRST_ID, "token", "invalid")).toThrow(/completedAt/);
+        expect(() => store.completeDelivery(FIRST_ID, "", RECEIVED)).toThrow(/claimToken/);
+        expect(() => store.pruneCompletedDeliveries("invalid")).toThrow(/before/);
+        expect(() => store.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(/worker/);
+        expect(() => store.releaseDelivery(FIRST_ID, "")).toThrow(/claimToken/);
         store.close();
     });
 

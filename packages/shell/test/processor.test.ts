@@ -22,8 +22,12 @@ import { stubbedExternals } from "../src/externals.js";
 import type { ConfigSource } from "../src/config.js";
 
 const GUID = asDeliveryGuid("94f5384a-ee9a-33a5-a3cd-6eb589fe2b7a")!;
+const SECOND_GUID = asDeliveryGuid("94f5384a-ee9a-33a5-a3cd-6eb589fe2b7b")!;
 const FIXTURE = readFileSync(
-    new URL("../../core/test/github/fixtures/issues.opened.json", import.meta.url),
+    new URL(
+        "../test/github/fixtures/issues.opened.json",
+        import.meta.resolve("@hiero-hackers/automation-core"),
+    ),
 );
 
 const CONFIG_TEXT = `schemaVersion: 1
@@ -57,9 +61,9 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-function processor(capability: EngineCapability) {
+function processor(capability: EngineCapability, firstTickMs = 1_000) {
     const reports = memoryReportSink();
-    let tick = 1;
+    let tick = 0;
     return {
         reports,
         processor: new Processor({
@@ -70,7 +74,7 @@ function processor(capability: EngineCapability) {
             externals: stubbedExternals(),
             repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
             worker: "test-worker",
-            clock: () => new Date(BASE.getTime() + 1000 * tick++),
+            clock: () => new Date(BASE.getTime() + firstTickMs + 1000 * tick++),
         }),
     };
 }
@@ -106,5 +110,36 @@ describe("a crash releases the claim", () => {
         expect(await healthy.processor.processOnce()).toBe(true);
         expect(await healthy.processor.processOnce()).toBe(false);
         expect(healthy.reports.entries).toHaveLength(1);
+    });
+
+    it("does not steal a fresh claim but takes over after the 15-minute lease", async () => {
+        expect(store.claimNextDelivery(
+            "stalled-worker",
+            new Date(BASE.getTime() + 60_000).toISOString(),
+            new Date(BASE.getTime() - 60_000).toISOString(),
+        )).toBeDefined();
+
+        const fresh = processor(toEngine(intake), 10 * 60_000);
+        expect(await fresh.processor.processOnce()).toBe(false);
+        expect(fresh.reports.entries).toEqual([]);
+
+        const stale = processor(toEngine(intake), 16 * 60_000);
+        expect(await stale.processor.processOnce()).toBe(true);
+        expect(stale.reports.entries).toHaveLength(1);
+    });
+
+    it("starts a new drain after the previous queue became empty", async () => {
+        const healthy = processor(toEngine(intake));
+        await healthy.processor.drain();
+        expect(healthy.reports.entries).toHaveLength(1);
+
+        store.acceptDelivery({
+            deliveryId: SECOND_GUID,
+            eventName: "issues",
+            payload: FIXTURE,
+            receivedAt: new Date(BASE.getTime() + 10_000).toISOString(),
+        });
+        await healthy.processor.drain();
+        expect(healthy.reports.entries).toHaveLength(2);
     });
 });

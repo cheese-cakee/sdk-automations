@@ -184,10 +184,11 @@ describe("surfaced stops", () => {
         };
         const port = new CrashingPort(new FakeWorld(), new Map());
 
-        await expect(executor(store, port).runEffect(changed)).resolves.toMatchObject({
-            outcome: "unresolved",
-            seq: original.seq,
-        });
+        const result = await executor(store, port).runEffect(changed);
+        expect(result).toMatchObject({ outcome: "unresolved", seq: original.seq });
+        if (result.outcome === "unresolved") {
+            expect(result.reason).toContain("does not match the current plan");
+        }
         expect(port.readBacks).toEqual([]);
         store.close();
     });
@@ -282,7 +283,7 @@ describe("surfaced stops", () => {
                     },
                 ],
             }),
-        ).rejects.toThrow(TypeError);
+        ).rejects.toThrow(/contiguous from 1/);
         store.close();
     });
 
@@ -302,7 +303,7 @@ describe("surfaced stops", () => {
                     },
                 ],
             }),
-        ).rejects.toThrow(TypeError);
+        ).rejects.toThrow(/revision does not match/);
         store.close();
     });
 });

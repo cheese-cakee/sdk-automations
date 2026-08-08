@@ -60,7 +60,31 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         // lexicographic ordering ("…00Z" > "…00.500Z" as strings but
         // earlier in time). Exactly the Date.toISOString() shape.
         expect(() => s.schedule("y", "2026-07-24T00:00:00Z", "sweep")).toThrow(TypeError);
+        expect(() => s.schedule("prefix", "x2026-07-24T00:00:00.123Z", "sweep"))
+            .toThrow(TypeError);
+        expect(() => s.schedule("suffix", "2026-07-24T00:00:00.123Zx", "sweep"))
+            .toThrow(TypeError);
         s.schedule("ok", "2026-07-24T00:00:00.123Z", "sweep");
+        s.close();
+    });
+
+    it("names the invalid time at every durable boundary", () => {
+        const s = new Store(path);
+        const cases: readonly [() => unknown, RegExp][] = [
+            [() => s.intent("e", 1, "call", "invalid", "rev"), /^at must/],
+            [() => s.done("e", 1, "invalid"), /^at must/],
+            [() => s.openIntents("invalid"), /before/],
+            [() => s.claim("e", "w", "invalid", "2026-01-01T00:00:00.000Z"), /now/],
+            [() => s.claim("e", "w", "2026-01-01T00:00:00.000Z", "invalid"), /staleBefore/],
+            [() => s.schedule("s", "invalid", "effect"), /dueAt/],
+            [() => s.claimDue("invalid"), /now/],
+            [() => s.requeueStuck("invalid"), /claimedBefore/],
+            [() => s.pruneCompletedDeliveries("invalid"), /before/],
+            [() => s.pruneDoneJournal("invalid"), /before/],
+        ];
+        for (const [operation, parameter] of cases) {
+            expect(operation).toThrow(parameter);
+        }
         s.close();
     });
 
