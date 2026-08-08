@@ -112,7 +112,7 @@ adapter must own, from 6.4:
   sweep cost then tracks changed issues only (this is the Q10 budget
   answer);
 - delivery identifiers use two branded opaque-string types
-  (`core/src/github/ids.ts`): `DeliveryGuid` for the `X-GitHub-Delivery`
+  (`packages/core/src/github/ids.ts`): `DeliveryGuid` for the `X-GitHub-Delivery`
   deduplication key, and `DeliveryRecordId` for the numeric REST
   get/redeliver resource id. REST ids exceed 2^53, so numeric
   round-trips remain a compile-time and runtime rejection.
@@ -177,11 +177,11 @@ whichever candidate wins:
   report says so. Only never-existed names are validation errors.
   Without this rule, retiring a capability would silently drop every
   repository that enabled it to `observe` — a breaking change nobody
-  chose. Implemented in `core/src/capability/declaration.ts` (`retired`,
+  chose. Implemented in `packages/core/src/capability/declaration.ts` (`retired`,
   `activeNames`).
 
 **Two further constraints on the winner (added 2026-08-05).** The
-capability runtime boundary now exists (`core/src/capability/`), which
+capability runtime boundary now exists (`packages/core/src/capability/`), which
 gives the ranking conversation a feasibility check it did not have when
 this packet was written:
 
@@ -201,7 +201,7 @@ this packet was written:
 
 The thirteen boundary rows themselves (D61–D73) are architecture, not
 capability choice, and sit in
-[`ratification-packet.md`](../design/ratification-packet.md) §2b.
+[`ratification-packet.md`](../ratification-packet.md) §2b.
 
 ## Known gaps the review should see
 

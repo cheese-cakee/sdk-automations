@@ -3,9 +3,9 @@
 Every term in this codebase is defined somewhere, but definitions don't teach a system; a journey
 does. This document follows **one real delivery** — the `issues.opened` webhook GitHub sent when
 issue #164 was opened on the sandbox (captured under protocol 7.1, scrubbed, promoted to
-`core/test/github/fixtures/`) — from the shell's socket to the exact JSON line the shell persists.
+`packages/core/test/github/fixtures/`) — from the shell's socket to the exact JSON line the shell persists.
 Every piece of output below is the pipeline's real output, not paraphrase; the same journey runs as
-a test in `shell/test/slice.test.ts`, so this document can drift only until the suite runs.
+a test in `packages/shell/test/slice.test.ts`, so this document can drift only until the suite runs.
 
 Vocabulary is introduced **in bold** at the moment it does something. If you read nothing else in
 `design/`, read this.
@@ -35,11 +35,11 @@ see most of it.
 
 ## 2. Verify, then accept, then acknowledge — in that order
 
-The receiver (`shell/src/receiver.ts`) checks the **signature** first: the HMAC of the raw bytes
-against the webhook secret, constant-time (`core/src/github/signatures.ts`). Fail and the answer is
+The receiver (`packages/shell/src/receiver.ts`) checks the **signature** first: the HMAC of the raw bytes
+against the webhook secret, constant-time (`packages/core/src/github/signatures.ts`). Fail and the answer is
 `401` with nothing read, nothing stored — this is the most attacker-reachable line in the system.
 
-Pass, and the exact bytes go into the **store** (`store/src/store.ts`) as a durable row keyed by the
+Pass, and the exact bytes go into the **store** (`packages/store/src/store.ts`) as a durable row keyed by the
 delivery GUID, state `pending`. Only after that row exists does GitHub get its **`202`
 acknowledgement** — so a crash one millisecond later loses nothing (the ordering promise called P9).
 A redelivery of the same GUID finds the row and is answered `202` again without a second row: the
@@ -47,7 +47,7 @@ store, not the shell, is what makes processing exactly-once.
 
 ## 3. Claim — processing on our own clock
 
-GitHub's part is over. The processor (`shell/src/processor.ts`) — possibly the same process, possibly
+GitHub's part is over. The processor (`packages/shell/src/processor.ts`) — possibly the same process, possibly
 a restart after a crash — **claims** the pending delivery: the row moves to `processing` and the
 store hands back a one-time **claim token** that proves ownership. If processing dies mid-way the
 claim is released (or goes stale and is taken over), and the delivery is simply claimed again later.
@@ -56,7 +56,7 @@ Everything after this point may fail and retry forever; GitHub never knows.
 ## 4. The configuration — the repository's standing answers
 
 The shell loads the repository's `automations.yml` (root of the repo — D93) and parses it with
-`parseConfigDocument` (`core/src/config/document.ts`). For this trace the file says:
+`parseConfigDocument` (`packages/core/src/config/document.ts`). For this trace the file says:
 
 ```yaml
 schemaVersion: 1
@@ -80,8 +80,8 @@ downstream ever sees a half-parsed config.
 
 ## 5. Normalize — GitHub's wire format dies at the door
 
-Inside `decide()` (`core/src/engine/decide.ts`), the first stage is the normalizer
-(`core/src/engine/events.ts`). Six kilobytes of wire format become this, in full — an
+Inside `decide()` (`packages/core/src/engine/decide.ts`), the first stage is the normalizer
+(`packages/core/src/engine/events.ts`). Six kilobytes of wire format become this, in full — an
 **observation**:
 
 ```json
@@ -109,7 +109,7 @@ ends as `malformed` with a machine code (D75). Both still produce a report.
 ## 6. The capability — one narrow expert, deliberately starved
 
 A **capability** is one automation with one concern; the platform trusts none of them. Ours is
-`intake` (`probes/src/intake.ts`): "new issues should enter triage." Its **declaration** states, in
+`intake` (`packages/probes/src/intake.ts`): "new issues should enter triage." Its **declaration** states, in
 data, everything it may do — which observations it receives, which **resolvers** (platform-answered
 questions) it may ask, which operations it may request. It receives exactly two things: the
 observation above, and its **view** —
@@ -156,7 +156,7 @@ key and can never become a second effect (D65). The second intent asks to `postM
 
 ## 8. Screens — is this intent even well-formed?
 
-Each intent passes the **screens** (`core/src/capability/intent.ts`): is it attributed to the
+Each intent passes the **screens** (`packages/core/src/capability/intent.ts`): is it attributed to the
 capability that returned it, was the operation declared, is the action class at or above the
 platform's floor for that operation, and — for position changes — is the move an edge on the
 documented workflow map (D78)? Screens repeat what the types already promise, deliberately: a
@@ -166,7 +166,7 @@ defect, never policy. Both intents pass.
 ## 9. The derived world — the platform refuses to take your word for it
 
 Now the intent's `expected` claim meets the observation it rode in on. The engine — never the
-caller — derives the **world** (`core/src/safety/world.ts`): what meanings the projection actually
+caller — derives the **world** (`packages/core/src/safety/world.ts`): what meanings the projection actually
 showed (none), and whether the claim holds against it (it does: the issue is open and holds no
 `awaitingTriage`). `DerivedWorld` is a branded type with no public constructor, so no shell,
 including ours, *can* assert a world that contradicts the delivery (D92). A stale claim would
@@ -174,7 +174,7 @@ surface right here as `preconditionStale` — with nobody having lied on purpose
 
 ## 10. The gates — and the verdict
 
-The **gates** (`core/src/safety/rules.ts`, in a fixed, contract-bound order) now judge each intent
+The **gates** (`packages/core/src/safety/rules.ts`, in a fixed, contract-bound order) now judge each intent
 against the config, the derived world, and the three facts only the shell can know (kill switch,
 granted permissions, latest human change). The result per intent is a **verdict**: `apply`,
 `refuse` with a coded reason, or — the one this repository's mode guarantees — **`record-only`**:
@@ -192,7 +192,7 @@ granted permissions, latest human change). The result per intent is a **verdict*
 ## 11. The report — everything becomes findings
 
 Verdicts, explanations, screen failures, config errors: all of them are converted
-(`core/src/report/convert.ts`) into **findings** — flat records with a **severity** the *platform*
+(`packages/core/src/report/convert.ts`) into **findings** — flat records with a **severity** the *platform*
 assigns (`info` / `notice` / `problem`; a refusal is usually the system *working*, and only a
 human-must-act situation earns `problem`). The **report** is the findings plus the identity of what
 produced them: revision, mode, repository. Ours holds four findings — two explanations, two
@@ -200,7 +200,7 @@ produced them: revision, mode, repository. Ours holds four findings — two expl
 
 ## 12. The line the shell writes — the product
 
-The processor appends one line to `decisions.jsonl` (`shell/src/reports.ts`), marks the delivery
+The processor appends one line to `decisions.jsonl` (`packages/shell/src/reports.ts`), marks the delivery
 `done`, and is finished. Abridged only by collapsing the four findings you have already seen:
 
 ```json
@@ -226,9 +226,9 @@ entire product, and the artifact a maintainer reads before turning the dial up.
 
 Change one word in the config (`mode: active`) and the journey is identical until station 10, where
 both verdicts become `apply` and the two intents land in `approved`. Then, and only then, the
-executor's half begins: the planner (`executor/src/planner.ts`) translates each approved intent into
+executor's half begins: the planner (`packages/executor/src/planner.ts`) translates each approved intent into
 a **plan** of ordered calls; the plan's identity is the intent's idempotency key, making it an
-**effect** the store can journal; the recovery loop (`executor/src/recovery.ts`) runs each call
+**effect** the store can journal; the recovery loop (`packages/executor/src/recovery.ts`) runs each call
 through the **journal** (intent recorded before send, outcome after), so a crash between "sent" and
 "confirmed" is resolved by *reading GitHub back*, never by blind resend; and the **adapter** — the
 one component that speaks GitHub's API, not yet built — performs the writes, rechecking the
@@ -239,15 +239,15 @@ remembers; the adapter touches. Nothing else does.
 
 | Station | Terms | Home |
 |---|---|---|
-| 1–2 | delivery, signature, acknowledgement | `shell/src/receiver.ts`, `core/src/github/signatures.ts` |
-| 3 | claim, claim token, worker | `store/src/store.ts` |
-| 4 | config, revision, mode, mappings | `core/src/config/schema.ts` |
-| 5 | observation, projection, position, meaning | `core/src/engine/events.ts`, `core/src/workflow/project.ts` |
-| 6 | capability, declaration, view, resolver | `core/src/capability/declaration.ts`, `core/src/capability/boundary.ts` |
-| 7 | intent, cause, desired, expected, action class, explanation, idempotency key | `core/src/capability/intent.ts` |
-| 8 | screen | `core/src/capability/intent.ts` |
-| 9 | derived world, precondition | `core/src/safety/world.ts` |
-| 10 | gate, verdict, record-only | `core/src/safety/rules.ts` |
-| 11 | finding, severity, report | `core/src/report/convert.ts` |
-| 12 | decision record | `shell/src/reports.ts` |
-| 13 | plan, effect, journal, adapter | `executor/src/planner.ts`, `executor/src/recovery.ts` |
+| 1–2 | delivery, signature, acknowledgement | `packages/shell/src/receiver.ts`, `packages/core/src/github/signatures.ts` |
+| 3 | claim, claim token, worker | `packages/store/src/store.ts` |
+| 4 | config, revision, mode, mappings | `packages/core/src/config/schema.ts` |
+| 5 | observation, projection, position, meaning | `packages/core/src/engine/events.ts`, `packages/core/src/workflow/project.ts` |
+| 6 | capability, declaration, view, resolver | `packages/core/src/capability/declaration.ts`, `packages/core/src/capability/boundary.ts` |
+| 7 | intent, cause, desired, expected, action class, explanation, idempotency key | `packages/core/src/capability/intent.ts` |
+| 8 | screen | `packages/core/src/capability/intent.ts` |
+| 9 | derived world, precondition | `packages/core/src/safety/world.ts` |
+| 10 | gate, verdict, record-only | `packages/core/src/safety/rules.ts` |
+| 11 | finding, severity, report | `packages/core/src/report/convert.ts` |
+| 12 | decision record | `packages/shell/src/reports.ts` |
+| 13 | plan, effect, journal, adapter | `packages/executor/src/planner.ts`, `packages/executor/src/recovery.ts` |

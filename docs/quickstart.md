@@ -101,15 +101,15 @@ principals:
 
 ## Or copy a tested file
 
-Every file in [`examples/config/`](../examples/config/) is parsed by our test suite on every commit —
+Every file in [`docs/examples/`](examples/) is parsed by our test suite on every commit —
 copy the one closest to what you want and edit the label names:
 
 | File | What you get |
 |---|---|
-| [`active.yml`](../examples/config/active.yml) | The full setup above: triage, PR checks, one capability staged |
-| [`observe-only.yml`](../examples/config/observe-only.yml) | The same repository, reporting instead of acting |
-| [`minimal.yml`](../examples/config/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
-| [`empty.yml`](../examples/config/empty.yml) | Nothing at all, spelled out |
+| [`active.yml`](examples/active.yml) | The full setup above: triage, PR checks, one capability staged |
+| [`observe-only.yml`](examples/observe-only.yml) | The same repository, reporting instead of acting |
+| [`minimal.yml`](examples/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
+| [`empty.yml`](examples/empty.yml) | Nothing at all, spelled out |
 
 ## What's next
 

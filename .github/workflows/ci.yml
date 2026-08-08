@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         # 24 is the LTS floor we support; 25 is what development happens on.
-        # The matrix is not ceremony: `store/` uses `node:sqlite`, which is
+        # The matrix is not ceremony: `packages/store/` uses `node:sqlite`, which is
         # still experimental and still emits a warning on 24 — an API that
         # can change between majors is one worth testing on both.
         node: [24, 25]
@@ -70,7 +70,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Aggregate v8 floor (80 on lines/branches/functions/statements) in
-      # core/vitest.config.ts. Mutation (below) stays the per-module quality
+      # packages/core/vitest.config.ts. Mutation (below) stays the per-module quality
       # gate; this is the coarser "did we delete the tests" tripwire that the
       # dead-import cleanup in #76 could have defeated silently.
       - run: pnpm --filter @hiero-hackers/automation-core test:coverage
@@ -99,7 +99,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Fails the build below `thresholds.break` in core/stryker.config.json.
+      # Fails the build below `thresholds.break` in packages/core/stryker.config.json.
       # That number is load-bearing: a module can leave the mutate glob, or
       # lose its tests to another package, without a single test failing —
       # both have happened, and only the score showed it.

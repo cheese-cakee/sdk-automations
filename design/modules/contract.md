@@ -36,7 +36,7 @@ The registry separates reporting from activation: `describe` returns only a capa
 status, while `get` is the sole declaration lookup and refuses to return a retired capability. Report-only
 data therefore cannot be mistaken for an activatable declaration (D58).
 
-> Implemented (declaration layer only) in `core/src/capability/declaration.ts`, 2026-07-23, with two deliberate
+> Implemented (declaration layer only) in `packages/core/src/capability/declaration.ts`, 2026-07-23, with two deliberate
 > divergences from the sketch above, both driven by stage-three evidence: `intents` upgraded from a name
 > list to declarations carrying a required **idempotency class** per intent (experiment 6.5 — a
 > lost-response retry duplicates comment creation but not label addition, so the executor's recovery rule

@@ -7,7 +7,7 @@ This page defines every key.
 reference cannot drift from the product.*
 
 New here? Start with the [Quickstart](quickstart.md). Want a file to copy?
-[`examples/config/`](../examples/config/).
+[`docs/examples/`](examples/).
 
 ## The file at a glance
 

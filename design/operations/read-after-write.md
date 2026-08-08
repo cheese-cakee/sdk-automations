@@ -37,6 +37,6 @@ the design exists to prevent — so the rule below spends one cheap delay on the
   duplicates — the second read is insurance priced at one API call, only on the rare recovery path.
 
 The rule is encoded as `READBACK_ABSENT_READS` and `READBACK_CONFIRM_ABSENT_DELAY_MS` in
-`executor/src/policy.ts`; the stage-five port implements it, and the D46 register row records this
+`packages/executor/src/policy.ts`; the stage-five port implements it, and the D46 register row records this
 document as its measured basis. Re-measure if the resolver gains a GraphQL or search-based read — those
 paths were not measured and search indexing is known to lag.

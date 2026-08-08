@@ -10,27 +10,31 @@ A repository enables only the capabilities it wants and maps them to its own wor
 handles GitHub access, configuration, safety, recovery, and audit information.
 
 The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Six
-packages exist as the parallel track the stage gates do not block (a pnpm workspace), all pending
-stage-four ratification of the decisions they encode:
+it. The module documents are candidates based on that audit. They are not a committed product list. Seven
+packages live under [`packages/`](packages/) as the parallel track the stage gates do not block (a pnpm
+workspace), all pending stage-four ratification of the decisions they encode:
 
-- [`core/`](core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
-  capability runtime boundary
-- [`store/`](store/README.md) — the owned operational store
-- [`executor/`](executor/README.md) — the recovery-loop engine with its automated crash grid and the
+- [`core/`](packages/core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
+  capability runtime boundary; its front door is one verb, `decide()`
+- [`store/`](packages/store/README.md) — the owned operational store
+- [`executor/`](packages/executor/README.md) — the recovery-loop engine with its automated crash grid and the
   intent-to-plan translator
-- [`probes/`](probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
-  load-test the seam between the other three and give P3 its first run in code
-- `checks/` — tests about the repository rather than any package: docs, examples, and design documents
-  held to the code they describe
-- [`lab/`](lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
+- [`shell/`](packages/shell/README.md) — the transport: a webhook delivery in, a persisted report out; it owns
+  ordering and decides nothing
+- [`probes/`](packages/probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
+  load-test the seam between the others and give P3 its first run in code
+- [`checks/`](packages/checks/README.md) — tests about the repository rather than any package: docs,
+  examples, and design documents held to the code they describe
+- [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
   can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
 
-Beyond the packages and `design/`, two user-facing roots: [`docs/`](docs/README.md) — the configuration
-guide, every table locked to the code by `checks/` — and [`examples/config/`](examples/config/README.md),
-worked configurations parsed by the test suite on every commit. A top-level directory is a workspace
-package or one of `design/`, `docs/`, `examples/` — a rule the suite enforces, like the other sentences
-in this paragraph.
+Beyond `packages/` and `design/`, one user-facing root: [`docs/`](docs/README.md) — the configuration
+guide, every table locked to the code by `checks/`, and [`docs/examples/`](docs/examples/README.md), worked
+configurations parsed by the test suite on every commit. A top-level directory holds workspace packages
+or is one of `design/`, `docs/` — a rule the suite enforces, like the other sentences in this paragraph.
+
+New here? [`design/trace.md`](design/trace.md) follows one real delivery through every stage of the
+system, introducing each term at the moment it acts.
 
 ## Reading order
 
@@ -62,3 +66,10 @@ in this paragraph.
 (classes A–E) out of the audit; the audit itself lives in [`design/audit/`](design/audit/) — the C++, Python, and
 JavaScript SDK automation read at pinned commits, with `file:line` citations — and
 [`design/audit/services.md`](design/audit/services.md) is the cross-SDK synthesis of what exists today.
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup (two commands, no credentials), the DCO sign-off
+every commit needs, how the difficulty ladder works, and the ground rules — each one linked to the
+decision or check that earned it. Participation is under the
+[Code of Conduct](CODE_OF_CONDUCT.md); security reports go through [`SECURITY.md`](SECURITY.md).

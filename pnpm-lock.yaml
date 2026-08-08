@@ -24,7 +24,7 @@ importers:
         specifier: ^8.46.0
         version: 8.46.0(eslint@9.39.5)(typescript@5.9.3)
 
-  checks:
+  packages/checks:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*
@@ -40,7 +40,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  core:
+  packages/core:
     dependencies:
       yaml:
         specifier: ^2.9.0
@@ -65,7 +65,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  executor:
+  packages/executor:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*
@@ -84,7 +84,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  lab:
+  packages/lab:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*
@@ -103,7 +103,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  probes:
+  packages/probes:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*
@@ -125,7 +125,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  shell:
+  packages/shell:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*
@@ -150,7 +150,7 @@ importers:
         specifier: ^4.0.0
         version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.9)(yaml@2.9.0))
 
-  store:
+  packages/store:
     dependencies:
       '@hiero-hackers/automation-core':
         specifier: workspace:*

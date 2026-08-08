@@ -2,7 +2,7 @@
 
 Evidence, not documentation. These files record what the Hiero SDK repositories — C++, JavaScript,
 Python — actually did in July 2026: their labels, their services, their coupling, their tests.
-Decisions in [`../decisions.md`](../decisions.md) and the workflow tables in `core/src/workflow/`
+Decisions in [`../decisions.md`](../decisions.md) and the workflow tables in `packages/core/src/workflow/`
 cite specific files here as the ground they stand on.
 
 **Frozen on 2026-07-17.** Nothing here is edited, even when wrong — a correction would silently

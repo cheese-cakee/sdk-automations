@@ -1,8 +1,11 @@
+# Entries are listed rather than globbed (`packages/*`): the checks package
+# reads this file as the one source of truth for what a package IS, and a
+# glob would hand it a pattern where it needs paths.
 packages:
-    - core
-    - checks
-    - store
-    - executor
-    - probes
-    - lab
-    - shell
+    - packages/core
+    - packages/checks
+    - packages/store
+    - packages/executor
+    - packages/probes
+    - packages/lab
+    - packages/shell
