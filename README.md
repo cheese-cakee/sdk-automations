@@ -23,8 +23,8 @@ workspace), all pending stage-four ratification of the decisions they encode:
   ordering and decides nothing
 - [`probes/`](packages/probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
   load-test the seam between the others and give P3 its first run in code
-- `checks/` — tests about the repository rather than any package: docs, examples, and design documents
-  held to the code they describe
+- [`checks/`](packages/checks/README.md) — tests about the repository rather than any package: docs,
+  examples, and design documents held to the code they describe
 - [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
   can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
 
@@ -66,3 +66,10 @@ system, introducing each term at the moment it acts.
 (classes A–E) out of the audit; the audit itself lives in [`design/audit/`](design/audit/) — the C++, Python, and
 JavaScript SDK automation read at pinned commits, with `file:line` citations — and
 [`design/audit/services.md`](design/audit/services.md) is the cross-SDK synthesis of what exists today.
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup (two commands, no credentials), the DCO sign-off
+every commit needs, how the difficulty ladder works, and the ground rules — each one linked to the
+decision or check that earned it. Participation is under the
+[Code of Conduct](CODE_OF_CONDUCT.md); security reports go through [`SECURITY.md`](SECURITY.md).
