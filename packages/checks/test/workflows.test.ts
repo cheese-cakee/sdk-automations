@@ -25,6 +25,9 @@ const workflows = trackedFiles().filter((path) =>
 const WRITE_ALLOWLIST = new Set([
     ".github/workflows/scorecard.yml:security-events",
     ".github/workflows/scorecard.yml:id-token",
+    // CodeQL's SARIF upload. Declared on the analyze job only, never at the
+    // workflow level, so no other step can inherit it (#42).
+    ".github/workflows/codeql.yml:security-events",
 ]);
 
 function workflowLines(path: string): string[] {
