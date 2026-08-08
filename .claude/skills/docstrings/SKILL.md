@@ -1,6 +1,6 @@
 ---
 name: docstrings
-description: Write or revise TypeScript comments in this repo — what earns one, how long it may be, and where it goes. Use when adding docstrings, reviewing comment density, or compressing a file's comments.
+description: Make a TypeScript file readable in this repo — what earns a docstring, how long it may be, where it goes, and what order declarations belong in. Use when adding docstrings, reviewing comment density, compressing comments, or reordering a file.
 ---
 
 # Docstrings for sdk-automations
@@ -93,6 +93,44 @@ the register records a dozen times.
 
 **File headers** are the one comment that is always worth it: what this file owns, what it does
 not, and where the neighbours are. `validate.ts` holds the rules, `parse.ts` the entry point.
+
+## 4. What order declarations go in
+
+Comments explain; sequence is what lets a reader build the picture in one pass. The two go
+together, which is why they share a skill — a reordering pass always rewrites the comments that
+introduce the moved declarations.
+
+**Dependencies read downward.** A declaration appears after everything it names. TypeScript
+hoists types, so this compiles either way — which is exactly why it rots silently. In
+`schema.ts`, `TOP_LEVEL_KEYS` used `keyof Omit<RepositoryConfig, …>` sixty lines before
+`RepositoryConfig` existed, and nothing complained.
+
+**Runtime order is not a preference.** `cleanRecord` must precede `NO_CONFIG` because the
+constant calls it. Know which of your constraints are real and which are for the reader.
+
+**Inputs before outputs.** `ParseConfigOptions` comes before `ConfigError` and `ConfigResult`.
+A reader follows the direction the data moves.
+
+**Sections match the file header, in the header's order.** If the header promises vocabulary,
+shape, and results, deliver them in that order. A header that lists three things while the file
+delivers a different three is a small lie that costs a reader a minute every time.
+
+**Banners once a file carries three or more concerns**, house style from `catalogue.ts` and
+`store.ts`:
+
+```ts
+// ─── Vocabulary ──────────────────────────────────────────────────────
+```
+
+Below three concerns, banners are noise. Above three, their absence is.
+
+**Verify a reordering pass the way you verify a comment pass** — sorted declarations must be
+identical, so nothing was added or lost while moving things:
+
+```bash
+strip() { grep -vE '^\s*(\*|/\*\*|/\*|\*/|//)' "$1" | grep -vE '^\s*$'; }
+diff <(strip "$ORIGINAL" | sort) <(strip "$REWRITTEN" | sort) && echo "same set, reordered"
+```
 
 ## Working on an existing file
 

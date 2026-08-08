@@ -1,10 +1,13 @@
 /**
- * The reviewed repository configuration: its shape, its enumerations, and the
- * results of validating it. See `design/config/schema.md` §2–§4.
+ * The reviewed repository configuration: its vocabulary, its shape, and what
+ * comes back from validating a document. See `design/config/schema.md` §2–§4.
  *
- * Types and constants only. The rules that check a document live in
- * `validate.ts`. The entry point that runs them lives in `parse.ts`.
+ * Declarations only — no parsing happens here. The rules that check a
+ * document live in `validate.ts`. The entry point that runs them lives in
+ * `parse.ts`.
  */
+
+// ─── Vocabulary ──────────────────────────────────────────────────────
 
 /** The blast-radius ladder a repository chooses from, least to most. */
 export const REPOSITORY_MODES = [
@@ -64,21 +67,7 @@ export const MEANING_FACTS = {
  */
 export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
-/**
- * The keys a document may carry, in the order a maintainer meets them.
- * `revision` is excluded: the parser stamps it, nobody writes it (D77).
- *
- * Adding a field to `RepositoryConfig` does not add it here. Only the reverse
- * is a compile error.
- */
-export const TOP_LEVEL_KEYS = [
-    "schemaVersion",
-    "mode",
-    "capabilities",
-    "mappings",
-    "principals",
-] as const satisfies readonly (keyof Omit<RepositoryConfig, "revision">)[];
-export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
+// ─── The shape of a document ─────────────────────────────────────────
 
 /** One capability's block in a configuration file. */
 export interface CapabilityConfig {
@@ -107,9 +96,25 @@ export interface RepositoryConfig {
 }
 
 /**
+ * The keys a document may carry, in the order a maintainer meets them.
+ * `revision` is excluded: the parser stamps it, nobody writes it (D77).
+ *
+ * Adding a field to `RepositoryConfig` does not add it here. Only the reverse
+ * is a compile error.
+ */
+export const TOP_LEVEL_KEYS = [
+    "schemaVersion",
+    "mode",
+    "capabilities",
+    "mappings",
+    "principals",
+] as const satisfies readonly (keyof Omit<RepositoryConfig, "revision">)[];
+export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
+
+/**
  * A null-prototype record, so a key nobody set always reads `undefined`.
  * Otherwise `capabilities["constructor"]` is truthy for a capability that
- * does not exist.
+ * does not exist. `NO_CONFIG` below and `parse.ts` build every record with it.
  */
 export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
     const record: Record<string, V> = Object.create(null);
@@ -133,6 +138,24 @@ export const NO_CONFIG: RepositoryConfig = {
     mappings: { labels: {} },
     principals: cleanRecord([]),
 };
+
+// ─── Parsing: what goes in, what comes back ──────────────────────────
+
+/**
+ * What the caller knows that the document does not say.
+ *
+ * `knownCapabilities` is the platform's shipped names. An enabled capability
+ * outside the list is an error; a disabled one is not, so retiring a
+ * capability never breaks a configuration that still names it. It is
+ * required rather than optional because an absent registry used to mean both
+ * "skip the check" and "nothing is known", and forgetting the argument
+ * reached either one (D58).
+ */
+export interface ParseConfigOptions {
+    /** The revision of the document being parsed. See `RepositoryConfig`. */
+    readonly revision: string;
+    readonly knownCapabilities: readonly string[];
+}
 
 /** Why a configuration was rejected, in a form a report can use (D75). */
 export type ConfigErrorCode =
@@ -170,19 +193,3 @@ export interface ConfigError {
 export type ConfigResult =
     | { readonly ok: true; readonly config: RepositoryConfig }
     | { readonly ok: false; readonly errors: readonly ConfigError[] };
-
-/**
- * What the caller knows that the document does not say.
- *
- * `knownCapabilities` is the platform's shipped names. An enabled capability
- * outside the list is an error; a disabled one is not, so retiring a
- * capability never breaks a configuration that still names it. It is
- * required rather than optional because an absent registry used to mean both
- * "skip the check" and "nothing is known", and forgetting the argument
- * reached either one (D58).
- */
-export interface ParseConfigOptions {
-    /** The revision of the document being parsed. See `RepositoryConfig`. */
-    readonly revision: string;
-    readonly knownCapabilities: readonly string[];
-}
