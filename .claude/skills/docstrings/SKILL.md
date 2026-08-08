@@ -87,12 +87,12 @@ export interface RepositoryConfig {
 
 **One fact, one place — including comments.** Before writing a rationale, check whether the
 enforcement site already carries it. `CAPABILITY_NAME_PATTERN` is declared in `schema.ts` and
-enforced in `validate.ts`; the hostile-key reasoning lives at the enforcement site, and the
+enforced in `sections.ts`; the hostile-key reasoning lives at the enforcement site, and the
 declaration says only what the pattern is for. A rationale in both places is the same defect
 the register records a dozen times.
 
 **File headers** are the one comment that is always worth it: what this file owns, what it does
-not, and where the neighbours are. `validate.ts` holds the rules, `parse.ts` the entry point.
+not, and where the neighbours are. `sections.ts` holds the rules, `parse.ts` the entry point.
 
 ## 4. When a file becomes two
 
@@ -100,12 +100,13 @@ not, and where the neighbours are. `validate.ts` holds the rules, `parse.ts` the
 create files for questions nobody is asking yet.**
 
 Size is a symptom, not the test, and reaching for it gives the wrong answer in both directions.
-`config/validate.ts` is the largest file in its directory at 288 lines and the most coherent one
+`config/sections.ts` is the largest file in its directory at 268 lines and the most coherent one
 in the repository: six functions of identical shape answering "is each section well formed?".
 Splitting it would separate siblings that are only consistent because you can compare them.
 Meanwhile the error types were about 35 lines and belonged in their own file the whole time —
 not because of length, but because the type lived in `schema.ts` while its only constructor
-lived in `validate.ts`, so the file answered two questions and neither answer was in one place.
+lived with the checkers, so each file answered two questions and neither answer sat in one
+place. They are `results.ts` now (D103).
 
 Pain is a *lagging* indicator. By the time a file hurts, it hurts mid-feature, when reorganising
 is most expensive and most likely to be skipped. Coherence you can judge the day the second

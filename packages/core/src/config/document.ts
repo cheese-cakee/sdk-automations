@@ -7,8 +7,8 @@
 
 import { parseDocument, type YAMLError } from "yaml";
 import { parseConfig } from "./parse.js";
-import { err } from "./validate.js";
-import type { ConfigError, ConfigResult, ParseConfigOptions } from "./schema.js";
+import { err, type ConfigError, type ConfigResult } from "./results.js";
+import type { ParseConfigOptions } from "./schema.js";
 
 /**
  * Aliases can expand quadratically — the "billion laughs" shape — and this

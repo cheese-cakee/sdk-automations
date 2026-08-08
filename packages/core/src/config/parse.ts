@@ -5,22 +5,45 @@
  * outermost problem first, and the tests freeze it.
  */
 
-import {
-    cleanRecord,
-    NO_CONFIG,
-    type ConfigResult,
-    type ParseConfigOptions,
-} from "./schema.js";
+import type { ParseConfigOptions, RepositoryConfig } from "./schema.js";
+import { err, type ConfigResult } from "./results.js";
 import {
     checkSchemaVersion,
-    err,
     checkTopLevelKeys,
     isPlainObject,
-    parseCapabilities,
-    parseMappings,
-    parseMode,
-    parsePrincipals,
-} from "./validate.js";
+    readCapabilities,
+    readMappings,
+    readMode,
+    readPrincipals,
+} from "./sections.js";
+
+/**
+ * A null-prototype record, so a key nobody set always reads `undefined`.
+ * Otherwise `capabilities["constructor"]` is truthy for a capability that
+ * does not exist. `NO_CONFIG` below and `parse.ts` build every record with it.
+ */
+export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
+    const record: Record<string, V> = Object.create(null);
+    for (const [key, value] of entries) record[key] = value;
+    return record;
+}
+
+/**
+ * What a repository with no configuration file gets. schema.md §2.2 says no
+ * configuration causes no workflow-changing writes.
+ *
+ * FINDING(config-no-config-mode): §2.2 does not say which mode that is.
+ * `observe` obeys the rule and still shows findings. `disabled` is the
+ * stricter reading. Undecided, and this constant is where the assumption sits.
+ */
+export const NO_CONFIG: RepositoryConfig = {
+    revision: "",
+    schemaVersion: 1,
+    mode: "observe",
+    capabilities: cleanRecord([]),
+    mappings: { labels: {} },
+    principals: cleanRecord([]),
+};
 
 export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigResult {
     if (raw === undefined || raw === null) {
@@ -33,10 +56,10 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         };
     }
 
-    const mode = parseMode(raw);
-    const capabilities = parseCapabilities(raw, options.knownCapabilities);
-    const mappings = parseMappings(raw);
-    const principals = parsePrincipals(raw);
+    const mode = readMode(raw);
+    const capabilities = readCapabilities(raw, options.knownCapabilities);
+    const mappings = readMappings(raw);
+    const principals = readPrincipals(raw);
 
     // §2.6 — fail closed: any error anywhere yields no configuration at
     // all, whole-file (D38).

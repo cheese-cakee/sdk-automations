@@ -7,12 +7,12 @@
  * rather than made to fix them one push at a time — the humane half of D38's
  * whole-file fail-closed rule.
 
- * `check*` returns problems only. `read*`-style section functions return a
- * value as well, wrapped in `Checked`.
+ * `check*` returns problems only. `read*` returns a value as well, wrapped
+ * in `Checked` — see `results.ts`.
  */
 
-import type { ConfigError, ConfigErrorCode } from "./schema.js";
-import { labelKey } from "./mappings.js";
+import { checked, err, type Checked, type ConfigError } from "./results.js";
+import { labelKey } from "./labels.js";
 import {
     CAPABILITY_NAME_PATTERN,
     MAPPABLE_MEANINGS,
@@ -23,39 +23,12 @@ import {
     type RepositoryMode,
 } from "./schema.js";
 
-// ─── Shared shapes and constructors ──────────────────────────────────
-
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
     if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
     const prototype = Object.getPrototypeOf(v);
     return prototype === Object.prototype || prototype === null;
 }
 
-/**
- * One section's outcome. A value exists only when the section is valid.
- *
- * The alternative, `{ value, errors }` always populated, makes the value
- * meaningless without checking a list somewhere else. Splitting into a check
- * pass and a build pass was also rejected: the builder would assume what the
- * checker guarantees, with nothing tying the two together (D77).
- */
-export type Checked<T> =
-    | { readonly ok: true; readonly value: T }
-    | { readonly ok: false; readonly errors: readonly ConfigError[] };
-
-/** Fold a section's accumulated errors into a result. */
-function checked<T>(value: T, errors: readonly ConfigError[]): Checked<T> {
-    return errors.length > 0 ? { ok: false, errors } : { ok: true, value };
-}
-
-/** One constructor, so every error is shaped the same way. */
-export function err(
-    code: ConfigErrorCode,
-    message: string,
-    path: string | null = null,
-): ConfigError {
-    return { code, message, path };
-}
 
 // ─── Section readers, in the order errors surface ────────────────────
 
@@ -107,7 +80,7 @@ function isRepositoryMode(value: unknown): value is RepositoryMode {
  * an error: `mode:` with no value parses to null, and choosing a mode on the
  * maintainer's behalf is the silent interpretation §2.7 rejects (D56).
  */
-export function parseMode(raw: Record<string, unknown>): Checked<RepositoryMode> {
+export function readMode(raw: Record<string, unknown>): Checked<RepositoryMode> {
     const value = Object.hasOwn(raw, "mode") ? raw.mode : "observe";
     return isRepositoryMode(value)
         ? { ok: true, value }
@@ -129,7 +102,7 @@ export function parseMode(raw: Record<string, unknown>): Checked<RepositoryMode>
  * is an ordinary own property (plain `obj[key] = value` on a normal
  * object both pollutes the prototype and silently loses the entry).
  */
-export function parseCapabilities(
+export function readCapabilities(
     raw: Record<string, unknown>,
     knownCapabilities: readonly string[],
 ): Checked<[string, CapabilityConfig][]> {
@@ -194,7 +167,7 @@ export function parseCapabilities(
  * (`FINDING(config-label-injectivity)` D34, `FINDING(config-label-case)` D55).
  * The original spelling is preserved for writes; only the uniqueness key folds.
  */
-export function parseMappings(
+export function readMappings(
     raw: Record<string, unknown>,
 ): Checked<Partial<Record<MappableMeaning, string>>> {
     const labels: Partial<Record<MappableMeaning, string>> = {};
@@ -247,7 +220,7 @@ export function parseMappings(
     return checked(labels, errors);
 }
 
-export function parsePrincipals(raw: Record<string, unknown>): Checked<[string, string][]> {
+export function readPrincipals(raw: Record<string, unknown>): Checked<[string, string][]> {
     const entries: [string, string][] = [];
     const errors: ConfigError[] = [];
     if (raw.principals === undefined) return { ok: true, value: entries };

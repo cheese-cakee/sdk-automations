@@ -1,9 +1,9 @@
 /**
- * The reviewed repository configuration: its vocabulary, its shape, and what
- * comes back from validating a document. See `design/config/schema.md` §2–§4.
+ * The reviewed repository configuration: its vocabulary and its shape.
+ * See `design/config/schema.md` §2–§4.
  *
- * Declarations only — no parsing happens here. The rules that check a
- * document live in `validate.ts`. The entry point that runs them lives in
+ * Declarations only. What comes BACK from validating a document is
+ * `results.ts`; the section checks are `sections.ts`; the entry point is
  * `parse.ts`.
  */
 
@@ -111,35 +111,7 @@ export const TOP_LEVEL_KEYS = [
 ] as const satisfies readonly (keyof Omit<RepositoryConfig, "revision">)[];
 export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
 
-/**
- * A null-prototype record, so a key nobody set always reads `undefined`.
- * Otherwise `capabilities["constructor"]` is truthy for a capability that
- * does not exist. `NO_CONFIG` below and `parse.ts` build every record with it.
- */
-export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
-    const record: Record<string, V> = Object.create(null);
-    for (const [key, value] of entries) record[key] = value;
-    return record;
-}
-
-/**
- * What a repository with no configuration file gets. schema.md §2.2 says no
- * configuration causes no workflow-changing writes.
- *
- * FINDING(config-no-config-mode): §2.2 does not say which mode that is.
- * `observe` obeys the rule and still shows findings. `disabled` is the
- * stricter reading. Undecided, and this constant is where the assumption sits.
- */
-export const NO_CONFIG: RepositoryConfig = {
-    revision: "",
-    schemaVersion: 1,
-    mode: "observe",
-    capabilities: cleanRecord([]),
-    mappings: { labels: {} },
-    principals: cleanRecord([]),
-};
-
-// ─── Parsing: what goes in, what comes back ──────────────────────────
+// ─── Parsing input ───────────────────────────────────────────────────
 
 /**
  * What the caller knows that the document does not say.
@@ -156,40 +128,3 @@ export interface ParseConfigOptions {
     readonly revision: string;
     readonly knownCapabilities: readonly string[];
 }
-
-/** Why a configuration was rejected, in a form a report can use (D75). */
-export type ConfigErrorCode =
-    /** Document-level. Only `parseConfigDocument` sees text, so only it
-     * reports these. */
-    | "documentUnparseable"
-    | "duplicateKey"
-    | "notAMapping"
-    | "unknownKey"
-    | "schemaVersionUnsupported"
-    | "modeInvalid"
-    | "capabilityNameInvalid"
-    | "capabilityEnabledNotBoolean"
-    | "capabilityNotInRegistry"
-    | "meaningNotMappable"
-    | "labelInvalid"
-    | "labelNotInjective"
-    | "principalNotAString";
-
-/**
- * One reason a document was rejected.
- *
- * `path` is dotted, like `capabilities.intake.enabled`, or `null` for a
- * whole-document problem. A check run uses it to annotate one line instead
- * of pasting a paragraph.
- */
-export interface ConfigError {
-    readonly code: ConfigErrorCode;
-    /** For a maintainer. Never asserted on, only its presence. */
-    readonly message: string;
-    readonly path: string | null;
-}
-
-/** Parsed, or rejected with reasons. Never both. */
-export type ConfigResult =
-    | { readonly ok: true; readonly config: RepositoryConfig }
-    | { readonly ok: false; readonly errors: readonly ConfigError[] };

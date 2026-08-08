@@ -32,7 +32,7 @@ derive the world"]
 | Directory | The question it answers | Files |
 |---|---|---|
 | `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation) |
-| `src/config/` | What did this repository ask for? | `schema.ts`, `validate.ts`, `parse.ts`, `document.ts` (YAML in), `mappings.ts` (label ↔ meaning, both directions) — and its own [README](src/config/README.md) with the path a file takes |
+| `src/config/` | What did this repository ask for? | `schema.ts`, `sections.ts`, `parse.ts`, `document.ts` (YAML in), `labels.ts` (label ↔ meaning, both directions) — and its own [README](src/config/README.md) with the path a file takes |
 | `src/workflow/` | What states exist, and how do they move? | `meanings.ts` (vocabulary, derived from the facts table), `transitions.ts` (the diagrams as tables), `apply.ts`, `project.ts` |
 | `src/capability/` | What may a capability declare and do? | `declaration.ts`, `catalogue.ts` (the closed vocabularies — and the add-an-operation checklist), `boundary.ts` (how it is called), `intent.ts` (what it asks, and the screens), `factory.ts` (how one is built without ceremony) |
 | `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) |
