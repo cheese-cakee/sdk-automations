@@ -1,5 +1,6 @@
 *.md
 *.yml
 *.yaml
-lab/harness/
-shell/data/**
+*.json
+packages/lab/harness/
+packages/shell/data/**

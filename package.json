@@ -8,7 +8,9 @@
         "test": "pnpm -r test",
         "test:coverage": "pnpm -r test:coverage",
         "lint": "eslint .",
-        "audit": "pnpm audit --audit-level moderate"
+        "audit": "pnpm audit --audit-level moderate",
+        "format": "prettier --write \"packages/**/*.ts\"",
+        "format:check": "prettier --check \"packages/**/*.ts\""
     },
     "devDependencies": {
         "@vitest/coverage-v8": "^4.1.10",
