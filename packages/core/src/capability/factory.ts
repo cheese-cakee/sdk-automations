@@ -50,10 +50,7 @@ export interface IntentSpec<K extends IntentOperation> {
 export type IntentMaker = <K extends IntentOperation>(spec: IntentSpec<K>) => Intent<K>;
 
 /** Bind an occasion. Accepts any catalogue operation; see `intentFactoryFor`. */
-export function intentFactory(
-    capability: string,
-    occasion: IntentOccasion,
-): IntentMaker {
+export function intentFactory(capability: string, occasion: IntentOccasion): IntentMaker {
     return <K extends IntentOperation>(spec: IntentSpec<K>): Intent<K> => {
         const base = {
             capability,
@@ -92,8 +89,6 @@ export function intentFactory(
 export function intentFactoryFor<const D extends TypedDeclaration>(
     declaration: D,
     occasion: IntentOccasion,
-): <K extends D["intents"][number]["name"] & IntentOperation>(
-    spec: IntentSpec<K>,
-) => Intent<K> {
+): <K extends D["intents"][number]["name"] & IntentOperation>(spec: IntentSpec<K>) => Intent<K> {
     return intentFactory(declaration.name, occasion);
 }

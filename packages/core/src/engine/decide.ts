@@ -138,8 +138,7 @@ function destructiveOrWrite(
                 cancelledBy: intent.destructive.cancelledBy,
                 reversesWith: intent.destructive.reversesWith,
             }),
-            qualifyingActivitySinceWarning:
-                intent.destructive.qualifyingActivitySinceWarning,
+            qualifyingActivitySinceWarning: intent.destructive.qualifyingActivitySinceWarning,
         },
         config,
         context,

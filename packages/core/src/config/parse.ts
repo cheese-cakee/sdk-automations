@@ -22,7 +22,9 @@ import {
  * Otherwise `capabilities["constructor"]` is truthy for a capability that
  * does not exist. `NO_CONFIG` below and `parse.ts` build every record with it.
  */
-export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
+export function cleanRecord<V>(
+    entries: readonly (readonly [string, V])[],
+): Readonly<Record<string, V>> {
     const record: Record<string, V> = Object.create(null);
     for (const [key, value] of entries) record[key] = value;
     return record;

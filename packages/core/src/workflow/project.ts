@@ -12,12 +12,7 @@
  * `applyTransition` — the no-write rule is structural, not a check.
  */
 
-import {
-    ISSUE_MEANINGS,
-    PR_MEANINGS,
-    type IssueMeaning,
-    type PrMeaning,
-} from "./positions.js";
+import { ISSUE_MEANINGS, PR_MEANINGS, type IssueMeaning, type PrMeaning } from "./positions.js";
 import { isBlocked, type ClosureReason, type WorkItemState } from "./state.js";
 import type { MappableMeaning } from "../config/index.js";
 
@@ -104,19 +99,11 @@ export function projectPrObservation(
  * silently treats every conflicted, closed item as open, which is the
  * mistake the first capability to consume a projection made.
  */
-export function closureOf<M>(
-    projection: ObservationProjection<M>,
-): ClosureReason | null {
-    return projection.kind === "position"
-        ? projection.state.closedBy
-        : projection.closedBy;
+export function closureOf<M>(projection: ObservationProjection<M>): ClosureReason | null {
+    return projection.kind === "position" ? projection.state.closedBy : projection.closedBy;
 }
 
 /** Is this item paused, whichever branch the projection took? See `closureOf`. */
-export function isPausedByProjection<M>(
-    projection: ObservationProjection<M>,
-): boolean {
-    return projection.kind === "position"
-        ? projection.state.blocked
-        : projection.blocked;
+export function isPausedByProjection<M>(projection: ObservationProjection<M>): boolean {
+    return projection.kind === "position" ? projection.state.blocked : projection.blocked;
 }

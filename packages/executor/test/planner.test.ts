@@ -152,10 +152,7 @@ describe("plan identity", () => {
         const a = labelIntent();
         const b = commentIntent();
         const { plans } = planApproved([a, b], inputs);
-        expect(plans.map((p) => p.effectId)).toEqual([
-            a.idempotencyKey,
-            b.idempotencyKey,
-        ]);
+        expect(plans.map((p) => p.effectId)).toEqual([a.idempotencyKey, b.idempotencyKey]);
         expect(plans.every((p) => p.revision === "rev-plan-1")).toBe(true);
     });
 });
@@ -166,9 +163,7 @@ describe("the three refusals only this layer can see", () => {
         const duplicate = { ...commentIntent(), idempotencyKey: original.idempotencyKey };
         const { plans, refusals } = planApproved([original, duplicate], inputs);
         expect(plans).toHaveLength(1);
-        expect(refusals).toEqual([
-            expect.objectContaining({ code: "duplicateIdempotencyKey" }),
-        ]);
+        expect(refusals).toEqual([expect.objectContaining({ code: "duplicateIdempotencyKey" })]);
         expect(refusals[0]!.reason).toContain("applyMappedLabel");
     });
 
@@ -176,9 +171,7 @@ describe("the three refusals only this layer can see", () => {
         const bare = { repository: REPO, config: configWith({}) };
         const { plans, refusals } = planApproved([labelIntent()], bare);
         expect(plans).toEqual([]);
-        expect(refusals).toEqual([
-            expect.objectContaining({ code: "mappedLabelMissing" }),
-        ]);
+        expect(refusals).toEqual([expect.objectContaining({ code: "mappedLabelMissing" })]);
         expect(refusals[0]!.reason).toContain("awaitingTriage");
     });
 

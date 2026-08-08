@@ -9,11 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-    asDeliveryGuid,
-    toEngine,
-    type EngineCapability,
-} from "@hiero-hackers/automation-core";
+import { asDeliveryGuid, toEngine, type EngineCapability } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { intake, intakeDeclaration } from "@hiero-hackers/automation-probes";
 import { Processor } from "../src/processor.js";
@@ -88,9 +84,7 @@ describe("a crash releases the claim", () => {
             },
         };
         const failing = processor(bomb);
-        await expect(failing.processor.processOnce()).rejects.toThrow(
-            "capability exploded",
-        );
+        await expect(failing.processor.processOnce()).rejects.toThrow("capability exploded");
         expect(failing.reports.entries).toEqual([]);
 
         // Released, not stuck: a fresh worker claims it immediately —
@@ -113,11 +107,13 @@ describe("a crash releases the claim", () => {
     });
 
     it("does not steal a fresh claim but takes over after the 15-minute lease", async () => {
-        expect(store.claimNextDelivery(
-            "stalled-worker",
-            new Date(BASE.getTime() + 60_000).toISOString(),
-            new Date(BASE.getTime() - 60_000).toISOString(),
-        )).toBeDefined();
+        expect(
+            store.claimNextDelivery(
+                "stalled-worker",
+                new Date(BASE.getTime() + 60_000).toISOString(),
+                new Date(BASE.getTime() - 60_000).toISOString(),
+            ),
+        ).toBeDefined();
 
         const fresh = processor(toEngine(intake), 10 * 60_000);
         expect(await fresh.processor.processOnce()).toBe(false);

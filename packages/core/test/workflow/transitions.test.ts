@@ -127,9 +127,7 @@ describe("pull request flow (taxonomy.md §5)", () => {
     it("readyToMerge is reachable only from needsReview", () => {
         for (const from of [null, "needsRevision", "readyToMerge"] as const) {
             for (const cause of ALL_PR_CAUSES) {
-                expect(
-                    canTransitionPr({ from, to: "readyToMerge", cause }).allowed,
-                ).toBe(false);
+                expect(canTransitionPr({ from, to: "readyToMerge", cause }).allowed).toBe(false);
             }
         }
     });
@@ -161,14 +159,16 @@ describe("pull request flow (taxonomy.md §5)", () => {
             blocked: false,
             closedBy: null,
         });
-        const merged = applyPrTransition(
-            at("readyToMerge"),
-            { from: "readyToMerge", to: null, cause: "merged" },
-        );
-        const abandoned = applyPrTransition(
-            at("needsRevision"),
-            { from: "needsRevision", to: null, cause: "humanClosed" },
-        );
+        const merged = applyPrTransition(at("readyToMerge"), {
+            from: "readyToMerge",
+            to: null,
+            cause: "merged",
+        });
+        const abandoned = applyPrTransition(at("needsRevision"), {
+            from: "needsRevision",
+            to: null,
+            cause: "humanClosed",
+        });
         expect(merged.state.closedBy).toBe("merged");
         expect(abandoned.state.closedBy).toBe("closedByHuman");
     });
@@ -228,10 +228,11 @@ describe("reopening is a closure clear, not a transition (D49)", () => {
 
     it("a reopened item accepts transitions again", () => {
         const reopened = applyReopen(closedAt("ready", "completedByLinkedMerge")).state;
-        const { verdict } = applyIssueTransition(
-            reopened,
-            { from: "ready", to: "inProgress", cause: "contributorAssigned" },
-        );
+        const { verdict } = applyIssueTransition(reopened, {
+            from: "ready",
+            to: "inProgress",
+            cause: "contributorAssigned",
+        });
         expect(verdict).toEqual({ allowed: true });
     });
 
@@ -269,7 +270,10 @@ describe("reopening is a closure clear, not a transition (D49)", () => {
 });
 
 describe("work-item invariants (test-architecture: invariants layer)", () => {
-    const at = (meaning: IssueMeaning | null, extra?: Partial<WorkItemState<IssueMeaning>>): WorkItemState<IssueMeaning> => ({
+    const at = (
+        meaning: IssueMeaning | null,
+        extra?: Partial<WorkItemState<IssueMeaning>>,
+    ): WorkItemState<IssueMeaning> => ({
         meaning,
         blocked: false,
         closedBy: null,
@@ -280,20 +284,22 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
         // Structural invariant: the type allows exactly one meaning. The
         // runtime counterpart: applying a legal transition replaces the
         // position, never accumulates one.
-        const { state } = applyIssueTransition(
-            at("ready"),
-            { from: "ready", to: "inProgress", cause: "contributorAssigned" }
-        );
+        const { state } = applyIssueTransition(at("ready"), {
+            from: "ready",
+            to: "inProgress",
+            cause: "contributorAssigned",
+        });
         expect(state.meaning).toBe("inProgress");
     });
 
     it("a blocked item refuses every capability transition (safety.md §5)", () => {
         for (const to of [...ISSUE_MEANINGS, null]) {
             for (const cause of ALL_ISSUE_CAUSES) {
-                const { state, verdict } = applyIssueTransition(
-                    at("ready", { blocked: true }),
-                    { from: "ready", to, cause }
-                );
+                const { state, verdict } = applyIssueTransition(at("ready", { blocked: true }), {
+                    from: "ready",
+                    to,
+                    cause,
+                });
                 expect(verdict.allowed).toBe(false);
                 expect(state.meaning).toBe("ready"); // position survives the pause
             }
@@ -302,27 +308,30 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
 
     it("a stale precondition refuses instead of overwriting (human edits win)", () => {
         // The request believed the issue was `ready`; a human moved it.
-        const { verdict } = applyIssueTransition(
-            at("inProgress"),
-            { from: "ready", to: "inProgress", cause: "contributorAssigned" }
-        );
+        const { verdict } = applyIssueTransition(at("inProgress"), {
+            from: "ready",
+            to: "inProgress",
+            cause: "contributorAssigned",
+        });
         expect(verdict).toMatchObject({ allowed: false, code: "stalePrecondition" });
     });
 
     it("a closed item accepts nothing, and says which closure refused", () => {
-        const { verdict } = applyIssueTransition(
-            at(null, { closedBy: "closedByHuman" }),
-            { from: null, to: "awaitingTriage", cause: "intakeObserved" }
-        );
+        const { verdict } = applyIssueTransition(at(null, { closedBy: "closedByHuman" }), {
+            from: null,
+            to: "awaitingTriage",
+            cause: "intakeObserved",
+        });
         expect(verdict).toMatchObject({ allowed: false, code: "itemClosed" });
         if (!verdict.allowed) expect(verdict.reason).toContain("closedByHuman");
     });
 
     it("the pause is reported before the edge check — a blocked item's code is itemBlocked", () => {
-        const { verdict } = applyIssueTransition(
-            at("ready", { blocked: true }),
-            { from: "ready", to: "inProgress", cause: "contributorAssigned" }
-        );
+        const { verdict } = applyIssueTransition(at("ready", { blocked: true }), {
+            from: "ready",
+            to: "inProgress",
+            cause: "contributorAssigned",
+        });
         expect(verdict).toMatchObject({ allowed: false, code: "itemBlocked" });
     });
 
@@ -332,17 +341,18 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
         const { state, verdict } = applyIssueTransition(
             before,
             // Precondition matches, but the edge itself is illegal.
-            { from: "ready", to: "awaitingTriage", cause: "triageCompleted" }
+            { from: "ready", to: "awaitingTriage", cause: "triageCompleted" },
         );
         expect(verdict).toMatchObject({ allowed: false, code: "noSuchEdge" });
         expect(state).toEqual(before);
     });
 
     it("closing transitions record the closure; ordinary moves leave it null", () => {
-        const closed = applyIssueTransition(
-            at("ready"),
-            { from: "ready", to: null, cause: "humanClosed" }
-        );
+        const closed = applyIssueTransition(at("ready"), {
+            from: "ready",
+            to: null,
+            cause: "humanClosed",
+        });
         expect(closed.state).toEqual({
             meaning: "ready",
             blocked: false,
@@ -354,16 +364,18 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
             verdict: { allowed: true },
         });
 
-        const linked = applyIssueTransition(
-            at("ready"),
-            { from: "ready", to: null, cause: "linkedMergeClosed" }
-        );
+        const linked = applyIssueTransition(at("ready"), {
+            from: "ready",
+            to: null,
+            cause: "linkedMergeClosed",
+        });
         expect(linked.state.closedBy).toBe("completedByLinkedMerge");
 
-        const moved = applyIssueTransition(
-            at("ready"),
-            { from: "ready", to: "inProgress", cause: "contributorAssigned" }
-        );
+        const moved = applyIssueTransition(at("ready"), {
+            from: "ready",
+            to: "inProgress",
+            cause: "contributorAssigned",
+        });
         expect(moved.state).toEqual({
             meaning: "inProgress",
             blocked: false,
@@ -373,11 +385,31 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
 
     it("every refusal carries a non-empty human reason alongside its code", () => {
         const refusals = [
-            applyIssueTransition(at("ready", { blocked: true }), { from: "ready", to: "inProgress", cause: "contributorAssigned" }),
-            applyIssueTransition(at(null, { closedBy: "closedByHuman" }), { from: null, to: "awaitingTriage", cause: "intakeObserved" }),
-            applyIssueTransition(at("inProgress"), { from: "ready", to: "inProgress", cause: "contributorAssigned" }),
-            applyIssueTransition(at("ready"), { from: "ready", to: "awaitingTriage", cause: "triageCompleted" }),
-            applyIssueTransition(at("ready"), { from: "ready", to: "inProgress", cause: "reclaimCompleted" }),
+            applyIssueTransition(at("ready", { blocked: true }), {
+                from: "ready",
+                to: "inProgress",
+                cause: "contributorAssigned",
+            }),
+            applyIssueTransition(at(null, { closedBy: "closedByHuman" }), {
+                from: null,
+                to: "awaitingTriage",
+                cause: "intakeObserved",
+            }),
+            applyIssueTransition(at("inProgress"), {
+                from: "ready",
+                to: "inProgress",
+                cause: "contributorAssigned",
+            }),
+            applyIssueTransition(at("ready"), {
+                from: "ready",
+                to: "awaitingTriage",
+                cause: "triageCompleted",
+            }),
+            applyIssueTransition(at("ready"), {
+                from: "ready",
+                to: "inProgress",
+                cause: "reclaimCompleted",
+            }),
             applyReopen(at("ready")),
             applyReopen({ meaning: null, blocked: false, closedBy: "merged" }),
         ];
