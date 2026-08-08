@@ -14,13 +14,11 @@
 
 import {
     ISSUE_MEANINGS,
-    isBlocked,
     PR_MEANINGS,
-    type ClosureReason,
     type IssueMeaning,
     type PrMeaning,
-    type WorkItemState,
-} from "./meanings.js";
+} from "./positions.js";
+import { isBlocked, type ClosureReason, type WorkItemState } from "./state.js";
 import type { MappableMeaning } from "../config/index.js";
 
 /**

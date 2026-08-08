@@ -22,7 +22,7 @@ The line is easy to blur, so two worked examples:
 - `capability/catalogue.ts` names operations like `postManagedComment`. That
   reads like GitHub, but it is *our* closed vocabulary (D61) — the endpoint it
   becomes is the adapter's business, outside `core/` entirely. **Not here.**
-- `workflow/meanings.ts` has `awaitingTriage`. Also not GitHub: P7 and D71
+- `workflow/positions.ts` has `awaitingTriage`. Also not GitHub: P7 and D71
   make these platform meanings that repositories map onto their own labels.
   **Not here.**
 - `github/ids.ts` exists because REST delivery ids exceed 2^53

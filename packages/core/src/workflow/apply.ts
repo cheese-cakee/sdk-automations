@@ -3,15 +3,9 @@
  * does the item look like afterwards.
  */
 
-import {
-    closureReasonFor,
-    type IssueCause,
-    type IssueMeaning,
-    type PrCause,
-    type PrMeaning,
-    type TransitionCause,
-    type WorkItemState,
-} from "./meanings.js";
+import type { IssueMeaning, PrMeaning } from "./positions.js";
+import type { IssueCause, PrCause, TransitionCause } from "./causes.js";
+import { closureReasonFor, type WorkItemState } from "./state.js";
 import { ISSUE_EDGES, PR_EDGES, type Edge } from "./transitions.js";
 
 /** A move somebody wants: from where, to where, and why. */

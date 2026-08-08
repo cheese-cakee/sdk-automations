@@ -15,7 +15,7 @@ Four things, and nothing else.
 |---|---|---|
 | **Identity** | Every exported type, interface, and const gets one line saying what it is. A name alone is ambiguous. | `/** One capability's block in a configuration file. */` |
 | **Constraint** | Break this and something fails silently, somewhere else. | `satisfies` rather than a `:` annotation, or the derived unions collapse to `never` |
-| **Orientation** | A competent reader cannot predict what this does without running it. | the mapped-conditional derivation in `workflow/meanings.ts` |
+| **Orientation** | A competent reader cannot predict what this does without running it. | the mapped-conditional derivation in `workflow/positions.ts` |
 | **Non-obvious why** | The shape looks arbitrary or wrong, and there is a forcing reason. | `deriveIdempotencyKey` using JSON, not a delimiter join |
 
 **Two things never earn one:**

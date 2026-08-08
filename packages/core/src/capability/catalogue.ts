@@ -192,7 +192,7 @@ export interface IntentCatalogue {
      *
      * The one operation that MOVES an item, so the one that names a
      * transition cause from the closed, entity-scoped list in
-     * `workflow/meanings.ts`; `screenIntent` checks the edge (D78). The
+     * `workflow/causes.ts`; `screenIntent` checks the edge (D78). The
      * others do not move anything: a comment and an unassign have reasons
      * but not transitions, and keep the free-text `DatedCause` that
      * identifies the occasion.

@@ -8,14 +8,8 @@
  * checking it is how D48's missing edge survived in both artifacts at once.
  */
 
-import type {
-    EntityKind,
-    IssueCause,
-    IssueMeaning,
-    PrCause,
-    PrMeaning,
-    TransitionCause,
-} from "./meanings.js";
+import type { EntityKind, IssueMeaning, PrMeaning } from "./positions.js";
+import type { IssueCause, PrCause, TransitionCause } from "./causes.js";
 
 export interface Edge<M, C extends TransitionCause> {
     readonly from: M | null;

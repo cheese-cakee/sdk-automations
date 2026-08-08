@@ -63,6 +63,21 @@ understood separately.
 another — `MEANING_FACTS` is keyed by a config concept and valued by a workflow one — pick an end,
 state why, and stop. Splitting it puts the key and the value in different packages.
 
+## When a directory earns a README
+
+**When the relationships between its files need more than the barrel header can carry** — a
+pipeline, a derivation, a trap, or a provenance obligation. Not every directory: `report/` is two
+obvious files and a README would be noise.
+
+The test in practice: try writing the relationship in the barrel's header. If three lines cover
+it, you are done. If you find yourself explaining that half the directory is derived and half is
+owned, or that two similarly-named things mean opposite directions, that is a README.
+
+What they carry, from the four that exist: what the directory owns and does NOT own, a diagram of
+how a value moves through it, one row per file naming the QUESTION it answers, the traps a reader
+will otherwise hit, and what keeps it honest — the test or lock that would fail if the directory
+drifted from its description.
+
 ## Depth and graduation
 
 **A target earns a subdirectory only when it needs a second file** (D89). This is a rule against

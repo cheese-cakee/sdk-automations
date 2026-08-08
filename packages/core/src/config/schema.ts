@@ -39,7 +39,7 @@ export type EntityKind = (typeof ENTITY_KINDS)[number];
 export type MeaningFlow = EntityKind | "pause";
 
 /**
- * Which flow each meaning belongs to. `workflow/meanings.ts` builds the
+ * Which flow each meaning belongs to. `workflow/positions.ts` builds the
  * per-entity position types from this table by matching on the flow values,
  * so those values have to stay literal.
  *
