@@ -14,6 +14,7 @@ import {
 } from "./meanings.js";
 import { ISSUE_EDGES, PR_EDGES, type Edge } from "./transitions.js";
 
+/** A move somebody wants: from where, to where, and why. */
 export interface TransitionRequest<M, C extends TransitionCause = TransitionCause> {
     readonly from: M | null;
     readonly to: M | null;
@@ -34,6 +35,7 @@ export type TransitionRefusalCode =
     | "notClosed"
     | "mergedNotReopenable";
 
+/** Allowed, or refused with a machine-readable cause. */
 export type TransitionVerdict =
     | { readonly allowed: true }
     | {
@@ -80,7 +82,12 @@ export function canTransitionPr(
     return evaluate(PR_EDGES, request);
 }
 
-/** The edge tables, exposed read-only for the doc-drift check. */
+/**
+ * Walk one edge, and say what the item looks like afterwards.
+ *
+ * `verdictFor` is passed in rather than chosen here, because the caller
+ * already knows which entity it holds and the edge tables are per-flow.
+ */
 export function applyTransition<M, C extends TransitionCause>(
     state: WorkItemState<M>,
     request: TransitionRequest<M, C>,

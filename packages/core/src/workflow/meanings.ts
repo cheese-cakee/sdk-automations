@@ -1,18 +1,13 @@
 /**
- * Closure is a recorded REASON, not a position: read from GitHub's own fields
- * and never written as a label. Modelled orthogonally for the same reason as
- * `blocked` (D28) — as a meaning it would become mappable, and a merged pull
- * request still carrying `needs review` would project as a conflict
- * (`FINDING(taxonomy-closure-reason)`, D47, D35).
- */
-
-/**
- * The vocabulary a work item is described in: entity kinds, the position
- * meanings for each flow, closure reasons, and the causes that move an item.
+ * The vocabulary a work item is described in.
  *
- * Data and names only — `transitions.ts` holds the edges, `apply.ts` the
- * rules that walk them. Every enumeration derives its union from its array
- * (D76), so adding a member breaks compilation until every table is updated.
+ * Half of it is DERIVED and half is owned, which is worth knowing before
+ * reading. The position meanings come from `config`'s facts table and are
+ * only split by flow here. The causes, the closure reasons and the item
+ * state are owned here and exist nowhere else.
+ *
+ * Data and names only. `transitions.ts` holds the edges, `apply.ts` the rules
+ * that walk them. Every enumeration derives its union from its array (D76).
  */
 
 import {
@@ -25,17 +20,10 @@ import {
 export type { EntityKind };
 
 /**
- * ── The derivation corner (D90) ──────────────────────────────────────
- *
- * Everything below this comment falls out of `MEANING_FACTS`; nothing
- * restates it. The conditional type reads as: "keep K when its declared
- * flow is F, else discard it" — dense, but you never need to read it to
- * USE the types, and `invariants.test.ts` pins the results, so if the
- * derivation ever misbehaves a test names the meaning that moved.
- *
- * Before D90 the unions below were hand-written arrays, related to
- * `MappableMeaning` by nothing the compiler could see — which is why
- * `screenTransition` needed six casts to cross between them.
+ * Derived from `MEANING_FACTS`, never restated. Read the conditional as
+ * "keep K when its declared flow is F, else discard it" — dense, but you
+ * never need to read it to USE the types below, and tests pin the
+ * results (D90).
  */
 type MeaningsWithFlow<F extends EntityKind> = {
     [K in MappableMeaning]: (typeof MEANING_FACTS)[K]["flow"] extends F
@@ -64,19 +52,13 @@ export const PR_MEANINGS: readonly PrMeaning[] =
     MAPPABLE_MEANINGS.filter(isPrMeaning);
 
 /**
- * Why an item is closed, as GitHub reports it (`merged_at`,
- * `state_reason`) — never a mapped label, so it is observed and never
- * written. Closure is NOT a position: a closed item keeps whatever
- * position labels it carries (D35), and `merged` must be distinguishable
- * from `closedByHuman` because downstream policy branches on it —
- * progression credits only a merged linked pull request
- * (`design/modules/progression.md`), and the audited C++ post-merge
- * cleanup is gated `merged == true` (`design/audit/services-cpp.md`).
+ * Why an item is closed, as GitHub reports it. Observed from `merged_at`
+ * and `state_reason`, never written as a label.
  *
- * FINDING(taxonomy-closure-reason), D47: taxonomy.md §5 wrote "The pull
- * request closes or merges" as ONE edge, discarding the distinction at
- * exactly the point it starts to matter. Recorded here as an orthogonal
- * fact rather than a meaning, for the same reason as `blocked` (D28).
+ * Closure is not a position: a closed item keeps whatever position labels it
+ * carries (D35). And `merged` stays distinguishable from `closedByHuman`
+ * because downstream policy branches on it — progression credits only a
+ * merged linked pull request (D47).
  */
 export type ClosureReason =
     /** A pull request merged — `merged_at` is set. */
@@ -87,11 +69,9 @@ export type ClosureReason =
     | "completedByLinkedMerge";
 
 /**
- * FINDING(taxonomy-blocked), D28: §2 lists `blocked` as a meaning, but
- * neither state diagram (§4, §5) contains it, and safety.md §5 gives it
- * pause semantics. Modelled as an orthogonal pause flag — an item keeps
- * its position while paused. If maintainers want a position instead,
- * the state type and both tables change.
+ * An item's workflow state. `blocked` is an orthogonal pause flag rather
+ * than a position, so an item keeps its position while paused (D28) —
+ * making it a position instead would change this type and both edge tables.
  */
 export interface WorkItemState<M> {
     /** Current workflow position, `null` before entry / with no mapped label. */
@@ -106,15 +86,12 @@ export interface WorkItemState<M> {
 }
 
 /**
- * Issue-flow causes — taxonomy.md §4. Scoped per entity so a PR cause on
- * an issue request is a COMPILE error, not a runtime `causeNotAccepted`:
- * the same "make misuse unrepresentable" rule `ids.ts` applies to
- * delivery ids.
+ * Issue-flow causes — taxonomy.md §4.
  *
- * FINDING(taxonomy-entity-scoped-causes), D50: the first implementation
- * used one flat cause union for both flows, so `triageCompleted` on a
- * pull request type-checked and was rejected only at runtime. Splitting
- * costs nothing — no cause is legal in both flows except `humanClosed`.
+ * Scoped per entity so a pull-request cause on an issue is a COMPILE error
+ * rather than a runtime rejection — the same make-misuse-unrepresentable
+ * rule `ids.ts` applies to delivery ids. The split costs nothing: no cause
+ * is legal in both flows except `humanClosed` (D50).
  */
 export const ISSUE_CAUSES = [
     "intakeObserved", // [*] → awaitingTriage
@@ -179,14 +156,11 @@ export function closureReasonFor(cause: TransitionCause): ClosureReason | null {
 }
 
 /**
- * Is this item paused?
+ * Is this item paused? Presence, nothing more (D28).
  *
- * D28 makes `blocked` an orthogonal flag rather than a position, so the rule
- * is simply presence. It lives here, once, because two places used to decide
- * it: `project.ts` computed it from the observed meanings, and the safety
- * engine was handed a separate boolean asserting the same thing — with
- * nothing comparing them. A shell could project an item as blocked and then
- * assert it was not.
+ * One home on purpose. When the projection computed this and the safety
+ * engine was handed a separate boolean saying the same thing, a shell could
+ * project an item as blocked and then assert it was not.
  */
 export function isBlocked(meanings: readonly MappableMeaning[]): boolean {
     return meanings.includes("blocked");

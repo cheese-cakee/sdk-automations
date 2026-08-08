@@ -58,6 +58,12 @@ destroys that — the reader loses the shape while reading about one field.
 
 > **A field comment must fit on one line. If it needs more, it belongs in the type's docstring.**
 
+**Lifting is not relocating.** Moving a field's block into the type docstring means keeping what a
+reader needs, not pasting every word one level up — three lifted blocks concatenated are a
+thirteen-line docstring nobody reads. Apply §1's deletion test again *after* the move, and check
+the FILE HEADER first: it usually already says half of it, and a duplicate ten lines apart is
+still a duplicate.
+
 ```ts
 // ✗ the shape is unreadable
 export interface RepositoryConfig {

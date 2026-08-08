@@ -23,7 +23,13 @@ export interface Edge<M, C extends TransitionCause> {
     readonly causes: readonly C[];
 }
 
-/** taxonomy.md §4, verbatim as edges. */
+/**
+ * taxonomy.md §4, verbatim as edges.
+ *
+ * No manual-entry edges, deliberately. Applying a label by hand is observed
+ * reality to reconcile (manual-edits.md), not a transition anyone requests
+ * (D29).
+ */
 export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: null, to: "awaitingTriage", causes: ["intakeObserved"] },
     { from: "awaitingTriage", to: "ready", causes: ["triageCompleted"] },
@@ -36,24 +42,19 @@ export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: "awaitingTriage", to: null, causes: ["humanClosed"] },
     { from: "ready", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
     { from: "inProgress", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
-    /**
-     * FINDING(taxonomy-manual-entry), D29: "every state has a
-     * non-module way in" implies manual-entry edges §4 omits. Manual
-     * label application is observed reality to reconcile
-     * (manual-edits.md), not a requestable transition — no edges added.
-     */
 ];
 
-/** taxonomy.md §5, verbatim as edges. */
+/**
+ * taxonomy.md §5, verbatim as edges.
+ *
+ * Three of these came from reading the audit rather than the prose, and §5
+ * has been corrected to match (D48). The one naming rule worth carrying:
+ * a cause names the CONSEQUENCE, not the trigger — `approvalInvalidated`
+ * covers new commits, a dismissed review and a changed base alike.
+ */
 export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
     { from: null, to: "needsRevision", causes: ["checksFailed"] },
-    /**
- * Three corrections found by reading these tables against `design/audit/` rather than
- * against the prose: the missing `readyToMerge → needsRevision` edge, the added
- * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
- * that bundled a trigger with its consequence (D48).
- */
     {
         from: "needsReview",
         to: "needsRevision",
@@ -61,25 +62,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     },
     { from: "needsRevision", to: "needsReview", causes: ["revisionResolved"] },
     { from: "needsReview", to: "readyToMerge", causes: ["reviewPolicySatisfied"] },
-    /**
-     * `approvalInvalidated`, not the first implementation's
-     * `newCommitsInvalidatedApproval` — FINDING(taxonomy-approval-cause),
-     * D48. That name bundled a trigger (new commits) with the
-     * consequence (the approval stopped counting) and so could not
-     * express a dismissed review or a changed base. The consequence is
-     * the transition; the trigger varies.
-     */
     { from: "readyToMerge", to: "needsReview", causes: ["approvalInvalidated"] },
-    /**
-     * FINDING(taxonomy-approved-checks-broke), D48: MISSING from §5 and
-     * from the first implementation — an approved pull request whose
-     * checks break had no path to `needsRevision` at all
-     * (`canTransitionPr` answered `noSuchEdge`), so the only exit
-     * asserted commits had landed. Checks break without any push: the
-     * audited Sibling Conflict Re-check re-reads every open PR's
-     * `mergeable` state when a DIFFERENT pull request merges and swaps
-     * `needs review` ↔ `needs revision` (`design/audit/services-cpp.md`).
-     */
     { from: "readyToMerge", to: "needsRevision", causes: ["checksFailed"] },
     { from: "needsReview", to: null, causes: ["humanClosed", "merged"] },
     { from: "needsRevision", to: null, causes: ["humanClosed", "merged"] },
@@ -87,6 +70,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
 ];
 
 
+/** Both tables as bare from/to pairs — what the doc-drift check compares. */
 export const PROFILE_EDGES: {
     readonly [K in EntityKind]: readonly {
         readonly from: string | null;
@@ -96,11 +80,3 @@ export const PROFILE_EDGES: {
     issue: ISSUE_EDGES.map((e) => ({ from: e.from, to: e.to })),
     pullRequest: PR_EDGES.map((e) => ({ from: e.from, to: e.to })),
 };
-
-/**
- * Apply a transition to an item's state, enforcing the two platform
- * invariants the test architecture names:
- *  - an item is never in two positions (structural: `meaning` is scalar);
- *  - a blocked item accepts no capability-requested transitions
- *    (safety.md §5 — pause stops writes).
- */

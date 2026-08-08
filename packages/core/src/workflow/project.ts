@@ -3,11 +3,13 @@
  * `design/core/manual-edits.md` §3 implies but no document owns.
  *
  * GitHub's reality is a SET of labels; the state machine's is a scalar
- * position. The shell maps label strings to meanings via validated
- * configuration (injective — config.ts) and passes the meanings here.
- * More than one own-flow position is a conflict, never a repair (§3,
- * §8 test 3); a conflicted item has no `WorkItemState`, so it can
- * never reach `applyTransition` — the no-write rule is structural.
+ * position. The shell turns label strings into meanings through the
+ * validated mapping, which the config layer guarantees is injective, and
+ * passes the meanings here.
+ *
+ * More than one own-flow position is a conflict, never a repair (§3). A
+ * conflicted item has no `WorkItemState`, so it can never reach
+ * `applyTransition` — the no-write rule is structural, not a check.
  */
 
 import {
@@ -21,54 +23,34 @@ import {
 } from "./meanings.js";
 import type { MappableMeaning } from "../config/index.js";
 
-/** What the shell observed on one issue or pull request. */
+/**
+ * What the shell observed on one issue or pull request. `meanings` holds
+ * only MAPPED meanings — an unmapped label never appears here, so the
+ * platform leaves it alone entirely (§3 rule 1).
+ */
 export interface LabelObservation {
-    /**
-     * Closure as GitHub reports it — `merged_at` for a pull request,
-     * `state_reason` plus the closing reference for an issue — `null`
-     * while open. A native fact the platform reads and never writes
-     * (D47); the shell derives it, because the mapping from GitHub's
-     * fields to a `ClosureReason` is transport detail.
-     */
     readonly closedBy: ClosureReason | null;
-    /**
-     * The mapped meanings whose labels are present — a set. Unmapped
-     * repository labels never appear here; the platform leaves them
-     * alone entirely (§3 rule 1, §8 test 2).
-     */
     readonly meanings: readonly MappableMeaning[];
 }
 
+/**
+ * A set of labels read as a position, or refused as a conflict.
+ *
+ * The conflict branch repeats `blocked` and `closedBy` so an operator can
+ * judge whether it needs attention (D59). `ignored` is the other flow's
+ * meanings, reported but never a conflict (D35).
+ */
 export type ObservationProjection<M> =
     | {
           readonly kind: "position";
-          /** Feed this to `applyTransition`; it is the only source of one. */
           readonly state: WorkItemState<M>;
-          /**
-           * FINDING(observe-cross-entity), D35: the other flow's
-           * position meanings — left alone, reported for diagnostics,
-           * never a conflict.
-           */
           readonly ignored: readonly MappableMeaning[];
       }
     | {
-          /**
-           * More than one own-flow position: no repair, no guessing,
-           * no writes (§3).
-           */
           readonly kind: "conflict";
           readonly positions: readonly M[];
-          /**
-           * FINDING(observe-conflict-context), D59: the conflict verdict
-           * used to carry positions ONLY, so a reporting surface could
-           * say "this item is conflicted" but not "and it is also paused
-           * / already closed" — which is what tells an operator whether
-           * the conflict is worth their attention. Same facts as the
-           * `position` branch, minus a position to put them on.
-           */
           readonly blocked: boolean;
           readonly closedBy: ClosureReason | null;
-          /** Other-flow meanings remain visible for diagnostics (D35). */
           readonly ignored: readonly MappableMeaning[];
       };
 
@@ -88,13 +70,9 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
             ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
         };
     }
-    /**
-     * FINDING(observe-blocked-alone) and FINDING(observe-closed-position),
-     * D35: `blocked` with no position is legal — "no position, paused"
-     * (D28); a closed item keeps its position labels unrepaired
-     * (manual-edits.md §6), and the closure reason rides alongside them
-     * rather than erasing them (D47).
-     */
+    // `blocked` with no position is legal — "no position, paused" (D28) —
+    // and a closed item keeps its position labels unrepaired, with the
+    // closure reason riding alongside rather than erasing them (D35, D47).
     return {
         kind: "position",
         state: {
@@ -123,11 +101,10 @@ export function projectPrObservation(
 /**
  * Is this item closed, whichever branch the projection took?
  *
- * Closure rides on BOTH — `state.closedBy` on a position, `closedBy` at the
- * top level on a conflict (D59) — and that asymmetry is a trap: reading it
- * from one branch only compiles fine and silently treats every conflicted,
- * closed item as open. This exists because that mistake was made the first
- * time a capability consumed the projection.
+ * Closure sits in two places: `state.closedBy` on a position, `closedBy` at
+ * the top level on a conflict (D59). Reading one branch compiles fine and
+ * silently treats every conflicted, closed item as open, which is the
+ * mistake the first capability to consume a projection made.
  */
 export function closureOf<M>(
     projection: ObservationProjection<M>,
