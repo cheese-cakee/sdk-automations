@@ -1,17 +1,15 @@
 /**
- * What the lab brainstorm left behind that is checkable TODAY, without
- * building anything.
+ * The perishable-facts provenance table matches the code it describes.
  *
- * Two invariants. The first guards the lab's local-only layer:
- * `packages/lab/harness/` (era-1 code and the private evidence archive),
- * `packages/lab/evidence/` bulk, and `packages/lab/.env` hold sandbox
- * credentials and unscrubbed payloads and must never be tracked — a
- * `git add -f` would bypass the ignore silently. Evidence enters the
- * repository only as reviewed fixtures in core, never through the lab
- * (protocol 7.1). The second locks the provenance table in
- * `packages/core/src/github/README.md` to the code it describes; writing
- * it exposed that the table already disagreed with the code (the README
- * credited experiment 6.4 for facts the code stamps 6.1).
+ * `packages/core/src/github/README.md` carries a table — file, probing
+ * experiment, date — and the code carries the same facts on each pattern.
+ * One fact, two homes, kept honest the way the docs tables are. Writing this
+ * lock found the table already wrong: the README credited experiment 6.4 for
+ * facts the code stamps 6.1.
+ *
+ * Named for its target rather than its origin (D89): it arrived alongside the
+ * lab's never-tracked check and shared a file with it until D99 generalised
+ * that check across every local-only layer, leaving this one alone here.
  */
 
 import { describe, expect, it } from "vitest";
@@ -28,42 +26,6 @@ const tracked = (path: string): string[] =>
         Boolean,
     );
 
-describe("the lab's local-only layer stays out of the repository", () => {
-    it(".gitignore still carries the rules", () => {
-        const ignoreLines = lines(readFileSync(join(repoRoot, ".gitignore"), "utf8"));
-        for (const rule of [
-            "packages/lab/harness/",
-            "packages/lab/evidence/",
-            "packages/lab/.env",
-        ]) {
-            expect(ignoreLines).toContain(rule);
-        }
-    });
-
-    /**
-     * The invariant itself. The ignore lines only prevent accidents, not
-     * force-adds; this fails on both.
-     */
-    it("git tracks nothing local-only", () => {
-        expect(tracked("packages/lab/harness/")).toEqual([]);
-        expect(tracked("packages/lab/evidence/")).toEqual([]);
-        expect(tracked("packages/lab/.env")).toEqual([]);
-    });
-
-    it("proves the instrument can fail", () => {
-        // The same command on a tracked path returns entries, so an empty
-        // answer above means "nothing tracked", not "command broken".
-        expect(tracked("packages/core/package.json")).toEqual([
-            "packages/core/package.json",
-        ]);
-    });
-});
-
-/**
- * `packages/core/src/github/README.md` carries a provenance table — file, probing
- * experiment, date — and the code carries the same facts on each pattern.
- * One fact, two homes, kept honest the same way the docs tables are.
- */
 describe("the perishable-facts provenance table matches the code", () => {
     const readme = normalizeNewlines(
         readFileSync(join(repoRoot, "packages/core/src/github/README.md"), "utf8"),

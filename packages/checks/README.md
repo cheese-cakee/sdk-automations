@@ -44,7 +44,8 @@ One row per file; the summary is that file's own header, not a paraphrase.
 | [`examples.test.ts`](test/examples.test.ts) | `docs/examples/` is documentation that runs: the shipped configurations still parse, and still mean what they say |
 | [`doc-drift.test.ts`](test/doc-drift.test.ts) | The drift detector `core/README.md` promised and did not have: the design document's diagrams against the transition tables in code |
 | [`workflows.test.ts`](test/workflows.test.ts) | The three security claims the workflow comments make: actions stay SHA-pinned with version comments, and fork code never runs privileged |
-| [`lab.test.ts`](test/lab.test.ts) | The lab's local-only layer stays out of the repository — credentials and unscrubbed payloads — plus the provenance table matching the code it describes |
+| [`never-tracked.test.ts`](test/never-tracked.test.ts) | Every local-only layer stays out of the repository — the lab's credentials and unscrubbed captures, and the shell's raw payload store — checked as written, as effective, and as untracked |
+| [`provenance.test.ts`](test/provenance.test.ts) | The perishable-facts provenance table in `core/src/github/README.md` matches the code it describes |
 | [`helpers.test.ts`](test/helpers.test.ts) | Portable repository parsing: the path and line-ending normalization every check above shares ([`helpers.ts`](test/helpers.ts)) |
 
 Every one carries a negative control — a case asserting the check would still fail if the thing it

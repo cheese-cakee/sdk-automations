@@ -16,7 +16,7 @@ Three eras (D87, D88):
    `packages/core/src/github/` and stamp a tracked result file a `checks/` lock reads.
 
 Tracked: `protocols/`, `src/`, `test/`. Never tracked: `harness/` (the era-1 code and private
-evidence archive), `evidence/` (capture staging), `.env` — enforced by `packages/checks/test/lab.test.ts`,
+evidence archive), `evidence/` (capture staging), `.env` — enforced by `packages/checks/test/never-tracked.test.ts`,
 not just `.gitignore`. The lab tracks no evidence: reviewed captures go straight into core as
 fixtures, conclusions go to the register, and everything else stays local.
 
