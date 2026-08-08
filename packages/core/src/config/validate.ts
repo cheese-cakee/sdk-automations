@@ -1,11 +1,14 @@
 /**
  * The section validators — one per thing a configuration document has.
  *
- * Every validator is total and independent: none throws, none short-circuits
+ * Every validator is total and independent. None throws, none short-circuits
  * another, and each returns the value it contributes alongside the problems
- * it found. A maintainer with three mistakes is told about all three rather
- * than made to fix them one push at a time, which is the humane half of
- * D38's whole-file fail-closed rule.
+ * it found. So a maintainer with three mistakes is told about all three,
+ * rather than made to fix them one push at a time — the humane half of D38's
+ * whole-file fail-closed rule.
+
+ * `check*` returns problems only. `read*`-style section functions return a
+ * value as well, wrapped in `Checked`.
  */
 
 import type { ConfigError, ConfigErrorCode } from "./schema.js";
@@ -20,33 +23,21 @@ import {
     type RepositoryMode,
 } from "./schema.js";
 
+// ─── Shared shapes and constructors ──────────────────────────────────
+
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
     if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
     const prototype = Object.getPrototypeOf(v);
     return prototype === Object.prototype || prototype === null;
 }
 
-const KNOWN_TOP_LEVEL = new Set<string>(TOP_LEVEL_KEYS);
-
 /**
- * One configuration section's outcome: the value it contributes, and the
- * problems it found. Sections never throw and never short-circuit each
- * other — a maintainer with three mistakes should be told about all
- * three, not made to fix them one push at a time.
- */
-/**
- * A section's outcome. A value exists only when the section is VALID — which
- * is the whole point of the shape.
+ * One section's outcome. A value exists only when the section is valid.
  *
- * The predecessor returned `{ value, errors }` and always populated both, so a
- * reader had to carry a non-local invariant: this value only means anything if
- * the GLOBAL error list is empty. `parseCapabilities` could do complete, correct
- * work on six capabilities and have it discarded because `principals` had a typo.
- *
- * Splitting into a validate pass and a build pass was the other candidate and
- * was rejected: the builder would assume exactly what the checker guarantees,
- * with nothing tying them together — the same "two things free to disagree"
- * defect this package spent D53, D62, D67, D73, D76 and D77 removing.
+ * The alternative, `{ value, errors }` always populated, makes the value
+ * meaningless without checking a list somewhere else. Splitting into a check
+ * pass and a build pass was also rejected: the builder would assume what the
+ * checker guarantees, with nothing tying the two together (D77).
  */
 export type Checked<T> =
     | { readonly ok: true; readonly value: T }
@@ -65,6 +56,10 @@ export function err(
 ): ConfigError {
     return { code, message, path };
 }
+
+// ─── Section readers, in the order errors surface ────────────────────
+
+const KNOWN_TOP_LEVEL = new Set<string>(TOP_LEVEL_KEYS);
 
 /** schema.md §2.7 — unknown top-level keys are rejected, never ignored. */
 export function checkTopLevelKeys(raw: Record<string, unknown>): readonly ConfigError[] {
@@ -96,21 +91,9 @@ export function checkSchemaVersion(raw: Record<string, unknown>): readonly Confi
 }
 
 /**
- * An ABSENT `mode` defaults to `observe` (§2.4, defaults are off);
- * a PRESENT but empty one is an error.
- *
- * FINDING(config-null-mode), D56: `raw.mode ?? "observe"` silently
- * accepted `mode:` with no value — YAML parses that to null — and
- * chose a mode on the maintainer's behalf. The chosen mode was the
- * safe one, but silently interpreting malformed input is the exact
- * pattern §2.7 and D38 reject everywhere else in this file.
- */
-/**
- * A type predicate, so the narrowing is sound in the direction that matters.
- *
- * The array is WIDENED to `readonly string[]` — always safe — rather than the
- * unknown value being asserted to be a mode, which is the unsound direction
- * and was how this file used to do it.
+ * A predicate rather than an assertion. The array is widened to
+ * `readonly string[]`, which is always safe; asserting the unknown value to
+ * be a mode is the unsound direction.
  */
 function isRepositoryMode(value: unknown): value is RepositoryMode {
     return (
@@ -119,6 +102,11 @@ function isRepositoryMode(value: unknown): value is RepositoryMode {
     );
 }
 
+/**
+ * An absent `mode` defaults to `observe` (§2.4). A present but empty one is
+ * an error: `mode:` with no value parses to null, and choosing a mode on the
+ * maintainer's behalf is the silent interpretation §2.7 rejects (D56).
+ */
 export function parseMode(raw: Record<string, unknown>): Checked<RepositoryMode> {
     const value = Object.hasOwn(raw, "mode") ? raw.mode : "observe";
     return isRepositoryMode(value)
@@ -278,11 +266,3 @@ export function parsePrincipals(raw: Record<string, unknown>): Checked<[string, 
     }
     return checked(entries, errors);
 }
-
-/**
- * Strict parse of an already-YAML-parsed value. Pure; never throws.
- *
- * The section order below is the ERROR order a maintainer sees, and the
- * tests freeze it: top-level keys, version, mode, capabilities,
- * mappings, principals — outermost problem first.
- */

@@ -1,6 +1,8 @@
 /**
- * `parseConfig` — the one entry point, and the order a maintainer reads
- * their mistakes in.
+ * `parseConfig` — the one entry point for an already-parsed value.
+ *
+ * The section order below is the order a maintainer reads their mistakes in,
+ * outermost problem first, and the tests freeze it.
  */
 
 import {
@@ -36,19 +38,12 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
     const mappings = parseMappings(raw);
     const principals = parsePrincipals(raw);
 
-    /**
-     * §2.6 — fail closed: any error anywhere yields no configuration at all,
-     * whole-file (`FINDING(config-fail-closed-granularity)`, D38). The order
-     * below is the order a maintainer reads their mistakes in, and the tests
-     * freeze it: outermost problem first.
-     */
+    // §2.6 — fail closed: any error anywhere yields no configuration at
+    // all, whole-file (D38).
     const structural = [...checkTopLevelKeys(raw), ...checkSchemaVersion(raw)];
 
-    /**
-     * One test, doing two jobs: it reports every failed section AND narrows
-     * the four results, so the success path below needs no cast and no
-     * unreachable guard to satisfy the compiler.
-     */
+    // One test doing two jobs: it reports every failed section and narrows
+    // all four results, so the success path below needs no cast.
     if (!mode.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
         return {
             ok: false,
