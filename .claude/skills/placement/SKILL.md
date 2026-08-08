@@ -65,13 +65,17 @@ state why, and stop. Splitting it puts the key and the value in different packag
 
 ## When a directory earns a README
 
-**When the relationships between its files need more than the barrel header can carry** — a
-pipeline, a derivation, a trap, or a provenance obligation. Not every directory: `report/` is two
-obvious files and a README would be noise.
+**Give every source directory one.** The first version of this rule said a README was earned only
+when the relationships needed more than the barrel header could carry, and it was wrong for a
+reason worth remembering: **a README renders in the directory listing on GitHub, and a docstring in
+`index.ts` does not.** The barrel-header test asked whether the content existed somewhere, not
+whether a reader browsing the repository would ever meet it.
 
-The test in practice: try writing the relationship in the barrel's header. If three lines cover
-it, you are done. If you find yourself explaining that half the directory is derived and half is
-owned, or that two similarly-named things mean opposite directions, that is a README.
+Consistency matters too. When five directories have one and the sixth does not, the absence reads
+as an oversight, and a reader wonders what they are missing.
+
+Length follows the directory. A small one earns a short README — what it owns, what it does not,
+one row per file. That is not noise; that is the floor.
 
 What they carry, from the four that exist: what the directory owns and does NOT own, a diagram of
 how a value moves through it, one row per file naming the QUESTION it answers, the traps a reader

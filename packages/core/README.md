@@ -37,7 +37,7 @@ derive the world"]
 | `src/capability/` | What may a capability declare and do? | `declaration.ts`, `catalogue.ts` (the closed vocabularies — and the add-an-operation checklist), `boundary.ts` (how it is called), `intent.ts` (what it asks, and the screens), `factory.ts` (how one is built without ceremony) |
 | `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) — and its own [README](src/safety/README.md) |
 | `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — and its own [README](src/github/README.md) with the provenance table |
-| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) |
+| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) — and its own [README](src/report/README.md) |
 
 Directories are named for the question a maintainer arrives with, not for a
 technical kind. There is no `types/` or `utils/`: naming by kind forces you to

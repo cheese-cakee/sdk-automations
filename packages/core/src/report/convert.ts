@@ -110,12 +110,9 @@ export function explanationFinding(
 /**
  * Configuration errors as findings.
  *
- * D75, landed: each error carries its own code and the dotted path it came
- * from, so this report can group by kind, count, and annotate a line rather
- * than pasting a paragraph. The findings above were all `configInvalid`
- * until the parser learned to say what KIND of wrong a document was — the
- * first consumer of configuration errors could not do its job, which is what
- * made the argument concrete.
+ * Each carries its own code and the dotted path it came from, so a check run
+ * can group by kind, count, and annotate one line instead of pasting a
+ * paragraph (D75).
  */
 export function configFindings(result: ConfigResult): readonly Finding[] {
     if (result.ok) {
