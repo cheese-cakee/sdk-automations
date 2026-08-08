@@ -530,6 +530,13 @@ describe("delivery intake boundaries", () => {
         legacy.close();
 
         expect(() => new Store(path)).toThrow(/incompatible pre-ratification/);
+        const unchanged = new DatabaseSync(path);
+        expect(unchanged.prepare(`
+            SELECT name FROM sqlite_schema
+            WHERE type = 'table'
+            ORDER BY name
+        `).all()).toEqual([{ name: "seen_delivery" }]);
+        unchanged.close();
         rmSync(path);
         expect(existsSync(path)).toBe(false);
     });

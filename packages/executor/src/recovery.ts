@@ -177,6 +177,10 @@ export function commandIdentity(command: AdapterCommand): string {
     }
 }
 
+function unsupportedEffectState(state: never): never {
+    throw new TypeError(`unsupported effect state ${JSON.stringify(state)}`);
+}
+
 export class RecoveryExecutor {
     constructor(
         private readonly store: Store,
@@ -298,6 +302,8 @@ export class RecoveryExecutor {
                 }
                 break;
             }
+            default:
+                return unsupportedEffectState(state);
         }
         for (let seq = startSeq; seq <= planLength; seq++) {
             const call = plan.calls[seq - 1]!;
