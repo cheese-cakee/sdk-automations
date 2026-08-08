@@ -20,6 +20,11 @@ import {
 } from "./rules.js";
 import type { SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
+/**
+ * May this write happen? The entry point for every class except
+ * `clockTriggeredDestructive`, which is refused here rather than allowed
+ * through — the wrong door is a verdict, not a bypass (D52).
+ */
 export function evaluateWrite(
     request: WriteRequest,
     config: RepositoryConfig,

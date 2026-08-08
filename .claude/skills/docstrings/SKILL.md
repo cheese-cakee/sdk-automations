@@ -167,6 +167,27 @@ strip() { grep -vE '^\s*(\*|/\*\*|/\*|\*/|//)' "$1" | grep -vE '^\s*$'; }
 diff <(strip "$ORIGINAL" | sort) <(strip "$REWRITTEN" | sort) && echo "same set, reordered"
 ```
 
+## Auditing a file — where the misses hide
+
+Checking exported declarations is not enough. Three places hide comments that no top-level scan
+finds, and all three were missed on a first pass through `safety/`:
+
+- **Inside function bodies.** A block explaining what the code used to do, indented two levels in,
+  reads as part of the logic and is skipped by every declaration-level check.
+- **On fields inside interfaces.** §3's one-line rule applies here, and multi-line field blocks are
+  the most common violation.
+- **At the end of a file, attached to nothing.** Five files across three directories ended in a
+  docstring for code that lives elsewhere. Check the last non-blank lines of every file.
+
+Two greps worth running before declaring a file done:
+
+```bash
+# comment blocks of three or more lines that are INDENTED — in a body or on a field
+grep -nE '^\s+/\*\*' <file>
+# a file whose final non-blank line closes a comment is describing something that moved
+tail -3 <file>
+```
+
 ## Working on an existing file
 
 1. **Measure first.** `grep -cE '^\s*(\*|/\*|//)' <file>` against its line count. Compare with
