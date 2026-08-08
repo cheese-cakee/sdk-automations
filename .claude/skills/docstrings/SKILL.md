@@ -1,6 +1,6 @@
 ---
 name: docstrings
-description: Make a TypeScript file readable in this repo — what earns a docstring, how long it may be, where it goes, and what order declarations belong in. Use when adding docstrings, reviewing comment density, compressing comments, or reordering a file.
+description: Make a TypeScript file readable in this repo — what earns a docstring, how long it may be, where it goes, when a file should become two, and what order declarations belong in. Use when adding docstrings, reviewing comment density, compressing comments, reordering a file, or deciding how to split one.
 ---
 
 # Docstrings for sdk-automations
@@ -94,7 +94,35 @@ the register records a dozen times.
 **File headers** are the one comment that is always worth it: what this file owns, what it does
 not, and where the neighbours are. `validate.ts` holds the rules, `parse.ts` the entry point.
 
-## 4. What order declarations go in
+## 4. When a file becomes two
+
+**A file answers one question. When it answers two, split — regardless of size. And do not
+create files for questions nobody is asking yet.**
+
+Size is a symptom, not the test, and reaching for it gives the wrong answer in both directions.
+`config/validate.ts` is the largest file in its directory at 288 lines and the most coherent one
+in the repository: six functions of identical shape answering "is each section well formed?".
+Splitting it would separate siblings that are only consistent because you can compare them.
+Meanwhile the error types were about 35 lines and belonged in their own file the whole time —
+not because of length, but because the type lived in `schema.ts` while its only constructor
+lived in `validate.ts`, so the file answered two questions and neither answer was in one place.
+
+Pain is a *lagging* indicator. By the time a file hurts, it hurts mid-feature, when reorganising
+is most expensive and most likely to be skipped. Coherence you can judge the day the second
+concern arrives, which is cheap.
+
+The other half of the rule matters as much: **do not split for a future you are guessing at.**
+A boundary in the wrong place is worse than no boundary, because then you import across it
+forever. Structure for the reader you have today.
+
+Two useful sanity checks. If you cannot write the file's one-line header without the word
+"and", it is probably two files. If two files would import each other constantly, they are
+probably one.
+
+(D89's related rule is about DEPTH, not breadth: a target earns a subdirectory only when it
+needs a second file. That is a rule against premature nesting and does not govern splitting.)
+
+## 5. What order declarations go in
 
 Comments explain; sequence is what lets a reader build the picture in one pass. The two go
 together, which is why they share a skill — a reordering pass always rewrites the comments that
