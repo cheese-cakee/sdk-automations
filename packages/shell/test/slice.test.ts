@@ -7,7 +7,7 @@
  * product and nothing is approved.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,7 +26,10 @@ import { createShell, fileConfigSource, fileReportSink, stubbedExternals, type S
 const SECRET = "shell-slice-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
 const FIXTURE = readFileSync(
-    new URL("../../core/test/github/fixtures/issues.opened.json", import.meta.url),
+    new URL(
+        "../test/github/fixtures/issues.opened.json",
+        import.meta.resolve("@hiero-hackers/automation-core"),
+    ),
 );
 
 const CONFIG = `schemaVersion: 1
@@ -144,6 +147,12 @@ describe("the first slice, end to end", () => {
         expect(await deliver(shell)).toBe(202);
         await shell.drain();
         expect(records()).toHaveLength(1);
+    });
+
+    it("starts durable processing after the acknowledgment without a manual drain", async () => {
+        const shell = buildShell();
+        expect(await deliver(shell)).toBe(202);
+        await vi.waitFor(() => expect(records()).toHaveLength(1));
     });
 
     it("a broken config fails closed: recorded, completed, nothing decided", async () => {

@@ -77,6 +77,8 @@ describe("translation shapes — safety.md §2.6's exact item and value", () => 
             seq: 1,
             idempotencyClass: "idempotent",
             command: {
+                repository: REPO,
+                item: { kind: "issue", number: 11 },
                 operation: "applyMappedLabel",
                 desired: { meaning: "awaitingTriage", label: "status: triage" },
                 readBack: { kind: "mappedLabel" },
@@ -130,6 +132,19 @@ describe("translation shapes — safety.md §2.6's exact item and value", () => 
             closed: false,
         });
     });
+
+    it("preserves both present and absent expected facts for the act-time recheck", () => {
+        const claiming = {
+            ...labelIntent(),
+            expected: {
+                meaningsPresent: ["ready"],
+                meaningsAbsent: ["awaitingTriage"],
+                closed: false,
+            },
+        } as AnyIntent;
+        const { plans } = planApproved([claiming], inputs);
+        expect(plans[0]!.calls[0]!.command.expected).toEqual(claiming.expected);
+    });
 });
 
 describe("plan identity", () => {
@@ -154,6 +169,7 @@ describe("the three refusals only this layer can see", () => {
         expect(refusals).toEqual([
             expect.objectContaining({ code: "duplicateIdempotencyKey" }),
         ]);
+        expect(refusals[0]!.reason).toContain("applyMappedLabel");
     });
 
     it("an unmapped meaning has no command, so no plan", () => {
@@ -163,6 +179,7 @@ describe("the three refusals only this layer can see", () => {
         expect(refusals).toEqual([
             expect.objectContaining({ code: "mappedLabelMissing" }),
         ]);
+        expect(refusals[0]!.reason).toContain("awaitingTriage");
     });
 
     it("a mixed-repository batch plans nothing at all", () => {
@@ -174,6 +191,21 @@ describe("the three refusals only this layer can see", () => {
         expect(plans).toEqual([]);
         expect(refusals).toHaveLength(2);
         expect(refusals.every((r) => r.code === "mixedRepositoryBatch")).toBe(true);
+        expect(refusals.map((r) => r.reason)).toEqual([
+            "the batch is scoped to hiero-hackers/sandbox, but its intents target hiero-hackers/sandbox, elsewhere/other; no intent was planned",
+            "the batch is scoped to hiero-hackers/sandbox, but its intents target hiero-hackers/sandbox, elsewhere/other; no intent was planned",
+        ]);
+    });
+
+    it.each([
+        { owner: "elsewhere", repo: "sandbox" },
+        { owner: "hiero-hackers", repo: "elsewhere" },
+    ] as const)("refuses a batch when only one repository component differs", (repository) => {
+        const stray = { ...labelIntent(), repository };
+        const { plans, refusals } = planApproved([stray], inputs);
+        expect(plans).toEqual([]);
+        expect(refusals).toHaveLength(1);
+        expect(refusals[0]!.code).toBe("mixedRepositoryBatch");
     });
 });
 

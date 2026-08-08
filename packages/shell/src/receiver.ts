@@ -48,13 +48,15 @@ export interface ReceiverOptions {
 export type RequestHandler = (
     request: IncomingMessage,
     response: ServerResponse,
-) => void;
+) => Promise<void>;
 
 export function createReceiver(options: ReceiverOptions): RequestHandler {
-    return (request, response) => {
-        void handle(request, response, options).catch(() => {
+    return async (request, response) => {
+        try {
+            await handle(request, response, options);
+        } catch {
             if (!response.headersSent) response.writeHead(500).end();
-        });
+        }
     };
 }
 
@@ -88,25 +90,34 @@ function readBody(
     request: IncomingMessage,
     response: ServerResponse,
 ): Promise<Buffer | null> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const chunks: Buffer[] = [];
         let size = 0;
-        let capped = false;
+        let settled = false;
+        const fail = (error: Error): void => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+        };
         request.on("data", (chunk: Buffer) => {
-            if (capped) return;
+            if (settled) return;
             size += chunk.length;
             if (size > MAX_BODY_BYTES) {
-                capped = true;
+                settled = true;
                 response.writeHead(413).end();
-                request.destroy();
                 resolve(null);
+                request.destroy();
                 return;
             }
             chunks.push(chunk);
         });
         request.on("end", () => {
-            if (!capped) resolve(Buffer.concat(chunks));
+            if (settled) return;
+            settled = true;
+            resolve(Buffer.concat(chunks));
         });
+        request.on("aborted", () => fail(new Error("request aborted")));
+        request.on("error", fail);
     });
 }
 
@@ -168,6 +179,8 @@ function acceptThenAck(
         response.writeHead(409).end();
         return;
     }
+    if (options.onAccepted !== undefined) {
+        response.once("finish", options.onAccepted);
+    }
     response.writeHead(202).end();
-    options.onAccepted?.();
 }

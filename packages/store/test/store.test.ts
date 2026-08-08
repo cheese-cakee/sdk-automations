@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { Store } from "../src/store.js";
 import { asDeliveryGuid } from "@hiero-hackers/automation-core";
 
@@ -33,10 +34,38 @@ describe("durability configuration — the crash model, pinned", () => {
         // and power loss" is only true under these two pragmas. A
         // concurrency-motivated switch to WAL weakens power-loss
         // durability and must be a deliberate, register-visible change.
+        const preconfigured = new DatabaseSync(path);
+        preconfigured.exec("PRAGMA journal_mode = WAL");
+        expect(preconfigured.prepare("PRAGMA journal_mode").get()).toEqual({
+            journal_mode: "wal",
+        });
+        preconfigured.close();
+
         const s = new Store(path);
         const db = (s as unknown as { db: { prepare(sql: string): { get(): unknown } } }).db;
         expect(db.prepare("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" });
         expect(db.prepare("PRAGMA synchronous").get()).toEqual({ synchronous: 2 }); // 2 = FULL
+        expect(db.prepare("PRAGMA busy_timeout").get()).toEqual({ timeout: 2_000 });
+        s.close();
+    });
+
+    it("creates the two operational worklist indexes", () => {
+        const s = new Store(path);
+        const db = (s as unknown as {
+            db: {
+                prepare(sql: string): {
+                    all(...values: unknown[]): { name: string }[];
+                };
+            };
+        }).db;
+        expect(db.prepare(`
+            SELECT name FROM sqlite_schema
+            WHERE type = 'index' AND name IN (?, ?)
+            ORDER BY name
+        `).all("delivery_work", "open_intents")).toEqual([
+            { name: "delivery_work" },
+            { name: "open_intents" },
+        ]);
         s.close();
     });
 });
@@ -60,7 +89,33 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         // lexicographic ordering ("…00Z" > "…00.500Z" as strings but
         // earlier in time). Exactly the Date.toISOString() shape.
         expect(() => s.schedule("y", "2026-07-24T00:00:00Z", "sweep")).toThrow(TypeError);
+        expect(() => s.schedule("prefix", "x2026-07-24T00:00:00.123Z", "sweep"))
+            .toThrow(TypeError);
+        expect(() => s.schedule("suffix", "2026-07-24T00:00:00.123Zx", "sweep"))
+            .toThrow(TypeError);
+        expect(() => s.schedule("extended", "+010000-01-01T00:00:00.000Z", "sweep"))
+            .toThrow(TypeError);
         s.schedule("ok", "2026-07-24T00:00:00.123Z", "sweep");
+        s.close();
+    });
+
+    it("names the invalid time at every durable boundary", () => {
+        const s = new Store(path);
+        const cases: readonly [() => unknown, RegExp][] = [
+            [() => s.intent("e", 1, "call", "invalid", "rev"), /^at must/],
+            [() => s.done("e", 1, "invalid"), /^at must/],
+            [() => s.openIntents("invalid"), /before/],
+            [() => s.claim("e", "w", "invalid", "2026-01-01T00:00:00.000Z"), /now/],
+            [() => s.claim("e", "w", "2026-01-01T00:00:00.000Z", "invalid"), /staleBefore/],
+            [() => s.schedule("s", "invalid", "effect"), /dueAt/],
+            [() => s.claimDue("invalid"), /now/],
+            [() => s.requeueStuck("invalid"), /claimedBefore/],
+            [() => s.pruneCompletedDeliveries("invalid"), /before/],
+            [() => s.pruneDoneJournal("invalid"), /before/],
+        ];
+        for (const [operation, parameter] of cases) {
+            expect(operation).toThrow(parameter);
+        }
         s.close();
     });
 

@@ -46,6 +46,18 @@ const PLAN: EffectPlan = {
 };
 const T = "2026-07-25T12:00:00.000Z";
 
+const COMMON_IDENTITY = [
+    "hiero-hackers",
+    "sandbox",
+    "issue",
+    7,
+    "config-sha-1",
+    [],
+    [],
+    false,
+    [["inProgress", "status: doing"]],
+] as const;
+
 let dir: string;
 let path: string;
 beforeEach(() => {
@@ -56,6 +68,37 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const executor = (store: Store, port: EffectPort, worker = "w1") =>
     new RecoveryExecutor(store, port, worker, () => T, LEASE_MS);
+
+describe("canonical command identity", () => {
+    it("pins every adapter operation to an independent ordered tuple", () => {
+        expect(commandIdentity(fixtureCommand("postManagedComment"))).toBe(
+            JSON.stringify([
+                "postManagedComment",
+                COMMON_IDENTITY,
+                "<!-- managed -->",
+                "body",
+                "managedCommentMarker",
+            ]),
+        );
+        expect(commandIdentity(fixtureCommand("applyMappedLabel"))).toBe(
+            JSON.stringify([
+                "applyMappedLabel",
+                COMMON_IDENTITY,
+                "inProgress",
+                "status: doing",
+                "mappedLabel",
+            ]),
+        );
+        expect(commandIdentity(fixtureCommand("unassign"))).toBe(
+            JSON.stringify([
+                "unassign",
+                COMMON_IDENTITY,
+                "alice",
+                "assigneeAbsent",
+            ]),
+        );
+    });
+});
 
 describe("flowchart branches", () => {
     it("neverStarted runs the whole plan once and releases the claim", async () => {
@@ -144,7 +187,13 @@ describe("flowchart branches", () => {
 describe("surfaced stops", () => {
     it("the same intent from an old configuration revision is unresolved, never remapped", async () => {
         const store = new Store(path);
-        store.intent("e1", 1, "list-comments", T, "old-config-sha");
+        store.intent(
+            "e1",
+            1,
+            commandIdentity(PLAN.calls[0]!.command),
+            T,
+            "old-config-sha",
+        );
         const port = new CrashingPort(new FakeWorld(), new Map());
         const result = await executor(store, port).runEffect(PLAN);
         expect(result).toMatchObject({ outcome: "unresolved", seq: 1 });
@@ -184,9 +233,24 @@ describe("surfaced stops", () => {
         };
         const port = new CrashingPort(new FakeWorld(), new Map());
 
-        await expect(executor(store, port).runEffect(changed)).resolves.toMatchObject({
+        const result = await executor(store, port).runEffect(changed);
+        expect(result).toMatchObject({ outcome: "unresolved", seq: original.seq });
+        if (result.outcome === "unresolved") {
+            expect(result.reason).toContain("does not match the current plan");
+        }
+        expect(port.readBacks).toEqual([]);
+        store.close();
+    });
+
+    it("an open journal sequence outside the current plan is unresolved", async () => {
+        const store = new Store(path);
+        store.intent("e1", 2, "orphaned-call", T, PLAN.revision);
+        const oneCallPlan: EffectPlan = { ...PLAN, calls: [PLAN.calls[0]!] };
+        const port = new CrashingPort(new FakeWorld(), new Map());
+
+        await expect(executor(store, port).runEffect(oneCallPlan)).resolves.toMatchObject({
             outcome: "unresolved",
-            seq: original.seq,
+            seq: 2,
         });
         expect(port.readBacks).toEqual([]);
         store.close();
@@ -282,7 +346,7 @@ describe("surfaced stops", () => {
                     },
                 ],
             }),
-        ).rejects.toThrow(TypeError);
+        ).rejects.toThrow(/contiguous from 1/);
         store.close();
     });
 
@@ -302,7 +366,7 @@ describe("surfaced stops", () => {
                     },
                 ],
             }),
-        ).rejects.toThrow(TypeError);
+        ).rejects.toThrow(/revision does not match/);
         store.close();
     });
 });

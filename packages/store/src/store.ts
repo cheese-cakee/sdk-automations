@@ -126,13 +126,11 @@ export interface OpenIntent {
  * wrongly outright — so both are thrown caller bugs, not data.
  * (Property-tested: order equivalence over random instant pairs.)
  */
-const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-
 /** Exported so the shell can validate before a store call. */
 export function assertUtcInstant(value: string, param: string): void {
     const epochMs = Date.parse(value);
     if (
-        !UTC_INSTANT.test(value) ||
+        value.length !== 24 ||
         !Number.isFinite(epochMs) ||
         new Date(epochMs).toISOString() !== value
     ) {
@@ -185,24 +183,16 @@ export class Store {
     constructor(path: string) {
         this.db = new DatabaseSync(path);
         try {
-            this.db.exec("PRAGMA busy_timeout = 2000");
             // These two pragmas ARE the crash model — set explicitly,
             // not inherited as defaults. DELETE-mode journal +
             // synchronous FULL is what makes "everything before the
             // last returned call survives kill -9 and power loss" true.
             // The config test pins both so this cannot change silently.
-            this.db.exec("PRAGMA journal_mode = DELETE");
-            this.db.exec("PRAGMA synchronous = FULL");
-            const existingDeliveryTable = this.db
-                .prepare(`
-                    SELECT 1
-                    FROM sqlite_schema
-                    WHERE type = 'table' AND name = 'seen_delivery'
-                `)
-                .get();
-            if (existingDeliveryTable !== undefined) {
-                this.assertDeliverySchema();
-            }
+            this.db.exec(`
+                PRAGMA busy_timeout = 2000;
+                PRAGMA journal_mode = DELETE;
+                PRAGMA synchronous = FULL;
+            `);
             this.db.exec(`
             CREATE TABLE IF NOT EXISTS seen_delivery (
                 delivery_id   TEXT PRIMARY KEY,
@@ -229,6 +219,9 @@ export class Store {
                         AND claimed_at IS NULL AND completed_at IS NOT NULL)
                 )
             );
+        `);
+            this.assertDeliverySchema();
+            this.db.exec(`
             CREATE TABLE IF NOT EXISTS effect_journal (
                 effect_id TEXT NOT NULL,
                 call_seq  INTEGER NOT NULL,
@@ -253,7 +246,6 @@ export class Store {
                 claim_token TEXT
             );
         `);
-            this.assertDeliverySchema();
             this.db.exec(`
                 -- The journal has no retention policy yet (D43), so the
                 -- sweep's openIntents scan must not grow with all history
