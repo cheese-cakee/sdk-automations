@@ -1,92 +1,38 @@
 /**
- * The rules that walk the edge tables: may this transition happen, and what
- * does the item look like afterwards.
+ * The taxonomy as an executable spec: given a state and a requested move,
+ * what does the item look like afterwards?
+ *
+ * NOTHING IN PRODUCTION CALLS THIS. `capability/intent.ts` screens moves
+ * through `canTransition*` in `transitions.ts`; this file walks the whole
+ * state machine, which no runtime path needs. It is the test oracle today and
+ * the adapter's read-back conformance checker when that lands (D93).
+ *
+ * So read it as a specification, not as a hot path.
  */
 
 import type { IssueMeaning, PrMeaning } from "./positions.js";
 import type { IssueCause, PrCause, TransitionCause } from "./causes.js";
 import { closureReasonFor, type WorkItemState } from "./state.js";
-import { ISSUE_EDGES, PR_EDGES, type Edge } from "./transitions.js";
+import {
+    canTransitionIssue,
+    canTransitionPr,
+    type TransitionRequest,
+    type TransitionVerdict,
+} from "./transitions.js";
 
-/** A move somebody wants: from where, to where, and why. */
-export interface TransitionRequest<M, C extends TransitionCause = TransitionCause> {
-    readonly from: M | null;
-    readonly to: M | null;
-    readonly cause: C;
+/** A state and the verdict that produced it. */
+export interface Outcome<M> {
+    readonly state: WorkItemState<M>;
+    readonly verdict: TransitionVerdict;
 }
 
-/**
- * Machine-readable refusal cause — the executor, telemetry, and managed
- * explanations branch on `code`; `reason` is prose for humans only.
- * Same convention as `FailureClass` in failures.ts.
- */
-export type TransitionRefusalCode =
-    | "noSuchEdge"
-    | "causeNotAccepted"
-    | "itemClosed"
-    | "itemBlocked"
-    | "stalePrecondition"
-    | "notClosed"
-    | "mergedNotReopenable";
-
-/** Allowed, or refused with a machine-readable cause. */
-export type TransitionVerdict =
-    | { readonly allowed: true }
-    | {
-          readonly allowed: false;
-          readonly code: TransitionRefusalCode;
-          readonly reason: string;
-      };
-
-function evaluate<M, C extends TransitionCause>(
-    edges: readonly Edge<M, C>[],
-    request: TransitionRequest<M, C>,
-): TransitionVerdict {
-    const edge = edges.find(
-        (e) => e.from === request.from && e.to === request.to,
-    );
-    if (!edge) {
-        return {
-            allowed: false,
-            code: "noSuchEdge",
-            reason: `no edge ${String(request.from)} -> ${String(request.to)} in the profile`,
-        };
-    }
-    if (!edge.causes.includes(request.cause)) {
-        return {
-            allowed: false,
-            code: "causeNotAccepted",
-            reason: `edge ${String(request.from)} -> ${String(request.to)} does not accept cause ${request.cause}`,
-        };
-    }
-    return { allowed: true };
-}
-
-/** Can an issue move `from` → `to` for `cause`, per the profile? Pure. */
-export function canTransitionIssue(
-    request: TransitionRequest<IssueMeaning, IssueCause>,
-): TransitionVerdict {
-    return evaluate(ISSUE_EDGES, request);
-}
-
-/** Can a pull request move `from` → `to` for `cause`, per the profile? Pure. */
-export function canTransitionPr(
-    request: TransitionRequest<PrMeaning, PrCause>,
-): TransitionVerdict {
-    return evaluate(PR_EDGES, request);
-}
-
-/**
- * Walk one edge, and say what the item looks like afterwards.
- *
- * `verdictFor` is passed in rather than chosen here, because the caller
- * already knows which entity it holds and the edge tables are per-flow.
- */
-export function applyTransition<M, C extends TransitionCause>(
+/** The walk itself. Generic so both flows share it; private so no caller
+ * ever names `M` or `C`. */
+function walk<M, C extends TransitionCause>(
     state: WorkItemState<M>,
     request: TransitionRequest<M, C>,
     verdictFor: (r: TransitionRequest<M, C>) => TransitionVerdict,
-): { readonly state: WorkItemState<M>; readonly verdict: TransitionVerdict } {
+): Outcome<M> {
     if (state.closedBy !== null) {
         return {
             state,
@@ -133,15 +79,29 @@ export function applyTransition<M, C extends TransitionCause>(
     };
 }
 
+/** Walk an issue's move. The issue table is named here, not passed in. */
+export function applyIssueTransition(
+    state: WorkItemState<IssueMeaning>,
+    request: TransitionRequest<IssueMeaning, IssueCause>,
+): Outcome<IssueMeaning> {
+    return walk(state, request, canTransitionIssue);
+}
+
+/** Walk a pull request's move. */
+export function applyPrTransition(
+    state: WorkItemState<PrMeaning>,
+    request: TransitionRequest<PrMeaning, PrCause>,
+): Outcome<PrMeaning> {
+    return walk(state, request, canTransitionPr);
+}
+
 /**
  * Reopening is a closure CLEAR, not a transition: closing never removes the
  * position labels (D35), so a reopened item returns exactly where it was. A
  * merged pull request can never reopen, which GitHub enforces and this refuses
  * explicitly rather than omitting (`FINDING(taxonomy-reopen)`, D49, D28).
  */
-export function applyReopen<M>(
-    state: WorkItemState<M>,
-): { readonly state: WorkItemState<M>; readonly verdict: TransitionVerdict } {
+export function applyReopen<M>(state: WorkItemState<M>): Outcome<M> {
     if (state.closedBy === null) {
         return {
             state,

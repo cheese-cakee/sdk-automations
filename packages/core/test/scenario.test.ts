@@ -9,8 +9,7 @@ import {
     createRegistry,
     parseConfig,
     projectIssueObservation,
-    canTransitionIssue,
-    applyTransition,
+    applyIssueTransition,
     evaluateWrite,
     type CapabilityDeclaration,
     type WorkItemState,
@@ -79,7 +78,7 @@ describe("the assignment story, end to end in pure logic", () => {
             to: "inProgress",
             cause: "contributorAssigned",
         } as const;
-        const { state, verdict } = applyTransition(projection.state, request, canTransitionIssue);
+        const { state, verdict } = applyIssueTransition(projection.state, request);
         expect(verdict).toEqual({ allowed: true });
         expect(state.meaning).toBe("inProgress");
 
@@ -112,10 +111,9 @@ describe("the assignment story, end to end in pure logic", () => {
             blocked: false,
             closedBy: "closedByHuman",
         };
-        const stale = applyTransition(
+        const stale = applyIssueTransition(
             closed,
-            { from: "inProgress", to: "ready", cause: "reclaimCompleted" },
-            canTransitionIssue,
+            { from: "inProgress", to: "ready", cause: "reclaimCompleted" }
         );
         expect(stale.verdict).toMatchObject({ allowed: false, code: "itemClosed" });
 
@@ -148,7 +146,7 @@ describe("the assignment story, end to end in pure logic", () => {
         });
         expect(projection.kind).toBe("conflict");
         // The structural point: only the `position` branch carries a
-        // WorkItemState, so applyTransition is unreachable from here.
+        // WorkItemState, so the reference walk is unreachable from here.
     });
 
     it("dry-run mode records the same story instead of applying it", () => {

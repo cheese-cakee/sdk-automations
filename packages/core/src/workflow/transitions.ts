@@ -1,6 +1,7 @@
 /**
- * The two workflow diagrams from `design/core/taxonomy.md` §4–§5, verbatim
- * as edge tables.
+ * Which moves are legal: the two workflow diagrams from
+ * `design/core/taxonomy.md` §4–§5 as edge tables, and the question asked of
+ * them. The table is the answer; `canTransition*` is how you ask.
  *
  * `packages/checks/test/doc-drift.test.ts` parses the diagrams out of that document and
  * asserts these tables match them edge for edge, in both directions — the
@@ -74,3 +75,73 @@ export const PROFILE_EDGES: {
     issue: ISSUE_EDGES.map((e) => ({ from: e.from, to: e.to })),
     pullRequest: PR_EDGES.map((e) => ({ from: e.from, to: e.to })),
 };
+
+// ─── Asking the tables ───────────────────────────────────────────────
+
+/** A move somebody wants: from where, to where, and why. */
+export interface TransitionRequest<M, C extends TransitionCause = TransitionCause> {
+    readonly from: M | null;
+    readonly to: M | null;
+    readonly cause: C;
+}
+
+/**
+ * Machine-readable refusal cause — the executor, telemetry, and managed
+ * explanations branch on `code`; `reason` is prose for humans only.
+ * Same convention as `FailureClass` in failures.ts.
+ */
+export type TransitionRefusalCode =
+    | "noSuchEdge"
+    | "causeNotAccepted"
+    | "itemClosed"
+    | "itemBlocked"
+    | "stalePrecondition"
+    | "notClosed"
+    | "mergedNotReopenable";
+
+/** Allowed, or refused with a machine-readable cause. */
+export type TransitionVerdict =
+    | { readonly allowed: true }
+    | {
+          readonly allowed: false;
+          readonly code: TransitionRefusalCode;
+          readonly reason: string;
+      };
+
+function evaluate<M, C extends TransitionCause>(
+    edges: readonly Edge<M, C>[],
+    request: TransitionRequest<M, C>,
+): TransitionVerdict {
+    const edge = edges.find(
+        (e) => e.from === request.from && e.to === request.to,
+    );
+    if (!edge) {
+        return {
+            allowed: false,
+            code: "noSuchEdge",
+            reason: `no edge ${String(request.from)} -> ${String(request.to)} in the profile`,
+        };
+    }
+    if (!edge.causes.includes(request.cause)) {
+        return {
+            allowed: false,
+            code: "causeNotAccepted",
+            reason: `edge ${String(request.from)} -> ${String(request.to)} does not accept cause ${request.cause}`,
+        };
+    }
+    return { allowed: true };
+}
+
+/** Can an issue move `from` → `to` for `cause`, per the profile? Pure. */
+export function canTransitionIssue(
+    request: TransitionRequest<IssueMeaning, IssueCause>,
+): TransitionVerdict {
+    return evaluate(ISSUE_EDGES, request);
+}
+
+/** Can a pull request move `from` → `to` for `cause`, per the profile? Pure. */
+export function canTransitionPr(
+    request: TransitionRequest<PrMeaning, PrCause>,
+): TransitionVerdict {
+    return evaluate(PR_EDGES, request);
+}
