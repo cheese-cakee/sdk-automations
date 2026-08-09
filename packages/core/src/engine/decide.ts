@@ -3,10 +3,13 @@
  * report and the approved intents come out; nothing else escapes.
  *
  * This file OWNS the composition: normalize → evaluate → screen → derive
- * the world → gate → report. Externals are only the facts core cannot know
- * (clock, kill switch, grants, human ordering, resolver answers) as data
- * and lookups, never I/O; everything derivable is derived, so a caller
- * cannot assert a world that contradicts the one it delivered.
+ * the world → gate → report. `events.ts` is the first of those steps and
+ * `invoke.ts` holds the erased capability shape this walks over.
+ *
+ * Externals are only the facts core cannot know — clock, kill switch,
+ * grants, human ordering, resolver answers — as data and lookups, never
+ * I/O. Everything derivable is derived, so a caller cannot assert a world
+ * that contradicts the one it delivered.
  */
 
 import {
@@ -17,15 +20,10 @@ import {
     type ItemRef,
     type ObservationCatalogue,
     type RepositoryRef,
-    type ResolverAnswer,
-    type ResolverInput,
-    type ResolverName,
-    type ResolverOutput,
-    type Capability,
-    type StructuredExplanation,
     type TypedDeclaration,
 } from "../capability/index.js";
 import type { PermissionGrant } from "../github/index.js";
+import { EngineHandle, type EngineCapability, type ResolverSource } from "./invoke.js";
 import { normalizeDelivery } from "./events.js";
 import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
 import type { ObservationProjection } from "../workflow/index.js";
@@ -46,31 +44,12 @@ import {
     type Report,
 } from "../report/index.js";
 
+// ─── What goes in, what comes out ────────────────────────────────────
+
+/** Any observation in the catalogue — what the engine evaluates against. */
 export type EngineObservation = ObservationCatalogue[keyof ObservationCatalogue];
 
-/** A capability with its type parameter erased — the probes-harness pattern. */
-export interface EngineCapability {
-    readonly declaration: TypedDeclaration;
-    evaluate(
-        observation: never,
-        config: never,
-        platform: never,
-    ): Promise<readonly AnyIntent[]>;
-}
-
-/**
- * The one blessed erasure (D92 cleanup). Sound because `never` in every
- * parameter position is what any concrete `evaluate` accepts
- * contravariantly — nothing widens, and the capability gains no reach it
- * did not have. Fourteen call sites used to re-argue this inline with
- * `as unknown as EngineCapability`; the argument now lives here once.
- */
-export function toEngine<D extends TypedDeclaration>(
-    capability: Capability<D>,
-): EngineCapability {
-    return capability as unknown as EngineCapability;
-}
-
+/** The facts core cannot derive, supplied as data and lookups rather than I/O. */
 export interface DecideExternals {
     /** The caller's clock — the destructive grace comparison needs one. */
     readonly now: Date;
@@ -79,67 +58,37 @@ export interface DecideExternals {
     /** Ordering evidence per item; `"unknown"` is a safe conflict (manual-edits.md §2). */
     readonly latestHumanChangeAt: (item: ItemRef) => Date | null | "unknown";
     /** Resolver answers, when the shell has them. Absent means unavailable. */
-    readonly resolve?: <Q extends ResolverName>(
-        query: Q,
-        input: ResolverInput<Q>,
-    ) => Promise<ResolverAnswer<ResolverOutput<Q>>>;
+    readonly resolve?: ResolverSource;
 }
 
+/**
+ * One thing to decide about: a raw delivery, or an observation the caller
+ * already holds. The raw branch carries the shell's routing knowledge
+ * separately, because a report must name its repository even when the
+ * payload turns out to be unreadable.
+ */
 export type DecideInput =
     | {
           readonly kind: "delivery";
-          /** The shell's routing knowledge — a report must name its repository even when the payload is unreadable. */
           readonly repository: RepositoryRef;
           readonly event: string;
           readonly payload: unknown;
       }
     | { readonly kind: "observation"; readonly observation: EngineObservation };
 
+/** What one decision produced: the record, and what an executor may plan. */
 export interface Decision {
     readonly report: Report;
-    /** Intents that passed every gate in `active` mode — what an executor may plan. */
+    /** Intents that passed every gate in `active` mode. */
     readonly approved: readonly AnyIntent[];
 }
 
-/**
- * The engine's platform handle: refuses undeclared resolvers WITHOUT
- * throwing (the engine is total), recording the violation for the report
- * instead — an undeclared resolver call is a capability defect, and a
- * defect deserves a problem finding, not a crash in the shell.
- */
-class EngineHandle {
-    readonly explanations: StructuredExplanation[] = [];
-    readonly violations: string[] = [];
-
-    constructor(
-        private readonly declaration: TypedDeclaration,
-        private readonly externals: DecideExternals,
-    ) {}
-
-    async resolve(query: ResolverName, input: unknown): Promise<ResolverAnswer<unknown>> {
-        if (!this.declaration.resolvers.includes(query)) {
-            this.violations.push(query);
-            return {
-                ok: false,
-                reason: "notConfigured",
-                detail: `"${this.declaration.name}" did not declare resolver "${query}"`,
-            };
-        }
-        if (this.externals.resolve === undefined) {
-            return { ok: false, reason: "unavailable", detail: "no resolver source supplied" };
-        }
-        return this.externals.resolve(query, input as never);
-    }
-
-    explain(explanation: StructuredExplanation): void {
-        this.explanations.push(explanation);
-    }
-}
+// ─── The gates one intent passes ─────────────────────────────────────
 
 /**
  * safety.md §2.6 wants "the exact item and value the adapter may change".
- * Moved here from the planner (D92 3c) — the exhaustive switch means a new
- * catalogue operation fails to compile until someone states what it changes.
+ * The exhaustive switch means a new catalogue operation fails to compile
+ * until someone states what it changes.
  */
 export function describeChange(intent: AnyIntent): string {
     switch (intent.operation) {
@@ -159,6 +108,44 @@ type EngineProjection = ObservationProjection<MappableMeaning> | null;
 
 const projectionOf = (observation: EngineObservation): EngineProjection =>
     observation.kind === "staleItemsDue" ? null : observation.position;
+
+/**
+ * Destructive intents take the destructive gate; the warning rebuilds from
+ * the STORED warned cause, never the current request (D60, D72).
+ */
+function destructiveOrWrite(
+    intent: AnyIntent,
+    request: WriteRequest,
+    config: RepositoryConfig,
+    context: WriteContext,
+    now: Date,
+) {
+    if (intent.actionClass !== "clockTriggeredDestructive" || intent.destructive === undefined) {
+        return evaluateWrite(request, config, context);
+    }
+    return evaluateDestructive(
+        {
+            request,
+            warning: createDestructiveWarning({
+                request: {
+                    ...request,
+                    cause: intent.destructive.warnedCause,
+                    causeObservedAt: intent.destructive.warnedCauseObservedAt,
+                },
+                warnedAt: intent.destructive.warnedAt,
+                gracePeriodDays: intent.destructive.gracePeriodDays,
+                earliestActionAt: intent.destructive.earliestActionAt,
+                cancelledBy: intent.destructive.cancelledBy,
+                reversesWith: intent.destructive.reversesWith,
+            }),
+            qualifyingActivitySinceWarning:
+                intent.destructive.qualifyingActivitySinceWarning,
+        },
+        config,
+        context,
+        now,
+    );
+}
 
 /**
  * One intent through every gate — screen, derived world, verdict —
@@ -218,44 +205,15 @@ function gateIntent(
     return { findings, approved: verdict.outcome === "apply" ? intent : null };
 }
 
-/**
- * Destructive intents take the destructive gate; the warning rebuilds from
- * the STORED warned cause, never the current request (D60, D72).
- */
-function destructiveOrWrite(
-    intent: AnyIntent,
-    request: WriteRequest,
-    config: RepositoryConfig,
-    context: WriteContext,
-    now: Date,
-) {
-    if (intent.actionClass !== "clockTriggeredDestructive" || intent.destructive === undefined) {
-        return evaluateWrite(request, config, context);
-    }
-    return evaluateDestructive(
-        {
-            request,
-            warning: createDestructiveWarning({
-                request: {
-                    ...request,
-                    cause: intent.destructive.warnedCause,
-                    causeObservedAt: intent.destructive.warnedCauseObservedAt,
-                },
-                warnedAt: intent.destructive.warnedAt,
-                gracePeriodDays: intent.destructive.gracePeriodDays,
-                earliestActionAt: intent.destructive.earliestActionAt,
-                cancelledBy: intent.destructive.cancelledBy,
-                reversesWith: intent.destructive.reversesWith,
-            }),
-            qualifyingActivitySinceWarning:
-                intent.destructive.qualifyingActivitySinceWarning,
-        },
-        config,
-        context,
-        now,
-    );
-}
+// ─── The verb ────────────────────────────────────────────────────────
 
+/**
+ * The front door: a delivery becomes a report, plus the intents that may act.
+ *
+ * Total by construction. An unreadable payload, a capability asking for an
+ * undeclared resolver, and a refused write are all findings — a shell that
+ * cannot get a report back has nothing to record.
+ */
 export async function decide(
     input: DecideInput,
     config: RepositoryConfig,
@@ -302,10 +260,10 @@ export async function decide(
             if (config.capabilities[declaration.name]?.enabled !== true) continue;
             if (!declaration.observations.includes(observation.kind)) continue;
 
-            const handle = new EngineHandle(declaration, externals);
+            const handle = new EngineHandle(declaration, externals.resolve);
             const view = projectCapabilityView(declaration, config);
-            // The `never`s are `toEngine`'s erasure showing through: its
-            // doc comment owns the soundness argument, once, for all three.
+            // The `never`s are `toEngine`'s erasure showing through; its
+            // docstring owns the soundness argument, once, for all three.
             const intents = await capability.evaluate(
                 observation as never,
                 view as never,

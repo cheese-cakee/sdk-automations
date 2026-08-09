@@ -19,15 +19,19 @@ import type {
 } from "./catalogue.js";
 import type { AnyIntent } from "./intent.js";
 
-// ─── Typed declarations ──────────────────────────────────────────────
+// ─── Typed projections ───────────────────────────────────────────────
 
+/** The observation union a declaration receives — one member per declared name. */
 export type ObservationFor<D extends TypedDeclaration> =
     ObservationCatalogue[D["observations"][number]];
 
+/** The intent union a declaration may return — one member per declared operation. */
 export type IntentFor<D extends TypedDeclaration> = Extract<
     AnyIntent,
     { operation: D["intents"][number]["name"] }
 >;
+
+// ─── The view a capability sees ──────────────────────────────────────
 
 /**
  * contract.md §6 — the projection a capability sees. Four deliberate
@@ -70,14 +74,10 @@ export function projectCapabilityView<const D extends TypedDeclaration>(
             settings[key] = block.settings[key];
         }
     }
-    /**
-     * No `!== undefined` filter: `exactOptionalPropertyTypes` means a
-     * present key on `Partial<Record<MappableMeaning, string>>` holds a
-     * string, and `parseConfig` only ever assigns defined labels — so the
-     * filter was unreachable, and a mutation run proved it by surviving its
-     * removal. Defensiveness that cannot fire is a line a maintainer has to
-     * understand for nothing.
-     */
+    // No `!== undefined` filter on the meanings: under
+    // `exactOptionalPropertyTypes` a present key on
+    // `Partial<Record<MappableMeaning, string>>` holds a string, and
+    // `parseConfig` only ever assigns defined labels, so it was unreachable.
     return {
         settings: settings as CapabilityView<D>["settings"],
         mappedMeanings: Object.keys(config.mappings.labels) as MappableMeaning[],
@@ -100,14 +100,16 @@ export interface PlatformHandle<D extends TypedDeclaration> {
     explain(explanation: StructuredExplanation): void;
 }
 
+/**
+ * A capability: its declaration, and the one function the platform calls.
+ *
+ * `evaluate` is pure with respect to the repository — a capability decides,
+ * it never writes. Everything it returns is a REQUEST the policy layer may
+ * refuse, which is why it cannot report success, and why `EffectResult`
+ * (contract.md §4) is never handed back to it.
+ */
 export interface Capability<D extends TypedDeclaration> {
     readonly declaration: D;
-    /**
-     * Pure with respect to the repository: a capability decides, it never
-     * writes. Everything it returns is a REQUEST that the policy layer
-     * may refuse — which is why `evaluate` cannot report success, and why
-     * `EffectResult` (contract.md §4) is never handed back to it.
-     */
     evaluate(
         observation: ObservationFor<D>,
         config: CapabilityView<D>,

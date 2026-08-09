@@ -1,21 +1,17 @@
 /**
- * The intent factory — capability-authoring ergonomics, owned (D92 3d).
+ * Building an intent — capability-authoring ergonomics, owned (D92 3d).
  *
- * Before this, every intent was ~30 lines of hand-assembled record, and the
- * probes showed what that breeds: repeated `expected` boilerplate, the
- * capability name restated in the explanation, the idempotency key derived
- * at every call site. The factory binds the occasion once — capability,
- * repository, item, observedAt — and each intent states only what it WANTS.
+ * The factory binds the occasion once — capability, repository, item,
+ * observedAt — so each intent states only what it WANTS. Two contracts the
+ * shape enforces rather than requests:
  *
- * Two contracts the shape enforces rather than requests:
- *
- * - **Every intent explains itself.** `explain.summary` is required — the
+ * - **Every intent explains itself.** `explain.summary` is required: the
  *   report's story for applied and recorded effects comes from here, and a
  *   capability that cannot say why it acts should not act (safety.md).
  * - **The claimed world defaults to no claim.** An omitted `expected` is
- *   vacuous (`closed: null`), never an accidental assertion — under the
- *   engine's derived preconditions, claims are CHECKED, so the default must
- *   be the one that cannot be wrong.
+ *   vacuous (`closed: null`), never an accidental assertion. Claims are
+ *   CHECKED under the engine's derived preconditions, so the default must be
+ *   the one that cannot be wrong.
  */
 
 import type { ActionClass } from "../safety/index.js";
@@ -36,6 +32,7 @@ export interface IntentOccasion {
     readonly observedAt: Date;
 }
 
+/** What a capability says; the factory supplies the rest of the intent. */
 export interface IntentSpec<K extends IntentOperation> {
     readonly operation: K;
     readonly actionClass: ActionClass;
@@ -49,8 +46,10 @@ export interface IntentSpec<K extends IntentOperation> {
     readonly destructive?: DestructiveDetail;
 }
 
+/** A spec-to-intent function with one occasion already bound. */
 export type IntentMaker = <K extends IntentOperation>(spec: IntentSpec<K>) => Intent<K>;
 
+/** Bind an occasion. Accepts any catalogue operation; see `intentFactoryFor`. */
 export function intentFactory(
     capability: string,
     occasion: IntentOccasion,
@@ -84,13 +83,11 @@ export function intentFactory(
 }
 
 /**
- * The declaration-aware factory — D92 3(d), completed by unification
- * rather than deletion. `intentFactory` accepts any catalogue operation;
- * this one constrains `K` to the operations the DECLARATION carries, so
- * its output is assignable to `IntentFor<D>` with no cast — an undeclared
- * operation fails at the call site, at compile time, in the capability's
- * own file. The screens still re-check at runtime; this is ergonomics,
- * they are enforcement.
+ * The declaration-aware factory — the one capabilities should use. It
+ * constrains `K` to the operations the DECLARATION carries, so its output is
+ * assignable to `IntentFor<D>` with no cast, and an undeclared operation
+ * fails at the call site, at compile time, in the capability's own file. The
+ * screens still re-check at runtime; this is ergonomics, they are enforcement.
  */
 export function intentFactoryFor<const D extends TypedDeclaration>(
     declaration: D,

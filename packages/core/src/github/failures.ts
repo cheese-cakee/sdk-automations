@@ -1,13 +1,19 @@
 /**
- * GitHub's failure responses, classified — and the bounded retry advice that
- * follows from each.
+ * A failed GitHub call, from response to next action.
  *
- * The body regexes are DATED SNAPSHOTS, not contract: when GitHub rewords a
+ * The body regexes are DATED SNAPSHOTS, not contract. When GitHub rewords a
  * message the match fails and the response degrades to
  * `forbiddenUnrecognized` rather than being confidently misdiagnosed. Green
  * tests here mean the fixtures still agree with themselves
- * (`FINDING(failures-prose-snapshot)`, D40 — see this directory's README for
+ * (`FINDING(failures-prose-snapshot)`, D40 — see [README.md](README.md) for
  * the re-probe obligation).
+ *
+ * The retry bounds in the last section are chosen, not observed, which by
+ * this directory's inclusion test argues for a different home. They stay
+ * because the advice is welded to the observation: the one-minute floor
+ * exists only because the 403 secondary limit carries no wait signal at all
+ * (`FINDING(secondary-limit-no-wait-signal)`). Splitting them would put the
+ * measurement and the number it forced in separate files.
  */
 
 import {
@@ -15,22 +21,25 @@ import {
     parseSecondsHeader,
 } from "./rate-limits.js";
 
-/** The inputs classification needs — transport-agnostic. */
+// ─── What arrived ────────────────────────────────────────────────────
+
+/**
+ * The inputs classification needs — transport-agnostic.
+ *
+ * `tokenPastExpiry` is whether the caller's token was already past its
+ * minted `expires_at` when the request was sent. It is required for correct
+ * 401 classification. An expired installation token returns the same body as
+ * a wrong key (`"Bad credentials"`, observed 2026-07-23, citation
+ * `…T21-52-06-572Z#1`), so only this local fact tells them apart.
+ */
 export interface FailureObservation {
     readonly status: number;
     readonly body: string;
     readonly headers: Readonly<Record<string, string | undefined>>;
-    /**
-     * Whether the caller's token was already past its minted
-     * `expires_at` when the request was sent. REQUIRED for correct 401
-     * classification: an expired installation token returns the exact
-     * same body as a wrong key (`"Bad credentials"` — observed
-     * 2026-07-23, citation `…T21-52-06-572Z#1`), so expiry is
-     * distinguishable ONLY by this local fact, never by the response.
-     */
     readonly tokenPastExpiry?: boolean;
 }
 
+/** What a failed response turned out to be. */
 export type FailureClass =
     /** 401; token past its 1 h TTL (6.1). */
     | { readonly kind: "tokenExpired" }
@@ -54,11 +63,7 @@ export type FailureClass =
           readonly headerValue: string;
           readonly reason: "invalid" | "aboveAutomaticLimit";
       }
-    /**
-     * A 403 matching NO observed shape — explicit ignorance carrying
-     * the evidence, so a reworded GitHub body surfaces instead of
-     * being misdiagnosed (D40).
-     */
+    /** A 403 matching NO observed shape — carries the body verbatim, so a reworded message surfaces rather than being misdiagnosed (D40). */
     | { readonly kind: "forbiddenUnrecognized"; readonly bodySnippet: string }
     /** 404: not found OR App not installed there — GitHub hides existence (6.6 probe), the two are indistinguishable. */
     | { readonly kind: "notFoundOrNotInstalled" }
@@ -67,20 +72,21 @@ export type FailureClass =
     /** 5xx and everything else worth one bounded retry. */
     | { readonly kind: "transient" };
 
+// ─── The perishable surface ──────────────────────────────────────────
+
 /**
- * The PERISHABLE SURFACE — every place this module reads GitHub's prose.
+ * Every place this module reads GitHub's prose.
  *
- * Two patterns, and D40's quarterly re-probe is entirely about these: the
- * rest of this file is logic over status codes and headers, which do not
- * reword themselves. They are lifted out of `classifyFailure` because the
+ * D40's quarterly re-probe is entirely about these two patterns. The rest of
+ * the file is logic over status codes and headers, which do not reword
+ * themselves. They sit here rather than inside `classifyFailure` because the
  * re-probe is a specific editing task — find the pattern, compare it against
- * what GitHub says now, change it — and it should not require reading a
- * classifier at nesting depth five to perform.
+ * what GitHub says now, change it. It should not require reading a classifier
+ * at nesting depth five.
  *
- * `observed` is the text the pattern was written against. It is not
- * decoration: `failures.test.ts` asserts every pattern still matches its own
- * sample, so editing one without the other fails rather than drifting
- * silently — which is the whole failure mode of `FINDING(failures-prose-snapshot)`.
+ * `observed` is the text each pattern was written against, and it is not
+ * decoration. `failures.test.ts` asserts every pattern still matches its own
+ * sample, so editing one without the other fails rather than drifting.
  */
 export const BODY_PATTERNS = {
     secondaryRateLimit: {
@@ -99,6 +105,9 @@ export const BODY_PATTERNS = {
     },
 } as const;
 
+// ─── Classification ──────────────────────────────────────────────────
+
+/** Read one failed response into exactly one class. */
 export function classifyFailure(o: FailureObservation): FailureClass {
     const body = o.body;
     if (o.status === 401) {
@@ -150,13 +159,14 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         if (BODY_PATTERNS.installationSuspended.pattern.test(body)) {
             return { kind: "installationSuspended" };
         }
-        // No observed shape matched — say so, carrying the evidence.
         return { kind: "forbiddenUnrecognized", bodySnippet: body.slice(0, 200) };
     }
     if (o.status === 404) return { kind: "notFoundOrNotInstalled" };
     if (o.status === 422) return { kind: "validationError" };
     return { kind: "transient" };
 }
+
+// ─── What to do next ─────────────────────────────────────────────────
 
 /** What the caller should do next — the retry policy's pure half. */
 export type RetryAdvice =

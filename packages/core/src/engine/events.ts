@@ -1,25 +1,23 @@
 /**
  * The normalizer — a raw webhook delivery becomes a catalogue observation,
- * or a typed refusal to make one. The vertical slice's step ②.
+ * or a typed refusal to make one. The pipeline's first stage.
  *
  * Everything a capability may know about GitHub's wire format dies here:
  * label STRINGS become meanings via the repository's reviewed mapping,
  * state fields become a `ClosureReason`, and the label set becomes an
  * `ObservationProjection` (contract.md §2 — "the platform normalizes all
  * external facts before evaluation"). Built test-first against REAL
- * captured payloads in `packages/core/test/github/fixtures/` (protocol 7.1), never
- * against invented ones.
+ * captured payloads in `packages/core/test/github/fixtures/` (protocol
+ * 7.1), never against invented ones.
  *
- * Total, like everything at this boundary: a delivery this file does not
- * consume is `ignored` (normal — pushes, stars, pings), a delivery it
- * consumes but cannot read is `malformed` (loud — GitHub changed shape, or
- * the shell handed us something that is not a webhook body). Nothing throws.
+ * Total, like everything at this boundary. A delivery this file does not
+ * consume is `ignored` (normal — pushes, stars, pings); one it consumes
+ * but cannot read is `malformed` (loud — GitHub changed shape, or the
+ * shell handed us something that is not a webhook body). Nothing throws.
  *
- * Lives in `engine/` (D92 phase 5): normalization is the pipeline's first
- * stage, and the move retired the capability⇄github type-only cycle D91
- * had named as a cost — the engine imports both sides freely. What stays
- * in `github/` is observed knowledge about GitHub; what a delivery BECOMES
- * is the engine's business.
+ * The boundary with `github/` (D92 phase 5): what stays there is observed
+ * knowledge ABOUT GitHub, while what a delivery BECOMES is the engine's
+ * business.
  */
 
 import type { ObservationCatalogue } from "../capability/index.js";
@@ -30,6 +28,7 @@ import {
     type ClosureReason,
 } from "../workflow/index.js";
 
+/** The two observations a webhook delivery can become. */
 export type NormalizedObservation =
     | ObservationCatalogue["issueUpdated"]
     | ObservationCatalogue["pullRequestUpdated"];
@@ -49,8 +48,11 @@ export const NORMALIZE_MALFORMED_CODES = [
     "timestampUnreadable",
     "mergedMissing",
 ] as const;
+/** One way a consumed delivery can be unreadable. */
 export type NormalizeMalformedCode = (typeof NORMALIZE_MALFORMED_CODES)[number];
 
+
+/** The three verdicts on a delivery: read it, skip it, or refuse it. */
 export type NormalizeResult =
     | { readonly kind: "observation"; readonly observation: NormalizedObservation }
     | { readonly kind: "ignored"; readonly event: string }
