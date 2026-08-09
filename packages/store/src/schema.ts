@@ -5,6 +5,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { isDeepStrictEqual } from "node:util";
 
 /** The newest storage schema this package can safely read and write. */
 export const CURRENT_STORAGE_SCHEMA_VERSION = 4;
@@ -143,8 +144,11 @@ const SCHEMA_BY_VERSION = {
     },
 } as const;
 
+type StorageSchemaVersion = keyof typeof SCHEMA_BY_VERSION;
+type DetectedStorageSchemaVersion = 0 | Exclude<StorageSchemaVersion, 4>;
+
 const MIGRATIONS: ReadonlyArray<{
-    readonly version: 1 | 2 | 3 | 4;
+    readonly version: StorageSchemaVersion;
     readonly apply: (db: DatabaseSync) => void;
 }> = [
     { version: 1, apply: createOriginalOperationalSchema },
@@ -155,10 +159,7 @@ const MIGRATIONS: ReadonlyArray<{
 
 /** Read SQLite's native application schema version. */
 export function readStorageSchemaVersion(db: DatabaseSync): number {
-    const row = db.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
-    if (row === undefined || !Number.isInteger(row.user_version)) {
-        throw new Error("could not read the storage schema version");
-    }
+    const row = db.prepare("PRAGMA user_version").get() as { user_version: number };
     return row.user_version;
 }
 
@@ -181,10 +182,9 @@ export function migrateStorageSchema(
 
     db.exec("BEGIN IMMEDIATE");
     try {
-        let version = declaredVersion;
+        let version = declaredVersion as 0 | StorageSchemaVersion;
         if (version === 0) {
             version = detectUnversionedSchema(db);
-            if (version > 0) setVersion(db, version);
         } else {
             assertSchemaMatchesVersion(db, version);
         }
@@ -209,7 +209,7 @@ export function migrateStorageSchema(
     }
 }
 
-function detectUnversionedSchema(db: DatabaseSync): number {
+function detectUnversionedSchema(db: DatabaseSync): DetectedStorageSchemaVersion {
     if (schemaObjects(db).length === 0) return 0;
     for (const version of [1, 2, 3] as const) {
         if (schemaMatchesVersion(db, version)) return version;
@@ -217,29 +217,23 @@ function detectUnversionedSchema(db: DatabaseSync): number {
     throw new Error("unrecognized unversioned storage schema");
 }
 
-function assertSchemaMatchesVersion(db: DatabaseSync, version: number): void {
+function assertSchemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): void {
     if (!schemaMatchesVersion(db, version)) {
         throw new Error(`storage schema does not match declared version ${String(version)}`);
     }
 }
 
-function schemaMatchesVersion(db: DatabaseSync, version: number): boolean {
-    if (version < 1 || version > CURRENT_STORAGE_SCHEMA_VERSION) return false;
-    const expected = SCHEMA_BY_VERSION[version as keyof typeof SCHEMA_BY_VERSION];
-    const actual = schemaObjects(db);
-    const expectedNames = Object.keys(expected).sort();
-    if (
-        !sameValues(
-            actual.map((object) => object.name),
-            expectedNames,
-        )
-    )
-        return false;
-    return actual.every(
-        (object) =>
-            normalizeSql(object.sql) ===
-            normalizeSql(expected[object.name as keyof typeof expected]),
+function schemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): boolean {
+    const actual = Object.fromEntries(
+        schemaObjects(db).map((object) => [object.name, normalizeSql(object.sql)]),
     );
+    const expected = Object.fromEntries(
+        Object.entries(SCHEMA_BY_VERSION[version]).map(([name, sql]) => [
+            name,
+            normalizeSql(sql),
+        ]),
+    );
+    return isDeepStrictEqual(actual, expected);
 }
 
 function schemaObjects(
@@ -250,20 +244,13 @@ function schemaObjects(
             `
         SELECT name, sql FROM sqlite_schema
         WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
-        ORDER BY name
     `,
         )
         .all() as Array<{ name: string; sql: string }>;
 }
 
-function sameValues(actual: readonly string[], expected: readonly string[]): boolean {
-    return (
-        actual.length === expected.length &&
-        actual.every((value, index) => value === expected[index])
-    );
-}
-
 function normalizeSql(sql: string): string {
+    // Stryker disable next-line Regex: Replacing one whitespace character or one run at a time produces the same normalized SQL.
     return sql.replace(/\s+/g, "");
 }
 

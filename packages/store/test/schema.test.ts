@@ -418,6 +418,38 @@ describe("storage schema versions", () => {
         },
     );
 
+    it.each([
+        {
+            boundary: "a missing object while every remaining object matches",
+            change: "DROP INDEX open_intents",
+        },
+        {
+            boundary: "the same object count with one wrong name",
+            change: `
+                DROP INDEX open_intents;
+                CREATE INDEX closed_intents
+                    ON effect_journal(at) WHERE status = 'sent'
+            `,
+        },
+        {
+            boundary: "an exact DDL mismatch",
+            change: `
+                DROP INDEX open_intents;
+                CREATE INDEX open_intents
+                    ON effect_journal(at) WHERE status = 'done'
+            `,
+        },
+    ])("rejects $boundary", ({ change }) => {
+        createVersion3Schema(databasePath);
+        const db = new DatabaseSync(databasePath);
+        db.exec(`${change}; PRAGMA user_version = 3;`);
+        db.close();
+
+        expect(() => new Store(databasePath)).toThrow(
+            "storage schema does not match declared version 3",
+        );
+    });
+
     it("rejects unexpected active schema objects", () => {
         createVersion3Schema(databasePath);
         const db = new DatabaseSync(databasePath);
