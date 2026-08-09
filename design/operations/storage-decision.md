@@ -155,15 +155,21 @@ delivery to `done`; and clears the payload. The report row retains the committin
 token, so retrying the same token and exact JSON returns `alreadyCompleted`.
 Released, stale, or stolen tokens return `notOwned`; the same token with changed
 JSON returns `reportConflict`. JSONL is written only after commit as a derived
-operator projection.
+operator projection. An append failure replays every canonical report in stable
+completion-time and delivery-ID order; a persistent projection failure is
+reported without releasing the committed claim or stopping the delivery drain.
+Startup performs the same replay before accepting new work.
 
 SQLite `PRAGMA user_version` is the schema contract, currently version 4. A
 newer declared version is refused before database configuration or migration.
-Version-zero databases are fingerprinted by their complete table and column
-shape against the three real schemas previously created here. Migrations run in
-numeric order with their version updates inside one write transaction, so an
-interruption leaves either the complete old schema or version 4 and reopening is
-repeatable. Unknown unversioned shapes fail closed.
+Version-zero databases are fingerprinted against the exact owned SQLite objects
+from the three real schemas previously created here. Table and index SQL is
+normalized only for whitespace, preserving types, nullability, primary
+keys, checks, and partial-index predicates; extra triggers, views, tables, or
+indexes are refused. Migrations run in numeric order with their version updates
+inside one write transaction, so an interruption leaves either the complete old
+schema or version 4 and reopening is repeatable. Unknown unversioned shapes fail
+closed.
 
 Migration cannot invent missing facts. Identity-only delivery rows become
 completed legacy identities whose unknown event and digest force a conflict on

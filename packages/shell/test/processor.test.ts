@@ -5,7 +5,7 @@
  * before any of this; GitHub is not watching.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,6 +71,7 @@ function processor(capability: EngineCapability, firstTickMs = 1_000) {
             repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
             worker: "test-worker",
             clock: () => new Date(BASE.getTime() + firstTickMs + 1000 * tick++),
+            onProjectionFailure: () => {},
         }),
     };
 }
@@ -97,6 +98,15 @@ describe("a crash releases the claim", () => {
             deliveryId: GUID as string,
             configRevision: "rev-test-1",
         });
+        healthy.reports.entries.splice(0);
+        healthy.reports.rebuild(store.deliveryReports());
+        expect(healthy.reports.entries).toEqual([
+            expect.objectContaining({
+                kind: "decision",
+                deliveryId: GUID as string,
+                configRevision: "rev-test-1",
+            }),
+        ]);
     });
 
     it("an empty queue reports itself instead of pretending to work", async () => {
@@ -172,9 +182,11 @@ describe("a crash releases the claim", () => {
         });
     });
 
-    it("a projection failure happens after canonical report-plus-done commits", async () => {
+    it("a projection append failure rebuilds from canonical reports and does not release", async () => {
         let tick = 0;
         const projectionFailure = new Error("projection unavailable");
+        const rebuilt: string[][] = [];
+        const unresolved = vi.fn();
         const candidate = new Processor({
             store,
             capabilities: [toEngine(intake)],
@@ -183,14 +195,20 @@ describe("a crash releases the claim", () => {
                 record: () => {
                     throw projectionFailure;
                 },
+                rebuild: (reports) => {
+                    rebuilt.push(reports.map((report) => report.reportJson));
+                },
             },
             externals: stubbedExternals(),
             repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
             worker: "test-worker",
             clock: () => new Date(BASE.getTime() + 1_000 * ++tick),
+            onProjectionFailure: unresolved,
         });
 
-        await expect(candidate.processOnce()).rejects.toThrow(projectionFailure);
+        await expect(candidate.processOnce()).resolves.toBe(true);
+        expect(rebuilt).toEqual([store.deliveryReports().map((report) => report.reportJson)]);
+        expect(unresolved).not.toHaveBeenCalled();
         expect(
             store.claimNextDelivery(
                 "next-worker",
@@ -214,5 +232,51 @@ describe("a crash releases the claim", () => {
                 )
                 .get(),
         ).toEqual({ reports: 1 });
+    });
+
+    it("a persistent projection failure is reported but does not stop the drain", async () => {
+        store.acceptDelivery({
+            deliveryId: SECOND_GUID,
+            eventName: "issues",
+            payload: FIXTURE,
+            receivedAt: new Date(BASE.getTime() + 500).toISOString(),
+        });
+        let tick = 0;
+        const failures: unknown[] = [];
+        const candidate = new Processor({
+            store,
+            capabilities: [toEngine(intake)],
+            configSource,
+            reports: {
+                record: () => {
+                    throw new Error("append unavailable");
+                },
+                rebuild: () => {
+                    throw new Error("rebuild unavailable");
+                },
+            },
+            externals: stubbedExternals(),
+            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            worker: "test-worker",
+            clock: () => new Date(BASE.getTime() + 1_000 * ++tick),
+            onProjectionFailure: (error) => {
+                failures.push(error);
+                throw new Error("operator logger unavailable");
+            },
+        });
+
+        await expect(candidate.drain()).resolves.toBeUndefined();
+        expect(store.deliveryReports()).toHaveLength(2);
+        expect(failures).toHaveLength(2);
+        for (const failure of failures) {
+            expect(failure).toBeInstanceOf(AggregateError);
+            expect((failure as AggregateError).message).toBe(
+                "report projection failed and its canonical replay did not complete",
+            );
+            expect((failure as AggregateError).errors).toEqual([
+                expect.objectContaining({ message: "append unavailable" }),
+                expect.objectContaining({ message: "rebuild unavailable" }),
+            ]);
+        }
     });
 });

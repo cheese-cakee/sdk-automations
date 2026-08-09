@@ -26,7 +26,7 @@ flowchart LR
 | ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config fails closed as a `configRejected` record |
 | ④ Decide with one verb | [`src/processor.ts`](src/processor.ts) | core's `decide()`; the shell cannot assert a world — `DerivedWorld` has no public constructor |
 | ⑤ Commit report plus completion | [`src/processor.ts`](src/processor.ts) → store's `completeDeliveryWithReport` | store verifies delivery identity and claim ownership, then creates one canonical report and marks the delivery done in one transaction |
-| ⑥ Project for operators | [`src/reports.ts`](src/reports.ts) | JSONL receives the exact already-committed JSON; projection failure cannot undo or duplicate the canonical database record |
+| ⑥ Project for operators | [`src/reports.ts`](src/reports.ts) | JSONL receives the exact already-committed JSON; append failure triggers a full replay from canonical SQLite rows, and startup rebuilds the projection before accepting work |
 
 The configuration file lives at **`automations.yml` in the repository root** (D93): it configures the
 automation platform, not GitHub, and everywhere else in the design GitHub is an adapter detail — a
@@ -69,8 +69,12 @@ pnpm --filter @hiero-hackers/automation-shell start
 Point the existing smee channel at it and open an issue on the sandbox: within a second,
 `data/decisions.jsonl` gains a line saying what the platform would have done and why. It is the
 operator-facing interview artifact, derived from the canonical report committed in `shell.sqlite`.
-If file append fails, the delivery remains done with its report intact in SQLite; the file is not
-the completion boundary.
+If file append fails, the processor rebuilds the entire file from
+`Store.deliveryReports()` and continues draining. If both append and rebuild
+fail, the shell logs that the projection remains stale but still continues:
+canonical completion has already committed and is never sent through the
+pre-commit claim-release path. Every shell start rebuilds JSONL from SQLite
+before accepting work, so deleting or corrupting the projection is recoverable.
 
 `data/` is never tracked (see the root `.gitignore`), the same rule as `lab/evidence/`.
 

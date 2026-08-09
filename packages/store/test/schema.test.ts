@@ -26,6 +26,33 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 const DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000001")!;
 const AT = "2026-07-23T10:00:00.000Z";
 
+const VERSION3_SEEN_DELIVERY = `
+    CREATE TABLE seen_delivery (
+        delivery_id   TEXT PRIMARY KEY,
+        event_name    TEXT NOT NULL,
+        payload       BLOB,
+        payload_digest TEXT NOT NULL,
+        received_at   TEXT NOT NULL,
+        state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
+        claim_worker  TEXT,
+        claim_token   TEXT,
+        claimed_at    TEXT,
+        completed_at  TEXT,
+        CHECK (
+            (state = 'pending' AND payload IS NOT NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NULL)
+            OR
+            (state = 'processing' AND payload IS NOT NULL
+                AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
+                AND claimed_at IS NOT NULL AND completed_at IS NULL)
+            OR
+            (state = 'done' AND payload IS NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NOT NULL)
+        )
+    )`;
+
 function createVersion1Schema(path: string): void {
     const db = new DatabaseSync(path);
     db.exec(`
@@ -128,31 +155,7 @@ function createVersion2Schema(path: string): void {
 function createVersion3Schema(path: string): void {
     const db = new DatabaseSync(path);
     db.exec(`
-        CREATE TABLE seen_delivery (
-            delivery_id   TEXT PRIMARY KEY,
-            event_name    TEXT NOT NULL,
-            payload       BLOB,
-            payload_digest TEXT NOT NULL,
-            received_at   TEXT NOT NULL,
-            state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
-            claim_worker  TEXT,
-            claim_token   TEXT,
-            claimed_at    TEXT,
-            completed_at  TEXT,
-            CHECK (
-                (state = 'pending' AND payload IS NOT NULL
-                    AND claim_worker IS NULL AND claim_token IS NULL
-                    AND claimed_at IS NULL AND completed_at IS NULL)
-                OR
-                (state = 'processing' AND payload IS NOT NULL
-                    AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
-                    AND claimed_at IS NOT NULL AND completed_at IS NULL)
-                OR
-                (state = 'done' AND payload IS NULL
-                    AND claim_worker IS NULL AND claim_token IS NULL
-                    AND claimed_at IS NULL AND completed_at IS NOT NULL)
-            )
-        );
+        ${VERSION3_SEEN_DELIVERY};
         CREATE TABLE effect_journal (
             effect_id TEXT NOT NULL,
             call_seq  INTEGER NOT NULL,
@@ -189,6 +192,23 @@ function createVersion3Schema(path: string): void {
         ) VALUES (?, 'issues', ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
     `,
     ).run(DELIVERY_ID, Buffer.from("work"), "0".repeat(64), AT);
+    db.close();
+}
+
+function replaceVersion3DeliveryDefinition(definition: string, declaredVersion: 0 | 3): void {
+    createVersion3Schema(databasePath);
+    const db = new DatabaseSync(databasePath);
+    db.exec(`
+        DROP INDEX delivery_work;
+        ALTER TABLE seen_delivery RENAME TO seen_delivery_original;
+        ${definition};
+        INSERT INTO seen_delivery
+            SELECT * FROM seen_delivery_original;
+        DROP TABLE seen_delivery_original;
+        CREATE INDEX delivery_work
+            ON seen_delivery(state, received_at, delivery_id);
+        PRAGMA user_version = ${String(declaredVersion)};
+    `);
     db.close();
 }
 
@@ -319,6 +339,7 @@ describe("storage schema versions", () => {
                 completedAt: "2026-07-23T10:01:00.000Z",
             }),
         ).toEqual({ outcome: "notOwned" });
+        expect(store.deliveryReports()).toEqual([]);
         store.close();
     });
 
@@ -349,6 +370,69 @@ describe("storage schema versions", () => {
         mislabeled.close();
         expect(() => new Store(databasePath)).toThrow(
             "storage schema does not match declared version 4",
+        );
+    });
+
+    it.each([
+        {
+            property: "primary key",
+            definition: VERSION3_SEEN_DELIVERY.replace(
+                "delivery_id   TEXT PRIMARY KEY",
+                "delivery_id   TEXT",
+            ),
+            version: 0 as const,
+            error: "unrecognized unversioned storage schema",
+        },
+        {
+            property: "column type",
+            definition: VERSION3_SEEN_DELIVERY.replace(
+                "event_name    TEXT NOT NULL",
+                "event_name    BLOB NOT NULL",
+            ),
+            version: 3 as const,
+            error: "storage schema does not match declared version 3",
+        },
+        {
+            property: "not-null constraint",
+            definition: VERSION3_SEEN_DELIVERY.replace(
+                "payload_digest TEXT NOT NULL",
+                "payload_digest TEXT",
+            ),
+            version: 3 as const,
+            error: "storage schema does not match declared version 3",
+        },
+        {
+            property: "check constraint",
+            definition: VERSION3_SEEN_DELIVERY.replace(
+                "state IN ('pending', 'processing', 'done')",
+                "state IN ('pending', 'processing', 'done', 'lost')",
+            ),
+            version: 3 as const,
+            error: "storage schema does not match declared version 3",
+        },
+    ])(
+        "rejects a same-column schema with the wrong $property",
+        ({ definition, version, error }) => {
+            replaceVersion3DeliveryDefinition(definition, version);
+            expect(() => new Store(databasePath)).toThrow(error);
+        },
+    );
+
+    it("rejects unexpected active schema objects", () => {
+        createVersion3Schema(databasePath);
+        const db = new DatabaseSync(databasePath);
+        db.exec(`
+            CREATE TRIGGER erase_report_identity
+            AFTER UPDATE ON seen_delivery
+            BEGIN
+                DELETE FROM seen_delivery WHERE delivery_id = NEW.delivery_id;
+            END;
+            PRAGMA user_version = 3;
+        `);
+        db.close();
+
+        expect(() => new Store(databasePath)).toThrow(
+            "storage schema does not match declared version 3",
         );
     });
 });

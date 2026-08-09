@@ -249,6 +249,9 @@ refactor would retire.
 
 D110 supersedes only D93's JSONL-as-persistence clause. D93 remains the historical record for the
 shell boundary, configuration location, and first-slice scope; SQLite is now the canonical report source.
+The implemented D110 fingerprint is stricter than the row's original table/column shorthand: it matches
+exact owned table and index definitions and rejects extra active schema objects. Canonical reports are
+readable in deterministic order, and shell startup plus append recovery rebuild JSONL from that source.
 
 ## 4. Open product and engineering questions
 

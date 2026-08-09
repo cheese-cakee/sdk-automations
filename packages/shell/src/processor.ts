@@ -24,6 +24,7 @@ import type { ShellExternals } from "./externals.js";
 /** A processing claim older than this is presumed dead and taken over. */
 const STALE_CLAIM_MINUTES = 15;
 
+/** Dependencies and operator hooks for one durable delivery worker. */
 export interface ProcessorOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
@@ -39,6 +40,8 @@ export interface ProcessorOptions {
     readonly repository: RepositoryRef;
     readonly worker: string;
     readonly clock: () => Date;
+    /** Persistent projection damage is reported without changing queue ownership. */
+    readonly onProjectionFailure: (error: unknown) => void;
 }
 
 /** What every persisted record says about which delivery it answers. */
@@ -63,9 +66,11 @@ export class Processor {
     async processOnce(): Promise<boolean> {
         const claimed = this.claimNext();
         if (claimed === undefined) return false;
+        let record: ShellRecord;
+        let reportJson: string;
         try {
-            const record = await this.process(claimed);
-            const reportJson = JSON.stringify(record);
+            record = await this.process(claimed);
+            reportJson = JSON.stringify(record);
             const completion = this.options.store.completeDeliveryWithReport({
                 deliveryId: claimed.deliveryId,
                 eventName: claimed.eventName,
@@ -77,12 +82,30 @@ export class Processor {
             if (completion.outcome !== "completed") {
                 throw new Error(`delivery report was not committed: ${completion.outcome}`);
             }
-            this.options.reports.record(record, reportJson);
-            return true;
         } catch (error) {
             this.options.store.releaseDelivery(claimed.deliveryId, claimed.claimToken);
             throw error;
         }
+
+        try {
+            this.options.reports.record(record, reportJson);
+        } catch (recordError) {
+            try {
+                this.options.reports.rebuild(this.options.store.deliveryReports());
+            } catch (rebuildError) {
+                try {
+                    this.options.onProjectionFailure(
+                        new AggregateError(
+                            [recordError, rebuildError],
+                            "report projection failed and its canonical replay did not complete",
+                        ),
+                    );
+                } catch {
+                    // Operator reporting cannot turn a committed delivery into queue backpressure.
+                }
+            }
+        }
+        return true;
     }
 
     /** Process until the queue is empty. Overlapping calls share one loop. */

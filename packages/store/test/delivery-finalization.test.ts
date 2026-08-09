@@ -26,6 +26,8 @@ beforeEach(() => {
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
 const DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000001")!;
+const SECOND_DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000002")!;
+const THIRD_DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000003")!;
 const RECEIVED_AT = "2026-08-01T10:00:00.000Z";
 const COMPLETED_AT = "2026-08-01T10:02:00.000Z";
 const REPORT_JSON = JSON.stringify({
@@ -33,9 +35,9 @@ const REPORT_JSON = JSON.stringify({
     deliveryId: DELIVERY_ID,
 });
 
-function acceptAndClaim(store: Store): ClaimedDelivery {
+function acceptAndClaim(store: Store, deliveryId = DELIVERY_ID): ClaimedDelivery {
     store.acceptDelivery({
-        deliveryId: DELIVERY_ID,
+        deliveryId,
         eventName: "issues",
         payload: Buffer.from("work"),
         receivedAt: RECEIVED_AT,
@@ -228,6 +230,13 @@ describe("atomic report completion", () => {
                 completedAt: "2026-08-01T10:03:00.000Z",
             }),
         ).toEqual({ outcome: "alreadyCompleted" });
+        expect(store.deliveryReports()).toEqual([
+            {
+                deliveryId: DELIVERY_ID,
+                reportJson: REPORT_JSON,
+                completedAt: COMPLETED_AT,
+            },
+        ]);
         store.close();
 
         expect(durableOutcome()).toEqual({
@@ -267,6 +276,20 @@ describe("atomic report completion", () => {
             store.completeDeliveryWithReport(
                 completion(current, {
                     eventName: "pull_request",
+                }),
+            ),
+        ).toEqual({ outcome: "identityMismatch" });
+        expect(
+            store.completeDeliveryWithReport(
+                completion(current, {
+                    payloadDigest: "1".repeat(64),
+                }),
+            ),
+        ).toEqual({ outcome: "identityMismatch" });
+        expect(
+            store.completeDeliveryWithReport(
+                completion(current, {
+                    deliveryId: SECOND_DELIVERY_ID,
                 }),
             ),
         ).toEqual({ outcome: "identityMismatch" });
@@ -385,6 +408,32 @@ describe("atomic report completion", () => {
         expect(db.prepare("SELECT count(*) AS count FROM delivery_report").get()).toEqual({
             count: 0,
         });
+        store.close();
+    });
+
+    it("lists canonical reports by completion time then delivery identity", () => {
+        const store = new Store(databasePath);
+        for (const [deliveryId, completedAt] of [
+            [THIRD_DELIVERY_ID, "2026-08-01T10:03:00.000Z"],
+            [DELIVERY_ID, "2026-08-01T10:04:00.000Z"],
+            [SECOND_DELIVERY_ID, "2026-08-01T10:03:00.000Z"],
+        ] as const) {
+            const claim = acceptAndClaim(store, deliveryId);
+            expect(
+                store.completeDeliveryWithReport(
+                    completion(claim, {
+                        reportJson: JSON.stringify({ deliveryId }),
+                        completedAt,
+                    }),
+                ),
+            ).toEqual({ outcome: "completed" });
+        }
+
+        expect(store.deliveryReports().map((report) => report.deliveryId)).toEqual([
+            SECOND_DELIVERY_ID,
+            THIRD_DELIVERY_ID,
+            DELIVERY_ID,
+        ]);
         store.close();
     });
 

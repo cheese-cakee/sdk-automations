@@ -209,8 +209,11 @@ cannot create the report or complete the delivery. Retrying the committing token
 bytes returns `alreadyCompleted` without another row.
 
 Only after commit does `packages/shell/src/reports.ts` append the same bytes to `decisions.jsonl` as
-an operator projection. A projection failure can leave that file missing a line, but it cannot undo
-or duplicate the canonical SQLite report. Abridged only by collapsing the four findings already seen:
+an operator projection. If append fails, the processor replaces the projection from
+`Store.deliveryReports()` and keeps draining; if replay also fails, it reports the stale projection
+without trying to release the already-completed claim. Startup runs the same deterministic replay,
+so a missing, partial, duplicated, or corrupt JSONL file is rebuilt from SQLite. Abridged only by
+collapsing the four findings already seen:
 
 ```json
 {

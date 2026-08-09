@@ -4,9 +4,10 @@
  * those same bytes to JSONL for people and can be rebuilt from the store.
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { AnyIntent, ConfigError, Report } from "@hiero-hackers/automation-core";
+import type { CanonicalDeliveryReport } from "@hiero-hackers/automation-store";
 
 interface RecordBase {
     readonly deliveryId: string;
@@ -33,6 +34,7 @@ export type ShellRecord =
 /** A derived projection that receives the already-persisted canonical JSON. */
 export interface ReportSink {
     record(entry: ShellRecord, reportJson: string): void;
+    rebuild(reports: readonly CanonicalDeliveryReport[]): void;
 }
 
 /** Append canonical reports to an operator-readable JSONL projection. */
@@ -41,6 +43,14 @@ export function fileReportSink(file: string): ReportSink {
     return {
         record(_entry: ShellRecord, reportJson: string): void {
             appendFileSync(file, `${reportJson}\n`);
+        },
+        rebuild(reports: readonly CanonicalDeliveryReport[]): void {
+            writeFileSync(
+                file,
+                reports.length === 0
+                    ? ""
+                    : `${reports.map((report) => report.reportJson).join("\n")}\n`,
+            );
         },
     };
 }
@@ -54,6 +64,13 @@ export function memoryReportSink(): ReportSink & {
         entries,
         record(entry: ShellRecord, _reportJson: string): void {
             entries.push(entry);
+        },
+        rebuild(reports: readonly CanonicalDeliveryReport[]): void {
+            entries.splice(
+                0,
+                entries.length,
+                ...reports.map((report) => JSON.parse(report.reportJson) as ShellRecord),
+            );
         },
     };
 }

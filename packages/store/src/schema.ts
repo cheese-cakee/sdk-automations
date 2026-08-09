@@ -14,33 +14,133 @@ export type MigrationFaultPoint = "migration:1" | "migration:2" | "migration:3" 
 
 type FaultInjector = (point: MigrationFaultPoint) => void;
 
-const TABLES_BY_VERSION = {
-    1: ["effect_claim", "effect_journal", "schedule", "seen_delivery"],
-    2: ["effect_claim", "effect_journal", "schedule", "seen_delivery"],
-    3: ["effect_claim", "effect_journal", "schedule", "seen_delivery"],
-    4: ["delivery_report", "effect_claim", "effect_journal", "schedule", "seen_delivery"],
-} as const;
+const SEEN_DELIVERY_V1 = `
+    CREATE TABLE seen_delivery (
+        delivery_id TEXT PRIMARY KEY,
+        at          TEXT NOT NULL
+    )`;
 
-const COLUMNS = {
-    effectClaim: ["effect_id", "worker", "at"],
-    effectJournalV1: ["effect_id", "call_seq", "intent", "status", "at"],
-    effectJournalV2: ["effect_id", "call_seq", "intent", "status", "at", "attempt", "revision"],
-    scheduleV1: ["schedule_id", "due_at", "effect", "status"],
-    scheduleV2: ["schedule_id", "due_at", "effect", "status", "claimed_at", "claim_token"],
-    seenDeliveryV1: ["delivery_id", "at"],
-    seenDeliveryV3: [
-        "delivery_id",
-        "event_name",
-        "payload",
-        "payload_digest",
-        "received_at",
-        "state",
-        "claim_worker",
-        "claim_token",
-        "claimed_at",
-        "completed_at",
-    ],
-    deliveryReportV4: ["delivery_id", "claim_token", "report_json", "completed_at"],
+const EFFECT_JOURNAL_V1 = `
+    CREATE TABLE effect_journal (
+        effect_id TEXT NOT NULL,
+        call_seq  INTEGER NOT NULL,
+        intent    TEXT NOT NULL,
+        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
+        at        TEXT NOT NULL,
+        PRIMARY KEY (effect_id, call_seq)
+    )`;
+
+const EFFECT_JOURNAL_V2 = `
+    CREATE TABLE effect_journal (
+        effect_id TEXT NOT NULL,
+        call_seq  INTEGER NOT NULL,
+        intent    TEXT NOT NULL,
+        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
+        at        TEXT NOT NULL,
+        attempt   INTEGER NOT NULL,
+        revision  TEXT NOT NULL,
+        PRIMARY KEY (effect_id, call_seq)
+    )`;
+
+const EFFECT_CLAIM = `
+    CREATE TABLE effect_claim (
+        effect_id TEXT PRIMARY KEY,
+        worker    TEXT NOT NULL,
+        at        TEXT NOT NULL
+    )`;
+
+const SCHEDULE_V1 = `
+    CREATE TABLE schedule (
+        schedule_id TEXT PRIMARY KEY,
+        due_at      TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done'))
+    )`;
+
+const SCHEDULE_V2 = `
+    CREATE TABLE schedule (
+        schedule_id TEXT PRIMARY KEY,
+        due_at      TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
+        claimed_at  TEXT,
+        claim_token TEXT
+    )`;
+
+const SEEN_DELIVERY_V3 = `
+    CREATE TABLE seen_delivery (
+        delivery_id   TEXT PRIMARY KEY,
+        event_name    TEXT NOT NULL,
+        payload       BLOB,
+        payload_digest TEXT NOT NULL,
+        received_at   TEXT NOT NULL,
+        state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
+        claim_worker  TEXT,
+        claim_token   TEXT,
+        claimed_at    TEXT,
+        completed_at  TEXT,
+        CHECK (
+            (state = 'pending' AND payload IS NOT NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NULL)
+            OR
+            (state = 'processing' AND payload IS NOT NULL
+                AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
+                AND claimed_at IS NOT NULL AND completed_at IS NULL)
+            OR
+            (state = 'done' AND payload IS NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NOT NULL)
+        )
+    )`;
+
+const DELIVERY_REPORT_V4 = `
+    CREATE TABLE delivery_report (
+        delivery_id TEXT PRIMARY KEY,
+        claim_token TEXT NOT NULL,
+        report_json TEXT NOT NULL,
+        completed_at TEXT NOT NULL
+    )`;
+
+const OPEN_INTENTS = `
+    CREATE INDEX open_intents
+        ON effect_journal(at) WHERE status = 'sent'`;
+
+const DELIVERY_WORK = `
+    CREATE INDEX delivery_work
+        ON seen_delivery(state, received_at, delivery_id)`;
+
+const SCHEMA_BY_VERSION = {
+    1: {
+        effect_claim: EFFECT_CLAIM,
+        effect_journal: EFFECT_JOURNAL_V1,
+        schedule: SCHEDULE_V1,
+        seen_delivery: SEEN_DELIVERY_V1,
+    },
+    2: {
+        effect_claim: EFFECT_CLAIM,
+        effect_journal: EFFECT_JOURNAL_V2,
+        open_intents: OPEN_INTENTS,
+        schedule: SCHEDULE_V2,
+        seen_delivery: SEEN_DELIVERY_V1,
+    },
+    3: {
+        delivery_work: DELIVERY_WORK,
+        effect_claim: EFFECT_CLAIM,
+        effect_journal: EFFECT_JOURNAL_V2,
+        open_intents: OPEN_INTENTS,
+        schedule: SCHEDULE_V2,
+        seen_delivery: SEEN_DELIVERY_V3,
+    },
+    4: {
+        delivery_report: DELIVERY_REPORT_V4,
+        delivery_work: DELIVERY_WORK,
+        effect_claim: EFFECT_CLAIM,
+        effect_journal: EFFECT_JOURNAL_V2,
+        open_intents: OPEN_INTENTS,
+        schedule: SCHEDULE_V2,
+        seen_delivery: SEEN_DELIVERY_V3,
+    },
 } as const;
 
 const MIGRATIONS: ReadonlyArray<{
@@ -110,8 +210,7 @@ export function migrateStorageSchema(
 }
 
 function detectUnversionedSchema(db: DatabaseSync): number {
-    const tables = tableNames(db);
-    if (tables.length === 0) return 0;
+    if (schemaObjects(db).length === 0) return 0;
     for (const version of [1, 2, 3] as const) {
         if (schemaMatchesVersion(db, version)) return version;
     }
@@ -126,43 +225,35 @@ function assertSchemaMatchesVersion(db: DatabaseSync, version: number): void {
 
 function schemaMatchesVersion(db: DatabaseSync, version: number): boolean {
     if (version < 1 || version > CURRENT_STORAGE_SCHEMA_VERSION) return false;
-    const expectedTables = TABLES_BY_VERSION[version as keyof typeof TABLES_BY_VERSION];
-    if (!sameValues(tableNames(db), expectedTables)) return false;
-
-    const recoveryColumns = version === 1 ? COLUMNS.effectJournalV1 : COLUMNS.effectJournalV2;
-    const scheduleColumns = version === 1 ? COLUMNS.scheduleV1 : COLUMNS.scheduleV2;
-    const deliveryColumns = version < 3 ? COLUMNS.seenDeliveryV1 : COLUMNS.seenDeliveryV3;
-
-    return (
-        columnsMatch(db, "effect_claim", COLUMNS.effectClaim) &&
-        columnsMatch(db, "effect_journal", recoveryColumns) &&
-        columnsMatch(db, "schedule", scheduleColumns) &&
-        columnsMatch(db, "seen_delivery", deliveryColumns) &&
-        (version < 4 || columnsMatch(db, "delivery_report", COLUMNS.deliveryReportV4))
+    const expected = SCHEMA_BY_VERSION[version as keyof typeof SCHEMA_BY_VERSION];
+    const actual = schemaObjects(db);
+    const expectedNames = Object.keys(expected).sort();
+    if (
+        !sameValues(
+            actual.map((object) => object.name),
+            expectedNames,
+        )
+    )
+        return false;
+    return actual.every(
+        (object) =>
+            normalizeSql(object.sql) ===
+            normalizeSql(expected[object.name as keyof typeof expected]),
     );
 }
 
-function tableNames(db: DatabaseSync): string[] {
-    return (
-        db
-            .prepare(
-                `
-        SELECT name FROM sqlite_schema
-        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+function schemaObjects(
+    db: DatabaseSync,
+): ReadonlyArray<{ readonly name: string; readonly sql: string }> {
+    return db
+        .prepare(
+            `
+        SELECT name, sql FROM sqlite_schema
+        WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
         ORDER BY name
     `,
-            )
-            .all() as { name: string }[]
-    ).map((row) => row.name);
-}
-
-function columnsMatch(db: DatabaseSync, table: string, expected: readonly string[]): boolean {
-    const actual = (
-        db.prepare(`PRAGMA table_info(${table})`).all() as {
-            name: string;
-        }[]
-    ).map((column) => column.name);
-    return sameValues(actual, expected);
+        )
+        .all() as Array<{ name: string; sql: string }>;
 }
 
 function sameValues(actual: readonly string[], expected: readonly string[]): boolean {
@@ -172,65 +263,29 @@ function sameValues(actual: readonly string[], expected: readonly string[]): boo
     );
 }
 
+function normalizeSql(sql: string): string {
+    return sql.replace(/\s+/g, "");
+}
+
 function setVersion(db: DatabaseSync, version: number): void {
     db.exec(`PRAGMA user_version = ${String(version)}`);
 }
 
 function createOriginalOperationalSchema(db: DatabaseSync): void {
-    db.exec(`
-        CREATE TABLE seen_delivery (
-            delivery_id TEXT PRIMARY KEY,
-            at          TEXT NOT NULL
-        );
-        CREATE TABLE effect_journal (
-            effect_id TEXT NOT NULL,
-            call_seq  INTEGER NOT NULL,
-            intent    TEXT NOT NULL,
-            status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-            at        TEXT NOT NULL,
-            PRIMARY KEY (effect_id, call_seq)
-        );
-        CREATE TABLE effect_claim (
-            effect_id TEXT PRIMARY KEY,
-            worker    TEXT NOT NULL,
-            at        TEXT NOT NULL
-        );
-        CREATE TABLE schedule (
-            schedule_id TEXT PRIMARY KEY,
-            due_at      TEXT NOT NULL,
-            effect      TEXT NOT NULL,
-            status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done'))
-        );
-    `);
+    db.exec(`${SEEN_DELIVERY_V1};${EFFECT_JOURNAL_V1};${EFFECT_CLAIM};${SCHEDULE_V1};`);
 }
 
 function addRecoveryOwnershipState(db: DatabaseSync): void {
     db.exec(`
         ALTER TABLE effect_journal RENAME TO effect_journal_v1;
-        CREATE TABLE effect_journal (
-            effect_id TEXT NOT NULL,
-            call_seq  INTEGER NOT NULL,
-            intent    TEXT NOT NULL,
-            status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-            at        TEXT NOT NULL,
-            attempt   INTEGER NOT NULL,
-            revision  TEXT NOT NULL,
-            PRIMARY KEY (effect_id, call_seq)
-        );
+        ${EFFECT_JOURNAL_V2};
         INSERT INTO effect_journal
             SELECT effect_id, call_seq, intent, status, at, 1, 'legacy:unknown'
             FROM effect_journal_v1;
         DROP TABLE effect_journal_v1;
 
         ALTER TABLE schedule RENAME TO schedule_v1;
-        CREATE TABLE schedule (
-            schedule_id TEXT PRIMARY KEY,
-            due_at      TEXT NOT NULL,
-            effect      TEXT NOT NULL,
-            status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
-            claimed_at  TEXT,
-            claim_token TEXT
-        );
+        ${SCHEDULE_V2};
         INSERT INTO schedule
             SELECT schedule_id, due_at, effect,
                    CASE status WHEN 'running' THEN 'pending' ELSE status END,
@@ -238,39 +293,14 @@ function addRecoveryOwnershipState(db: DatabaseSync): void {
             FROM schedule_v1;
         DROP TABLE schedule_v1;
 
-        CREATE INDEX open_intents
-            ON effect_journal(at) WHERE status = 'sent';
+        ${OPEN_INTENTS};
     `);
 }
 
 function addDurableDeliveryWork(db: DatabaseSync): void {
     db.exec(`
         ALTER TABLE seen_delivery RENAME TO seen_delivery_v2;
-        CREATE TABLE seen_delivery (
-            delivery_id   TEXT PRIMARY KEY,
-            event_name    TEXT NOT NULL,
-            payload       BLOB,
-            payload_digest TEXT NOT NULL,
-            received_at   TEXT NOT NULL,
-            state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
-            claim_worker  TEXT,
-            claim_token   TEXT,
-            claimed_at    TEXT,
-            completed_at  TEXT,
-            CHECK (
-                (state = 'pending' AND payload IS NOT NULL
-                    AND claim_worker IS NULL AND claim_token IS NULL
-                    AND claimed_at IS NULL AND completed_at IS NULL)
-                OR
-                (state = 'processing' AND payload IS NOT NULL
-                    AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
-                    AND claimed_at IS NOT NULL AND completed_at IS NULL)
-                OR
-                (state = 'done' AND payload IS NULL
-                    AND claim_worker IS NULL AND claim_token IS NULL
-                    AND claimed_at IS NULL AND completed_at IS NOT NULL)
-            )
-        );
+        ${SEEN_DELIVERY_V3};
         INSERT INTO seen_delivery (
             delivery_id, event_name, payload, payload_digest, received_at,
             state, claim_worker, claim_token, claimed_at, completed_at
@@ -281,22 +311,10 @@ function addDurableDeliveryWork(db: DatabaseSync): void {
         FROM seen_delivery_v2;
         DROP TABLE seen_delivery_v2;
 
-        CREATE INDEX delivery_work
-            ON seen_delivery(state, received_at, delivery_id);
+        ${DELIVERY_WORK};
     `);
 }
 
 function addCanonicalDeliveryReports(db: DatabaseSync): void {
-    db.exec(`
-        CREATE TABLE delivery_report (
-            delivery_id TEXT PRIMARY KEY,
-            claim_token TEXT NOT NULL,
-            report_json TEXT NOT NULL,
-            completed_at TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS open_intents
-            ON effect_journal(at) WHERE status = 'sent';
-        CREATE INDEX IF NOT EXISTS delivery_work
-            ON seen_delivery(state, received_at, delivery_id);
-    `);
+    db.exec(`${DELIVERY_REPORT_V4};`);
 }

@@ -85,6 +85,13 @@ export type CompleteDeliveryWithReportResult =
     | { readonly outcome: "identityMismatch" }
     | { readonly outcome: "reportConflict" };
 
+/** One canonical report in deterministic projection-replay order. */
+export interface CanonicalDeliveryReport {
+    readonly deliveryId: DeliveryGuid;
+    readonly reportJson: string;
+    readonly completedAt: string;
+}
+
 /** A deliberate interruption point in schema or delivery durability work. */
 export type StoreFaultPoint =
     | MigrationFaultPoint
@@ -236,6 +243,12 @@ interface DeliveryFinalizationRow {
 interface StoredReportRow {
     readonly claim_token: string;
     readonly report_json: string;
+}
+
+interface CanonicalDeliveryReportRow {
+    readonly delivery_id: string;
+    readonly report_json: string;
+    readonly completed_at: string;
 }
 
 /** The synchronous durable operational-state boundary. */
@@ -502,6 +515,24 @@ export class Store {
             }
             throw error;
         }
+    }
+
+    /** Read the canonical source for a complete operator-projection rebuild. */
+    deliveryReports(): CanonicalDeliveryReport[] {
+        const rows = this.db
+            .prepare(
+                `
+                SELECT delivery_id, report_json, completed_at
+                FROM delivery_report
+                ORDER BY completed_at, delivery_id
+            `,
+            )
+            .all() as unknown as CanonicalDeliveryReportRow[];
+        return rows.map((row) => ({
+            deliveryId: row.delivery_id as DeliveryGuid,
+            reportJson: row.report_json,
+            completedAt: row.completed_at,
+        }));
     }
 
     /** Return only this token's in-flight work to the pending queue. */

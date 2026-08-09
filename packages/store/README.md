@@ -55,10 +55,11 @@ The two source files answer separate questions:
 
 `PRAGMA user_version` is the explicit SQLite-native schema marker; the current
 version is `4`. A declared version above `4` is refused before the store changes
-the database. Version-zero files are accepted only when their complete table
-and column shape matches one of the three schemas this repository created:
-the original recovery schema, the attempt/revision and schedule-claim schema,
-or the durable-delivery schema. Unknown shapes fail closed.
+the database. Version-zero files are accepted only when every owned SQLite
+object matches one of the three schemas this repository created. The fingerprint
+includes exact table and index definitions, so column types, nullability,
+primary keys, checks, partial-index predicates, and the absence of triggers or
+views are enforced together. Unknown or altered shapes fail closed.
 
 All required migrations run in order inside one `BEGIN IMMEDIATE` transaction,
 including each `user_version` update. An interruption therefore leaves the
@@ -106,6 +107,11 @@ with changed report bytes returns `reportConflict`. Thus every completion
 performed through the version-4 contract has exactly one report. The exception
 is explicit: a delivery already done when an older schema is migrated may have
 no report because none existed to recover.
+
+`deliveryReports` reads every canonical report in stable completion-time then
+delivery-ID order. It is the store-side replay boundary for rebuilding any
+derived operator projection; reportless completions migrated from version 3
+are omitted because the migration does not invent their missing bytes.
 
 `requeueStuckDeliveries` provides the explicit reconciliation path.
 Retention pruning deletes an eligible delivery and its report in one
