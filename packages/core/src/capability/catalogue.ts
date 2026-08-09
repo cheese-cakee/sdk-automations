@@ -123,6 +123,10 @@ export interface ObservationCatalogue extends Record<ObservationName, unknown> {
     };
 }
 
+// The `extends Record<Name, unknown>` above forces every NAME to have a
+// payload; these force the reverse. A payload with no name in the list is a
+// compile error here and nowhere else, because nothing reads the interface at
+// runtime.
 type AssertNever<T extends never> = T;
 type _ObservationCatalogueNamesAreExact = AssertNever<
     Exclude<keyof ObservationCatalogue, ObservationName>
@@ -130,8 +134,10 @@ type _ObservationCatalogueNamesAreExact = AssertNever<
 
 // ─── The resolver catalogue ──────────────────────────────────────────
 
+/** Every question a capability may ask the platform. */
 export const RESOLVER_NAMES = ["linkedIssues", "isAutomationActor"] as const;
 
+/** One of `RESOLVER_NAMES`. */
 export type ResolverName = (typeof RESOLVER_NAMES)[number];
 
 /** resolvers.md §2, narrowed to the resolvers the probes exercise. */
@@ -148,7 +154,11 @@ export interface ResolverCatalogue extends Record<ResolverName, unknown> {
 type _ResolverCatalogueNamesAreExact = AssertNever<
     Exclude<keyof ResolverCatalogue, ResolverName>
 >;
+
+/** What a resolver is asked. */
 export type ResolverInput<Q extends ResolverName> = ResolverCatalogue[Q]["input"];
+
+/** What it answers with, before `ResolverAnswer` wraps the failure case. */
 export type ResolverOutput<Q extends ResolverName> = ResolverCatalogue[Q]["output"];
 
 /**
@@ -172,31 +182,26 @@ export type ResolverAnswer<T> =
 
 // ─── The intent catalogue ────────────────────────────────────────────
 
-/** The desired-outcome payload per operation (contract.md §3 `desired`). */
+/**
+ * The desired-outcome payload per operation (contract.md §3 `desired`).
+ *
+ * `applyMappedLabel` SETS the item's position; it is not "add a label". The
+ * adapter removes the position label the item previously held as part of
+ * realising it (D4). There is deliberately no `removeMappedLabel`: leaving a
+ * position without closing has no edge on the map, and unpausing needs the
+ * human authority D79 reserves — an operation with no legal use is dead
+ * vocabulary in a closed catalogue (D80).
+ *
+ * It is also the only operation that MOVES an item, which is why its `cause`
+ * comes from the closed, entity-scoped list in `workflow/causes.ts` rather
+ * than the free-text `DatedCause` the others carry; `screenIntent` checks the
+ * edge (D78).
+ */
 export interface IntentCatalogue {
     readonly postManagedComment: {
         readonly marker: string;
         readonly body: string;
     };
-    /**
-     * SET the item's position — not "add a label". The adapter removes the
-     * position label the item previously held as part of realising this, per
-     * D4's rule that the platform removes only named managed labels.
-     *
-     * That is why there is no `removeMappedLabel` (D80): a position CHANGE is
-     * this operation, the map has no edge for leaving a position without
-     * closing, and unpausing needs the same authority as pausing, which D79
-     * reserves to humans. An operation with no legal use is dead vocabulary
-     * in a closed catalogue — the kind that gets used later without anyone
-     * rechecking whether it was ever allowed.
-     *
-     * The one operation that MOVES an item, so the one that names a
-     * transition cause from the closed, entity-scoped list in
-     * `workflow/meanings.ts`; `screenIntent` checks the edge (D78). The
-     * others do not move anything: a comment and an unassign have reasons
-     * but not transitions, and keep the free-text `DatedCause` that
-     * identifies the occasion.
-     */
     readonly applyMappedLabel: {
         readonly meaning: MappableMeaning;
         readonly cause: TransitionCause;
@@ -204,7 +209,7 @@ export interface IntentCatalogue {
     readonly unassign: { readonly login: string };
 }
 
-
+/** One of the catalogue's keys — the closed set of operations. */
 export type IntentOperation = keyof IntentCatalogue & string;
 
 /**
@@ -214,7 +219,6 @@ export type IntentOperation = keyof IntentCatalogue & string;
  * through the read-back path (comment create).
  */
 export type IdempotencyClass = "idempotent" | "nonIdempotent";
-
 
 /**
  * The facts the PLATFORM owns about an operation — never the capability.
@@ -242,6 +246,7 @@ export const ACTION_CLASS_RANK: { readonly [K in ActionClass]: number } = {
     immediatePreventive: 4,
 };
 
+/** The platform's facts for every operation — the authority `screenIntent` reads. */
 export const INTENT_OPERATIONS: {
     readonly [K in IntentOperation]: OperationFacts;
 } = {

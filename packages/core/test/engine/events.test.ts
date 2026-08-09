@@ -1,7 +1,10 @@
 /**
  * The normalizer, tested against what GitHub actually sent.
  *
- * Every fixture under `fixtures/` is a real delivery from the 2026-08-07
+ * The fixtures stay under `test/github/`, where the observed-GitHub facts
+ * live; what a delivery BECOMES is this file's subject.
+ *
+ * Every fixture there is a real delivery from the 2026-08-07
  * capture session (protocol 7.1), scrubbed and human-reviewed. No payload
  * here was written by hand, and that is the point: the assumptions worth
  * testing are the ones GitHub gets to falsify.
@@ -17,7 +20,7 @@ import {
     type RepositoryConfig,
 } from "../../src/index.js";
 
-const fixturesDir = fileURLToPath(new URL("fixtures/", import.meta.url));
+const fixturesDir = fileURLToPath(new URL("../github/fixtures/", import.meta.url));
 const fixture = (name: string): unknown =>
     JSON.parse(readFileSync(join(fixturesDir, name), "utf8"));
 /** The event header, recoverable from the fixture naming scheme. */

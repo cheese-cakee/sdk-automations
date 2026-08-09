@@ -1,13 +1,10 @@
 /**
  * What the platform decided, and why — the record every explanation lands in.
  *
- * Core already produced one for every decision it made and dropped all of it,
- * so the dry-run report, the configuration report (D38), the operator surface
- * (D44, D45) and goal 5's managed comment were each waiting on a sink that did
- * not exist. All four are views of this one list.
- *
- * FLAT, deliberately: the four consumers group differently, and a shape that
- * favours one makes the others awkward.
+ * Four surfaces are views of this one list: the dry-run report, the
+ * configuration report, the operator surface, and the managed comment. The
+ * list is FLAT because they group differently, and a shape that favours one
+ * makes the others awkward.
  */
 
 import type { ItemRef, RepositoryRef } from "../capability/index.js";
@@ -49,14 +46,14 @@ export type Subject =
           readonly operation: string;
       };
 
+/**
+ * One thing that happened, and who it concerns.
+ *
+ * `code` is machine-readable and is what makes a report usable: a consumer
+ * groups, counts, links and localises by it, never by `summary` (D75).
+ */
 export interface Finding {
     readonly severity: Severity;
-    /**
-     * Machine-readable, and the reason D75 matters: a consumer groups,
-     * counts, links and localises by this. Every refusal in core already
-     * carries one — configuration errors are the exception, and they are
-     * exactly the findings D38's config report most needs to organise.
-     */
     readonly code: string;
     /** One sentence, for a human. Never asserted on by tests, only its presence. */
     readonly summary: string;

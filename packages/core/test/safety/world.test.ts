@@ -1,6 +1,6 @@
 /**
- * The derivation, tested before anything composes it (D92 phase 1): if
- * these two functions are wrong, the engine inherits a lie — the same lie
+ * `world.ts`'s derivation, tested before anything composes it (D92 phase 1):
+ * if these two functions are wrong, the engine inherits a lie — the same lie
  * the old API let shells assert, now with one owner to fix.
  */
 

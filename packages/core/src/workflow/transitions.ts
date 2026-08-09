@@ -1,6 +1,7 @@
 /**
- * The two workflow diagrams from `design/core/taxonomy.md` §4–§5, verbatim
- * as edge tables.
+ * Which moves are legal: the two workflow diagrams from
+ * `design/core/taxonomy.md` §4–§5 as edge tables, and the question asked of
+ * them. The table is the answer; `canTransition*` is how you ask.
  *
  * `packages/checks/test/doc-drift.test.ts` parses the diagrams out of that document and
  * asserts these tables match them edge for edge, in both directions — the
@@ -8,14 +9,8 @@
  * checking it is how D48's missing edge survived in both artifacts at once.
  */
 
-import type {
-    EntityKind,
-    IssueCause,
-    IssueMeaning,
-    PrCause,
-    PrMeaning,
-    TransitionCause,
-} from "./meanings.js";
+import type { EntityKind, IssueMeaning, PrMeaning } from "./positions.js";
+import type { IssueCause, PrCause, TransitionCause } from "./causes.js";
 
 export interface Edge<M, C extends TransitionCause> {
     readonly from: M | null;
@@ -23,7 +18,13 @@ export interface Edge<M, C extends TransitionCause> {
     readonly causes: readonly C[];
 }
 
-/** taxonomy.md §4, verbatim as edges. */
+/**
+ * taxonomy.md §4, verbatim as edges.
+ *
+ * No manual-entry edges, deliberately. Applying a label by hand is observed
+ * reality to reconcile (manual-edits.md), not a transition anyone requests
+ * (D29).
+ */
 export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: null, to: "awaitingTriage", causes: ["intakeObserved"] },
     { from: "awaitingTriage", to: "ready", causes: ["triageCompleted"] },
@@ -36,24 +37,19 @@ export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: "awaitingTriage", to: null, causes: ["humanClosed"] },
     { from: "ready", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
     { from: "inProgress", to: null, causes: ["humanClosed", "linkedMergeClosed"] },
-    /**
-     * FINDING(taxonomy-manual-entry), D29: "every state has a
-     * non-module way in" implies manual-entry edges §4 omits. Manual
-     * label application is observed reality to reconcile
-     * (manual-edits.md), not a requestable transition — no edges added.
-     */
 ];
 
-/** taxonomy.md §5, verbatim as edges. */
+/**
+ * taxonomy.md §5, verbatim as edges.
+ *
+ * Three of these came from reading the audit rather than the prose, and §5
+ * has been corrected to match (D48). The one naming rule worth carrying:
+ * a cause names the CONSEQUENCE, not the trigger — `approvalInvalidated`
+ * covers new commits, a dismissed review and a changed base alike.
+ */
 export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
     { from: null, to: "needsRevision", causes: ["checksFailed"] },
-    /**
- * Three corrections found by reading these tables against `design/audit/` rather than
- * against the prose: the missing `readyToMerge → needsRevision` edge, the added
- * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
- * that bundled a trigger with its consequence (D48).
- */
     {
         from: "needsReview",
         to: "needsRevision",
@@ -61,25 +57,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     },
     { from: "needsRevision", to: "needsReview", causes: ["revisionResolved"] },
     { from: "needsReview", to: "readyToMerge", causes: ["reviewPolicySatisfied"] },
-    /**
-     * `approvalInvalidated`, not the first implementation's
-     * `newCommitsInvalidatedApproval` — FINDING(taxonomy-approval-cause),
-     * D48. That name bundled a trigger (new commits) with the
-     * consequence (the approval stopped counting) and so could not
-     * express a dismissed review or a changed base. The consequence is
-     * the transition; the trigger varies.
-     */
     { from: "readyToMerge", to: "needsReview", causes: ["approvalInvalidated"] },
-    /**
-     * FINDING(taxonomy-approved-checks-broke), D48: MISSING from §5 and
-     * from the first implementation — an approved pull request whose
-     * checks break had no path to `needsRevision` at all
-     * (`canTransitionPr` answered `noSuchEdge`), so the only exit
-     * asserted commits had landed. Checks break without any push: the
-     * audited Sibling Conflict Re-check re-reads every open PR's
-     * `mergeable` state when a DIFFERENT pull request merges and swaps
-     * `needs review` ↔ `needs revision` (`design/audit/services-cpp.md`).
-     */
     { from: "readyToMerge", to: "needsRevision", causes: ["checksFailed"] },
     { from: "needsReview", to: null, causes: ["humanClosed", "merged"] },
     { from: "needsRevision", to: null, causes: ["humanClosed", "merged"] },
@@ -87,6 +65,7 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
 ];
 
 
+/** Both tables as bare from/to pairs — what the doc-drift check compares. */
 export const PROFILE_EDGES: {
     readonly [K in EntityKind]: readonly {
         readonly from: string | null;
@@ -97,10 +76,72 @@ export const PROFILE_EDGES: {
     pullRequest: PR_EDGES.map((e) => ({ from: e.from, to: e.to })),
 };
 
+// ─── Asking the tables ───────────────────────────────────────────────
+
+/** A move somebody wants: from where, to where, and why. */
+export interface TransitionRequest<M, C extends TransitionCause = TransitionCause> {
+    readonly from: M | null;
+    readonly to: M | null;
+    readonly cause: C;
+}
+
 /**
- * Apply a transition to an item's state, enforcing the two platform
- * invariants the test architecture names:
- *  - an item is never in two positions (structural: `meaning` is scalar);
- *  - a blocked item accepts no capability-requested transitions
- *    (safety.md §5 — pause stops writes).
+ * Machine-readable refusal cause — the executor, telemetry, and managed
+ * explanations branch on `code`; `reason` is prose for humans only.
+ * Same convention as `FailureClass` in failures.ts.
  */
+export type TransitionRefusalCode =
+    | "noSuchEdge"
+    | "causeNotAccepted"
+    | "itemClosed"
+    | "itemBlocked"
+    | "stalePrecondition"
+    | "notClosed"
+    | "mergedNotReopenable";
+
+/** Allowed, or refused with a machine-readable cause. */
+export type TransitionVerdict =
+    | { readonly allowed: true }
+    | {
+          readonly allowed: false;
+          readonly code: TransitionRefusalCode;
+          readonly reason: string;
+      };
+
+function evaluate<M, C extends TransitionCause>(
+    edges: readonly Edge<M, C>[],
+    request: TransitionRequest<M, C>,
+): TransitionVerdict {
+    const edge = edges.find(
+        (e) => e.from === request.from && e.to === request.to,
+    );
+    if (!edge) {
+        return {
+            allowed: false,
+            code: "noSuchEdge",
+            reason: `no edge ${String(request.from)} -> ${String(request.to)} in the profile`,
+        };
+    }
+    if (!edge.causes.includes(request.cause)) {
+        return {
+            allowed: false,
+            code: "causeNotAccepted",
+            reason: `edge ${String(request.from)} -> ${String(request.to)} does not accept cause ${request.cause}`,
+        };
+    }
+    return { allowed: true };
+}
+
+/** Can an issue move `from` → `to` for `cause`, per the profile? Pure. */
+export function canTransitionIssue(
+    request: TransitionRequest<IssueMeaning, IssueCause>,
+): TransitionVerdict {
+    return evaluate(ISSUE_EDGES, request);
+}
+
+/** Can a pull request move `from` → `to` for `cause`, per the profile? Pure. */
+export function canTransitionPr(
+    request: TransitionRequest<PrMeaning, PrCause>,
+): TransitionVerdict {
+    return evaluate(PR_EDGES, request);
+}

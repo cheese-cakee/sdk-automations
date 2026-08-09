@@ -3,11 +3,11 @@
  *
  * The FORM is a GitHub fact — `scope:level` — so it belongs here. The
  * ratified permission CEILING is a project decision and does not: that stays
- * with the register and the App manifest. This file describes what a
- * permission looks like, never which ones we ask for.
+ * with the register and the App manifest. This file says what a permission
+ * looks like, never which ones we ask for.
  *
- * Kept as a validated template type rather than a closed union so the
- * platform needs no edit when GitHub adds a scope.
+ * A validated template type rather than a closed union, so the platform
+ * needs no edit when GitHub adds a scope.
  */
 
 export type PermissionGrant = `${string}:${"read" | "write"}`;
@@ -22,10 +22,9 @@ export function isPermissionGrant(value: string): value is PermissionGrant {
 /**
  * Does an installation's grant cover everything an operation needs?
  *
- * Returns the MISSING grants rather than a boolean, because a boolean is
- * exactly what the safety engine used to be handed and it could never say
- * which permission was absent — the difference between an operator message
- * that helps and one that starts an investigation.
+ * Returns the MISSING grants, not a boolean. An operator message that names
+ * the absent permission is the difference between a fix and an investigation
+ * (D77).
  */
 export function missingPermissions(
     required: readonly PermissionGrant[],

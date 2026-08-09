@@ -22,7 +22,7 @@ The line is easy to blur, so two worked examples:
 - `capability/catalogue.ts` names operations like `postManagedComment`. That
   reads like GitHub, but it is *our* closed vocabulary (D61) — the endpoint it
   becomes is the adapter's business, outside `core/` entirely. **Not here.**
-- `workflow/meanings.ts` has `awaitingTriage`. Also not GitHub: P7 and D71
+- `workflow/positions.ts` has `awaitingTriage`. Also not GitHub: P7 and D71
   make these platform meanings that repositories map onto their own labels.
   **Not here.**
 - `github/ids.ts` exists because REST delivery ids exceed 2^53
@@ -50,10 +50,18 @@ without the other fails rather than drifting.
 | `failures.ts` | experiments 6.1, 6.4 | 2026-07-23 | GitHub rewords error bodies | a rise in `forbiddenUnrecognized` classifications |
 | `rate-limits.ts` | experiment 6.4 | 2026-07-23 | header semantics or the secondary-limit floor change | waits that are far too short, or absent |
 | `ids.ts` | experiment 6.2 | 2026-07-23 | delivery id format changes | duplicate deliveries surviving dedup |
+| `permissions.ts` | GitHub's docs | documented | the `scope:level` form changes | a real grant failing `isPermissionGrant` |
+| `signatures.ts` | GitHub's docs | documented | the signing scheme changes | every delivery rejected at the door |
 
-**Cadence:** quarterly, plus ad-hoc whenever the first-symptom column starts
-showing up in operator reports. **Owner:** unassigned — falls out of Q13, and
-is one of the unfilled rows in `design/build-plan.md` §14.
+The last two rows carry no probe date on purpose. They hold **documented**
+knowledge — things GitHub publishes and would announce changing — so they are
+in the table for coverage, not for the re-probe. They also fail LOUDLY, which
+is the whole contrast with the three rows above them.
+
+**Cadence:** quarterly for the dated rows, plus ad-hoc whenever the
+first-symptom column starts showing up in operator reports. **Owner:**
+unassigned — falls out of Q13, and is one of the unfilled rows in
+`design/build-plan.md` §14.
 
 ## Why the failure mode is quiet
 
@@ -74,8 +82,6 @@ at which point subdirectories may start to earn their keep:
 
 - `endpoints.ts` — the confirmed operation list from
   `design/operations/endpoint-permission-matrix.md`.
-- `permissions.ts` — the ratified permission ceiling, currently a loose
-  template type in `capability/declaration.ts`.
 - `subscriptions.ts` — the webhook subscription list, including the
   `pull_request_review` gap experiment 6.6 found.
 - the read-after-write freshness rule (D46, experiment 6.7), which today sits
@@ -83,13 +89,11 @@ at which point subdirectories may start to earn their keep:
   duration. Those two kinds of constant have different owners and different
   reasons to change; splitting them is a follow-up, not part of this move.
 
-### The case for splitting into its own package
+The repository's graduation test is that **a directory becomes a package when
+it has external consumers and almost no internal ones.** Measured today, this
+directory satisfies the first clause and fails the second.
 
-**Zero coupling, measured.** After the directory reorganisation, no other part
-of `core/` imports this directory and it imports nothing. Its only attachment
-to the package is three re-export lines in `packages/core/src/index.ts`. Compare
-`config/`, which three directories depend on. By dependency, this is already a
-package in everything but name.
+### The case for splitting into its own package
 
 **A change cadence nothing else here shares.** Every other directory in
 `core/` encodes a decision the project made; it stays true until someone
@@ -102,53 +106,82 @@ on a clock.
 **Its own reason to distrust green tests**, set out at the top of this file.
 That warning applies here and nowhere else in `core/`.
 
+**Real consumers outside `core/`, now three.** `store/` and `shell/` take the
+branded delivery ids; `shell/` and `lab/` both verify signatures. That is the
+first clause of the graduation test, met.
+
 ### The case against splitting *today*
 
-**The consumer that justifies it does not exist.** The only consumer outside
-`core/` is `store/`, pulling a single branded type (`DeliveryGuid`). A fifth
-workspace package for roughly 280 lines and one and a half consumers is
-overhead, not architecture.
+**It is no longer uncoupled, and that is the decisive change.** An earlier
+version of this section argued the split from *zero* internal coupling — that
+nothing in `core/` imported this directory, so it was already a package in
+everything but name. That is no longer true. Five files across three
+directories import it: `capability/declaration.ts` and `capability/catalogue.ts`
+for `PermissionGrant`, `safety/types.ts` and `safety/rules.ts` for the same
+type and `missingPermissions`, and `engine/decide.ts`. The permission
+vocabulary in particular has become load-bearing for the safety engine.
+Splitting now would not extract a leaf; it would put a package boundary in the
+middle of core's own dependency graph.
 
-**It would move register citations twice in one day.** Four rows cite paths in
-this directory, and those paths had already moved once during the
-reorganisation. Churning evidence links is not free in a project whose method
-is that a decision cites the code proving it.
+**The direction is still clean, which is why there is no urgency.** This
+directory imports nothing from its siblings. `core/` has two roots — `config/`
+and this one — and every arrow still points one way. A boundary in the wrong
+place is worse than no boundary; an acyclic graph with a root in the right
+place costs nothing to leave alone.
+
+**The consumers it has are thin.** Three packages, but between them they pull
+a branded type, its constructor, and the signature verifier. Roughly 410 lines
+of source for that is overhead, not architecture.
+
+**It would move register citations again.** Rows cite paths in this directory,
+and those paths had already moved once during the reorganisation. Churning
+evidence links is not free in a project whose method is that a decision cites
+the code proving it.
 
 **The package count is unstable.** `probes/` is scheduled for deletion when
 stage four names the first capability, and a `shared/` package may appear if
-D74 and D75 are accepted. Adding a fifth package into that is churn on top of
+D74 and D75 are accepted. Adding another package into that is churn on top of
 churn.
 
 **The directory already earns most of the benefit.** The provenance table, the
 inclusion test, and the D40 obligation are all here and all working. A package
-would add version independence and a compiler-enforced boundary — neither of
-which bites while there is one real consumer.
+would add version independence and a compiler-enforced boundary — and the
+boundary is the part that has become expensive.
 
 ### The trigger
 
 **Split it when the adapter is built** — stage five.
 
-The adapter is *entirely* GitHub-observed knowledge, so it is the consumer
-that makes an enforced boundary pay for itself. It will want every file in the
-list above: `endpoints.ts` from the permission matrix, `permissions.ts` for
-the ratified ceiling, `subscriptions.ts` for the subscription list, and the
-read-after-write freshness rule — which today sits in `packages/executor/src/policy.ts`
-next to adopted *decisions* like the lease duration and the retention window.
-Those two kinds of constant have different owners and different reasons to
-change, and the split is the natural moment to separate them.
+The adapter is *entirely* GitHub-observed knowledge, so it is the first
+consumer that makes an enforced boundary pay for itself — unlike the three
+thin ones this directory has today. It will want every file in the list above:
+`endpoints.ts` from the permission matrix, the ratified permission ceiling to
+sit beside the `scope:level` form already here, `subscriptions.ts` for the
+subscription list, and the read-after-write freshness rule — which today sits
+in `packages/executor/src/policy.ts` next to adopted *decisions* like the lease
+duration and the retention window. Those two kinds of constant have different
+owners and different reasons to change, and the split is the natural moment to
+separate them.
 
-At that point this directory roughly doubles, gains a real consumer, and the
-boundary pays for itself.
+**The trigger is now two conditions, not one.** The adapter is the first. The
+second is what the coupling section measures: while `capability/`, `safety/`
+and `engine/` all import this directory, splitting it hands `core/` its first
+internal workspace dependency — today its only dependency is `yaml`. Either
+that coupling comes down first, or the split accepts that cost with its eyes
+open and says so in the register row.
 
 **A measurable secondary signal**, if the adapter is delayed: when this
 directory holds more files than any other directory in `core/`, it has stopped
-being a corner of core and should leave regardless.
+being a corner of core and should leave regardless. Standing at six, one
+behind `config/` and `workflow/`.
 
 ### What would change the answer sooner
 
-- A second package needing GitHub-observed facts before the adapter exists.
 - A re-probe finding that fixtures drift faster than quarterly, which would
   make an independent release cadence worth having on its own.
+- The permission vocabulary being extracted from `core/` on its own account —
+  it is the single reason the internal coupling exists, and moving it would
+  satisfy the second trigger condition without touching anything else here.
 - A decision that `core/` must be publishable with no GitHub knowledge in it
   at all — a stronger claim than anything the register currently makes, and
   one that would settle this by principle rather than by cost.

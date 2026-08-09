@@ -1,14 +1,12 @@
 /**
- * How GitHub signs a webhook delivery — knowledge that belongs here by this
- * directory's inclusion test, extracted from the lab's capture receiver the
- * moment a second consumer became visible: the shell must verify the same
- * signature before it acks (P9), and two private copies of a signature
- * scheme is how one of them quietly stops rejecting.
+ * How GitHub signs a webhook delivery: HMAC-SHA256 of the raw body, hex,
+ * `sha256=` prefixed, in the header below.
  *
- * DOCUMENTED knowledge, not perishable: the scheme is GitHub's published
- * contract (HMAC-SHA256 of the raw body, hex, `sha256=` prefix, in the
- * header below), so it carries no `probedAt` — unlike `failures.ts`, whose
- * facts GitHub never promised.
+ * DOCUMENTED knowledge, not perishable. The scheme is GitHub's published
+ * contract, so it carries no `probedAt` — unlike `failures.ts`, whose facts
+ * GitHub never promised. It is shared rather than held privately by each
+ * verifier because two copies of a signature scheme is how one of them
+ * quietly stops rejecting (D89, P9).
  *
  * Pure computation. `node:crypto` is deterministic bytes-to-bytes work, the
  * same standing the `yaml` dependency has (D82): no I/O, no clock, no

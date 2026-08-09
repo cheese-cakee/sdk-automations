@@ -37,6 +37,7 @@ interface DestructiveRequestSnapshot {
     readonly change: string;
 }
 
+/** What a caller supplies to have a warning minted. */
 export interface DestructiveWarningInput {
     readonly request: WriteRequest;
     readonly warnedAt: Date;
@@ -46,14 +47,14 @@ export interface DestructiveWarningInput {
     readonly reversesWith: string;
 }
 
+/**
+ * A minted warning: authority for ONE request, not a reusable timestamp.
+ *
+ * The immutable request snapshot is what stops a warning being reused across
+ * capabilities, items, changes or causal observations (D60). Only
+ * `createDestructiveWarning` can construct one.
+ */
 export interface DestructiveWarning {
-    /**
-     * FINDING(safety-warning-binding), D60: a warning is authority for
-     * one request, not a reusable timestamp. The immutable request
-     * snapshot prevents warning reuse across capabilities, items,
-     * changes, or causal observations.
-     */
-    /** Only `createDestructiveWarning` can construct a typed warning. */
     readonly [DESTRUCTIVE_WARNING_BRAND]: true;
     /** Copied primitives, never a reference to the caller's request. */
     readonly requestSnapshot: DestructiveRequestSnapshot;
@@ -93,6 +94,7 @@ export function createDestructiveWarning(
     });
 }
 
+/** A warning plus what has happened since — everything §4 needs to judge. */
 export interface DestructivePlan {
     readonly request: WriteRequest;
     readonly warning: DestructiveWarning | null;
@@ -132,14 +134,9 @@ export function evaluateDestructive(
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
-    /**
-     * FINDING(safety-killswitch-order), D52: the kill switch used to be
-     * reached only via the general rules at the very END of this
-     * function, so an operator who had pulled the emergency brake was
-     * told "no recorded warning" instead. The outcome was always a
-     * refusal, but D39 freezes the verdict CODES as contract and claims
-     * kill-switch-first, so the reported code contradicted the register.
-     */
+    // Kill switch first, before any §3 gate. The outcome is a refusal
+    // either way, but D39 makes the verdict CODE contract: an operator who
+    // pulled the brake must be told so, not "no recorded warning" (D52).
     const preflight = evaluatePreflight(context);
     if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {

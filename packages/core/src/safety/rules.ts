@@ -1,5 +1,15 @@
 /**
  * The general rules every write passes, and the preflight before them.
+ *
+ * safety.md §2's mechanically checkable subset only. Rules 7–10 —
+ * postcondition verification, unclear-outcome reconciliation, tested
+ * rollback, dry-run-before-active rollout — cannot be decided from one
+ * request and belong to the executor and to process.
+ *
+ * Precedence is policy: kill switch → observation → consent → authority →
+ * pause → staleness → human conflict → mode. Only the kill switch changes an
+ * OUTCOME; the rest decide which `code` gets reported, and the tests freeze
+ * that order.
  * **If you are asking "why was my write refused?", this is the file.**
  * Both doors — `write.ts` and `destructive.ts` — arrive here after their
  * own policy; only the rule ORDER is exported, because order is contract
@@ -17,6 +27,7 @@ import type {
     WriteRequest,
 } from "./types.js";
 
+/** The one check that runs before everything, including observations (D39). */
 export function evaluatePreflight(
     context: WriteContext,
 ): SafetyVerdict | null {
@@ -168,6 +179,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
     ],
 ];
 
+/** The ordered rules, run in order. Both doors arrive here after their own policy. */
 export function evaluateGeneralRulesAfterPreflight(
     request: WriteRequest,
     config: RepositoryConfig,
@@ -191,18 +203,3 @@ export function evaluateGeneralRulesAfterPreflight(
     }
     return { outcome: "apply" };
 }
-
-/**
- * The public entry point for every action class EXCEPT
- * `clockTriggeredDestructive`.
- *
- * FINDING(safety-destructive-entry-point), D52: this used to accept a
- * destructive request and answer `apply`, so §3's warning and grace
- * gates were enforced only by the caller happening to choose
- * `evaluateDestructive`. The module's headline claim — a destructive
- * action cannot fire without a recorded warning and an elapsed grace
- * period — was therefore a calling convention, not a property. Refusing
- * here makes the wrong entry point a verdict rather than a bypass, in
- * the same spirit as `ids.ts` making a numeric delivery id a compile
- * error.
- */

@@ -1,19 +1,23 @@
 # capability/ — the boundary a capability lives behind
 
-Four files, four concerns, one rule: a capability is ordinary code the platform must not trust.
+Six files, six questions, one rule: a capability is ordinary code the platform must not trust.
 Everything here exists to make that lack of trust structural rather than hopeful.
 
-Read them in this order:
+Read them in this order — it is also the import direction. `catalogue.ts` imports nothing from this
+directory and everything else eventually reaches it, so a new import *into* the catalogue is the
+signal that something has been put in the wrong file.
 
-| File | Concern | The one thing to know |
+| File | The question it answers | The one thing to know |
 |---|---|---|
 | [`catalogue.ts`](catalogue.ts) | **What may be said.** The closed vocabularies — observations a capability can receive, resolvers it can ask, intents it can express — plus the facts the *platform* owns about each operation (idempotency, action-class floor, permission). | Closed on purpose (D61): a capability chooses from these and cannot extend them, which is where P3 isolation comes from — capabilities that share no vocabulary have nothing to call each other through. |
-| [`declaration.ts`](declaration.ts) | **Who is speaking.** A capability's self-description — triggers, config keys, observations, resolvers, intents, permissions — with its validators and the registry that admits declarations. | A declaration that lies about a platform-owned fact fails `checkAgainstCatalogue`; a retired name is tombstoned, never deleted, so old configs stay valid. |
+| [`declaration.ts`](declaration.ts) | **Who is speaking, and is the claim sound?** A capability's self-description — triggers, config keys, observations, resolvers, intents, permissions — with the two validators that judge it. | A declaration that lies about a platform-owned fact fails `checkAgainstCatalogue`. Write declarations through `declareCapability`, never by annotating `: TypedDeclaration`, or the literal tuples widen to `string[]` and every projection degrades to "any name". |
+| [`registry.ts`](registry.ts) | **Which capabilities exist, and which may run?** The admitted set, the names `parseConfig` consumes, and the two lookups. | A retired name is tombstoned, never deleted, so old configs stay valid — and `get` is fail-closed on it while `describe` returns metadata that cannot be run (D58). |
 | [`intent.ts`](intent.ts) | **What may be done.** The intent shape, the idempotency-key derivation, and `screenIntent` — the runtime checks every returned intent passes: attribution, declaration, class floors, warning symmetry, and the workflow map (D78, D90). | The screens repeat what the types already promise, deliberately: the far side may not have been compiled honestly. |
+| [`factory.ts`](factory.ts) | **How is one built?** `intentFactoryFor` binds the occasion once, so an intent states only what it wants. | The ergonomics are also two contracts: an intent cannot omit its explanation, and an omitted `expected` claims nothing rather than claiming something wrong. |
 | [`boundary.ts`](boundary.ts) | **How it plugs in.** The typed view a capability receives (its own settings only, meanings-not-labels) and the generic machinery deriving per-declaration types. | The projection is the enforcement of config isolation: a capability cannot read a neighbour's block because the view never contains it. |
 
 The flow at runtime: an **observation** (from the catalogue) reaches a capability's `evaluate` through
-its **view** (from boundary); it returns **intents** (from the catalogue), each of which passes the
+its **view** (from boundary); it returns **intents** (built with factory), each of which passes the
 **screens** (intent.ts) before the safety engine in `../safety/` ever sees it. Explanations ride along
 and land in `../report/`.
 

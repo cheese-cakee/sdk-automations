@@ -53,6 +53,15 @@ export interface DestructiveDetail {
     readonly warnedCauseObservedAt: Date;
 }
 
+/**
+ * One request from a capability: what to do, to which item, and the facts it
+ * believes hold while asking.
+ *
+ * `idempotencyKey` is the effect's stable identity across redelivery, retry
+ * and restart. It becomes the journal's `effect_id`, so two intents sharing a
+ * key ARE one effect to the store
+ * (`FINDING(runtime-idempotency-key-underived)`, D65).
+ */
 export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly capability: string;
     readonly repository: RepositoryRef;
@@ -66,11 +75,6 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly desired: IntentCatalogue[K];
     readonly cause: DatedCause;
     readonly explanation: StructuredExplanation;
-        /**
-     * The effect's stable identity across redelivery, retry and restart — it
-     * becomes the journal's `effect_id`, so two intents sharing a key ARE one
-     * effect to the store (`FINDING(runtime-idempotency-key-underived)`, D65).
-     */
     readonly idempotencyKey: string;
 }
 
@@ -110,6 +114,33 @@ export function deriveIdempotencyKey(intent: {
 
 // ─── Runtime screens ─────────────────────────────────────────────────
 
+/** Every way an intent can be refused before the safety engine sees it. */
+export const INTENT_SCREEN_REFUSAL_CODES = [
+    "foreignCapability",
+    "undeclaredIntent",
+    "actionClassBelowFloor",
+    "invalidCause",
+    "destructiveWithoutWarning",
+    "warningWithoutDestructive",
+    "pauseNotCapabilityWritable",
+    "meaningWrongEntity",
+    "positionConflict",
+    "transitionNotOnMap",
+] as const;
+
+/** One of `INTENT_SCREEN_REFUSAL_CODES`. */
+export type IntentScreenRefusalCode =
+    (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
+
+/** A screen's verdict: passed, or refused with a code and a sentence. */
+export type IntentScreen =
+    | { readonly ok: true }
+    | {
+          readonly ok: false;
+          readonly code: IntentScreenRefusalCode;
+          readonly reason: string;
+      };
+
 /**
  * Is the move this intent would make on the profile's map? Capabilities move
  * along documented edges; humans may land anywhere (D29, enforced by D78).
@@ -128,11 +159,9 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
         };
     }
 
-    /**
-     * Two flows, symmetric; the predicates carry the narrowing (D90). Held
-     * meanings filter to own-flow — cross-entity labels are preserved noise
-     * (D35) — and >1 own-flow position is a conflict with no edge to check.
-     */
+    // Two flows, symmetric; the predicates carry the narrowing (D90). Held
+    // meanings filter to own-flow, since cross-entity labels are preserved
+    // noise (D35), and >1 own-flow position is a conflict with no edge.
     const wrongEntity = (): IntentScreen => ({
         ok: false,
         code: "meaningWrongEntity",
@@ -179,30 +208,6 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
     });
     return verdict.allowed ? { ok: true } : offMap(from, verdict.code);
 }
-
-export const INTENT_SCREEN_REFUSAL_CODES = [
-    "foreignCapability",
-    "undeclaredIntent",
-    "actionClassBelowFloor",
-    "invalidCause",
-    "destructiveWithoutWarning",
-    "warningWithoutDestructive",
-    "pauseNotCapabilityWritable",
-    "meaningWrongEntity",
-    "positionConflict",
-    "transitionNotOnMap",
-] as const;
-
-export type IntentScreenRefusalCode =
-    (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
-
-export type IntentScreen =
-    | { readonly ok: true }
-    | {
-          readonly ok: false;
-          readonly code: IntentScreenRefusalCode;
-          readonly reason: string;
-      };
 
 /**
  * The per-intent screen, run on everything `evaluate` returns. The typed

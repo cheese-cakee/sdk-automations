@@ -25,11 +25,10 @@ import {
 } from "./schema.js";
 
 /**
- * D55's sameness, in one place for BOTH consumers: the validator's collision
- * check and this lookup. They folded independently until the mutation gate
- * noticed the copies could disagree without a test failing — on `ß`-class
- * characters, upper- and lower-folding genuinely differ, and collision
- * judgment must never diverge from lookup judgment.
+ * Sameness, in one place for both consumers: the validator's collision check
+ * and this lookup. Two copies could disagree on `ß`-class characters, where
+ * upper- and lower-folding genuinely differ, and collision judgment must
+ * never diverge from lookup judgment (D55).
  */
 export function labelKey(label: string): string {
     return label.trim().toLowerCase();

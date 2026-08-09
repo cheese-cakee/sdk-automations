@@ -31,13 +31,13 @@ derive the world"]
 
 | Directory | The question it answers | Files |
 |---|---|---|
-| `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation) |
-| `src/config/` | What did this repository ask for? | `schema.ts`, `validate.ts`, `parse.ts`, `document.ts` (YAML in), `mappings.ts` (label ↔ meaning, both directions) |
-| `src/workflow/` | What states exist, and how do they move? | `meanings.ts` (vocabulary, derived from the facts table), `transitions.ts` (the diagrams as tables), `apply.ts`, `project.ts` |
+| `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation), `invoke.ts` (how a capability is called, type erased) — and its own [README](src/engine/README.md) |
+| `src/config/` | What did this repository ask for? | `schema.ts`, `sections.ts`, `parse.ts`, `document.ts` (YAML in), `labels.ts` (label ↔ meaning, both directions) — and its own [README](src/config/README.md) with the path a file takes |
+| `src/workflow/` | What states exist, and how do they move? | `positions.ts` (derived from config), `causes.ts`, `state.ts`, `transitions.ts` (the tables and the legality question), `reference.ts` (the executable spec), `project.ts` — and its own [README](src/workflow/README.md) |
 | `src/capability/` | What may a capability declare and do? | `declaration.ts`, `catalogue.ts` (the closed vocabularies — and the add-an-operation checklist), `boundary.ts` (how it is called), `intent.ts` (what it asks, and the screens), `factory.ts` (how one is built without ceremony) |
-| `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) |
+| `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) — and its own [README](src/safety/README.md) |
 | `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — and its own [README](src/github/README.md) with the provenance table |
-| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) |
+| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) — and its own [README](src/report/README.md) |
 
 Directories are named for the question a maintainer arrives with, not for a
 technical kind. There is no `types/` or `utils/`: naming by kind forces you to
