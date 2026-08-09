@@ -54,10 +54,10 @@ const shell = createShell({
 
 // Finish anything a previous run left pending before taking new work.
 void shell.drain().catch((error) => {
-    console.error("shell: startup drain failed; deliveries remain pending", error);
+    console.error("shell: startup drain failed; inspect durable store state", error);
 });
 shell.server.listen(port, () => {
     console.log(
-        `shell listening on :${port} for ${owner}/${repo} (config copy of ${CONFIG_PATH}: ${configFile}); reports land in ${reportsFile}`,
+        `shell listening on :${port} for ${owner}/${repo} (config copy of ${CONFIG_PATH}: ${configFile}); reports project to ${reportsFile}`,
     );
 });

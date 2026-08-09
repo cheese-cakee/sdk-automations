@@ -1,9 +1,9 @@
 # Owned operational store
 
-The four-table single-file SQLite store decided by protocol 6.5 —
+The single-file SQLite store decided by protocol 6.5 and amended by D110 —
 `design/operations/storage-decision.md` — **ratification pending** under
-the stage-four review. Built ahead of stage five because every layer of
-the platform foundation rests on it.
+the stage-four review. The recovery experiment required four operational
+tables; the delivery completion boundary adds a fifth canonical-report table.
 
 | Table | Role | Evidence status |
 |---|---|---|
@@ -11,10 +11,12 @@ the platform foundation rests on it.
 | `effect_journal` | intent/done write-ahead rows with revision, durable attempt counter, and completion timestamp; the recovery loop's detector | crash-proven in the 6.5 sandbox grid; attempt counter and done-immutability added under D42 |
 | `effect_claim` | one-winner LEASE per effect: atomic stale takeover, released on completion | race-proven in the 6.5 sandbox grid; lease semantics added under D41 |
 | `schedule` | clock-triggered work; `pending → running → done`, with claim age and a per-firing completion token | decided in 6.5; restart/requeue mechanics are pre-covered here; `claimed_at` and claim tokens prevent stale completion under D43 |
+| `delivery_report` | the canonical serialized shell record and the claim token that committed it, one row per delivery | report persistence plus delivery completion is crash-atomic; worker-thread fault injection covers both uncommitted steps and the committed boundary (D110) |
 
 Design rules (from the evidence, not preference): state transitions are
 synchronous SQLite writes, and delivery acceptance commits before it
-returns; tables are independent — no foreign keys, no joins;
+returns; tables have no foreign keys, while delivery finalization deliberately
+updates `delivery_report` and `seen_delivery` in one transaction;
 `sentUnknown` is deliberately unresolvable from the journal
 alone — callers must resolve against GitHub state before retrying (the
 recovery loop in the storage decision). The store never reads the
@@ -42,6 +44,36 @@ Three store findings, argued in full in their register rows:
   `policy.ts`); pending/processing deliveries and open `sent` journal
   rows are never pruned.
 
+The two source files answer separate questions:
+
+| File | Question |
+|---|---|
+| [`src/schema.ts`](src/schema.ts) | Which owned database format is this, and how does it reach the current version safely? |
+| [`src/store.ts`](src/store.ts) | Which operational state transition may commit now? |
+
+## Version contract and migration
+
+`PRAGMA user_version` is the explicit SQLite-native schema marker; the current
+version is `4`. A declared version above `4` is refused before the store changes
+the database. Version-zero files are accepted only when their complete table
+and column shape matches one of the three schemas this repository created:
+the original recovery schema, the attempt/revision and schedule-claim schema,
+or the durable-delivery schema. Unknown shapes fail closed.
+
+All required migrations run in order inside one `BEGIN IMMEDIATE` transaction,
+including each `user_version` update. An interruption therefore leaves the
+entire pre-migration schema or the complete current schema; reopening repeats
+the same ordered work. Fixtures reproduce all three old definitions, and
+fault injection interrupts every migration step before reopening the file.
+
+Information an old schema never stored cannot be reconstructed. Identity-only
+delivery rows migrate as completed legacy identities with an unknown event and
+digest, so a later redelivery conflicts rather than silently reprocessing.
+Original journal rows receive attempt `1` and revision `legacy:unknown`, which
+cannot pretend to match a current plan. Original `running` schedules had no
+ownership token and return to `pending`. Deliveries already completed before
+version 4 remain valid but have no invented report row.
+
 ## Durable webhook intake boundary
 
 GUID-only deduplication had a demonstrated P9 loss window: a receiver
@@ -61,13 +93,23 @@ There is no identity-only insertion API.
 to `processing` and returns its event name and exact bytes with a fresh
 256-bit claim token. It can take over a processing row whose claim is at
 or before the caller's stale boundary. `releaseDelivery` and
-`completeDelivery` are conditional on that token, so an earlier worker
-cannot mutate a replacement claim. Completion changes the state to
-`done` and clears payload bytes in the same statement while retaining
-the GUID, event name, digest, receipt time, and completion time.
+`completeDeliveryWithReport` are conditional on that token, so an earlier
+worker cannot mutate a replacement claim.
+
+`completeDeliveryWithReport` verifies the GUID, event name, payload digest,
+processing state, and current claim token under one write lock. It inserts the
+canonical report and changes the delivery to `done` in the same transaction,
+clearing payload bytes while retaining delivery identity. The report row keeps
+the committing token: retrying the same token with the same canonical bytes
+returns `alreadyCompleted`; another token returns `notOwned`, and the same token
+with changed report bytes returns `reportConflict`. Thus every completion
+performed through the version-4 contract has exactly one report. The exception
+is explicit: a delivery already done when an older schema is migrated may have
+no report because none existed to recover.
+
 `requeueStuckDeliveries` provides the explicit reconciliation path.
-Retention pruning can delete only completed rows at or before its
-caller-supplied boundary.
+Retention pruning deletes an eligible delivery and its report in one
+transaction; pending and processing work is never eligible.
 
 The payload is an opaque byte array at this boundary. The store does
 not parse JSON, inspect repositories, verify signatures, normalize
@@ -78,10 +120,7 @@ This is the durable store contract, not end-to-end webhook durability.
 A production HTTP receiver still must verify the signature before
 acceptance and acknowledge GitHub only after an `accepted` or
 `duplicate` result. Queue-capacity/backpressure policy, the event
-normalizer, hosting, and the reconciliation service are also still
-missing. Existing pre-ratification database files with the old
-two-column `seen_delivery` table are not migrated by this package; a
-fresh database is required.
+normalizer, hosting, and the reconciliation service are also still missing.
 
 Requires Node 23.4+ — `node:sqlite` needs `--experimental-sqlite` on
 22.x and runs unflagged from 23.4. Node 24.11.1 still emits a non-failing

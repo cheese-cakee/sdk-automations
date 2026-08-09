@@ -9,11 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-    asDeliveryGuid,
-    toEngine,
-    type EngineCapability,
-} from "@hiero-hackers/automation-core";
+import { asDeliveryGuid, toEngine, type EngineCapability } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { intake, intakeDeclaration } from "@hiero-hackers/automation-probes";
 import { Processor } from "../src/processor.js";
@@ -88,9 +84,7 @@ describe("a crash releases the claim", () => {
             },
         };
         const failing = processor(bomb);
-        await expect(failing.processor.processOnce()).rejects.toThrow(
-            "capability exploded",
-        );
+        await expect(failing.processor.processOnce()).rejects.toThrow("capability exploded");
         expect(failing.reports.entries).toEqual([]);
 
         // Released, not stuck: a fresh worker claims it immediately —
@@ -113,11 +107,13 @@ describe("a crash releases the claim", () => {
     });
 
     it("does not steal a fresh claim but takes over after the 15-minute lease", async () => {
-        expect(store.claimNextDelivery(
-            "stalled-worker",
-            new Date(BASE.getTime() + 60_000).toISOString(),
-            new Date(BASE.getTime() - 60_000).toISOString(),
-        )).toBeDefined();
+        expect(
+            store.claimNextDelivery(
+                "stalled-worker",
+                new Date(BASE.getTime() + 60_000).toISOString(),
+                new Date(BASE.getTime() - 60_000).toISOString(),
+            ),
+        ).toBeDefined();
 
         const fresh = processor(toEngine(intake), 10 * 60_000);
         expect(await fresh.processor.processOnce()).toBe(false);
@@ -141,5 +137,82 @@ describe("a crash releases the claim", () => {
         });
         await healthy.processor.drain();
         expect(healthy.reports.entries).toHaveLength(2);
+    });
+
+    it("does not project or complete after its delivery claim is released", async () => {
+        const lostClaim: EngineCapability = {
+            declaration: intakeDeclaration,
+            evaluate: async () => {
+                expect(store.requeueStuckDeliveries("2026-08-07T10:00:01.000Z")).toEqual([GUID]);
+                return [];
+            },
+        };
+        const candidate = processor(lostClaim);
+
+        await expect(candidate.processor.processOnce()).rejects.toThrow(
+            "delivery report was not committed: notOwned",
+        );
+        expect(candidate.reports.entries).toEqual([]);
+        expect(
+            store.claimNextDelivery(
+                "next-worker",
+                "2026-08-07T10:01:00.000Z",
+                "2026-08-07T09:00:00.000Z",
+            ),
+        ).toBeDefined();
+        const db = (
+            store as unknown as {
+                db: {
+                    prepare(sql: string): { get(): Record<string, unknown> };
+                };
+            }
+        ).db;
+        expect(db.prepare("SELECT count(*) AS reports FROM delivery_report").get()).toEqual({
+            reports: 0,
+        });
+    });
+
+    it("a projection failure happens after canonical report-plus-done commits", async () => {
+        let tick = 0;
+        const projectionFailure = new Error("projection unavailable");
+        const candidate = new Processor({
+            store,
+            capabilities: [toEngine(intake)],
+            configSource,
+            reports: {
+                record: () => {
+                    throw projectionFailure;
+                },
+            },
+            externals: stubbedExternals(),
+            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            worker: "test-worker",
+            clock: () => new Date(BASE.getTime() + 1_000 * ++tick),
+        });
+
+        await expect(candidate.processOnce()).rejects.toThrow(projectionFailure);
+        expect(
+            store.claimNextDelivery(
+                "next-worker",
+                "2026-08-07T11:00:00.000Z",
+                "2026-08-07T10:59:00.000Z",
+            ),
+        ).toBeUndefined();
+        const db = (
+            store as unknown as {
+                db: {
+                    prepare(sql: string): { get(): Record<string, unknown> };
+                };
+            }
+        ).db;
+        expect(
+            db
+                .prepare(
+                    `
+            SELECT count(*) AS reports FROM delivery_report
+        `,
+                )
+                .get(),
+        ).toEqual({ reports: 1 });
     });
 });

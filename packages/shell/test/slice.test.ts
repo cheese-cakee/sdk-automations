@@ -21,7 +21,14 @@ import {
 } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { intake } from "@hiero-hackers/automation-probes";
-import { createShell, fileConfigSource, fileReportSink, stubbedExternals, type Shell, type ShellRecord } from "../src/index.js";
+import {
+    createShell,
+    fileConfigSource,
+    fileReportSink,
+    stubbedExternals,
+    type Shell,
+    type ShellRecord,
+} from "../src/index.js";
 
 const SECRET = "shell-slice-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
@@ -130,6 +137,30 @@ describe("the first slice, end to end", () => {
         expect(entry.report.findings.length).toBeGreaterThan(0);
         // Dry-run approves nothing; the report is the whole product.
         expect(entry.approved).toEqual([]);
+        const db = (
+            store as unknown as {
+                db: {
+                    prepare(sql: string): {
+                        get(id: string): { report_json: string; state: string };
+                    };
+                };
+            }
+        ).db;
+        expect(
+            db
+                .prepare(
+                    `
+            SELECT delivery_report.report_json, seen_delivery.state
+            FROM delivery_report
+            JOIN seen_delivery USING (delivery_id)
+            WHERE delivery_id = ?
+        `,
+                )
+                .get(GUID),
+        ).toEqual({
+            report_json: JSON.stringify(entry),
+            state: "done",
+        });
         // The queue is empty: the delivery completed.
         expect(
             store.claimNextDelivery(

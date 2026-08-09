@@ -1,7 +1,7 @@
 /**
  * The worker half: claim a durable delivery, prepare, call the one verb,
- * persist the outcome, complete. The receiver acknowledged long ago —
- * everything here may crash and retry without GitHub ever knowing.
+ * commit the outcome with completion, then project it. The receiver
+ * acknowledged long ago; GitHub never observes retries here.
  *
  * `process` below is the right lane of design/trace.md stations 3–12,
  * one named step per station.
@@ -18,7 +18,7 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { ClaimedDelivery, Store } from "@hiero-hackers/automation-store";
 import type { ConfigSource } from "./config.js";
-import type { ReportSink } from "./reports.js";
+import type { ReportSink, ShellRecord } from "./reports.js";
 import type { ShellExternals } from "./externals.js";
 
 /** A processing claim older than this is presumed dead and taken over. */
@@ -55,27 +55,34 @@ export class Processor {
 
     constructor(private readonly options: ProcessorOptions) {}
 
-    /** Station 3: claim one pending delivery; `false` when the queue is
-     * empty. A crash mid-process RELEASES the claim — the delivery stays
-     * durable and the next drain retries it. */
+    /**
+     * Station 3 onward: claim, decide, atomically persist-and-complete, then
+     * project. Pre-commit failures release; projection failures leave the
+     * canonical database outcome complete.
+     */
     async processOnce(): Promise<boolean> {
         const claimed = this.claimNext();
         if (claimed === undefined) return false;
         try {
-            await this.process(claimed);
+            const record = await this.process(claimed);
+            const reportJson = JSON.stringify(record);
+            const completion = this.options.store.completeDeliveryWithReport({
+                deliveryId: claimed.deliveryId,
+                eventName: claimed.eventName,
+                payloadDigest: claimed.payloadDigest,
+                claimToken: claimed.claimToken,
+                reportJson,
+                completedAt: this.options.clock().toISOString(),
+            });
+            if (completion.outcome !== "completed") {
+                throw new Error(`delivery report was not committed: ${completion.outcome}`);
+            }
+            this.options.reports.record(record, reportJson);
+            return true;
         } catch (error) {
-            this.options.store.releaseDelivery(
-                claimed.deliveryId,
-                claimed.claimToken,
-            );
+            this.options.store.releaseDelivery(claimed.deliveryId, claimed.claimToken);
             throw error;
         }
-        this.options.store.completeDelivery(
-            claimed.deliveryId,
-            claimed.claimToken,
-            this.options.clock().toISOString(),
-        );
-        return true;
     }
 
     /** Process until the queue is empty. Overlapping calls share one loop. */
@@ -90,8 +97,8 @@ export class Processor {
         return this.draining;
     }
 
-    /** One delivery, stations 4–12, in reading order. */
-    private async process(claimed: ClaimedDelivery): Promise<void> {
+    /** Build one delivery's canonical record, stations 4–11 in reading order. */
+    private async process(claimed: ClaimedDelivery): Promise<ShellRecord> {
         const config = await this.loadConfig();
         // One instant serves as the record's `decidedAt` AND the gates'
         // clock, so the journal never disagrees with the decision it holds.
@@ -101,32 +108,25 @@ export class Processor {
         if (!config.result.ok) {
             // Fail closed and COMPLETE: redelivering cannot fix a broken
             // config — the fixed file arrives as its own future delivery.
-            this.options.reports.record({
+            return {
                 kind: "configRejected",
                 ...identity,
                 errors: config.result.errors,
-            });
-            return;
+            };
         }
 
-        const decision = await this.decideOn(
-            claimed,
-            config.result.config,
-            decidedAt,
-        );
-        this.options.reports.record({
+        const decision = await this.decideOn(claimed, config.result.config, decidedAt);
+        return {
             kind: "decision",
             ...identity,
             report: decision.report,
             approved: decision.approved,
-        });
+        };
     }
 
     private claimNext(): ClaimedDelivery | undefined {
         const now = this.options.clock();
-        const staleBefore = new Date(
-            now.getTime() - STALE_CLAIM_MINUTES * 60_000,
-        );
+        const staleBefore = new Date(now.getTime() - STALE_CLAIM_MINUTES * 60_000);
         return this.options.store.claimNextDelivery(
             this.options.worker,
             now.toISOString(),
@@ -145,9 +145,7 @@ export class Processor {
             revision: document.revision,
             result: parseConfigDocument(document.text, {
                 revision: document.revision,
-                knownCapabilities: this.options.capabilities.map(
-                    (c) => c.declaration.name,
-                ),
+                knownCapabilities: this.options.capabilities.map((c) => c.declaration.name),
             }),
         };
     }

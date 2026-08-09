@@ -2,14 +2,11 @@
  * The composition root: receiver + store + processor wired into one
  * running shell. Every box is existing, gated code — this file's whole
  * contribution is ORDER: verify before accept, accept before ack, decide
- * before act, report always.
+ * before act, commit before project.
  */
 
 import { createServer, type Server } from "node:http";
-import type {
-    EngineCapability,
-    RepositoryRef,
-} from "@hiero-hackers/automation-core";
+import type { EngineCapability, RepositoryRef } from "@hiero-hackers/automation-core";
 import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";
@@ -58,8 +55,10 @@ export function createShell(options: ShellOptions): Shell {
             }).outcome,
         onAccepted: () => {
             void processor.drain().catch((error) => {
-                // The delivery is durable and released; the next drain retries.
-                console.error("shell: processing failed; delivery remains pending", error);
+                console.error(
+                    "shell: processing or report projection failed; inspect durable store state",
+                    error,
+                );
             });
         },
     });
