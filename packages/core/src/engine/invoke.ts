@@ -22,11 +22,7 @@ import type {
 /** A capability with its declaration type erased — what a list can hold. */
 export interface EngineCapability {
     readonly declaration: TypedDeclaration;
-    evaluate(
-        observation: never,
-        config: never,
-        platform: never,
-    ): Promise<readonly AnyIntent[]>;
+    evaluate(observation: never, config: never, platform: never): Promise<readonly AnyIntent[]>;
 }
 
 /**
@@ -35,9 +31,7 @@ export interface EngineCapability {
  * widens, and the capability gains no reach it did not have. The argument
  * lives here once so that no call site has to make it again.
  */
-export function toEngine<D extends TypedDeclaration>(
-    capability: Capability<D>,
-): EngineCapability {
+export function toEngine<D extends TypedDeclaration>(capability: Capability<D>): EngineCapability {
     return capability as unknown as EngineCapability;
 }
 

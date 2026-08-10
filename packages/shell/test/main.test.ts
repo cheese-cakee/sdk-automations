@@ -131,12 +131,8 @@ describe("sandbox entry point", () => {
         });
         expect(fakes.dataUrls).toEqual([expect.stringContaining("/data/")]);
         expect(fakes.storePaths).toEqual(["C:\\shell-data\\shell.sqlite"]);
-        expect(fakes.fileConfigSource).toHaveBeenCalledWith(
-            "C:\\shell-data\\automations.yml",
-        );
-        expect(fakes.fileReportSink).toHaveBeenCalledWith(
-            "C:\\shell-data\\decisions.jsonl",
-        );
+        expect(fakes.fileConfigSource).toHaveBeenCalledWith("C:\\shell-data\\automations.yml");
+        expect(fakes.fileReportSink).toHaveBeenCalledWith("C:\\shell-data\\decisions.jsonl");
         expect(fakes.stubbedExternals).toHaveBeenCalledWith({
             killSwitchActive: false,
         });
@@ -185,9 +181,11 @@ describe("sandbox entry point", () => {
     it("surfaces startup-drain failure without claiming success", async () => {
         validEnvironment();
         const failure = new Error("drain failed");
-        fakes.createShell.mockReturnValue(shellDouble(async () => {
-            throw failure;
-        }));
+        fakes.createShell.mockReturnValue(
+            shellDouble(async () => {
+                throw failure;
+            }),
+        );
         const error = vi.spyOn(console, "error").mockImplementation(() => {});
         vi.spyOn(console, "log").mockImplementation(() => {});
 

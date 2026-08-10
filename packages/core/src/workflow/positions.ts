@@ -19,9 +19,7 @@ export type { EntityKind };
  * tests pin the results (D90).
  */
 type MeaningsWithFlow<F extends EntityKind> = {
-    [K in MappableMeaning]: (typeof MEANING_FACTS)[K]["flow"] extends F
-        ? K
-        : never;
+    [K in MappableMeaning]: (typeof MEANING_FACTS)[K]["flow"] extends F ? K : never;
 }[MappableMeaning];
 
 /** Issue-flow meanings — taxonomy.md §4. `blocked` excluded by construction. */
@@ -39,7 +37,5 @@ export function isPrMeaning(m: MappableMeaning): m is PrMeaning {
 }
 
 /** The same sets as runtime arrays, in `MAPPABLE_MEANINGS` order. */
-export const ISSUE_MEANINGS: readonly IssueMeaning[] =
-    MAPPABLE_MEANINGS.filter(isIssueMeaning);
-export const PR_MEANINGS: readonly PrMeaning[] =
-    MAPPABLE_MEANINGS.filter(isPrMeaning);
+export const ISSUE_MEANINGS: readonly IssueMeaning[] = MAPPABLE_MEANINGS.filter(isIssueMeaning);
+export const PR_MEANINGS: readonly PrMeaning[] = MAPPABLE_MEANINGS.filter(isPrMeaning);

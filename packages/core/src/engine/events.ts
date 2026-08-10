@@ -30,8 +30,7 @@ import {
 
 /** The two observations a webhook delivery can become. */
 export type NormalizedObservation =
-    | ObservationCatalogue["issueUpdated"]
-    | ObservationCatalogue["pullRequestUpdated"];
+    ObservationCatalogue["issueUpdated"] | ObservationCatalogue["pullRequestUpdated"];
 
 /**
  * `ignored` and `malformed` are different verdicts on purpose: the first is
@@ -50,7 +49,6 @@ export const NORMALIZE_MALFORMED_CODES = [
 ] as const;
 /** One way a consumed delivery can be unreadable. */
 export type NormalizeMalformedCode = (typeof NORMALIZE_MALFORMED_CODES)[number];
-
 
 /** The three verdicts on a delivery: read it, skip it, or refuse it. */
 export type NormalizeResult =
@@ -92,9 +90,9 @@ function timestamp(value: unknown): Date | null {
     return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function repositoryOf(payload: Record<string, unknown>):
-    | { readonly owner: string; readonly repo: string }
-    | null {
+function repositoryOf(
+    payload: Record<string, unknown>,
+): { readonly owner: string; readonly repo: string } | null {
     const repository = payload["repository"];
     if (!isRecord(repository)) return null;
     const owner = repository["owner"];

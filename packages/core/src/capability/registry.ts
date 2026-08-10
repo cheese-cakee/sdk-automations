@@ -85,7 +85,7 @@ export function createRegistry(declarations: readonly CapabilityDeclaration[]): 
                 const found = byName.get(name);
                 return found?.retired === true
                     ? undefined
-                    : found as ActiveCapabilityDeclaration | undefined;
+                    : (found as ActiveCapabilityDeclaration | undefined);
             },
         },
     };

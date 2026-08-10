@@ -7,12 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import {
-    normalizeRepoPath,
-    repoRoot,
-    trackedFiles,
-    workspacePackages,
-} from "./helpers.js";
+import { normalizeRepoPath, repoRoot, trackedFiles, workspacePackages } from "./helpers.js";
 
 type Dependency = readonly [specifier: string, reference: string];
 
@@ -89,12 +84,7 @@ function loadPackages(directories: readonly string[]): WorkspacePackage[] {
 }
 
 function moduleSpecifiers(source: SourceFile): string[] {
-    const syntax = ts.createSourceFile(
-        source.path,
-        source.text,
-        ts.ScriptTarget.Latest,
-        true,
-    );
+    const syntax = ts.createSourceFile(source.path, source.text, ts.ScriptTarget.Latest, true);
     const specifiers: string[] = [];
     const add = (node: ts.Expression | undefined): void => {
         if (node !== undefined && ts.isStringLiteralLike(node)) {
@@ -119,8 +109,7 @@ function moduleSpecifiers(source: SourceFile): string[] {
         } else if (
             ts.isCallExpression(node) &&
             (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-                (ts.isIdentifier(node.expression) &&
-                    node.expression.text === "require"))
+                (ts.isIdentifier(node.expression) && node.expression.text === "require"))
         ) {
             add(node.arguments[0]);
         }
@@ -135,9 +124,7 @@ function packageContaining(
     packages: readonly WorkspacePackage[],
 ): WorkspacePackage | undefined {
     return packages.find(
-        (candidate) =>
-            path === candidate.directory ||
-            path.startsWith(`${candidate.directory}/`),
+        (candidate) => path === candidate.directory || path.startsWith(`${candidate.directory}/`),
     );
 }
 
@@ -146,9 +133,7 @@ function packageNamed(
     packages: readonly WorkspacePackage[],
 ): WorkspacePackage | undefined {
     return packages.find(
-        (candidate) =>
-            specifier === candidate.name ||
-            specifier.startsWith(`${candidate.name}/`),
+        (candidate) => specifier === candidate.name || specifier.startsWith(`${candidate.name}/`),
     );
 }
 
@@ -158,13 +143,8 @@ function relativePackage(
     packages: readonly WorkspacePackage[],
 ): WorkspacePackage | undefined {
     if (!specifier.startsWith(".")) return undefined;
-    const target = normalizeRepoPath(
-        resolve(repoRoot, dirname(sourcePath), specifier),
-    );
-    return packageContaining(
-        posix.relative(normalizeRepoPath(repoRoot), target),
-        packages,
-    );
+    const target = normalizeRepoPath(resolve(repoRoot, dirname(sourcePath), specifier));
+    return packageContaining(posix.relative(normalizeRepoPath(repoRoot), target), packages);
 }
 
 function dependencyTarget(
@@ -178,18 +158,12 @@ function dependencyTarget(
     }
     const target = protocol[2]!;
     if (protocol[1] !== "workspace" || target.startsWith(".")) {
-        const path = normalizeRepoPath(
-            resolve(repoRoot, importer.directory, target),
-        );
-        return packageContaining(
-            posix.relative(normalizeRepoPath(repoRoot), path),
-            packages,
-        );
+        const path = normalizeRepoPath(resolve(repoRoot, importer.directory, target));
+        return packageContaining(posix.relative(normalizeRepoPath(repoRoot), path), packages);
     }
     return (
-        packages.find(
-            ({ name }) => target === name || target.startsWith(`${name}@`),
-        ) ?? packages.find(({ name }) => name === specifier)
+        packages.find(({ name }) => target === name || target.startsWith(`${name}@`)) ??
+        packages.find(({ name }) => name === specifier)
     );
 }
 
@@ -319,8 +293,7 @@ function architectureViolations(
 
 function messages(violations: readonly Violation[]): string[] {
     return violations.map(
-        ({ file, importer, imported, rule }) =>
-            `${file}: ${importer} -> ${imported}: ${rule}`,
+        ({ file, importer, imported, rule }) => `${file}: ${importer} -> ${imported}: ${rule}`,
     );
 }
 
@@ -376,9 +349,7 @@ describe("the workspace dependency graph preserves package ownership", () => {
         ]) {
             expect(actual).toEqual(
                 expect.arrayContaining([
-                    expect.stringContaining(
-                        `${packageName(from!)} -> ${packageName(to!)}`,
-                    ),
+                    expect.stringContaining(`${packageName(from!)} -> ${packageName(to!)}`),
                 ]),
             );
         }
@@ -387,14 +358,13 @@ describe("the workspace dependency graph preserves package ownership", () => {
     it("detects named and relative deep imports", () => {
         const actual = messages(
             architectureViolations(packages, [
-                source(
-                    "shell",
-                    `import "${packageName("core")}/private";`,
-                ),
+                source("shell", `import "${packageName("core")}/private";`),
                 source("probes", 'import "../../core/src/private.js";'),
             ]),
         );
-        expect(actual.filter((message) => message.includes("public package export"))).toHaveLength(2);
+        expect(actual.filter((message) => message.includes("public package export"))).toHaveLength(
+            2,
+        );
         expect(actual).toEqual(
             expect.arrayContaining([
                 expect.stringContaining("packages/shell/src/example.ts"),
@@ -410,10 +380,7 @@ describe("the workspace dependency graph preserves package ownership", () => {
                       ...candidate,
                       dependencies: [
                           ...candidate.dependencies,
-                          [
-                              "store-workspace-alias",
-                              `workspace:${packageName("store")}@*`,
-                          ] as const,
+                          ["store-workspace-alias", `workspace:${packageName("store")}@*`] as const,
                           ["store-link-alias", "link:../store"] as const,
                           ["store-file-alias", "file:../store"] as const,
                       ],
@@ -422,9 +389,7 @@ describe("the workspace dependency graph preserves package ownership", () => {
         );
         const actual = messages(architectureViolations(aliased, []));
         expect(
-            actual.filter((message) =>
-                message.includes("workspace aliases are forbidden"),
-            ),
+            actual.filter((message) => message.includes("workspace aliases are forbidden")),
         ).toHaveLength(3);
         expect(
             actual.filter((message) =>

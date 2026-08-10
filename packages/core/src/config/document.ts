@@ -48,10 +48,7 @@ function documentError(error: YAMLError): ConfigError {
  * semantic ones. A document that will not parse is never handed onward:
  * guessing at a half-read file is how a fail-closed parser fails open.
  */
-export function parseConfigDocument(
-    text: string,
-    options: ParseConfigOptions,
-): ConfigResult {
+export function parseConfigDocument(text: string, options: ParseConfigOptions): ConfigResult {
     const document = parseDocument(text);
 
     if (document.errors.length > 0) {

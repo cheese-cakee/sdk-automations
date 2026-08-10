@@ -16,7 +16,6 @@
  * through.
  */
 
-
 import type { MappableMeaning } from "../config/index.js";
 import type { PermissionGrant } from "../github/index.js";
 import type { ActionClass } from "../safety/index.js";
@@ -62,11 +61,7 @@ export interface DatedCause {
 
 // ─── The observation catalogue ───────────────────────────────────────
 
-export const OBSERVATION_NAMES = [
-    "issueUpdated",
-    "pullRequestUpdated",
-    "staleItemsDue",
-] as const;
+export const OBSERVATION_NAMES = ["issueUpdated", "pullRequestUpdated", "staleItemsDue"] as const;
 
 export type ObservationName = (typeof OBSERVATION_NAMES)[number];
 
@@ -151,9 +146,7 @@ export interface ResolverCatalogue extends Record<ResolverName, unknown> {
         readonly output: boolean;
     };
 }
-type _ResolverCatalogueNamesAreExact = AssertNever<
-    Exclude<keyof ResolverCatalogue, ResolverName>
->;
+type _ResolverCatalogueNamesAreExact = AssertNever<Exclude<keyof ResolverCatalogue, ResolverName>>;
 
 /** What a resolver is asked. */
 export type ResolverInput<Q extends ResolverName> = ResolverCatalogue[Q]["input"];
@@ -172,11 +165,7 @@ export type ResolverAnswer<T> =
     | { readonly ok: true; readonly value: T }
     | {
           readonly ok: false;
-          readonly reason:
-              | "noPermission"
-              | "rateLimited"
-              | "unavailable"
-              | "notConfigured";
+          readonly reason: "noPermission" | "rateLimited" | "unavailable" | "notConfigured";
           readonly detail: string;
       };
 
