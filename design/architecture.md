@@ -330,10 +330,10 @@ architecture, encoded and tested in the implementation packages (`core/`, `store
 - **One write path.** Every capability effect is a sequenced plan with declared idempotency classes,
   driven claim → journal-intent → perform → journal-done, with the recovery loop (journal detects, GitHub
   resolves, class rules the retry) as the only retry mechanism. No component writes outside it.
-- **Owned operational state is required infrastructure.** The four-table single-file SQLite store (with
-  the D42/D43 amendments) underpins deduplication, recovery, coordination, and schedules. Hosting must
-  therefore provide a persistent single-writer disk; a stateless or multi-writer deployment shape would
-  reopen the storage decision.
+- **Owned operational state is required infrastructure.** The versioned single-file SQLite store (five
+  tables after the D42/D43/D110 amendments) underpins deduplication, recovery, coordination, schedules,
+  and canonical decision reports. Hosting must therefore provide a persistent single-writer disk; a
+  stateless or multi-writer deployment shape would reopen the storage decision.
 - **`active` mode is gated** on two stage-five deliverables: the read-after-write staleness measurement
   (D46) and PR-time configuration validation (D38).
 
@@ -343,8 +343,8 @@ The following questions remain open.
   is deferred from the first version.
 - The exact capability list and first user-facing capability remain open.
 - The workflow profiles that Hiero repositories want remain open.
-- Durable production webhook intake is required; the operational records and storage technology are now
-  adopted (the four-table SQLite store), with formal ratification at stage four.
+- Durable production webhook intake is required; the operational records and versioned SQLite storage
+  contract are now adopted, with formal ratification at stage four.
 - The deployment model, hosting provider, and operator remain open — narrowed by the adopted storage
   model to shapes with a persistent single-writer disk.
 - The adapter's operation list is fixed by the endpoint and permission matrix (Q16); the port's

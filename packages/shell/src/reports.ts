@@ -1,16 +1,13 @@
 /**
- * Where decisions land. In dry-run the report IS the product: the file
- * this sink appends is what a maintainer reads to see what the platform
- * WOULD have done — one JSON line per processed delivery.
- *
- * A sink, not a store table: the store's ratified four-table schema
- * (design/operations/storage-decision.md) stays untouched until a report
- * table is a decided need rather than a default.
+ * The operator projection of canonical reports. The store commits the
+ * authoritative JSON with delivery completion first; this file may append
+ * those same bytes to JSONL for people and can be rebuilt from the store.
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { AnyIntent, ConfigError, Report } from "@hiero-hackers/automation-core";
+import type { CanonicalDeliveryReport } from "@hiero-hackers/automation-store";
 
 interface RecordBase {
     readonly deliveryId: string;
@@ -20,6 +17,7 @@ interface RecordBase {
     readonly configRevision: string;
 }
 
+/** The canonical shell record persisted for one delivery. */
 export type ShellRecord =
     | (RecordBase & {
           readonly kind: "decision";
@@ -33,15 +31,26 @@ export type ShellRecord =
           readonly errors: readonly ConfigError[];
       });
 
+/** A derived projection that receives the already-persisted canonical JSON. */
 export interface ReportSink {
-    record(entry: ShellRecord): void;
+    record(entry: ShellRecord, reportJson: string): void;
+    rebuild(reports: readonly CanonicalDeliveryReport[]): void;
 }
 
+/** Append canonical reports to an operator-readable JSONL projection. */
 export function fileReportSink(file: string): ReportSink {
     mkdirSync(dirname(file), { recursive: true });
     return {
-        record(entry: ShellRecord): void {
-            appendFileSync(file, `${JSON.stringify(entry)}\n`);
+        record(_entry: ShellRecord, reportJson: string): void {
+            appendFileSync(file, `${reportJson}\n`);
+        },
+        rebuild(reports: readonly CanonicalDeliveryReport[]): void {
+            writeFileSync(
+                file,
+                reports.length === 0
+                    ? ""
+                    : `${reports.map((report) => report.reportJson).join("\n")}\n`,
+            );
         },
     };
 }
@@ -53,8 +62,15 @@ export function memoryReportSink(): ReportSink & {
     const entries: ShellRecord[] = [];
     return {
         entries,
-        record(entry: ShellRecord): void {
+        record(entry: ShellRecord, _reportJson: string): void {
             entries.push(entry);
+        },
+        rebuild(reports: readonly CanonicalDeliveryReport[]): void {
+            entries.splice(
+                0,
+                entries.length,
+                ...reports.map((report) => JSON.parse(report.reportJson) as ShellRecord),
+            );
         },
     };
 }

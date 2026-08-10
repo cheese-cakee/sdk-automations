@@ -7,7 +7,7 @@ import { Worker } from "node:worker_threads";
 import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as ts from "typescript";
-import { Store } from "../src/store.js";
+import { Store, type ClaimedDelivery } from "../src/store.js";
 
 let dir: string;
 let path: string;
@@ -38,6 +38,17 @@ function accept(
     receivedAt = RECEIVED,
 ) {
     return store.acceptDelivery({ deliveryId, eventName, payload, receivedAt });
+}
+
+function complete(store: Store, claim: ClaimedDelivery, completedAt: string) {
+    return store.completeDeliveryWithReport({
+        deliveryId: claim.deliveryId,
+        eventName: claim.eventName,
+        payloadDigest: claim.payloadDigest,
+        claimToken: claim.claimToken,
+        reportJson: JSON.stringify({ deliveryId: claim.deliveryId }),
+        completedAt,
+    });
 }
 
 type ConcurrentOperation = "accept" | "claim";
@@ -89,6 +100,7 @@ function buildWorkerStoreModule(): string {
         "utf8",
     );
     const storeSource = readFileSync(new URL("../src/store.ts", import.meta.url), "utf8");
+    const schemaSource = readFileSync(new URL("../src/schema.ts", import.meta.url), "utf8");
     writeFileSync(
         join(buildDir, "ids.js"),
         ts.transpileModule(idsSource, { compilerOptions }).outputText,
@@ -99,6 +111,10 @@ function buildWorkerStoreModule(): string {
         ts
             .transpileModule(storeSource, { compilerOptions })
             .outputText.replace("@hiero-hackers/automation-core", "./ids.js"),
+    );
+    writeFileSync(
+        join(buildDir, "schema.js"),
+        ts.transpileModule(schemaSource, { compilerOptions }).outputText,
     );
     return pathToFileURL(storeModule).href;
 }
@@ -179,7 +195,10 @@ describe("durable delivery acceptance", () => {
         const expectedPayload = Buffer.from(payload);
         const before = new Store(path);
         const accepted = accept(before, FIRST_ID, "pull_request", payload);
-        expect(accepted).toMatchObject({ outcome: "accepted", state: "pending" });
+        expect(accepted).toMatchObject({
+            outcome: "accepted",
+            state: "pending",
+        });
         expect("firstSeen" in before).toBe(false);
         payload.fill(0);
         before.close();
@@ -204,7 +223,11 @@ describe("durable delivery acceptance", () => {
         const store = new Store(path);
         const db = (
             store as unknown as {
-                db: { prepare(sql: string): { run(...values: unknown[]): unknown } };
+                db: {
+                    prepare(sql: string): {
+                        run(...values: unknown[]): unknown;
+                    };
+                };
             }
         ).db;
         expect(() =>
@@ -291,13 +314,9 @@ describe("delivery claims and recovery", () => {
                 "2026-08-01T09:00:00.000Z",
             );
             order.push(claim!.deliveryId);
-            expect(
-                store.completeDelivery(
-                    claim!.deliveryId,
-                    claim!.claimToken,
-                    `2026-08-01T10:02:0${String(index)}.000Z`,
-                ),
-            ).toEqual({ outcome: "completed" });
+            expect(complete(store, claim!, `2026-08-01T10:02:0${String(index)}.000Z`)).toEqual({
+                outcome: "completed",
+            });
         }
         expect(order).toEqual([FIRST_ID, SECOND_ID, THIRD_ID]);
         store.close();
@@ -328,20 +347,12 @@ describe("delivery claims and recovery", () => {
         )!;
         expect(second.deliveryId).toBe(first.deliveryId);
         expect(second.claimToken).not.toBe(first.claimToken);
-        expect(
-            restarted.completeDelivery(
-                first.deliveryId,
-                first.claimToken,
-                "2026-08-01T10:11:00.000Z",
-            ),
-        ).toEqual({ outcome: "notOwned" });
-        expect(
-            restarted.completeDelivery(
-                second.deliveryId,
-                second.claimToken,
-                "2026-08-01T10:11:00.000Z",
-            ),
-        ).toEqual({ outcome: "completed" });
+        expect(complete(restarted, first, "2026-08-01T10:11:00.000Z")).toEqual({
+            outcome: "notOwned",
+        });
+        expect(complete(restarted, second, "2026-08-01T10:11:00.000Z")).toEqual({
+            outcome: "completed",
+        });
         restarted.close();
     });
 
@@ -353,8 +364,12 @@ describe("delivery claims and recovery", () => {
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
-        expect(store.releaseDelivery(FIRST_ID, "wrong-token")).toEqual({ outcome: "notOwned" });
-        expect(store.releaseDelivery(FIRST_ID, first.claimToken)).toEqual({ outcome: "released" });
+        expect(store.releaseDelivery(FIRST_ID, "wrong-token")).toEqual({
+            outcome: "notOwned",
+        });
+        expect(store.releaseDelivery(FIRST_ID, first.claimToken)).toEqual({
+            outcome: "released",
+        });
 
         const second = store.claimNextDelivery(
             "worker-b",
@@ -363,9 +378,9 @@ describe("delivery claims and recovery", () => {
         )!;
         expect(store.requeueStuckDeliveries("2026-08-01T10:01:59.999Z")).toEqual([]);
         expect(store.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([FIRST_ID]);
-        expect(
-            store.completeDelivery(FIRST_ID, second.claimToken, "2026-08-01T10:03:00.000Z"),
-        ).toEqual({ outcome: "notOwned" });
+        expect(complete(store, second, "2026-08-01T10:03:00.000Z")).toEqual({
+            outcome: "notOwned",
+        });
         store.close();
     });
 
@@ -402,13 +417,17 @@ describe("delivery completion and retention", () => {
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
-        expect(
-            store.completeDelivery(FIRST_ID, claim.claimToken, "2026-08-01T10:02:00.000Z"),
-        ).toEqual({ outcome: "completed" });
+        expect(complete(store, claim, "2026-08-01T10:02:00.000Z")).toEqual({
+            outcome: "completed",
+        });
 
         const db = (
             store as unknown as {
-                db: { prepare(sql: string): { get(id: string): Record<string, unknown> } };
+                db: {
+                    prepare(sql: string): {
+                        get(id: string): Record<string, unknown>;
+                    };
+                };
             }
         ).db;
         expect(
@@ -464,9 +483,9 @@ describe("delivery completion and retention", () => {
             "2025-01-01T00:00:00.000Z",
         )!;
         expect(done.deliveryId).toBe(SECOND_ID);
-        expect(
-            store.completeDelivery(done.deliveryId, done.claimToken, "2026-02-01T00:00:00.000Z"),
-        ).toEqual({ outcome: "completed" });
+        expect(complete(store, done, "2026-02-01T00:00:00.000Z")).toEqual({
+            outcome: "completed",
+        });
 
         expect(store.pruneCompletedDeliveries("2026-01-31T23:59:59.999Z")).toBe(0);
         expect(store.pruneCompletedDeliveries("2026-02-01T00:00:00.000Z")).toBe(1);
@@ -521,8 +540,26 @@ describe("delivery intake boundaries", () => {
         expect(() => store.claimNextDelivery("worker", "invalid", RECEIVED)).toThrow(/now/);
         expect(() => store.claimNextDelivery("worker", RECEIVED, "invalid")).toThrow(/staleBefore/);
         expect(() => store.requeueStuckDeliveries("invalid")).toThrow(/claimedBefore/);
-        expect(() => store.completeDelivery(FIRST_ID, "token", "invalid")).toThrow(/completedAt/);
-        expect(() => store.completeDelivery(FIRST_ID, "", RECEIVED)).toThrow(/claimToken/);
+        const validCompletion = {
+            deliveryId: FIRST_ID,
+            eventName: "issues",
+            payloadDigest: "0".repeat(64),
+            claimToken: "token",
+            reportJson: "{}",
+            completedAt: RECEIVED,
+        };
+        expect(() =>
+            store.completeDeliveryWithReport({
+                ...validCompletion,
+                completedAt: "invalid",
+            }),
+        ).toThrow(/completedAt/);
+        expect(() =>
+            store.completeDeliveryWithReport({
+                ...validCompletion,
+                claimToken: "",
+            }),
+        ).toThrow(/claimToken/);
         expect(() => store.pruneCompletedDeliveries("invalid")).toThrow(/before/);
         expect(() => store.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(/worker/);
         expect(() => store.releaseDelivery(FIRST_ID, "")).toThrow(/claimToken/);
@@ -551,7 +588,7 @@ describe("delivery intake boundaries", () => {
         `);
         legacy.close();
 
-        expect(() => new Store(path)).toThrow(/incompatible pre-ratification/);
+        expect(() => new Store(path)).toThrow(/unrecognized unversioned storage schema/);
         const unchanged = new DatabaseSync(path);
         expect(
             unchanged

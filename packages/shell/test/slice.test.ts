@@ -28,10 +28,12 @@ import {
     stubbedExternals,
     type Shell,
     type ShellRecord,
+    type ReportSink,
 } from "../src/index.js";
 
 const SECRET = "shell-slice-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
+const SECOND_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6a";
 const FIXTURE = readFileSync(
     new URL(
         "../test/github/fixtures/issues.opened.json",
@@ -66,6 +68,7 @@ beforeEach(() => {
     store = new Store(join(dir, "store.sqlite"));
 });
 afterEach(() => {
+    vi.restoreAllMocks();
     store.close();
     rmSync(dir, { recursive: true, force: true });
 });
@@ -137,6 +140,30 @@ describe("the first slice, end to end", () => {
         expect(entry.report.findings.length).toBeGreaterThan(0);
         // Dry-run approves nothing; the report is the whole product.
         expect(entry.approved).toEqual([]);
+        const db = (
+            store as unknown as {
+                db: {
+                    prepare(sql: string): {
+                        get(id: string): { report_json: string; state: string };
+                    };
+                };
+            }
+        ).db;
+        expect(
+            db
+                .prepare(
+                    `
+            SELECT delivery_report.report_json, seen_delivery.state
+            FROM delivery_report
+            JOIN seen_delivery USING (delivery_id)
+            WHERE delivery_id = ?
+        `,
+                )
+                .get(GUID),
+        ).toEqual({
+            report_json: JSON.stringify(entry),
+            state: "done",
+        });
         // The queue is empty: the delivery completed.
         expect(
             store.claimNextDelivery(
@@ -154,6 +181,54 @@ describe("the first slice, end to end", () => {
         expect(await deliver(shell)).toBe(202);
         await shell.drain();
         expect(records()).toHaveLength(1);
+    });
+
+    it("rebuilds a missing or stale JSONL projection from SQLite on restart", async () => {
+        const shell = buildShell();
+        expect(await deliver(shell)).toBe(202);
+        await shell.drain();
+        expect(await deliver(shell, SECOND_GUID)).toBe(202);
+        await shell.drain();
+        const canonicalProjection = readFileSync(reportsFile, "utf8");
+
+        writeFileSync(reportsFile, '{"stale":true}\n');
+        store.close();
+        store = new Store(join(dir, "store.sqlite"));
+        buildShell();
+
+        expect(readFileSync(reportsFile, "utf8")).toBe(canonicalProjection);
+        expect(records()).toHaveLength(2);
+    });
+
+    it("reports persistent projection damage without stopping completed work", async () => {
+        let rebuilds = 0;
+        const brokenProjection: ReportSink = {
+            record: () => {
+                throw new Error("append unavailable");
+            },
+            rebuild: () => {
+                if (rebuilds++ > 0) throw new Error("rebuild unavailable");
+            },
+        };
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const shell = createShell({
+            secret: SECRET,
+            store,
+            capabilities: [toEngine(intake)],
+            configSource: fileConfigSource(configFile),
+            reports: brokenProjection,
+            externals: stubbedExternals(),
+            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            clock: () => BASE,
+        });
+
+        expect(await deliver(shell)).toBe(202);
+        await expect(shell.drain()).resolves.toBeUndefined();
+        expect(store.deliveryReports()).toHaveLength(1);
+        expect(error).toHaveBeenCalledWith(
+            "shell: report projection remains stale; canonical reports are intact",
+            expect.any(AggregateError),
+        );
     });
 
     it("starts durable processing after the acknowledgment without a manual drain", async () => {

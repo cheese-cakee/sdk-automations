@@ -3,7 +3,7 @@
 Every term in this codebase is defined somewhere, but definitions don't teach a system; a journey
 does. This document follows **one real delivery** — the `issues.opened` webhook GitHub sent when
 issue #164 was opened on the sandbox (captured under protocol 7.1, scrubbed, promoted to
-`packages/core/test/github/fixtures/`) — from the shell's socket to the exact JSON line the shell persists.
+`packages/core/test/github/fixtures/`) — from the shell's socket to the canonical report the store persists.
 Every piece of output below is the pipeline's real output, not paraphrase; the same journey runs as
 a test in `packages/shell/test/slice.test.ts`, so this document can drift only until the suite runs.
 
@@ -13,7 +13,7 @@ Vocabulary is introduced **in bold** at the moment it does something. If you rea
 ```mermaid
 flowchart LR
     A[socket] --> B[verify] --> C[accept + 202]
-    C --> D[claim] --> E[config] --> F["decide()"] --> G[report line]
+    C --> D[claim] --> E[config] --> F["decide()"] --> G["report + done"] --> H["JSONL projection"]
     subgraph F2 ["inside decide()"]
         N[normalize] --> V[evaluate] --> S[screen] --> W[derive world] --> X[gate]
     end
@@ -42,15 +42,15 @@ against the webhook secret, constant-time (`packages/core/src/github/signatures.
 Pass, and the exact bytes go into the **store** (`packages/store/src/store.ts`) as a durable row keyed by the
 delivery GUID, state `pending`. Only after that row exists does GitHub get its **`202`
 acknowledgement** — so a crash one millisecond later loses nothing (the ordering promise called P9).
-A redelivery of the same GUID finds the row and is answered `202` again without a second row: the
-store, not the shell, is what makes processing exactly-once.
+A redelivery of the same GUID finds the row and is answered `202` again without a second row. The
+store, not the shell, makes one canonical completion possible under retries.
 
 ## 3. Claim — processing on our own clock
 
 GitHub's part is over. The processor (`packages/shell/src/processor.ts`) — possibly the same process, possibly
 a restart after a crash — **claims** the pending delivery: the row moves to `processing` and the
-store hands back a one-time **claim token** that proves ownership. If processing dies mid-way the
-claim is released (or goes stale and is taken over), and the delivery is simply claimed again later.
+store hands back a one-time **claim token** that proves ownership. A handled failure releases the
+claim; a process crash leaves it to go stale and be taken over. The delivery is then claimed again later.
 Everything after this point may fail and retry forever; GitHub never knows.
 
 ## 4. The configuration — the repository's standing answers
@@ -198,10 +198,22 @@ human-must-act situation earns `problem`). The **report** is the findings plus t
 produced them: revision, mode, repository. Ours holds four findings — two explanations, two
 `modeRecordsOnly` verdicts — and zero problems.
 
-## 12. The line the shell writes — the product
+## 12. The atomic completion — the durable product
 
-The processor appends one line to `decisions.jsonl` (`packages/shell/src/reports.ts`), marks the delivery
-`done`, and is finished. Abridged only by collapsing the four findings you have already seen:
+The processor serializes the record below once, then calls
+`completeDeliveryWithReport` (`packages/store/src/store.ts`). Under one SQLite write lock the store
+rechecks this delivery's GUID, event name, payload digest, `processing` state, and claim token. It
+inserts the canonical JSON and marks the delivery `done` in the same transaction. A crash before
+commit leaves neither outcome; a crash after commit leaves both. A stale, released, or stolen token
+cannot create the report or complete the delivery. Retrying the committing token with these exact
+bytes returns `alreadyCompleted` without another row.
+
+Only after commit does `packages/shell/src/reports.ts` append the same bytes to `decisions.jsonl` as
+an operator projection. If append fails, the processor replaces the projection from
+`Store.deliveryReports()` and keeps draining; if replay also fails, it reports the stale projection
+without trying to release the already-completed claim. Startup runs the same deterministic replay,
+so a missing, partial, duplicated, or corrupt JSONL file is rebuilt from SQLite. Abridged only by
+collapsing the four findings already seen:
 
 ```json
 {
@@ -219,8 +231,8 @@ The processor appends one line to `decisions.jsonl` (`packages/shell/src/reports
 ```
 
 `approved` is empty **by construction**: in dry-run no intent gets an `apply` verdict, so there is
-nothing an executor may plan. This line — "here is what I would have done, and why" — is dry-run's
-entire product, and the artifact a maintainer reads before turning the dial up.
+nothing an executor may plan. This record — "here is what I would have done, and why" — is dry-run's
+durable product. The JSONL projection is the artifact a maintainer reads before turning the dial up.
 
 ## 13. Epilogue — the same delivery in `active` mode
 
@@ -249,5 +261,5 @@ remembers; the adapter touches. Nothing else does.
 | 9 | derived world, precondition | `packages/core/src/safety/world.ts` |
 | 10 | gate, verdict, record-only | `packages/core/src/safety/rules.ts` |
 | 11 | finding, severity, report | `packages/core/src/report/convert.ts` |
-| 12 | decision record | `packages/shell/src/reports.ts` |
+| 12 | decision record, atomic completion, operator projection | `packages/store/src/store.ts`, `packages/shell/src/reports.ts` |
 | 13 | plan, effect, journal, adapter | `packages/executor/src/planner.ts`, `packages/executor/src/recovery.ts` |

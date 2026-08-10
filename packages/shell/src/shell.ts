@@ -2,7 +2,7 @@
  * The composition root: receiver + store + processor wired into one
  * running shell. Every box is existing, gated code — this file's whole
  * contribution is ORDER: verify before accept, accept before ack, decide
- * before act, report always.
+ * before act, commit before project.
  */
 
 import { createServer, type Server } from "node:http";
@@ -24,6 +24,8 @@ export interface ShellOptions {
     readonly repository: RepositoryRef;
     readonly worker?: string;
     readonly clock?: () => Date;
+    /** Override operator reporting when append and canonical replay both fail. */
+    readonly onProjectionFailure?: (error: unknown) => void;
 }
 
 export interface Shell {
@@ -34,6 +36,7 @@ export interface Shell {
 
 export function createShell(options: ShellOptions): Shell {
     const clock = options.clock ?? (() => new Date());
+    options.reports.rebuild(options.store.deliveryReports());
     const processor = new Processor({
         store: options.store,
         capabilities: options.capabilities,
@@ -43,6 +46,14 @@ export function createShell(options: ShellOptions): Shell {
         repository: options.repository,
         worker: options.worker ?? "shell-1",
         clock,
+        onProjectionFailure:
+            options.onProjectionFailure ??
+            ((error) => {
+                console.error(
+                    "shell: report projection remains stale; canonical reports are intact",
+                    error,
+                );
+            }),
     });
     const handler = createReceiver({
         secret: options.secret,
@@ -55,8 +66,7 @@ export function createShell(options: ShellOptions): Shell {
             }).outcome,
         onAccepted: () => {
             void processor.drain().catch((error) => {
-                // The delivery is durable and released; the next drain retries.
-                console.error("shell: processing failed; delivery remains pending", error);
+                console.error("shell: processing failed; inspect durable store state", error);
             });
         },
     });

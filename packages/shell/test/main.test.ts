@@ -6,7 +6,10 @@ const fakes = vi.hoisted(() => ({
     storePaths: [] as string[],
     fileConfigSource: vi.fn((path: string) => ({ kind: "config", path })),
     fileReportSink: vi.fn((path: string) => ({ kind: "reports", path })),
-    stubbedExternals: vi.fn((overrides: unknown) => ({ kind: "externals", overrides })),
+    stubbedExternals: vi.fn((overrides: unknown) => ({
+        kind: "externals",
+        overrides,
+    })),
     toEngine: vi.fn((capability: unknown) => ({ engine: capability })),
     dataUrls: [] as string[],
 }));
@@ -37,7 +40,9 @@ vi.mock("../src/config.js", () => ({
     fileConfigSource: fakes.fileConfigSource,
 }));
 vi.mock("../src/reports.js", () => ({ fileReportSink: fakes.fileReportSink }));
-vi.mock("../src/externals.js", () => ({ stubbedExternals: fakes.stubbedExternals }));
+vi.mock("../src/externals.js", () => ({
+    stubbedExternals: fakes.stubbedExternals,
+}));
 
 const ENV_KEYS = [
     "WEBHOOK_SECRET",
@@ -149,7 +154,7 @@ describe("sandbox entry point", () => {
         );
         expect(shell.server.listen).toHaveBeenCalledWith(8790, expect.any(Function));
         expect(log).toHaveBeenCalledWith(
-            "shell listening on :8790 for owner/repo (config copy of automations.yml: C:\\shell-data\\automations.yml); reports land in C:\\shell-data\\decisions.jsonl",
+            "shell listening on :8790 for owner/repo (config copy of automations.yml: C:\\shell-data\\automations.yml); reports project to C:\\shell-data\\decisions.jsonl",
         );
         expect(order).toEqual(["drain", "listen"]);
     });
@@ -193,7 +198,7 @@ describe("sandbox entry point", () => {
         await new Promise<void>((resolve) => queueMicrotask(resolve));
 
         expect(error).toHaveBeenCalledWith(
-            "shell: startup drain failed; deliveries remain pending",
+            "shell: startup drain failed; inspect durable store state",
             failure,
         );
     });

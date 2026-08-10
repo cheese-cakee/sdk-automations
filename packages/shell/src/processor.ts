@@ -1,7 +1,7 @@
 /**
  * The worker half: claim a durable delivery, prepare, call the one verb,
- * persist the outcome, complete. The receiver acknowledged long ago —
- * everything here may crash and retry without GitHub ever knowing.
+ * commit the outcome with completion, then project it. The receiver
+ * acknowledged long ago; GitHub never observes retries here.
  *
  * `process` below is the right lane of design/trace.md stations 3–12,
  * one named step per station.
@@ -18,12 +18,13 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { ClaimedDelivery, Store } from "@hiero-hackers/automation-store";
 import type { ConfigSource } from "./config.js";
-import type { ReportSink } from "./reports.js";
+import type { ReportSink, ShellRecord } from "./reports.js";
 import type { ShellExternals } from "./externals.js";
 
 /** A processing claim older than this is presumed dead and taken over. */
 const STALE_CLAIM_MINUTES = 15;
 
+/** Dependencies and operator hooks for one durable delivery worker. */
 export interface ProcessorOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
@@ -39,6 +40,8 @@ export interface ProcessorOptions {
     readonly repository: RepositoryRef;
     readonly worker: string;
     readonly clock: () => Date;
+    /** Persistent projection damage is reported without changing queue ownership. */
+    readonly onProjectionFailure: (error: unknown) => void;
 }
 
 /** What every persisted record says about which delivery it answers. */
@@ -55,23 +58,53 @@ export class Processor {
 
     constructor(private readonly options: ProcessorOptions) {}
 
-    /** Station 3: claim one pending delivery; `false` when the queue is
-     * empty. A crash mid-process RELEASES the claim — the delivery stays
-     * durable and the next drain retries it. */
+    /**
+     * Station 3 onward: claim, decide, atomically persist-and-complete, then
+     * project. Pre-commit failures release; projection failures leave the
+     * canonical database outcome complete.
+     */
     async processOnce(): Promise<boolean> {
         const claimed = this.claimNext();
         if (claimed === undefined) return false;
+        let record: ShellRecord;
+        let reportJson: string;
         try {
-            await this.process(claimed);
+            record = await this.process(claimed);
+            reportJson = JSON.stringify(record);
+            const completion = this.options.store.completeDeliveryWithReport({
+                deliveryId: claimed.deliveryId,
+                eventName: claimed.eventName,
+                payloadDigest: claimed.payloadDigest,
+                claimToken: claimed.claimToken,
+                reportJson,
+                completedAt: this.options.clock().toISOString(),
+            });
+            if (completion.outcome !== "completed") {
+                throw new Error(`delivery report was not committed: ${completion.outcome}`);
+            }
         } catch (error) {
             this.options.store.releaseDelivery(claimed.deliveryId, claimed.claimToken);
             throw error;
         }
-        this.options.store.completeDelivery(
-            claimed.deliveryId,
-            claimed.claimToken,
-            this.options.clock().toISOString(),
-        );
+
+        try {
+            this.options.reports.record(record, reportJson);
+        } catch (recordError) {
+            try {
+                this.options.reports.rebuild(this.options.store.deliveryReports());
+            } catch (rebuildError) {
+                try {
+                    this.options.onProjectionFailure(
+                        new AggregateError(
+                            [recordError, rebuildError],
+                            "report projection failed and its canonical replay did not complete",
+                        ),
+                    );
+                } catch {
+                    // Operator reporting cannot turn a committed delivery into queue backpressure.
+                }
+            }
+        }
         return true;
     }
 
@@ -87,8 +120,8 @@ export class Processor {
         return this.draining;
     }
 
-    /** One delivery, stations 4–12, in reading order. */
-    private async process(claimed: ClaimedDelivery): Promise<void> {
+    /** Build one delivery's canonical record, stations 4–11 in reading order. */
+    private async process(claimed: ClaimedDelivery): Promise<ShellRecord> {
         const config = await this.loadConfig();
         // One instant serves as the record's `decidedAt` AND the gates'
         // clock, so the journal never disagrees with the decision it holds.
@@ -98,21 +131,20 @@ export class Processor {
         if (!config.result.ok) {
             // Fail closed and COMPLETE: redelivering cannot fix a broken
             // config — the fixed file arrives as its own future delivery.
-            this.options.reports.record({
+            return {
                 kind: "configRejected",
                 ...identity,
                 errors: config.result.errors,
-            });
-            return;
+            };
         }
 
         const decision = await this.decideOn(claimed, config.result.config, decidedAt);
-        this.options.reports.record({
+        return {
             kind: "decision",
             ...identity,
             report: decision.report,
             approved: decision.approved,
-        });
+        };
     }
 
     private claimNext(): ClaimedDelivery | undefined {

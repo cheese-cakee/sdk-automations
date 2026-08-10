@@ -1,17 +1,15 @@
 /**
  * The owned operational store — `design/operations/storage-decision.md`
  * made real, with the exact crash semantics protocol 6.5 demonstrated.
- * **Ratification pending** under the stage-four review. Durable webhook
- * intake extends the original GUID-only `seen_delivery` record so an
- * acknowledged delivery can never exist without retrievable work.
+ * **Ratification pending** under the stage-four review. schema.ts owns
+ * recognition and migration; this file owns operational transitions.
  *
  * Design rules carried over from the evidence:
  *
- * - Every state transition is a synchronous SQLite statement. Delivery
- *   acceptance wraps its insert and duplicate classification in one
- *   synchronous transaction, so a returned result is committed before
- *   the caller can acknowledge it.
- * - The tables are independent: no foreign keys and no joins.
+ * - Delivery acceptance and report completion use explicit synchronous
+ *   transactions, so returned outcomes describe committed rows.
+ * - Tables have no foreign keys. Report completion deliberately changes
+ *   the delivery and its report together under one write lock.
  * - The journal alone cannot disambiguate a sent-but-unconfirmed write
  *   (`sentUnknown`) — the caller must resolve it against GitHub state
  *   before retrying, per the recovery loop in the storage decision.
@@ -20,9 +18,17 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
+import {
+    assertSupportedStorageSchemaVersion,
+    migrateStorageSchema,
+    readStorageSchemaVersion,
+    type MigrationFaultPoint,
+} from "./schema.js";
 
+/** One delivery's durable queue state. */
 export type DeliveryState = "pending" | "processing" | "done";
 
+/** Verified bytes and identity offered at the durable intake boundary. */
 export interface AcceptDeliveryInput {
     readonly deliveryId: DeliveryGuid;
     readonly eventName: string;
@@ -30,6 +36,7 @@ export interface AcceptDeliveryInput {
     readonly receivedAt: string;
 }
 
+/** The accepted, duplicate, or conflicting intake classification. */
 export type AcceptDeliveryResult =
     | {
           readonly outcome: "accepted";
@@ -48,6 +55,7 @@ export type AcceptDeliveryResult =
           readonly payloadMismatch: boolean;
       };
 
+/** A delivery plus the token that currently owns its processing claim. */
 export interface ClaimedDelivery {
     readonly deliveryId: DeliveryGuid;
     readonly eventName: string;
@@ -59,12 +67,48 @@ export interface ClaimedDelivery {
     readonly claimToken: string;
 }
 
-export type CompleteDeliveryResult =
-    { readonly outcome: "completed" } | { readonly outcome: "notOwned" };
+/** Everything the store must bind to one report-and-completion commit. */
+export interface CompleteDeliveryWithReportInput {
+    readonly deliveryId: DeliveryGuid;
+    readonly eventName: string;
+    readonly payloadDigest: string;
+    readonly claimToken: string;
+    readonly reportJson: string;
+    readonly completedAt: string;
+}
 
+/** The closed result of attempting the report-and-completion commit. */
+export type CompleteDeliveryWithReportResult =
+    | { readonly outcome: "completed" }
+    | { readonly outcome: "alreadyCompleted" }
+    | { readonly outcome: "notOwned" }
+    | { readonly outcome: "identityMismatch" }
+    | { readonly outcome: "reportConflict" };
+
+/** One canonical report in deterministic projection-replay order. */
+export interface CanonicalDeliveryReport {
+    readonly deliveryId: DeliveryGuid;
+    readonly reportJson: string;
+    readonly completedAt: string;
+}
+
+/** A deliberate interruption point in schema or delivery durability work. */
+export type StoreFaultPoint =
+    | MigrationFaultPoint
+    | "finalize:reportPersisted"
+    | "finalize:deliveryCompleted"
+    | "finalize:committed";
+
+/** Optional dependencies for deterministic durability fault injection. */
+export interface StoreOptions {
+    readonly injectFault?: (point: StoreFaultPoint) => void;
+}
+
+/** Whether the supplied token released its delivery claim. */
 export type ReleaseDeliveryResult =
     { readonly outcome: "released" } | { readonly outcome: "notOwned" };
 
+/** The recovery classification derived from an effect's latest journal row. */
 export type EffectState =
     | { readonly state: "neverStarted" }
     | {
@@ -91,6 +135,7 @@ export type EffectState =
           readonly revision: string;
       };
 
+/** Clock-triggered work before or after ownership is attached. */
 export interface ScheduleRow {
     readonly scheduleId: string;
     readonly dueAt: string;
@@ -153,6 +198,22 @@ function assertPayload(value: Uint8Array): void {
     }
 }
 
+function assertPayloadDigest(value: string): void {
+    if (value.length !== 64 || !/^[a-f0-9]+$/.test(value)) {
+        throw new TypeError("payloadDigest must be a lowercase SHA-256 digest");
+    }
+}
+
+function assertReportJson(value: string): void {
+    let parsed: unknown = null;
+    try {
+        parsed = JSON.parse(value);
+    } catch {}
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new TypeError("reportJson must be a JSON object");
+    }
+}
+
 function payloadDigest(payload: Uint8Array): string {
     return createHash("sha256").update(payload).digest("hex");
 }
@@ -172,12 +233,35 @@ interface ClaimedDeliveryRow {
     readonly claim_token: string;
 }
 
+interface DeliveryFinalizationRow {
+    readonly event_name: string;
+    readonly payload_digest: string;
+    readonly state: DeliveryState;
+    readonly claim_token: string | null;
+}
+
+interface StoredReportRow {
+    readonly claim_token: string;
+    readonly report_json: string;
+}
+
+interface CanonicalDeliveryReportRow {
+    readonly delivery_id: string;
+    readonly report_json: string;
+    readonly completed_at: string;
+}
+
+/** The synchronous durable operational-state boundary. */
 export class Store {
     private readonly db: DatabaseSync;
+    private readonly injectFault: (point: StoreFaultPoint) => void;
 
-    constructor(path: string) {
+    constructor(path: string, options: StoreOptions = {}) {
         this.db = new DatabaseSync(path);
+        this.injectFault = options.injectFault ?? (() => {});
         try {
+            const schemaVersion = readStorageSchemaVersion(this.db);
+            assertSupportedStorageSchemaVersion(schemaVersion);
             // These two pragmas ARE the crash model — set explicitly,
             // not inherited as defaults. DELETE-mode journal +
             // synchronous FULL is what makes "everything before the
@@ -188,70 +272,7 @@ export class Store {
                 PRAGMA journal_mode = DELETE;
                 PRAGMA synchronous = FULL;
             `);
-            this.db.exec(`
-            CREATE TABLE IF NOT EXISTS seen_delivery (
-                delivery_id   TEXT PRIMARY KEY,
-                event_name    TEXT NOT NULL,
-                payload       BLOB,
-                payload_digest TEXT NOT NULL,
-                received_at   TEXT NOT NULL,
-                state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
-                claim_worker  TEXT,
-                claim_token   TEXT,
-                claimed_at    TEXT,
-                completed_at  TEXT,
-                CHECK (
-                    (state = 'pending' AND payload IS NOT NULL
-                        AND claim_worker IS NULL AND claim_token IS NULL
-                        AND claimed_at IS NULL AND completed_at IS NULL)
-                    OR
-                    (state = 'processing' AND payload IS NOT NULL
-                        AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
-                        AND claimed_at IS NOT NULL AND completed_at IS NULL)
-                    OR
-                    (state = 'done' AND payload IS NULL
-                        AND claim_worker IS NULL AND claim_token IS NULL
-                        AND claimed_at IS NULL AND completed_at IS NOT NULL)
-                )
-            );
-        `);
-            this.assertDeliverySchema();
-            this.db.exec(`
-            CREATE TABLE IF NOT EXISTS effect_journal (
-                effect_id TEXT NOT NULL,
-                call_seq  INTEGER NOT NULL,
-                intent    TEXT NOT NULL,
-                status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-                at        TEXT NOT NULL,
-                attempt   INTEGER NOT NULL,
-                revision  TEXT NOT NULL,
-                PRIMARY KEY (effect_id, call_seq)
-            );
-            CREATE TABLE IF NOT EXISTS effect_claim (
-                effect_id TEXT PRIMARY KEY,
-                worker    TEXT NOT NULL,
-                at        TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS schedule (
-                schedule_id TEXT PRIMARY KEY,
-                due_at      TEXT NOT NULL,
-                effect      TEXT NOT NULL,
-                status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
-                claimed_at  TEXT,
-                claim_token TEXT
-            );
-        `);
-            this.db.exec(`
-                -- The journal has no retention policy yet (D43), so the
-                -- sweep's openIntents scan must not grow with all history
-                -- ever: this partial index keeps it O(open intents). The
-                -- schedule scans stay unindexed deliberately — that table
-                -- is bounded by live schedules.
-                CREATE INDEX IF NOT EXISTS open_intents
-                    ON effect_journal(at) WHERE status = 'sent';
-                CREATE INDEX IF NOT EXISTS delivery_work
-                    ON seen_delivery(state, received_at, delivery_id);
-            `);
+            migrateStorageSchema(this.db, this.injectFault);
         } catch (error) {
             try {
                 this.db.close();
@@ -259,30 +280,6 @@ export class Store {
                 // Preserve the initialization error.
             }
             throw error;
-        }
-    }
-
-    private assertDeliverySchema(): void {
-        const columns = this.db.prepare("PRAGMA table_info(seen_delivery)").all() as {
-            name: string;
-        }[];
-        const names = new Set(columns.map((column) => column.name));
-        const required = [
-            "delivery_id",
-            "event_name",
-            "payload",
-            "payload_digest",
-            "received_at",
-            "state",
-            "claim_worker",
-            "claim_token",
-            "claimed_at",
-            "completed_at",
-        ];
-        if (required.some((column) => !names.has(column))) {
-            throw new Error(
-                "incompatible pre-ratification seen_delivery schema; use a fresh store database",
-            );
         }
     }
 
@@ -334,10 +331,7 @@ export class Store {
                         WHERE delivery_id = ?
                     `,
                     )
-                    .get(input.deliveryId) as StoredDeliveryIdentity | undefined;
-                if (existing === undefined) {
-                    throw new Error("delivery conflict lookup did not find its durable row");
-                }
+                    .get(input.deliveryId) as unknown as StoredDeliveryIdentity;
 
                 const eventNameMismatch = existing.event_name !== input.eventName;
                 const payloadMismatch = existing.payload_digest !== digest;
@@ -416,26 +410,129 @@ export class Store {
         };
     }
 
-    /** Complete only work still owned by this token, clearing payload bytes atomically. */
-    completeDelivery(
-        deliveryId: DeliveryGuid,
-        claimToken: string,
-        completedAt: string,
-    ): CompleteDeliveryResult {
-        assertDeliveryGuid(deliveryId);
-        assertNonEmpty(claimToken, "claimToken");
-        assertUtcInstant(completedAt, "completedAt");
-        const result = this.db
-            .prepare(
-                `
+    /** Persist one canonical report and complete only its current delivery claim. */
+    completeDeliveryWithReport(
+        input: CompleteDeliveryWithReportInput,
+    ): CompleteDeliveryWithReportResult {
+        assertDeliveryGuid(input.deliveryId);
+        assertNonEmpty(input.eventName, "eventName");
+        assertPayloadDigest(input.payloadDigest);
+        assertNonEmpty(input.claimToken, "claimToken");
+        assertReportJson(input.reportJson);
+        assertUtcInstant(input.completedAt, "completedAt");
+
+        this.db.exec("BEGIN IMMEDIATE");
+        try {
+            const delivery = this.db
+                .prepare(
+                    `
+                SELECT event_name, payload_digest, state, claim_token
+                FROM seen_delivery
+                WHERE delivery_id = ?
+            `,
+                )
+                .get(input.deliveryId) as DeliveryFinalizationRow | undefined;
+
+            if (
+                delivery === undefined ||
+                delivery.event_name !== input.eventName ||
+                delivery.payload_digest !== input.payloadDigest
+            ) {
+                this.db.exec("ROLLBACK");
+                return { outcome: "identityMismatch" };
+            }
+
+            const storedReport = this.db
+                .prepare(
+                    `
+                SELECT claim_token, report_json
+                FROM delivery_report
+                WHERE delivery_id = ?
+            `,
+                )
+                .get(input.deliveryId) as StoredReportRow | undefined;
+
+            if (delivery.state === "done") {
+                this.db.exec("ROLLBACK");
+                if (storedReport === undefined || storedReport.claim_token !== input.claimToken) {
+                    return { outcome: "notOwned" };
+                }
+                return storedReport.report_json === input.reportJson
+                    ? { outcome: "alreadyCompleted" }
+                    : { outcome: "reportConflict" };
+            }
+
+            if (delivery.claim_token !== input.claimToken) {
+                this.db.exec("ROLLBACK");
+                return { outcome: "notOwned" };
+            }
+            if (storedReport !== undefined) {
+                this.db.exec("ROLLBACK");
+                return { outcome: "reportConflict" };
+            }
+
+            this.db
+                .prepare(
+                    `
+                INSERT INTO delivery_report (
+                    delivery_id, claim_token, report_json, completed_at
+                ) VALUES (?, ?, ?, ?)
+            `,
+                )
+                .run(input.deliveryId, input.claimToken, input.reportJson, input.completedAt);
+            this.injectFault("finalize:reportPersisted");
+
+            const completed = this.db
+                .prepare(
+                    `
                 UPDATE seen_delivery
                 SET state = 'done', payload = NULL, claim_worker = NULL,
                     claim_token = NULL, claimed_at = NULL, completed_at = ?
-                WHERE delivery_id = ? AND state = 'processing' AND claim_token = ?
+                WHERE delivery_id = ? AND event_name = ? AND payload_digest = ?
+                  AND state = 'processing' AND claim_token = ?
+            `,
+                )
+                .run(
+                    input.completedAt,
+                    input.deliveryId,
+                    input.eventName,
+                    input.payloadDigest,
+                    input.claimToken,
+                );
+            if (completed.changes !== 1) {
+                throw new Error("delivery ownership changed under its write transaction");
+            }
+            this.injectFault("finalize:deliveryCompleted");
+
+            this.db.exec("COMMIT");
+            this.injectFault("finalize:committed");
+            return { outcome: "completed" };
+        } catch (error) {
+            try {
+                this.db.exec("ROLLBACK");
+            } catch {
+                // Preserve the operation's original failure.
+            }
+            throw error;
+        }
+    }
+
+    /** Read the canonical source for a complete operator-projection rebuild. */
+    deliveryReports(): CanonicalDeliveryReport[] {
+        const rows = this.db
+            .prepare(
+                `
+                SELECT delivery_id, report_json, completed_at
+                FROM delivery_report
+                ORDER BY completed_at, delivery_id
             `,
             )
-            .run(completedAt, deliveryId, claimToken);
-        return result.changes === 1 ? { outcome: "completed" } : { outcome: "notOwned" };
+            .all() as unknown as CanonicalDeliveryReportRow[];
+        return rows.map((row) => ({
+            deliveryId: row.delivery_id as DeliveryGuid,
+            reportJson: row.report_json,
+            completedAt: row.completed_at,
+        }));
     }
 
     /** Return only this token's in-flight work to the pending queue. */
@@ -481,8 +578,7 @@ export class Store {
      * after it. One upsert: a `done` row is immutable (acknowledged
      * history never regresses to `sent`), and re-declaring a still-open
      * call increments a durable `attempt` counter —
-     * FINDING(store-journal-attempts), D42. Pre-ratification store
-     * files are not migrated.
+     * FINDING(store-journal-attempts), D42.
      */
     intent(
         effectId: string,
@@ -716,7 +812,11 @@ export class Store {
                 RETURNING schedule_id, due_at, effect
             `,
             )
-            .all(claimedBefore) as { schedule_id: string; due_at: string; effect: string }[];
+            .all(claimedBefore) as {
+            schedule_id: string;
+            due_at: string;
+            effect: string;
+        }[];
         return rows.map((r) => ({
             scheduleId: r.schedule_id,
             dueAt: r.due_at,
@@ -746,14 +846,37 @@ export class Store {
      */
     pruneCompletedDeliveries(before: string): number {
         assertUtcInstant(before, "before");
-        return this.db
-            .prepare(
-                `
+        this.db.exec("BEGIN IMMEDIATE");
+        try {
+            this.db
+                .prepare(
+                    `
+                DELETE FROM delivery_report
+                WHERE delivery_id IN (
+                    SELECT delivery_id FROM seen_delivery
+                    WHERE state = 'done' AND completed_at <= ?
+                )
+            `,
+                )
+                .run(before);
+            const removed = this.db
+                .prepare(
+                    `
                 DELETE FROM seen_delivery
                 WHERE state = 'done' AND completed_at <= ?
             `,
-            )
-            .run(before).changes as number;
+                )
+                .run(before).changes as number;
+            this.db.exec("COMMIT");
+            return removed;
+        } catch (error) {
+            try {
+                this.db.exec("ROLLBACK");
+            } catch {
+                // Preserve the pruning failure.
+            }
+            throw error;
+        }
     }
 
     /**

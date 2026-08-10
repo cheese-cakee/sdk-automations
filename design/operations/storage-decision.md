@@ -50,16 +50,26 @@ mode: it duplicated the managed comment on the first attempt.
 
 ## The decision
 
-- **Minimum owned state:** a single-file SQLite store with four small
-  tables — seen delivery guids, effect intent/done journal, claims,
-  schedules. Nothing else. Every recovery in the grid needed it as
-  detector, deduper, or lock; nothing in the grid needed more of it.
+- **Minimum recovery state observed in protocol 6.5:** a single-file SQLite
+  store with four small tables — seen delivery GUIDs, effect intent/done
+  journal, claims, schedules. Every recovery in the grid needed it as a
+  detector, deduper, or lock; nothing in that grid needed more of it. D110
+  later adds `DELIVERY_REPORT` for a different proved boundary: committing a
+  canonical decision report with delivery completion.
 
   ```mermaid
   erDiagram
       SEEN_DELIVERY {
           string delivery_id PK "opaque string, ids exceed 2^53"
-          string at
+          string event_name
+          bytes payload "cleared on completion"
+          string payload_digest
+          string received_at
+          string state
+          string claim_worker
+          string claim_token
+          string claimed_at
+          string completed_at
       }
       EFFECT_JOURNAL {
           string effect_id PK
@@ -83,11 +93,19 @@ mode: it duplicated the managed comment on the first attempt.
           string claimed_at "stamped on claim; drives stuck-requeue - amendment D43"
           string claim_token "per-firing token; fences stale completion"
       }
+      DELIVERY_REPORT {
+          string delivery_id PK
+          string claim_token "token that committed completion"
+          string report_json "canonical shell record"
+          string completed_at
+      }
   ```
 
-  The tables are independent — no foreign keys, no joins; each is one
-  `INSERT` or primary-key lookup on its own hot path. `EFFECT_JOURNAL`
-  and `EFFECT_CLAIM` are the two the 6.5 harness exercised under
+  The tables have no foreign keys. Most hot paths remain one `INSERT` or
+  primary-key lookup. Delivery finalization is the intentional exception:
+  it verifies `SEEN_DELIVERY`, inserts `DELIVERY_REPORT`, and changes the
+  delivery to `done` inside one write transaction. `EFFECT_JOURNAL` and
+  `EFFECT_CLAIM` are the two the 6.5 harness exercised under
   crashes and races; `SEEN_DELIVERY` and `SCHEDULE` are decided here
   and land as stage-five exit-gate tests (dedup by guid, a due
   schedule firing exactly once across a restart).
@@ -110,8 +128,9 @@ mode: it duplicated the managed comment on the first attempt.
   - D27 → close: comment-metadata-as-WAL rejected on observed grounds
     (no pre-write record `#8`, no coverage `#25`, no CAS `#32`, write
     cost into an unsignaled secondary limit).
-  - Q15 → answered: the minimum is the four-table single-file store
-    above.
+  - Q15 → answered: the recovery minimum is the original four-table
+    single-file store above. The current owned schema is five tables after
+    D110's separate report-completion evidence.
 - **Approving review:** _(names, date — per the ratification rule)_
 
 ## Risk-review amendment (2026-07-28)
@@ -122,3 +141,41 @@ completion time. It cannot fence a GitHub request already in flight when
 an effect lease is stolen. D41 is therefore reopened: the serialized
 crash grid remains useful restart evidence, but it is not evidence that
 live lease takeover preserves a non-idempotent exactly-once outcome.
+
+## Durable report and schema amendment (2026-08-09)
+
+The shell formerly appended a report to JSONL and then separately completed
+the delivery. A crash between those writes left a pending delivery beside an
+already-visible report, so retry appended a duplicate. D110 moves the canonical
+record into `DELIVERY_REPORT` and makes `completeDeliveryWithReport` the only
+public completion operation. Under one `BEGIN IMMEDIATE` transaction it verifies
+the delivery GUID, event name, payload digest, processing state, and current
+claim token; inserts exactly one report row keyed by delivery GUID; changes the
+delivery to `done`; and clears the payload. The report row retains the committing
+token, so retrying the same token and exact JSON returns `alreadyCompleted`.
+Released, stale, or stolen tokens return `notOwned`; the same token with changed
+JSON returns `reportConflict`. JSONL is written only after commit as a derived
+operator projection. An append failure replays every canonical report in stable
+completion-time and delivery-ID order; a persistent projection failure is
+reported without releasing the committed claim or stopping the delivery drain.
+Startup performs the same replay before accepting new work.
+
+SQLite `PRAGMA user_version` is the schema contract, currently version 4. A
+newer declared version is refused before database configuration or migration.
+Version-zero databases are fingerprinted against the exact owned SQLite objects
+from the three real schemas previously created here. Table and index SQL is
+normalized only for whitespace, preserving types, nullability, primary
+keys, checks, and partial-index predicates; extra triggers, views, tables, or
+indexes are refused. Migrations run in numeric order with their version updates
+inside one write transaction, so an interruption leaves either the complete old
+schema or version 4 and reopening is repeatable. Unknown unversioned shapes fail
+closed.
+
+Migration cannot invent missing facts. Identity-only delivery rows become
+completed legacy identities whose unknown event and digest force a conflict on
+redelivery. Original journal rows receive attempt 1 and the non-current revision
+`legacy:unknown`; original running schedules, which had no completion token,
+return to pending. Deliveries already done before version 4 have no fabricated
+report. The one-report guarantee therefore applies exactly to completions made
+through the version-4 operation. Retention deletes a completed delivery and its
+report in one transaction.
