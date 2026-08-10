@@ -109,6 +109,37 @@ for serialized crash-and-restart recovery, not for live lease overlap. Of the 64
 trigger both requested crashes, 30 trigger one, and 16 complete before either scheduled invocation; the
 suite now asserts that distribution instead of describing all 64 as exercised crash pairs.
 
+### Load-bearing architecture rules
+
+This is the short index. The linked decisions hold the detail, evidence, and limits.
+
+Enforced by the implementation today:
+
+- Core stays pure: it owns decisions and no I/O ([capability contract](modules/contract.md#2-runtime-boundary)).
+- Every fact has one owner; consumers derive or validate it rather than create a second source of truth
+  ([D62, D65, D73, and D76](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
+- Uncertainty fails closed ([write rules](core/safety.md#2-rules-for-every-write)).
+- Store-owned state transitions are atomic
+  ([storage decision](operations/storage-decision.md#the-decision)).
+- Executor retries begin with observation and stop at the adopted attempt bound
+  ([recovery loop](operations/storage-decision.md#the-recovery-loop-the-grid-decided) and
+  [D44](decisions.md#adoption-record--2026-07-25)).
+
+Required before active mode, not current runtime guarantees:
+
+- Every GitHub write enters executor recovery; active writes are not wired yet
+  ([recovery-loop decision](operations/storage-decision.md#the-recovery-loop-the-grid-decided)).
+- Report persistence and delivery completion become one atomic durable transition
+  ([D93](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
+- Persisted contracts are versioned and reject unsupported revisions; configuration has migration
+  requirements, while SQLite schema versioning remains undecided
+  ([configuration migration](config/schema.md#11-migration-and-rollback)).
+- Webhook queue capacity is bounded; executor retries already are
+  ([platform ownership](#3-what-the-shared-platform-owns)).
+- Activation has sandbox and rollback evidence
+  ([P8](decisions.md#supported-product-principles) and
+  [D22](decisions.md#3-earlier-design-proposals-and-their-current-status)).
+
 ## 3. What the shared platform owns
 
 The shared platform may own the following technical responsibilities.

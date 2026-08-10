@@ -10,12 +10,7 @@
 // ─── Vocabulary ──────────────────────────────────────────────────────
 
 /** The blast-radius ladder a repository chooses from, least to most. */
-export const REPOSITORY_MODES = [
-    "disabled",
-    "observe",
-    "dry-run",
-    "active",
-] as const;
+export const REPOSITORY_MODES = ["disabled", "observe", "dry-run", "active"] as const;
 
 /** Derived from the array, so a new mode needs no edit anywhere else (D76). */
 export type RepositoryMode = (typeof REPOSITORY_MODES)[number];

@@ -31,10 +31,7 @@ interface PostOverrides {
 }
 
 /** One request against a real listening socket; the server lives per call. */
-async function post(
-    handler: RequestHandler,
-    overrides: PostOverrides = {},
-): Promise<number> {
+async function post(handler: RequestHandler, overrides: PostOverrides = {}): Promise<number> {
     const server = createServer(handler);
     await new Promise<void>((resolve) => server.listen(0, resolve));
     try {
@@ -42,9 +39,7 @@ async function post(
         const body = Buffer.from(overrides.body ?? BODY);
         const headers: Record<string, string> = {};
         const signature =
-            overrides.signature === undefined
-                ? signBody(SECRET, body)
-                : overrides.signature;
+            overrides.signature === undefined ? signBody(SECRET, body) : overrides.signature;
         if (signature !== null) headers[SIGNATURE_HEADER] = signature;
         const guid = overrides.guid === undefined ? GUID : overrides.guid;
         if (guid !== null) headers["x-github-delivery"] = guid;
@@ -54,19 +49,22 @@ async function post(
         if (method !== "GET") headers["content-length"] = String(body.length);
         return await new Promise<number>((resolve, reject) => {
             let settled = false;
-            const request = httpRequest({
-                host: "127.0.0.1",
-                port,
-                path: "/",
-                method,
-                headers,
-            }, (response) => {
-                response.resume();
-                response.on("end", () => {
-                    settled = true;
-                    resolve(response.statusCode ?? 0);
-                });
-            });
+            const request = httpRequest(
+                {
+                    host: "127.0.0.1",
+                    port,
+                    path: "/",
+                    method,
+                    headers,
+                },
+                (response) => {
+                    response.resume();
+                    response.on("end", () => {
+                        settled = true;
+                        resolve(response.statusCode ?? 0);
+                    });
+                },
+            );
             request.on("error", (error) => {
                 if (!settled) reject(error);
             });
@@ -122,9 +120,7 @@ function recordingAccept(outcome: AcceptOutcome = "accepted") {
     };
 }
 
-async function interruptRealRequest(
-    mode: "client-abort" | "server-error",
-): Promise<number> {
+async function interruptRealRequest(mode: "client-abort" | "server-error"): Promise<number> {
     let acceptCalls = 0;
     let requestSeen!: () => void;
     const sawRequest = new Promise<void>((resolve) => {
@@ -164,10 +160,7 @@ async function interruptRealRequest(
         await sawRequest;
         if (mode === "client-abort") socket.destroy();
         await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(
-                () => reject(new Error("receiver did not settle")),
-                1_000,
-            );
+            const timer = setTimeout(() => reject(new Error("receiver did not settle")), 1_000);
             void handlerCompletion.then(() => {
                 clearTimeout(timer);
                 resolve();
@@ -206,9 +199,9 @@ describe("acceptance comes before the acknowledgement", () => {
     it("a verified delivery is accepted with its exact bytes, then 202", async () => {
         const { calls, accept } = recordingAccept();
         const raw = Buffer.concat([
-            Buffer.from("{\n  \"action\": \"opened\", \"bytes\": \"", "utf8"),
+            Buffer.from('{\n  "action": "opened", "bytes": "', "utf8"),
             Buffer.from([0x00, 0xff, 0x80]),
-            Buffer.from("\"\n}", "utf8"),
+            Buffer.from('"\n}', "utf8"),
         ]);
         const status = await post(createReceiver({ secret: SECRET, accept }), {
             body: raw,
@@ -293,9 +286,7 @@ describe("acceptance comes before the acknowledgement", () => {
                     },
                     (response) => {
                         response.resume();
-                        response.on("end", () =>
-                            resolve(response.statusCode ?? 0),
-                        );
+                        response.on("end", () => resolve(response.statusCode ?? 0));
                     },
                 );
                 request.on("error", reject);
@@ -422,10 +413,7 @@ describe("malformed requests get truthful statuses", () => {
             [header]: [...value],
         };
         const recorded = responseRecorder();
-        const completion = createReceiver({ secret: SECRET, accept })(
-            request,
-            recorded.response,
-        );
+        const completion = createReceiver({ secret: SECRET, accept })(request, recorded.response);
         request.end(BODY);
         await completion;
         expect(recorded.status()).toBe(expectedStatus);

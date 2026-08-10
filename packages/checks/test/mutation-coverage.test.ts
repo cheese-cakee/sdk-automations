@@ -7,12 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import {
-    normalizeRepoPath,
-    repoRoot,
-    trackedFiles,
-    workspacePackages,
-} from "./helpers.js";
+import { normalizeRepoPath, repoRoot, trackedFiles, workspacePackages } from "./helpers.js";
 
 interface StrykerConfig {
     readonly mutate: readonly string[];
@@ -51,14 +46,9 @@ function globToRegExp(glob: string): RegExp {
     return new RegExp(`^${body}$`);
 }
 
-function unmatchedSources(
-    sources: readonly string[],
-    mutate: readonly string[],
-): string[] {
+function unmatchedSources(sources: readonly string[], mutate: readonly string[]): string[] {
     const patterns = mutate.map(globToRegExp);
-    return sources.filter(
-        (source) => !patterns.some((pattern) => pattern.test(source)),
-    );
+    return sources.filter((source) => !patterns.some((pattern) => pattern.test(source)));
 }
 
 function matrixDrift(
@@ -90,11 +80,14 @@ const configuredPackages: ConfiguredPackage[] = workspacePackages()
     });
 
 const ci = readFileSync(join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
-const mutationJob = /\n  mutation:\s*\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\s*\n|$)/.exec(ci)?.[1] ?? "";
-const mutationMatrix = /\bpackage:\s*\[([^\]]+)\]/.exec(mutationJob)?.[1]
-    ?.split(",")
-    .map((name) => name.trim())
-    .filter(Boolean) ?? [];
+const mutationJob =
+    /\n  mutation:\s*\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\s*\n|$)/.exec(ci)?.[1] ?? "";
+const mutationMatrix =
+    /\bpackage:\s*\[([^\]]+)\]/
+        .exec(mutationJob)?.[1]
+        ?.split(",")
+        .map((name) => name.trim())
+        .filter(Boolean) ?? [];
 
 describe("mutation policy stays complete across packages and CI", () => {
     it("discovers every configured workspace package", () => {
@@ -110,8 +103,9 @@ describe("mutation policy stays complete across packages and CI", () => {
         for (const subject of configuredPackages) {
             expect(subject.config.mutate, subject.path).toEqual(["src/**/*.ts"]);
             expect(subject.sources.length, subject.path).toBeGreaterThan(0);
-            expect(unmatchedSources(subject.sources, subject.config.mutate), subject.path)
-                .toEqual([]);
+            expect(unmatchedSources(subject.sources, subject.config.mutate), subject.path).toEqual(
+                [],
+            );
         }
     });
 
@@ -126,10 +120,12 @@ describe("mutation policy stays complete across packages and CI", () => {
         expect(mutationJob).toContain(
             "pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run",
         );
-        expect(matrixDrift(
-            configuredPackages.map(({ name }) => name),
-            mutationMatrix,
-        )).toEqual({ missing: [], extra: [] });
+        expect(
+            matrixDrift(
+                configuredPackages.map(({ name }) => name),
+                mutationMatrix,
+            ),
+        ).toEqual({ missing: [], extra: [] });
     });
 
     it("proves misspelled scopes and CI paths fail in both directions", () => {
@@ -137,13 +133,12 @@ describe("mutation policy stays complete across packages and CI", () => {
         expect(recursive.test("src/store.ts")).toBe(true);
         expect(recursive.test("src/github/deep/file.ts")).toBe(true);
         expect(recursive.test("test/store.test.ts")).toBe(false);
-        expect(unmatchedSources(
-            ["src/store.ts", "src/nested/file.ts"],
-            ["src/*.ts"],
-        )).toEqual(["src/nested/file.ts"]);
-        expect(matrixDrift(
-            ["core", "shell", "store"],
-            ["core", "shell", "stroe"],
-        )).toEqual({ missing: ["store"], extra: ["stroe"] });
+        expect(unmatchedSources(["src/store.ts", "src/nested/file.ts"], ["src/*.ts"])).toEqual([
+            "src/nested/file.ts",
+        ]);
+        expect(matrixDrift(["core", "shell", "store"], ["core", "shell", "stroe"])).toEqual({
+            missing: ["store"],
+            extra: ["stroe"],
+        });
     });
 });

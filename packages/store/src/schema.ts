@@ -228,10 +228,7 @@ function schemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): 
         schemaObjects(db).map((object) => [object.name, normalizeSql(object.sql)]),
     );
     const expected = Object.fromEntries(
-        Object.entries(SCHEMA_BY_VERSION[version]).map(([name, sql]) => [
-            name,
-            normalizeSql(sql),
-        ]),
+        Object.entries(SCHEMA_BY_VERSION[version]).map(([name, sql]) => [name, normalizeSql(sql)]),
     );
     return isDeepStrictEqual(actual, expected);
 }

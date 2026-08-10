@@ -30,12 +30,7 @@ import {
     type RepositoryConfig,
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
-import type {
-    AdapterCommand,
-    ConfiguredLabel,
-    EffectPlan,
-    PlannedCall,
-} from "./recovery.js";
+import type { AdapterCommand, ConfiguredLabel, EffectPlan, PlannedCall } from "./recovery.js";
 
 export const PLANNER_REFUSAL_CODES = [
     "duplicateIdempotencyKey",
@@ -76,10 +71,7 @@ type CommandTranslation =
     | { readonly ok: true; readonly command: AdapterCommand }
     | { readonly ok: false; readonly missingMeaning: string };
 
-function commandFor(
-    intent: AnyIntent,
-    config: RepositoryConfig,
-): CommandTranslation {
+function commandFor(intent: AnyIntent, config: RepositoryConfig): CommandTranslation {
     const common = {
         repository: { ...intent.repository },
         item: { ...intent.item },
@@ -181,9 +173,7 @@ export function planApproved(
     if (mixed) {
         const targets = [
             ...new Set(
-                approved.map(
-                    (intent) => `${intent.repository.owner}/${intent.repository.repo}`,
-                ),
+                approved.map((intent) => `${intent.repository.owner}/${intent.repository.repo}`),
             ),
         ].join(", ");
         for (const intent of approved) {
@@ -239,9 +229,7 @@ export function planApproved(
  * mis-scoped batch) or a configuration gap (an unmapped meaning) that a
  * human must resolve — nothing here is the system working as intended.
  */
-export function plannerFindings(
-    refusals: readonly PlannerRefusal[],
-): readonly Finding[] {
+export function plannerFindings(refusals: readonly PlannerRefusal[]): readonly Finding[] {
     return refusals.map((refusal) =>
         finding(
             "problem",

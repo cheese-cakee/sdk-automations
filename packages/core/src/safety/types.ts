@@ -23,7 +23,6 @@ export type ActionClass =
     | "clockTriggeredDestructive"
     | "immediatePreventive";
 
-
 /**
  * What a capability must supply with every write request (safety.md §2.3).
  *

@@ -28,9 +28,7 @@ import type {
 } from "./types.js";
 
 /** The one check that runs before everything, including observations (D39). */
-export function evaluatePreflight(
-    context: WriteContext,
-): SafetyVerdict | null {
+export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
     // Before the observation short-circuit: "stop" stops reads too (D39).
     if (context.killSwitchActive) {
         return {
@@ -104,10 +102,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
         "itemBlocked",
         (f) =>
             isBlocked(f.context.world.observedMeanings)
-                ? refuse(
-                      "itemBlocked",
-                      "the item is blocked — capability writes are paused (§5)",
-                  )
+                ? refuse("itemBlocked", "the item is blocked — capability writes are paused (§5)")
                 : null,
     ],
     [
@@ -152,8 +147,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
         (f) =>
             f.context.latestHumanChangeAt !== null &&
             f.context.latestHumanChangeAt !== "unknown" &&
-            f.context.latestHumanChangeAt.getTime() >=
-                f.request.causeObservedAt.getTime()
+            f.context.latestHumanChangeAt.getTime() >= f.request.causeObservedAt.getTime()
                 ? refuse(
                       "newerHumanChange",
                       "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",
@@ -190,12 +184,8 @@ export function evaluateGeneralRulesAfterPreflight(
         config,
         context,
         // Derived, never supplied: the reviewed file is the only source (D73).
-        capabilityEnabled:
-            config.capabilities[request.capability]?.enabled === true,
-        missing: missingPermissions(
-            request.requiredPermissions,
-            context.installationGrants,
-        ),
+        capabilityEnabled: config.capabilities[request.capability]?.enabled === true,
+        missing: missingPermissions(request.requiredPermissions, context.installationGrants),
     };
     for (const [, rule] of GENERAL_RULES) {
         const verdict = rule(facts);

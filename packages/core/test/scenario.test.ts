@@ -111,10 +111,11 @@ describe("the assignment story, end to end in pure logic", () => {
             blocked: false,
             closedBy: "closedByHuman",
         };
-        const stale = applyIssueTransition(
-            closed,
-            { from: "inProgress", to: "ready", cause: "reclaimCompleted" }
-        );
+        const stale = applyIssueTransition(closed, {
+            from: "inProgress",
+            to: "ready",
+            cause: "reclaimCompleted",
+        });
         expect(stale.verdict).toMatchObject({ allowed: false, code: "itemClosed" });
 
         // And even if the state machine were bypassed, safety refuses

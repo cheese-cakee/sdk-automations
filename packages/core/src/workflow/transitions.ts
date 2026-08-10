@@ -64,7 +64,6 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: "readyToMerge", to: null, causes: ["humanClosed", "merged"] },
 ];
 
-
 /** Both tables as bare from/to pairs — what the doc-drift check compares. */
 export const PROFILE_EDGES: {
     readonly [K in EntityKind]: readonly {
@@ -112,9 +111,7 @@ function evaluate<M, C extends TransitionCause>(
     edges: readonly Edge<M, C>[],
     request: TransitionRequest<M, C>,
 ): TransitionVerdict {
-    const edge = edges.find(
-        (e) => e.from === request.from && e.to === request.to,
-    );
+    const edge = edges.find((e) => e.from === request.from && e.to === request.to);
     if (!edge) {
         return {
             allowed: false,
@@ -140,8 +137,6 @@ export function canTransitionIssue(
 }
 
 /** Can a pull request move `from` → `to` for `cause`, per the profile? Pure. */
-export function canTransitionPr(
-    request: TransitionRequest<PrMeaning, PrCause>,
-): TransitionVerdict {
+export function canTransitionPr(request: TransitionRequest<PrMeaning, PrCause>): TransitionVerdict {
     return evaluate(PR_EDGES, request);
 }
