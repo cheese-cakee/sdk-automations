@@ -1,32 +1,38 @@
 /**
  * The vertical slice, closed: one delivery GitHub actually sent travels
  * webhook-payload → normalize → capability → screen → safety → report,
- * entirely in pure logic. Zero network, zero mocks of GitHub — the payload
- * is `fixtures/issues.opened.json` from the 2026-08-07 capture session.
+ * entirely in pure logic, through `decide()` (D92). Zero network, zero
+ * mocks of GitHub — the payload is `fixtures/issues.opened.json` from the
+ * 2026-08-07 capture session.
  *
  * `scenario.test.ts` walks the same modules from a synthetic observation;
  * this file's whole point is that NOTHING here is synthetic until the
  * capability speaks. When GitHub changes shape, this is the test that
- * notices first — and when a stage's assumption about real payloads is
- * wrong, this is where the stages meet.
+ * notices first.
+ *
+ * The parity test is the one place the pipeline is still hand-wired: it
+ * builds the expected report from the same primitives `decide()` composes
+ * — `screenIntent`, `evaluateWrite`, `explanationFinding`, `verdictFinding`
+ * — on the identical intent, so that block is the specification `decide()`
+ * is held to, not duplicated plumbing (D92 phase 2's parity gate).
  */
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+    declareCapability,
     decide,
-    deriveIdempotencyKey,
     evaluateWrite,
+    explanationFinding,
+    intentFactoryFor,
     normalizeDelivery,
     parseConfig,
-    explanationFinding,
     problems,
     screenIntent,
     verdictFinding,
-    type AnyIntent,
-    type CapabilityDeclaration,
-    type Report,
+    type DecideExternals,
+    type EngineCapability,
 } from "../src/index.js";
 import { assertedWorld } from "../src/safety/world.js";
 
@@ -37,8 +43,7 @@ const payload = JSON.parse(
     ),
 );
 
-/** A minimal triage capability — the one synthetic participant. */
-const triage: CapabilityDeclaration = {
+const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: [],
@@ -58,97 +63,108 @@ const triage: CapabilityDeclaration = {
         crossItemCoordination: false,
         externalDelivery: false,
     },
+});
+
+function configIn(mode: "active" | "dry-run") {
+    const result = parseConfig(
+        {
+            schemaVersion: 1,
+            mode,
+            capabilities: { triage: { enabled: true } },
+            mappings: { labels: { awaitingTriage: "status: triage" } },
+        },
+        { revision: "rev-slice-1", knownCapabilities: ["triage"] },
+    );
+    if (!result.ok) throw new Error("config must parse");
+    return result.config;
+}
+
+const externals: DecideExternals = {
+    now: new Date("2026-08-07T02:00:00Z"),
+    killSwitchActive: false,
+    installationGrants: ["issues:write"],
+    latestHumanChangeAt: () => null,
 };
 
-const configResult = parseConfig(
-    {
-        schemaVersion: 1,
-        mode: "active",
-        capabilities: { triage: { enabled: true } },
-        mappings: { labels: { awaitingTriage: "status: triage" } },
-    },
-    { revision: "rev-slice-1", knownCapabilities: ["triage"] },
-);
-if (!configResult.ok) throw new Error("config must parse");
-const config = configResult.config;
-
 describe("one real delivery, end to end", () => {
-    // ── normalize: GitHub's wire format dies here ──
+    const config = configIn("active");
     const normalized = normalizeDelivery("issues", payload, config);
-    it("the real payload normalizes", () => {
-        expect(normalized.kind).toBe("observation");
-    });
-    if (normalized.kind !== "observation") throw new Error("unreachable");
+    if (normalized.kind !== "observation") throw new Error("fixture must normalize");
     const observation = normalized.observation;
 
-    // ── the capability's decision, from the projection alone ──
-    if (observation.position.kind !== "position") throw new Error("unreachable");
-    const state = observation.position.state;
-
-    const intent: AnyIntent = {
-        capability: "triage",
+    /** The capability's one decision, stated once: triage this issue. */
+    const keyed = intentFactoryFor(declaration, {
         repository: observation.repository,
         item: observation.item,
+        observedAt: observation.observedAt,
+    })({
         operation: "applyMappedLabel",
         actionClass: "reversibleStateChange",
-        expected: {
-            meaningsPresent: [],
-            meaningsAbsent: ["awaitingTriage"],
-            closed: false,
-        },
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-        cause: { cause: "issueWithoutPosition", observedAt: observation.observedAt },
-        explanation: {
-            capability: "triage",
+        cause: "issueWithoutPosition",
+        expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
+        explain: {
             summary: "New issue placed in triage.",
             detail: ["no mapped position on arrival"],
         },
-        idempotencyKey: "",
+    });
+
+    const triage: EngineCapability = {
+        declaration: declaration as never,
+        async evaluate() {
+            return [keyed];
+        },
     };
-    const keyed = { ...intent, idempotencyKey: deriveIdempotencyKey(intent) };
 
-    it("the observation invites exactly this intent", () => {
-        expect(state).toEqual({ meaning: null, blocked: false, closedBy: null });
+    const send = (mode: "active" | "dry-run") =>
+        decide(
+            { kind: "delivery", repository: observation.repository, event: "issues", payload },
+            configIn(mode),
+            [triage],
+            externals,
+        );
+
+    it("triages the unpositioned issue and closes clean: nothing needs a human", async () => {
+        const decision = await send("active");
+        expect(decision.approved).toEqual([keyed]);
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
+        expect(problems(decision.report)).toEqual([]);
     });
 
-    // ── screen: declaration, floors, and the map (D78/D90) ──
-    const screen = screenIntent(keyed, triage as never);
-    it("the screen passes the documented [*] → awaitingTriage edge", () => {
+    it("dry-run tells the same story without applying it", async () => {
+        const decision = await send("dry-run");
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings.map((f) => `${f.code}:${f.severity}`)).toEqual([
+            "capabilityExplained:info",
+            "modeRecordsOnly:notice",
+        ]);
+    });
+
+    it("parity: decide() equals the hand-wired report, finding for finding", async () => {
+        const screen = screenIntent(keyed, declaration);
         expect(screen).toEqual({ ok: true });
-    });
 
-    // ── safety: the write gate, on facts derived from the same observation ──
-    const verdict = evaluateWrite(
-        {
-            capability: "triage",
-            actionClass: "reversibleStateChange",
-            requiredPermissions: ["issues:write"],
-            causeObservedAt: keyed.cause.observedAt,
-            cause: keyed.cause.cause,
-            target: { item: "issue #164", change: "label → status: triage" },
-        },
-        config,
-        {
-            installationGrants: ["issues:write"],
-            killSwitchActive: false,
-            world: assertedWorld([], true),
-            latestHumanChangeAt: null,
-        },
-    );
-    it("safety applies the write in active mode", () => {
-        expect(verdict).toEqual({ outcome: "apply" });
-    });
-
-    // ── report: the sink every consumer reads ──
-    const report: Report = {
-        revision: config.revision,
-        mode: config.mode,
-        repository: observation.repository,
-        findings: [
-            /**
-             * D92 3d: an intent that acts tells its story — the explanation
-             * joins the report beside the verdict, on both wirings.
-             */
+        const verdict = evaluateWrite(
+            {
+                capability: "triage",
+                actionClass: "reversibleStateChange",
+                requiredPermissions: ["issues:write"],
+                causeObservedAt: keyed.cause.observedAt,
+                cause: keyed.cause.cause,
+                target: { item: "issue #164", change: "label → status: triage" },
+            },
+            config,
+            {
+                installationGrants: ["issues:write"],
+                killSwitchActive: false,
+                world: assertedWorld([], true),
+                latestHumanChangeAt: null,
+            },
+        );
+        const expectedFindings = [
             explanationFinding(keyed.explanation, {
                 kind: "item",
                 capability: "triage",
@@ -160,64 +176,9 @@ describe("one real delivery, end to end", () => {
                 item: observation.item,
                 operation: "applyMappedLabel",
             }),
-        ],
-    };
-    it("the report closes clean: nothing needs a human", () => {
-        expect(report.findings.map((f) => f.code)).toEqual(["capabilityExplained", "applied"]);
-        expect(problems(report)).toEqual([]);
-    });
+        ];
 
-    it("dry-run tells the same story without applying it", () => {
-        const dryConfig = { ...config, mode: "dry-run" as const };
-        const dry = evaluateWrite(
-            {
-                capability: "triage",
-                actionClass: "reversibleStateChange",
-                requiredPermissions: ["issues:write"],
-                causeObservedAt: keyed.cause.observedAt,
-                cause: keyed.cause.cause,
-                target: { item: "issue #164", change: "label → status: triage" },
-            },
-            dryConfig,
-            {
-                installationGrants: ["issues:write"],
-                killSwitchActive: false,
-                world: assertedWorld([], true),
-                latestHumanChangeAt: null,
-            },
-        );
-        expect(dry).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
-        expect(verdictFinding(dry, { kind: "repository" }).severity).toBe("notice");
-    });
-
-    /**
-     * D92 phase 2 — the parity gate. The engine must produce, from the same
-     * real delivery, exactly the findings this file assembled by hand. A
-     * mismatch STOPS the migration: it means either the engine or a
-     * hand-wiring is wrong, and both answers matter more than progress.
-     */
-    it("parity: decide() equals the hand wiring, finding for finding", async () => {
-        const asCapability = {
-            declaration: triage as never,
-            async evaluate() {
-                return [keyed];
-            },
-        };
-        const decision = await decide(
-            { kind: "delivery", repository: observation.repository, event: "issues", payload },
-            config,
-            [asCapability as never],
-            {
-                now: new Date("2026-08-07T02:00:00Z"),
-                killSwitchActive: false,
-                installationGrants: ["issues:write"],
-                latestHumanChangeAt: () => null,
-            },
-        );
-        expect(decision.report.findings).toEqual(report.findings);
-        expect(decision.report.revision).toBe(report.revision);
-        expect(decision.report.mode).toBe(report.mode);
-        expect(decision.report.repository).toEqual(report.repository);
-        expect(decision.approved).toEqual([keyed]);
+        const decision = await send("active");
+        expect(decision.report.findings).toEqual(expectedFindings);
     });
 });
