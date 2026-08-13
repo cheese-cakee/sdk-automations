@@ -419,7 +419,7 @@ export class Store {
         }
     }
 
-    /** Read the canonical source for a complete operator-projection rebuild. */
+    /** Read canonical reports in deterministic completion and delivery order. */
     deliveryReports(): CanonicalDeliveryReport[] {
         const rows = this.db
             .prepare(

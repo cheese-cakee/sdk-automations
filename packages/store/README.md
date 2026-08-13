@@ -156,9 +156,10 @@ is explicit: a delivery already done when an older schema is migrated may have
 no report because none existed to recover.
 
 `deliveryReports` reads every canonical report in stable completion-time then
-delivery-ID order. It is the store-side replay boundary for rebuilding any
-derived operator projection; reportless completions migrated from version 3
-are omitted because the migration does not invent their missing bytes.
+delivery-ID order. It is the current programmatic access to canonical reports;
+reportless completions migrated from version 3 are omitted because the migration
+does not invent their missing bytes. No automatic filesystem projection or
+polished operator query surface is provided.
 
 `requeueStuckDeliveries` provides the explicit reconciliation path.
 Retention pruning deletes an eligible delivery and its report in one

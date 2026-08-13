@@ -14,7 +14,7 @@ Vocabulary is introduced **in bold** at the moment it does something. If you rea
 flowchart LR
     A[socket] --> B[verify] --> C[accept + 202]
     C --> D[claim] --> E[config]
-    E -->|observe or dry-run| F["decide()"] --> G["report + done"] --> H["JSONL projection"]
+    E -->|observe or dry-run| F["decide()"] --> G["canonical report + done"]
     E -->|active| U["modeUnsupported"] --> G
     subgraph F2 ["inside decide()"]
         N[normalize] --> V[evaluate] --> S[screen] --> W[derive world] --> X[gate]
@@ -210,12 +210,10 @@ commit leaves neither outcome; a crash after commit leaves both. A stale, releas
 cannot create the report or complete the delivery. Retrying the committing token with these exact
 bytes returns `alreadyCompleted` without another row.
 
-Only after commit does `packages/shell/src/reports.ts` append the same bytes to `decisions.jsonl` as
-an operator projection. If append fails, the processor replaces the projection from
-`Store.deliveryReports()` and keeps draining; if replay also fails, it reports the stale projection
-without trying to release the already-completed claim. Startup runs the same deterministic replay,
-so a missing, partial, duplicated, or corrupt JSONL file is rebuilt from SQLite. Abridged only by
-collapsing the four findings already seen:
+After this commit, processing is complete. SQLite is the only canonical report store; the shell does
+not append or rebuild a filesystem copy. `Store.deliveryReports()` reads the committed records in
+deterministic order, but a polished operator report/query surface has not been built yet. The record
+below is abridged only by collapsing the four findings already seen:
 
 ```json
 {
@@ -255,5 +253,5 @@ behavior returns only with a real GitHub effect and durable recovery path.
 | 9 | derived world, precondition | `packages/core/src/safety/world.ts` |
 | 10 | gate, verdict, record-only | `packages/core/src/safety/rules.ts` |
 | 11 | finding, severity, report | `packages/core/src/report/convert.ts` |
-| 12 | decision record, atomic completion, operator projection | `packages/store/src/store.ts`, `packages/shell/src/reports.ts` |
+| 12 | decision record, canonical report, atomic completion | `packages/store/src/store.ts`, `packages/shell/src/processor.ts` |
 | 13 | active-mode rejection | `packages/shell/src/processor.ts` |

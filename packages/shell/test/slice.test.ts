@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import {
+    asDeliveryGuid,
     problems,
     signBody,
     toEngine,
@@ -22,15 +23,7 @@ import {
 } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { intake } from "@hiero-hackers/automation-probes";
-import {
-    createShell,
-    fileConfigSource,
-    fileReportSink,
-    stubbedExternals,
-    type Shell,
-    type ShellRecord,
-    type ReportSink,
-} from "../src/index.js";
+import { createShell, fileConfigSource, stubbedExternals, type Shell } from "../src/index.js";
 
 const SECRET = "shell-slice-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
@@ -58,13 +51,11 @@ const BASE = new Date("2026-08-07T10:00:00.000Z");
 
 let dir: string;
 let store: Store;
-let reportsFile: string;
 let configFile: string;
 
 beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "shell-slice-"));
     configFile = join(dir, "automations.yml");
-    reportsFile = join(dir, "decisions.jsonl");
     writeFileSync(configFile, CONFIG);
     store = new Store(join(dir, "store.sqlite"));
 });
@@ -81,7 +72,6 @@ function buildShell(capability: EngineCapability = toEngine(intake)): Shell {
         store,
         capabilities: [capability],
         configSource: fileConfigSource(configFile),
-        reports: fileReportSink(reportsFile),
         externals: stubbedExternals(),
         repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
         clock: () => new Date(BASE.getTime() + 1000 * tick++),
@@ -110,11 +100,23 @@ async function deliver(shell: Shell, guid = GUID): Promise<number> {
     }
 }
 
-function records(): ShellRecord[] {
-    return readFileSync(reportsFile, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as ShellRecord);
+interface RecordIdentity {
+    readonly deliveryId: string;
+    readonly event: string;
+    readonly receivedAt: string;
+    readonly decidedAt: string;
+    readonly configRevision: string;
+}
+
+type StoredRecord = RecordIdentity &
+    (
+        | { readonly kind: "decision"; readonly report: Report }
+        | { readonly kind: "configRejected"; readonly errors: readonly unknown[] }
+        | { readonly kind: "modeUnsupported"; readonly reason: string }
+    );
+
+function records(): StoredRecord[] {
+    return store.deliveryReports().map((report) => JSON.parse(report.reportJson) as StoredRecord);
 }
 
 describe("the first slice, end to end", () => {
@@ -140,30 +142,12 @@ describe("the first slice, end to end", () => {
         expect(problems(entry.report as Report)).toEqual([]);
         expect(entry.report.findings.length).toBeGreaterThan(0);
         expect(entry).not.toHaveProperty("approved");
-        const db = (
-            store as unknown as {
-                db: {
-                    prepare(sql: string): {
-                        get(id: string): { report_json: string; state: string };
-                    };
-                };
-            }
-        ).db;
-        expect(
-            db
-                .prepare(
-                    `
-            SELECT delivery_report.report_json, seen_delivery.state
-            FROM delivery_report
-            JOIN seen_delivery USING (delivery_id)
-            WHERE delivery_id = ?
-        `,
-                )
-                .get(GUID),
-        ).toEqual({
-            report_json: JSON.stringify(entry),
-            state: "done",
-        });
+        expect(store.deliveryReports()).toEqual([
+            expect.objectContaining({
+                deliveryId: GUID,
+                reportJson: JSON.stringify(entry),
+            }),
+        ]);
         // The queue is empty: the delivery completed.
         expect(
             store.claimNextDelivery(
@@ -213,52 +197,47 @@ describe("the first slice, end to end", () => {
         expect(records()).toHaveLength(1);
     });
 
-    it("rebuilds a missing or stale JSONL projection from SQLite on restart", async () => {
+    it("a process restart observes the committed canonical report", async () => {
         const shell = buildShell();
         expect(await deliver(shell)).toBe(202);
         await shell.drain();
-        expect(await deliver(shell, SECOND_GUID)).toBe(202);
-        await shell.drain();
-        const canonicalProjection = readFileSync(reportsFile, "utf8");
+        const committed = store.deliveryReports();
 
-        writeFileSync(reportsFile, '{"stale":true}\n');
         store.close();
         store = new Store(join(dir, "store.sqlite"));
-        buildShell();
 
-        expect(readFileSync(reportsFile, "utf8")).toBe(canonicalProjection);
-        expect(records()).toHaveLength(2);
+        expect(store.deliveryReports()).toEqual(committed);
+        expect(records()).toHaveLength(1);
     });
 
-    it("reports persistent projection damage without stopping completed work", async () => {
-        let rebuilds = 0;
-        const brokenProjection: ReportSink = {
-            record: () => {
-                throw new Error("append unavailable");
-            },
-            rebuild: () => {
-                if (rebuilds++ > 0) throw new Error("rebuild unavailable");
-            },
-        };
-        const error = vi.spyOn(console, "error").mockImplementation(() => {});
-        const shell = createShell({
-            secret: SECRET,
-            store,
-            capabilities: [toEngine(intake)],
-            configSource: fileConfigSource(configFile),
-            reports: brokenProjection,
-            externals: stubbedExternals(),
-            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
-            clock: () => BASE,
-        });
+    it("startup draining recovers a pending delivery after restart", async () => {
+        expect(
+            store.acceptDelivery({
+                deliveryId: asDeliveryGuid(SECOND_GUID)!,
+                eventName: "issues",
+                payload: FIXTURE,
+                receivedAt: BASE.toISOString(),
+            }),
+        ).toMatchObject({ outcome: "accepted", state: "pending" });
+        store.close();
+        store = new Store(join(dir, "store.sqlite"));
 
-        expect(await deliver(shell)).toBe(202);
-        await expect(shell.drain()).resolves.toBeUndefined();
-        expect(store.deliveryReports()).toHaveLength(1);
-        expect(error).toHaveBeenCalledWith(
-            "shell: report projection remains stale; canonical reports are intact",
-            expect.any(AggregateError),
-        );
+        const shell = buildShell();
+        await shell.drain();
+
+        expect(records()).toEqual([
+            expect.objectContaining({
+                kind: "decision",
+                deliveryId: SECOND_GUID,
+            }),
+        ]);
+        expect(
+            store.claimNextDelivery(
+                "assert",
+                "2026-08-07T11:00:00.000Z",
+                "2026-08-07T10:59:00.000Z",
+            ),
+        ).toBeUndefined();
     });
 
     it("starts durable processing after the acknowledgment without a manual drain", async () => {

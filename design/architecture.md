@@ -121,6 +121,10 @@ Enforced by the implementation today:
 - Uncertainty fails closed ([write rules](core/safety.md#2-rules-for-every-write)).
 - Store-owned state transitions are atomic
   ([storage decision](operations/storage-decision.md#the-decision)).
+- Canonical SQLite report persistence and delivery completion are one atomic durable transition
+  ([D110](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
+- SQLite uses an explicit schema version contract and rejects unknown or modified schemas
+  ([storage decision](operations/storage-decision.md#durable-report-and-schema-amendment-2026-08-09)).
 - Executor retries begin with observation and stop at the adopted attempt bound
   ([recovery loop](operations/storage-decision.md#the-recovery-loop-the-grid-decided) and
   [D44](decisions.md#adoption-record--2026-07-25)).
@@ -133,10 +137,7 @@ Required before active mode, not current runtime guarantees:
 
 - Every GitHub write enters executor recovery
   ([recovery-loop decision](operations/storage-decision.md#the-recovery-loop-the-grid-decided)).
-- Report persistence and delivery completion become one atomic durable transition
-  ([D93](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
-- Persisted contracts are versioned and reject unsupported revisions; configuration has migration
-  requirements, while SQLite schema versioning remains undecided
+- Configuration has explicit migration and rollback requirements
   ([configuration migration](config/schema.md#11-migration-and-rollback)).
 - Webhook queue capacity is bounded; executor retries already are
   ([platform ownership](#3-what-the-shared-platform-owns)).

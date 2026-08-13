@@ -2,7 +2,7 @@
  * The composition root: receiver + store + processor wired into one
  * running shell. Every box is existing, gated code — this file's whole
  * contribution is ORDER: verify before accept, accept before ack, decide
- * before act, commit before project.
+ * before act, then atomically commit the canonical report and completion.
  */
 
 import { createServer, type Server } from "node:http";
@@ -11,7 +11,6 @@ import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";
 import type { ConfigSource } from "./config.js";
-import type { ReportSink } from "./reports.js";
 import type { ShellExternals } from "./externals.js";
 
 export interface ShellOptions {
@@ -19,13 +18,10 @@ export interface ShellOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
-    readonly reports: ReportSink;
     readonly externals: ShellExternals;
     readonly repository: RepositoryRef;
     readonly worker?: string;
     readonly clock?: () => Date;
-    /** Override operator reporting when append and canonical replay both fail. */
-    readonly onProjectionFailure?: (error: unknown) => void;
 }
 
 export interface Shell {
@@ -36,24 +32,14 @@ export interface Shell {
 
 export function createShell(options: ShellOptions): Shell {
     const clock = options.clock ?? (() => new Date());
-    options.reports.rebuild(options.store.deliveryReports());
     const processor = new Processor({
         store: options.store,
         capabilities: options.capabilities,
         configSource: options.configSource,
-        reports: options.reports,
         externals: options.externals,
         repository: options.repository,
         worker: options.worker ?? "shell-1",
         clock,
-        onProjectionFailure:
-            options.onProjectionFailure ??
-            ((error) => {
-                console.error(
-                    "shell: report projection remains stale; canonical reports are intact",
-                    error,
-                );
-            }),
     });
     const handler = createReceiver({
         secret: options.secret,

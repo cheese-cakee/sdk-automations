@@ -5,7 +5,7 @@
  * before any of this; GitHub is not watching.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,6 @@ import { asDeliveryGuid, toEngine, type EngineCapability } from "@hiero-hackers/
 import { Store } from "@hiero-hackers/automation-store";
 import { intake, intakeDeclaration } from "@hiero-hackers/automation-probes";
 import { Processor } from "../src/processor.js";
-import { memoryReportSink } from "../src/reports.js";
 import { stubbedExternals } from "../src/externals.js";
 import type { ConfigSource } from "../src/config.js";
 
@@ -58,22 +57,22 @@ afterEach(() => {
 });
 
 function processor(capability: EngineCapability, firstTickMs = 1_000) {
-    const reports = memoryReportSink();
     let tick = 0;
-    return {
-        reports,
-        processor: new Processor({
-            store,
-            capabilities: [capability],
-            configSource,
-            reports,
-            externals: stubbedExternals(),
-            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
-            worker: "test-worker",
-            clock: () => new Date(BASE.getTime() + firstTickMs + 1000 * tick++),
-            onProjectionFailure: () => {},
-        }),
-    };
+    return new Processor({
+        store,
+        capabilities: [capability],
+        configSource,
+        externals: stubbedExternals(),
+        repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+        worker: "test-worker",
+        clock: () => new Date(BASE.getTime() + firstTickMs + 1000 * tick++),
+    });
+}
+
+function records(): Record<string, unknown>[] {
+    return store
+        .deliveryReports()
+        .map((report) => JSON.parse(report.reportJson) as Record<string, unknown>);
 }
 
 describe("a crash releases the claim", () => {
@@ -85,22 +84,14 @@ describe("a crash releases the claim", () => {
             },
         };
         const failing = processor(bomb);
-        await expect(failing.processor.processOnce()).rejects.toThrow("capability exploded");
-        expect(failing.reports.entries).toEqual([]);
+        await expect(failing.processOnce()).rejects.toThrow("capability exploded");
+        expect(records()).toEqual([]);
 
         // Released, not stuck: a fresh worker claims it immediately —
         // no stale-claim wait — and carries it to a decision.
         const healthy = processor(toEngine(intake));
-        expect(await healthy.processor.processOnce()).toBe(true);
-        expect(healthy.reports.entries).toHaveLength(1);
-        expect(healthy.reports.entries[0]).toMatchObject({
-            kind: "decision",
-            deliveryId: GUID as string,
-            configRevision: "rev-test-1",
-        });
-        healthy.reports.entries.splice(0);
-        healthy.reports.rebuild(store.deliveryReports());
-        expect(healthy.reports.entries).toEqual([
+        expect(await healthy.processOnce()).toBe(true);
+        expect(records()).toEqual([
             expect.objectContaining({
                 kind: "decision",
                 deliveryId: GUID as string,
@@ -111,9 +102,9 @@ describe("a crash releases the claim", () => {
 
     it("an empty queue reports itself instead of pretending to work", async () => {
         const healthy = processor(toEngine(intake));
-        expect(await healthy.processor.processOnce()).toBe(true);
-        expect(await healthy.processor.processOnce()).toBe(false);
-        expect(healthy.reports.entries).toHaveLength(1);
+        expect(await healthy.processOnce()).toBe(true);
+        expect(await healthy.processOnce()).toBe(false);
+        expect(records()).toHaveLength(1);
     });
 
     it("does not steal a fresh claim but takes over after the 15-minute lease", async () => {
@@ -126,18 +117,18 @@ describe("a crash releases the claim", () => {
         ).toBeDefined();
 
         const fresh = processor(toEngine(intake), 10 * 60_000);
-        expect(await fresh.processor.processOnce()).toBe(false);
-        expect(fresh.reports.entries).toEqual([]);
+        expect(await fresh.processOnce()).toBe(false);
+        expect(records()).toEqual([]);
 
         const stale = processor(toEngine(intake), 16 * 60_000);
-        expect(await stale.processor.processOnce()).toBe(true);
-        expect(stale.reports.entries).toHaveLength(1);
+        expect(await stale.processOnce()).toBe(true);
+        expect(records()).toHaveLength(1);
     });
 
     it("starts a new drain after the previous queue became empty", async () => {
         const healthy = processor(toEngine(intake));
-        await healthy.processor.drain();
-        expect(healthy.reports.entries).toHaveLength(1);
+        await healthy.drain();
+        expect(records()).toHaveLength(1);
 
         store.acceptDelivery({
             deliveryId: SECOND_GUID,
@@ -145,11 +136,11 @@ describe("a crash releases the claim", () => {
             payload: FIXTURE,
             receivedAt: new Date(BASE.getTime() + 10_000).toISOString(),
         });
-        await healthy.processor.drain();
-        expect(healthy.reports.entries).toHaveLength(2);
+        await healthy.drain();
+        expect(records()).toHaveLength(2);
     });
 
-    it("does not project or complete after its delivery claim is released", async () => {
+    it("does not persist or complete after its delivery claim is released", async () => {
         const lostClaim: EngineCapability = {
             declaration: intakeDeclaration,
             evaluate: async () => {
@@ -159,10 +150,10 @@ describe("a crash releases the claim", () => {
         };
         const candidate = processor(lostClaim);
 
-        await expect(candidate.processor.processOnce()).rejects.toThrow(
+        await expect(candidate.processOnce()).rejects.toThrow(
             "delivery report was not committed: notOwned",
         );
-        expect(candidate.reports.entries).toEqual([]);
+        expect(records()).toEqual([]);
         expect(
             store.claimNextDelivery(
                 "next-worker",
@@ -170,113 +161,5 @@ describe("a crash releases the claim", () => {
                 "2026-08-07T09:00:00.000Z",
             ),
         ).toBeDefined();
-        const db = (
-            store as unknown as {
-                db: {
-                    prepare(sql: string): { get(): Record<string, unknown> };
-                };
-            }
-        ).db;
-        expect(db.prepare("SELECT count(*) AS reports FROM delivery_report").get()).toEqual({
-            reports: 0,
-        });
-    });
-
-    it("a projection append failure rebuilds from canonical reports and does not release", async () => {
-        let tick = 0;
-        const projectionFailure = new Error("projection unavailable");
-        const rebuilt: string[][] = [];
-        const unresolved = vi.fn();
-        const candidate = new Processor({
-            store,
-            capabilities: [toEngine(intake)],
-            configSource,
-            reports: {
-                record: () => {
-                    throw projectionFailure;
-                },
-                rebuild: (reports) => {
-                    rebuilt.push(reports.map((report) => report.reportJson));
-                },
-            },
-            externals: stubbedExternals(),
-            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
-            worker: "test-worker",
-            clock: () => new Date(BASE.getTime() + 1_000 * ++tick),
-            onProjectionFailure: unresolved,
-        });
-
-        await expect(candidate.processOnce()).resolves.toBe(true);
-        expect(rebuilt).toEqual([store.deliveryReports().map((report) => report.reportJson)]);
-        expect(unresolved).not.toHaveBeenCalled();
-        expect(
-            store.claimNextDelivery(
-                "next-worker",
-                "2026-08-07T11:00:00.000Z",
-                "2026-08-07T10:59:00.000Z",
-            ),
-        ).toBeUndefined();
-        const db = (
-            store as unknown as {
-                db: {
-                    prepare(sql: string): { get(): Record<string, unknown> };
-                };
-            }
-        ).db;
-        expect(
-            db
-                .prepare(
-                    `
-            SELECT count(*) AS reports FROM delivery_report
-        `,
-                )
-                .get(),
-        ).toEqual({ reports: 1 });
-    });
-
-    it("a persistent projection failure is reported but does not stop the drain", async () => {
-        store.acceptDelivery({
-            deliveryId: SECOND_GUID,
-            eventName: "issues",
-            payload: FIXTURE,
-            receivedAt: new Date(BASE.getTime() + 500).toISOString(),
-        });
-        let tick = 0;
-        const failures: unknown[] = [];
-        const candidate = new Processor({
-            store,
-            capabilities: [toEngine(intake)],
-            configSource,
-            reports: {
-                record: () => {
-                    throw new Error("append unavailable");
-                },
-                rebuild: () => {
-                    throw new Error("rebuild unavailable");
-                },
-            },
-            externals: stubbedExternals(),
-            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
-            worker: "test-worker",
-            clock: () => new Date(BASE.getTime() + 1_000 * ++tick),
-            onProjectionFailure: (error) => {
-                failures.push(error);
-                throw new Error("operator logger unavailable");
-            },
-        });
-
-        await expect(candidate.drain()).resolves.toBeUndefined();
-        expect(store.deliveryReports()).toHaveLength(2);
-        expect(failures).toHaveLength(2);
-        for (const failure of failures) {
-            expect(failure).toBeInstanceOf(AggregateError);
-            expect((failure as AggregateError).message).toBe(
-                "report projection failed and its canonical replay did not complete",
-            );
-            expect((failure as AggregateError).errors).toEqual([
-                expect.objectContaining({ message: "append unavailable" }),
-                expect.objectContaining({ message: "rebuild unavailable" }),
-            ]);
-        }
     });
 });

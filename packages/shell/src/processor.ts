@@ -1,7 +1,7 @@
 /**
  * The worker half: claim a durable delivery, prepare, reject an unsupported
- * mode or call the one verb, commit the outcome with completion, then project
- * it. The receiver acknowledged long ago; GitHub never observes retries here.
+ * mode or call the one verb, then commit the outcome with completion. The
+ * receiver acknowledged long ago; GitHub never observes retries here.
  *
  * `process` below is the right lane of design/trace.md stations 3–12,
  * one named step per station.
@@ -11,14 +11,15 @@ import {
     decide,
     parseConfigDocument,
     type ConfigResult,
+    type ConfigError,
     type Decision,
     type EngineCapability,
+    type Report,
     type RepositoryConfig,
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import type { ClaimedDelivery, Store } from "@hiero-hackers/automation-store";
 import type { ConfigSource } from "./config.js";
-import type { ReportSink, ShellRecord } from "./reports.js";
 import type { ShellExternals } from "./externals.js";
 
 /** A processing claim older than this is presumed dead and taken over. */
@@ -29,7 +30,6 @@ export interface ProcessorOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
-    readonly reports: ReportSink;
     readonly externals: ShellExternals;
     /**
      * The shell's routing knowledge (`DecideInput` asks for it): the one
@@ -40,8 +40,6 @@ export interface ProcessorOptions {
     readonly repository: RepositoryRef;
     readonly worker: string;
     readonly clock: () => Date;
-    /** Persistent projection damage is reported without changing queue ownership. */
-    readonly onProjectionFailure: (error: unknown) => void;
 }
 
 /** What every persisted record says about which delivery it answers. */
@@ -53,59 +51,53 @@ interface RecordIdentity {
     readonly configRevision: string;
 }
 
+/** The canonical shell record persisted for one delivery. */
+type ShellRecord =
+    | (RecordIdentity & {
+          readonly kind: "decision";
+          readonly report: Report;
+      })
+    | (RecordIdentity & {
+          /** The config failed to parse. Fail-closed: nothing was decided. */
+          readonly kind: "configRejected";
+          readonly errors: readonly ConfigError[];
+      })
+    | (RecordIdentity & {
+          /** The runnable shell has no external effect path. */
+          readonly kind: "modeUnsupported";
+          readonly reason: string;
+      });
+
 export class Processor {
     private draining: Promise<void> | null = null;
 
     constructor(private readonly options: ProcessorOptions) {}
 
     /**
-     * Station 3 onward: claim, decide, atomically persist-and-complete, then
-     * project. Pre-commit failures release; projection failures leave the
-     * canonical database outcome complete.
+     * Station 3 onward: claim, decide, then atomically persist-and-complete.
+     * Failures before canonical completion release the claim.
      */
     async processOnce(): Promise<boolean> {
         const claimed = this.claimNext();
         if (claimed === undefined) return false;
-        let record: ShellRecord;
-        let reportJson: string;
         try {
-            record = await this.process(claimed);
-            reportJson = JSON.stringify(record);
+            const record = await this.process(claimed);
             const completion = this.options.store.completeDeliveryWithReport({
                 deliveryId: claimed.deliveryId,
                 eventName: claimed.eventName,
                 payloadDigest: claimed.payloadDigest,
                 claimToken: claimed.claimToken,
-                reportJson,
+                reportJson: JSON.stringify(record),
                 completedAt: this.options.clock().toISOString(),
             });
             if (completion.outcome !== "completed") {
                 throw new Error(`delivery report was not committed: ${completion.outcome}`);
             }
+            return true;
         } catch (error) {
             this.options.store.releaseDelivery(claimed.deliveryId, claimed.claimToken);
             throw error;
         }
-
-        try {
-            this.options.reports.record(record, reportJson);
-        } catch (recordError) {
-            try {
-                this.options.reports.rebuild(this.options.store.deliveryReports());
-            } catch (rebuildError) {
-                try {
-                    this.options.onProjectionFailure(
-                        new AggregateError(
-                            [recordError, rebuildError],
-                            "report projection failed and its canonical replay did not complete",
-                        ),
-                    );
-                } catch {
-                    // Operator reporting cannot turn a committed delivery into queue backpressure.
-                }
-            }
-        }
-        return true;
     }
 
     /** Process until the queue is empty. Overlapping calls share one loop. */
