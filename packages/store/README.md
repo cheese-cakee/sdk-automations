@@ -1,9 +1,68 @@
-# Owned operational store
+# store/ — the owned operational store
 
 The single-file SQLite store decided by protocol 6.5 and amended by D110 —
 `design/operations/storage-decision.md` — **ratification pending** under
 the stage-four review. The recovery experiment required four operational
 tables; the delivery completion boundary adds a fifth canonical-report table.
+
+Two properties hold throughout, and most of the design follows from them:
+
+- **The store never reads the clock.** Every timestamp is caller-supplied and
+  validated as exactly the `Date.toISOString()` shape (millisecond-precision
+  UTC `Z`). One constant-width format means lexicographic order is
+  chronological order, which every `<=` comparison relies on; anything else
+  (offsets, mixed precision) throws instead of misordering silently.
+- **It fails closed on anything it does not recognize.** A declared schema
+  version above the current one, an unversioned file whose fingerprint
+  matches no schema this repository created, a delivery whose GUID is reused
+  with different bytes — each is refused rather than interpreted.
+
+## What it owns, and what it does not
+
+**Owns:** the durable state transitions — which row may move to which state,
+under which write lock, on whose claim token — and the version contract that
+decides whether a database file may be opened at all.
+
+**Does not own:** the payload's meaning. The store does not parse JSON,
+inspect repositories, verify signatures, normalize events, log bodies, or
+scrub payloads. The payload is an opaque byte array at this boundary. It also
+owns no policy: retention windows, lease durations and requeue thresholds are
+the sweep's operations decisions, adopted in the executor's `policy.ts`.
+
+## The path a delivery takes
+
+```mermaid
+flowchart TB
+    BYTES["verified bytes from the shell"]
+    SCHEMA["schema.ts — may this file be opened?"]
+    ACC["acceptDelivery — pending"]
+    CLM["claimNextDelivery — processing, + claim token"]
+    FIN["completeDeliveryWithReport — report + done, one transaction"]
+    REL["releaseDelivery / requeueStuckDeliveries — back to pending"]
+    PRUNE["pruneCompletedDeliveries — retention"]
+    BYTES --> ACC
+    SCHEMA -.->|"once, at open"| ACC
+    ACC --> CLM --> FIN --> PRUNE
+    CLM --> REL --> CLM
+```
+
+The effect journal, effect claims and schedules run the same way and are
+independent of this path: no foreign keys join them. Delivery finalization is
+the one deliberate exception, updating `delivery_report` and `seen_delivery`
+together under a single write lock (D110).
+
+## The files
+
+| File | The question it answers |
+|---|---|
+| [`src/schema.ts`](src/schema.ts) | Which owned database format is this, and how does it reach the current version safely? |
+| [`src/store.ts`](src/store.ts) | Which operational state transition may commit now? The one class, plus the timestamp contract every call validates. |
+| [`src/deliveries.ts`](src/deliveries.ts) | What is a delivery, and what comes back from operating on one? |
+| [`src/effects.ts`](src/effects.ts) | What is an effect, and what state does its journal say it is in? |
+| [`src/schedules.ts`](src/schedules.ts) | What is a scheduled row, before and after a firing is claimed? |
+| [`src/index.ts`](src/index.ts) | The barrel, so consumers name the concern rather than the file. |
+
+## The five tables
 
 | Table | Role | Evidence status |
 |---|---|---|
@@ -19,12 +78,7 @@ returns; tables have no foreign keys, while delivery finalization deliberately
 updates `delivery_report` and `seen_delivery` in one transaction;
 `sentUnknown` is deliberately unresolvable from the journal
 alone — callers must resolve against GitHub state before retrying (the
-recovery loop in the storage decision). The store never reads the
-clock: every timestamp is caller-supplied and validated as exactly the
-`Date.toISOString()` shape (millisecond-precision UTC `Z`) — one
-constant-width format, so lexicographic order is chronological order,
-which every `<=` comparison relies on; anything else (offsets, mixed
-precision) throws instead of misordering silently.
+recovery loop in the storage decision).
 
 Three store findings, argued in full in their register rows:
 
@@ -43,13 +97,6 @@ Three store findings, argued in full in their register rows:
   `pruneDoneJournal` support the adopted 90-day retention (executor
   `policy.ts`); pending/processing deliveries and open `sent` journal
   rows are never pruned.
-
-The two source files answer separate questions:
-
-| File | Question |
-|---|---|
-| [`src/schema.ts`](src/schema.ts) | Which owned database format is this, and how does it reach the current version safely? |
-| [`src/store.ts`](src/store.ts) | Which operational state transition may commit now? |
 
 ## Version contract and migration
 
@@ -117,16 +164,22 @@ are omitted because the migration does not invent their missing bytes.
 Retention pruning deletes an eligible delivery and its report in one
 transaction; pending and processing work is never eligible.
 
-The payload is an opaque byte array at this boundary. The store does
-not parse JSON, inspect repositories, verify signatures, normalize
-events, log bodies, or scrub payloads. Callers supply canonical UTC
-timestamps; the store never reads the clock.
-
 This is the durable store contract, not end-to-end webhook durability.
 A production HTTP receiver still must verify the signature before
 acceptance and acknowledge GitHub only after an `accepted` or
 `duplicate` result. Queue-capacity/backpressure policy, the event
 normalizer, hosting, and the reconciliation service are also still missing.
+
+## What keeps it honest
+
+The timestamp contract is property-tested for order equivalence over random
+instant pairs, so the lexicographic-equals-chronological claim is checked
+rather than asserted. The two pragmas that make the crash model true —
+`journal_mode = DELETE` and `synchronous = FULL` — are pinned by a
+configuration test, so they cannot change silently. Crash atomicity is proved
+at the real boundary: exact old-schema fixtures, interruption after every
+migration step, worker exits after report insert, delivery update and commit,
+and two separately connected worker threads racing stale and current tokens.
 
 Requires Node 23.4+ — `node:sqlite` needs `--experimental-sqlite` on
 22.x and runs unflagged from 23.4. Node 24.11.1 still emits a non-failing

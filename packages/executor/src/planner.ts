@@ -1,13 +1,11 @@
 /**
  * The planner: APPROVED intents in, executable effect plans out.
  *
- * D92 3(c) cut this file roughly in half. It used to run the screens, the
- * safety engine, and the destructive gate itself — a fifth hand-wiring of
- * the decision pipeline, with its own copy of the context facts. Those are
- * decisions, and `decide()` in core owns them now; what arrives here has
- * already been decided. What remains is everything that is genuinely
- * TRANSLATION: turning an outcome into adapter commands, and the checks
- * only the translation layer can see —
+ * No decisions are taken here. The screens, the safety engine and the
+ * destructive gate belong to `decide()` in core, and what arrives has
+ * already been decided (D92). What remains is genuinely TRANSLATION:
+ * turning an outcome into adapter commands, and the checks only the
+ * translation layer can see —
  *
  * - `duplicateIdempotencyKey`: two intents sharing a key are ONE effect to
  *   the store, so the second would be read as already-done and silently
@@ -30,7 +28,7 @@ import {
     type RepositoryConfig,
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
-import type { AdapterCommand, ConfiguredLabel, EffectPlan, PlannedCall } from "./recovery.js";
+import type { AdapterCommand, ConfiguredLabel, EffectPlan, PlannedCall } from "./commands.js";
 
 export const PLANNER_REFUSAL_CODES = [
     "duplicateIdempotencyKey",

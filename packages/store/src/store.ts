@@ -1,8 +1,16 @@
 /**
  * The owned operational store — `design/operations/storage-decision.md`
  * made real, with the exact crash semantics protocol 6.5 demonstrated.
- * **Ratification pending** under the stage-four review. schema.ts owns
- * recognition and migration; this file owns operational transitions.
+ * **Ratification pending** under the stage-four review.
+ *
+ * This file owns the state transitions and the timestamp contract every
+ * one of them validates. `schema.ts` owns recognition and migration.
+ * `deliveries.ts`, `effects.ts` and `schedules.ts` own the vocabulary
+ * being moved between states; the only shapes declared here are the
+ * store's own options and the private rows its queries return.
+ *
+ * Five sections, in this order: durable webhook intake, the effect
+ * journal, effect claims, schedules, retention.
  *
  * Design rules carried over from the evidence:
  *
@@ -11,7 +19,7 @@
  * - Tables have no foreign keys. Report completion deliberately changes
  *   the delivery and its report together under one write lock.
  * - The journal alone cannot disambiguate a sent-but-unconfirmed write
- *   (`sentUnknown`) — the caller must resolve it against GitHub state
+ *   (`sentUnknown`). The caller must resolve it against GitHub state
  *   before retrying, per the recovery loop in the storage decision.
  */
 
@@ -24,73 +32,18 @@ import {
     readStorageSchemaVersion,
     type MigrationFaultPoint,
 } from "./schema.js";
-
-/** One delivery's durable queue state. */
-export type DeliveryState = "pending" | "processing" | "done";
-
-/** Verified bytes and identity offered at the durable intake boundary. */
-export interface AcceptDeliveryInput {
-    readonly deliveryId: DeliveryGuid;
-    readonly eventName: string;
-    readonly payload: Uint8Array;
-    readonly receivedAt: string;
-}
-
-/** The accepted, duplicate, or conflicting intake classification. */
-export type AcceptDeliveryResult =
-    | {
-          readonly outcome: "accepted";
-          readonly state: "pending";
-          readonly payloadDigest: string;
-      }
-    | {
-          readonly outcome: "duplicate";
-          readonly state: DeliveryState;
-          readonly payloadDigest: string;
-      }
-    | {
-          readonly outcome: "conflict";
-          readonly state: DeliveryState;
-          readonly eventNameMismatch: boolean;
-          readonly payloadMismatch: boolean;
-      };
-
-/** A delivery plus the token that currently owns its processing claim. */
-export interface ClaimedDelivery {
-    readonly deliveryId: DeliveryGuid;
-    readonly eventName: string;
-    readonly payload: Uint8Array;
-    readonly payloadDigest: string;
-    readonly receivedAt: string;
-    readonly worker: string;
-    readonly claimedAt: string;
-    readonly claimToken: string;
-}
-
-/** Everything the store must bind to one report-and-completion commit. */
-export interface CompleteDeliveryWithReportInput {
-    readonly deliveryId: DeliveryGuid;
-    readonly eventName: string;
-    readonly payloadDigest: string;
-    readonly claimToken: string;
-    readonly reportJson: string;
-    readonly completedAt: string;
-}
-
-/** The closed result of attempting the report-and-completion commit. */
-export type CompleteDeliveryWithReportResult =
-    | { readonly outcome: "completed" }
-    | { readonly outcome: "alreadyCompleted" }
-    | { readonly outcome: "notOwned" }
-    | { readonly outcome: "identityMismatch" }
-    | { readonly outcome: "reportConflict" };
-
-/** One canonical report in deterministic projection-replay order. */
-export interface CanonicalDeliveryReport {
-    readonly deliveryId: DeliveryGuid;
-    readonly reportJson: string;
-    readonly completedAt: string;
-}
+import type {
+    AcceptDeliveryInput,
+    AcceptDeliveryResult,
+    CanonicalDeliveryReport,
+    ClaimedDelivery,
+    CompleteDeliveryWithReportInput,
+    CompleteDeliveryWithReportResult,
+    DeliveryState,
+    ReleaseDeliveryResult,
+} from "./deliveries.js";
+import type { EffectState, OpenIntent } from "./effects.js";
+import type { ClaimedScheduleRow, ScheduleRow } from "./schedules.js";
 
 /** A deliberate interruption point in schema or delivery durability work. */
 export type StoreFaultPoint =
@@ -104,69 +57,18 @@ export interface StoreOptions {
     readonly injectFault?: (point: StoreFaultPoint) => void;
 }
 
-/** Whether the supplied token released its delivery claim. */
-export type ReleaseDeliveryResult =
-    { readonly outcome: "released" } | { readonly outcome: "notOwned" };
-
-/** The recovery classification derived from an effect's latest journal row. */
-export type EffectState =
-    | { readonly state: "neverStarted" }
-    | {
-          readonly state: "complete";
-          readonly lastDoneSeq: number;
-          readonly revision: string;
-      }
-    | {
-          readonly state: "midSequence";
-          readonly lastDoneSeq: number;
-          readonly revision: string;
-      }
-    | {
-          readonly state: "sentUnknown";
-          readonly seq: number;
-          readonly intent: string;
-          /**
-           * How many times this call has been sent — durable across
-           * crashes, so a restarted process can hand `retryAdvice` a
-           * truthful attempt number instead of restarting the bound
-           * at zero.
-           */
-          readonly attempt: number;
-          readonly revision: string;
-      };
-
-/** Clock-triggered work before or after ownership is attached. */
-export interface ScheduleRow {
-    readonly scheduleId: string;
-    readonly dueAt: string;
-    readonly effect: string;
-}
-
-export interface ClaimedScheduleRow extends ScheduleRow {
-    /** Unique to this firing; required to complete it. */
-    readonly claimToken: string;
-}
-
-/** One unresolved `sent` journal row — the sweep's unit of work. */
-export interface OpenIntent {
-    readonly effectId: string;
-    readonly seq: number;
-    readonly intent: string;
-    readonly attempt: number;
-    readonly at: string;
-}
-
 /**
  * The ONE timestamp format the store accepts: exactly the
  * `Date.toISOString()` shape — millisecond precision, `Z` suffix.
- * Constant width is what makes lexicographic order chronological
- * order, which every `<=` comparison in this file relies on. Mixed
- * precision breaks it (`"…00Z" > "…00.500Z"` as strings but earlier
- * in time — `'Z'` sorts above `'.'`), and an offset format sorts
- * wrongly outright — so both are thrown caller bugs, not data.
- * (Property-tested: order equivalence over random instant pairs.)
+ *
+ * Constant width is what makes lexicographic order chronological order,
+ * and every `<=` comparison in this file relies on that. Mixed precision
+ * breaks it: `"…00Z" > "…00.500Z"` as strings, but earlier in time,
+ * because `'Z'` sorts above `'.'`. An offset format sorts wrongly
+ * outright. Both are caller bugs, so both throw rather than misorder.
+ *
+ * Exported so the shell can validate before a store call.
  */
-/** Exported so the shell can validate before a store call. */
 export function assertUtcInstant(value: string, param: string): void {
     const epochMs = Date.parse(value);
     if (
@@ -575,25 +477,18 @@ export class Store {
 
     /**
      * Record intent BEFORE the call — the row that survives any crash
-     * after it. One upsert: a `done` row is immutable (acknowledged
-     * history never regresses to `sent`), and re-declaring a still-open
+     * after it. One upsert: a `done` row is immutable, so acknowledged
+     * history never regresses to `sent`, and re-declaring a still-open
      * call increments a durable `attempt` counter —
      * FINDING(store-journal-attempts), D42.
+     *
+     * `revision` is required and has no default on purpose. The recovery
+     * loop compares it against the current plan's revision. A default
+     * would journal a value matching no real plan, surfacing every
+     * effect as unresolved — fail-closed for a reason no operator
+     * could act on.
      */
-    intent(
-        effectId: string,
-        seq: number,
-        intent: string,
-        at: string,
-        /**
-         * REQUIRED, with no default: the recovery loop compares this
-         * against the current plan's revision, so a caller that omitted
-         * it would journal a value matching no real plan and surface
-         * every effect as unresolved. Fail-closed, but for a reason no
-         * operator could act on.
-         */
-        revision: string,
-    ): void {
+    intent(effectId: string, seq: number, intent: string, at: string, revision: string): void {
         assertUtcInstant(at, "at");
         this.db
             .prepare(
@@ -712,12 +607,14 @@ export class Store {
      * atomic stale takeover so a crashed holder cannot deadlock the
      * effect. A fresh claim inserts; a claim with `at <= staleBefore`
      * is taken over in the same upsert (no delete-then-claim window).
-     * Returns true iff the caller now holds it; non-contention
-     * failures THROW — `false` strictly means "a live worker holds it".
      *
-     * FINDING(store-claim-lease), D41: a lease can be stolen from a
-     * live worker that outlives it — the journal plus GitHub re-read
-     * stays the correctness layer. Lease duration is an ops decision.
+     * Returns true iff the caller now holds it. Non-contention failures
+     * throw, so `false` strictly means "a live worker holds it".
+     *
+     * A lease can be stolen from a live worker that outlives it
+     * (D41). The journal plus a GitHub re-read stays the correctness
+     * layer, and lease duration is an ops decision.
+     * FINDING(store-claim-lease).
      */
     claim(effectId: string, worker: string, now: string, staleBefore: string): boolean {
         assertUtcInstant(now, "now");
@@ -793,13 +690,15 @@ export class Store {
     }
 
     /**
-     * The sweep's redrive — FINDING(store-sweep-api), D43: atomically
-     * return stuck `running` schedules (claimed at or before
-     * `claimedBefore`) to `pending`. Stuckness is claim age, never due
-     * time, so backlog catch-up is not stolen from; requeued work
-     * re-fires through `claimDue` — no parallel firing mechanism. A
-     * slow-but-alive handler can be requeued and fire twice, harmless
-     * on D41's grounds. The threshold is the sweep's ops decision.
+     * The sweep's redrive: atomically return stuck `running` schedules,
+     * claimed at or before `claimedBefore`, to `pending`.
+     *
+     * Stuckness is claim age, never due time, so a backlog catch-up is
+     * not stolen from. Requeued work re-fires through `claimDue`; there
+     * is no parallel firing mechanism. A slow-but-alive handler can be
+     * requeued and fire twice, which is harmless on D41's grounds. The
+     * threshold is the sweep's ops decision.
+     * FINDING(store-sweep-api), D43.
      */
     requeueStuck(claimedBefore: string): ScheduleRow[] {
         assertUtcInstant(claimedBefore, "claimedBefore");
@@ -824,6 +723,7 @@ export class Store {
         }));
     }
 
+    /** Complete a firing, and only for the token that claimed it. */
     scheduleDone(scheduleId: string, claimToken: string): boolean {
         const result = this.db
             .prepare(

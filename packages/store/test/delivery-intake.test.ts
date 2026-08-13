@@ -7,7 +7,8 @@ import { Worker } from "node:worker_threads";
 import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as ts from "typescript";
-import { Store, type ClaimedDelivery } from "../src/store.js";
+import { Store } from "../src/store.js";
+import type { ClaimedDelivery } from "../src/deliveries.js";
 
 let dir: string;
 let path: string;

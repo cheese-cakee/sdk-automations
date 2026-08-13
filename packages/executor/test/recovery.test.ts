@@ -9,13 +9,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "@hiero-hackers/automation-store";
-import {
-    RecoveryExecutor,
-    MAX_CALL_ATTEMPTS,
-    commandIdentity,
-    type EffectPort,
-    type EffectPlan,
-} from "../src/recovery.js";
+import { RecoveryExecutor, MAX_CALL_ATTEMPTS, commandIdentity } from "../src/recovery.js";
+import { type EffectPort, type EffectPlan } from "../src/commands.js";
 import { FakeWorld, CrashingPort, fixtureCommand, LEASE_MS } from "./harness.js";
 
 const PLAN: EffectPlan = {

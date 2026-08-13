@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "@hiero-hackers/automation-store";
-import type { EffectPlan } from "../src/recovery.js";
+import type { EffectPlan } from "../src/commands.js";
 import { fixtureCommand, runToConvergence, prng, type CrashMode } from "./harness.js";
 
 const PLAN: EffectPlan = {

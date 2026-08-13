@@ -7,106 +7,15 @@
  * GitHub never appears here: `EffectPort` is the only exit, so the
  * crash-grid harness can drive the engine through every failure the
  * 6.5 sandbox produced by hand — and every interleaving it didn't.
+ *
+ * `commands.ts` owns what crosses to an adapter, `policy.ts` the numbers
+ * this loop runs on, `planner.ts` how a plan comes to exist. This file
+ * owns only what happens to one plan once it does.
  */
 
-import type {
-    IdempotencyClass,
-    ItemRef,
-    MappableMeaning,
-    RepositoryRef,
-} from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { LEASE_MS } from "./policy.js";
-
-export interface ExpectedAdapterState {
-    readonly meaningsPresent: readonly MappableMeaning[];
-    readonly meaningsAbsent: readonly MappableMeaning[];
-    readonly closed: boolean | null;
-}
-
-export interface ConfiguredLabel {
-    readonly meaning: MappableMeaning;
-    readonly label: string;
-}
-
-interface AdapterCommandBase {
-    readonly repository: RepositoryRef;
-    readonly item: ItemRef;
-    /** The reviewed configuration revision that authorized this command. */
-    readonly configurationRevision: string;
-    readonly expected: ExpectedAdapterState;
-    /** Ordered by the platform catalogue, so an adapter need not load configuration. */
-    readonly configuredLabels: readonly ConfiguredLabel[];
-}
-
-export interface PostManagedCommentCommand extends AdapterCommandBase {
-    readonly operation: "postManagedComment";
-    readonly desired: {
-        readonly marker: string;
-        readonly body: string;
-    };
-    readonly readBack: {
-        readonly kind: "managedCommentMarker";
-    };
-}
-
-export interface ApplyMappedLabelCommand extends AdapterCommandBase {
-    readonly operation: "applyMappedLabel";
-    readonly desired: {
-        readonly meaning: MappableMeaning;
-        readonly label: string;
-    };
-    readonly readBack: {
-        readonly kind: "mappedLabel";
-    };
-}
-
-export interface UnassignCommand extends AdapterCommandBase {
-    readonly operation: "unassign";
-    readonly desired: {
-        readonly login: string;
-    };
-    readonly readBack: {
-        readonly kind: "assigneeAbsent";
-    };
-}
-
-/** Plain immutable data: the only values crossing into an effect adapter. */
-export type AdapterCommand = PostManagedCommentCommand | ApplyMappedLabelCommand | UnassignCommand;
-
-export interface PlannedCall {
-    /** 1-based, contiguous — the journal's call_seq. */
-    readonly seq: number;
-    readonly command: AdapterCommand;
-    readonly idempotencyClass: IdempotencyClass;
-}
-
-export interface EffectPlan {
-    readonly effectId: string;
-    /** Immutable default-branch configuration revision/effective hash. */
-    readonly revision: string;
-    readonly calls: readonly PlannedCall[];
-}
-
-/**
- * The engine's only exits to the world. `perform` may throw — a throw
- * models the process dying mid-call (response lost); the engine never
- * catches it, exactly as a real crash never lets it. `readBack` is the
- * resolver: did this call's effect land? It must answer from GitHub
- * state (for non-idempotent calls, the managed-comment marker — D13).
- *
- * FINDING(executor-readback-consistency), D46: the loop's exactly-once
- * guarantee is PROVEN ONLY RELATIVE TO A CONSISTENT READ-BACK. A stale
- * "absent" right after a landed write makes the loop duplicate despite
- * following every rule — real GitHub reads can lag writes. The port
- * implementation owes a confirmed-fresh read (or bounded delay and
- * re-read) before answering "absent"; measuring that staleness is
- * stage-five sandbox work.
- */
-export interface EffectPort {
-    perform(plan: EffectPlan, call: PlannedCall): Promise<void>;
-    readBack(plan: EffectPlan, call: PlannedCall): Promise<"present" | "absent">;
-}
+import type { AdapterCommand, EffectPlan, EffectPort } from "./commands.js";
 
 export type RunResult =
     | { readonly outcome: "complete" }
@@ -118,11 +27,10 @@ export type RunResult =
       };
 
 /**
- * FINDING(executor-attempt-bound): the storage decision requires
- * "retries with bounded history" but names no bound — the same
- * unnamed-floor pattern as safety.md's grace period (D30). Encoded so
- * the question cannot be silently skipped: a call re-sent this many
- * times stops being a retry problem and surfaces to the operator.
+ * A call re-sent this many times stops being a retry problem and
+ * surfaces to the operator instead (D44). The count read is the
+ * journal's durable one, so the bound survives a restart.
+ * FINDING(executor-attempt-bound).
  */
 export const MAX_CALL_ATTEMPTS = 5;
 
@@ -219,16 +127,13 @@ export class RecoveryExecutor {
         const planLength = plan.calls.length;
         const state = this.store.effectState(plan.effectId, planLength);
         /**
-         * A revision mismatch only matters for an effect still IN FLIGHT:
+         * A revision mismatch only matters for an effect still IN FLIGHT.
          * `manual-edits.md` §9 invalidates intents that would resume under
-         * a new revision, and there is nothing to resume once every call
-         * is done. Guarding `complete` too would surface every redelivery
-         * of a finished effect as unresolved after any configuration edit
-         * — config reload is event-driven within seconds (6.3) and done
-         * rows are retained 90 days (D43), so that is a steady trickle of
-         * manufactured operator work (D45's close-out is operator action),
-         * not a safety property. The revision the effect ran under is
-         * history, not a conflict.
+         * a new revision, and a finished effect has nothing to resume.
+         * Guarding `complete` too would surface every redelivery of a
+         * finished effect as unresolved after any configuration edit —
+         * manufactured operator work, not a safety property (D43, D45).
+         * The revision an effect ran under is history, not a conflict.
          */
         if (
             (state.state === "sentUnknown" || state.state === "midSequence") &&
@@ -253,13 +158,11 @@ export class RecoveryExecutor {
             case "sentUnknown": {
                 const call = plan.calls[state.seq - 1];
                 /**
-                 * FINDING(executor-stale-plan): a journal row whose seq
-                 * or intent no longer matches the plan means the plan
-                 * changed under an open effect (configuration revision,
-                 * capability update). manual-edits.md §9 rules intents
-                 * from an old revision invalid — so the engine stops
-                 * and surfaces; it never guesses a mapping between old
-                 * and new plans.
+                 * A journal row whose seq or intent no longer matches the
+                 * plan means the plan changed under an open effect. The
+                 * engine stops and surfaces; it never guesses a mapping
+                 * between an old plan and a new one (D45).
+                 * FINDING(executor-stale-plan).
                  */
                 if (call === undefined || commandIdentity(call.command) !== state.intent) {
                     return {

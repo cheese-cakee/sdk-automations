@@ -13,7 +13,8 @@ import { Worker } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as ts from "typescript";
 import { asDeliveryGuid } from "@hiero-hackers/automation-core";
-import { Store, type ClaimedDelivery, type CompleteDeliveryWithReportInput } from "../src/store.js";
+import { Store } from "../src/store.js";
+import type { ClaimedDelivery, CompleteDeliveryWithReportInput } from "../src/deliveries.js";
 
 let directory: string;
 let databasePath: string;

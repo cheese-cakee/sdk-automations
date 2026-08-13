@@ -15,21 +15,20 @@ export const LEASE_MS = 15 * 60_000;
  */
 export const REQUEUE_STALE_MS = 2 * LEASE_MS;
 
-/**
- * D43 — working retention for `seen_delivery` and done journal rows.
- * Open (`sent`) journal rows are NEVER pruned — an unresolved effect
- * stays visible until the recovery loop or an operator closes it.
- */
+/** D43 — working retention for `seen_delivery` and done journal rows. */
 export const RETENTION_DAYS = 90;
 
 /**
- * D46 — the freshness rule, from the 6.7 measurement
- * (`design/operations/read-after-write.md`): 40/40 trials visible on
- * the first immediate read, so "present" may be answered on first
- * sight — but "absent" re-sends a possibly non-idempotent call, so the
- * port answers "absent" only after this many reads, spaced by this
- * delay (~2× the observed p95). Insurance on the asymmetric side,
- * priced at one API call on the rare recovery path.
+ * D46 — the freshness rule the read-back port owes. The two constants
+ * below are asymmetric on purpose: a wrong "present" costs nothing, but
+ * a wrong "absent" re-sends a possibly non-idempotent call. So "present"
+ * may be answered on first sight, and "absent" only after repeated
+ * reads. The delay is ~2× the p95 measured by protocol 6.7
+ * (`design/operations/read-after-write.md`).
  */
+
+/** How many reads must agree before the port may answer "absent". */
 export const READBACK_ABSENT_READS = 2;
+
+/** The spacing between those reads. */
 export const READBACK_CONFIRM_ABSENT_DELAY_MS = 1_000;

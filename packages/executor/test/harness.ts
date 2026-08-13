@@ -6,14 +6,13 @@
  * until the effect converges. Protocol 6.5's sandbox grid, automated.
  */
 import { Store } from "@hiero-hackers/automation-store";
+import { RecoveryExecutor, type RunResult } from "../src/recovery.js";
 import {
-    RecoveryExecutor,
     type AdapterCommand,
     type EffectPlan,
     type EffectPort,
     type PlannedCall,
-    type RunResult,
-} from "../src/recovery.js";
+} from "../src/commands.js";
 
 export class Crash extends Error {}
 
