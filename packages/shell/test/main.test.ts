@@ -5,7 +5,6 @@ const fakes = vi.hoisted(() => ({
     mkdirSync: vi.fn(),
     storePaths: [] as string[],
     fileConfigSource: vi.fn((path: string) => ({ kind: "config", path })),
-    fileReportSink: vi.fn((path: string) => ({ kind: "reports", path })),
     stubbedExternals: vi.fn((overrides: unknown) => ({
         kind: "externals",
         overrides,
@@ -39,7 +38,6 @@ vi.mock("../src/config.js", () => ({
     CONFIG_PATH: "automations.yml",
     fileConfigSource: fakes.fileConfigSource,
 }));
-vi.mock("../src/reports.js", () => ({ fileReportSink: fakes.fileReportSink }));
 vi.mock("../src/externals.js", () => ({
     stubbedExternals: fakes.stubbedExternals,
 }));
@@ -49,7 +47,6 @@ const ENV_KEYS = [
     "REPO_OWNER",
     "REPO_NAME",
     "CONFIG_FILE",
-    "REPORTS_FILE",
     "STORE_PATH",
     "PORT",
     "KILL_SWITCH",
@@ -137,7 +134,6 @@ describe("sandbox entry point", () => {
         expect(fakes.dataUrls).toEqual([expect.stringContaining("/data/")]);
         expect(fakes.storePaths).toEqual(["C:\\shell-data\\shell.sqlite"]);
         expect(fakes.fileConfigSource).toHaveBeenCalledWith("C:\\shell-data\\automations.yml");
-        expect(fakes.fileReportSink).toHaveBeenCalledWith("C:\\shell-data\\decisions.jsonl");
         expect(fakes.stubbedExternals).toHaveBeenCalledWith({
             killSwitchActive: false,
         });
@@ -154,16 +150,15 @@ describe("sandbox entry point", () => {
         );
         expect(shell.server.listen).toHaveBeenCalledWith(8790, expect.any(Function));
         expect(log).toHaveBeenCalledWith(
-            "shell listening on :8790 for owner/repo (config copy of automations.yml: C:\\shell-data\\automations.yml); reports project to C:\\shell-data\\decisions.jsonl",
+            "shell listening on :8790 for owner/repo (config copy of automations.yml: C:\\shell-data\\automations.yml); canonical reports stored in C:\\shell-data\\shell.sqlite",
         );
         expect(order).toEqual(["drain", "listen"]);
     });
 
-    it("honors every explicit path, port, and kill-switch setting", async () => {
+    it("honors every explicit store, config, port, and kill-switch setting", async () => {
         validEnvironment();
         Object.assign(process.env, {
             CONFIG_FILE: "C:\\config.yml",
-            REPORTS_FILE: "C:\\reports.jsonl",
             STORE_PATH: "C:\\store.sqlite",
             PORT: "4312",
             KILL_SWITCH: "1",
@@ -176,7 +171,6 @@ describe("sandbox entry point", () => {
 
         expect(fakes.storePaths).toEqual(["C:\\store.sqlite"]);
         expect(fakes.fileConfigSource).toHaveBeenCalledWith("C:\\config.yml");
-        expect(fakes.fileReportSink).toHaveBeenCalledWith("C:\\reports.jsonl");
         expect(fakes.stubbedExternals).toHaveBeenCalledWith({
             killSwitchActive: true,
         });

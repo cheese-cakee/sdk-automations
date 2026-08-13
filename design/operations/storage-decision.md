@@ -144,7 +144,7 @@ live lease takeover preserves a non-idempotent exactly-once outcome.
 
 ## Durable report and schema amendment (2026-08-09)
 
-The shell formerly appended a report to JSONL and then separately completed
+The shell formerly appended a filesystem report and then separately completed
 the delivery. A crash between those writes left a pending delivery beside an
 already-visible report, so retry appended a duplicate. D110 moves the canonical
 record into `DELIVERY_REPORT` and makes `completeDeliveryWithReport` the only
@@ -154,11 +154,10 @@ claim token; inserts exactly one report row keyed by delivery GUID; changes the
 delivery to `done`; and clears the payload. The report row retains the committing
 token, so retrying the same token and exact JSON returns `alreadyCompleted`.
 Released, stale, or stolen tokens return `notOwned`; the same token with changed
-JSON returns `reportConflict`. JSONL is written only after commit as a derived
-operator projection. An append failure replays every canonical report in stable
-completion-time and delivery-ID order; a persistent projection failure is
-reported without releasing the committed claim or stopping the delivery drain.
-Startup performs the same replay before accepting new work.
+JSON returns `reportConflict`. SQLite is the only canonical report store.
+`deliveryReports` reads canonical records in stable completion-time and
+delivery-ID order. The shell does not create or rebuild a filesystem projection;
+startup recovery continues to drain pending deliveries from SQLite.
 
 SQLite `PRAGMA user_version` is the schema contract, currently version 4. A
 newer declared version is refused before database configuration or migration.

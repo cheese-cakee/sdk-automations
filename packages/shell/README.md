@@ -3,7 +3,7 @@
 The seventh package (D93). A webhook delivery goes in; a persisted report comes out; every decision
 in between belongs to core's one verb. The shell's entire contribution is **order**:
 
-> verify before accept, accept before ack, decide before act, commit before project.
+> verify before accept, accept before ack, decide before act, commit the canonical outcome atomically.
 
 ```mermaid
 flowchart LR
@@ -15,10 +15,9 @@ flowchart LR
     P -->|active| U["modeUnsupported"]
     D --> C["⑤ store report + done\none transaction"]
     U --> C
-    C --> R["⑥ decisions.jsonl\nderived projection"]
 ```
 
-## The six stations, and who owns each
+## The five stations, and who owns each
 
 | Step | File | Owned by |
 |---|---|---|
@@ -27,7 +26,6 @@ flowchart LR
 | ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config becomes `configRejected`, while `active` becomes `modeUnsupported` before `decide()` |
 | ④ Decide with one verb | [`src/processor.ts`](src/processor.ts) | core's `decide()`; the shell cannot assert a world — `DerivedWorld` has no public constructor |
 | ⑤ Commit report plus completion | [`src/processor.ts`](src/processor.ts) → store's `completeDeliveryWithReport` | store verifies delivery identity and claim ownership, then creates one canonical report and marks the delivery done in one transaction |
-| ⑥ Project for operators | [`src/reports.ts`](src/reports.ts) | JSONL receives the exact already-committed JSON; append failure triggers a full replay from canonical SQLite rows, and startup rebuilds the projection before accepting work |
 
 The configuration file lives at **`automations.yml` in the repository root** (D93): it configures the
 automation platform, not GitHub, and everywhere else in the design GitHub is an adapter detail — a
@@ -58,7 +56,6 @@ REPO_OWNER=owner-sandbox    # the repository this endpoint serves
 REPO_NAME=automation-sandbox
 PORT=8790                   # optional
 CONFIG_FILE=…               # optional; default data/automations.yml (copy of the repo's file)
-REPORTS_FILE=…              # optional derived projection; default data/decisions.jsonl
 STORE_PATH=…                # optional; default data/shell.sqlite
 KILL_SWITCH=1               # optional; refuse everything, loudly
 ```
@@ -67,15 +64,11 @@ KILL_SWITCH=1               # optional; refuse everything, loudly
 pnpm --filter @hiero-hackers/automation-shell start
 ```
 
-Point the existing smee channel at it and open an issue on the sandbox: within a second,
-`data/decisions.jsonl` gains a line saying what the platform would have done and why. It is the
-operator-facing interview artifact, derived from the canonical report committed in `shell.sqlite`.
-If file append fails, the processor rebuilds the entire file from
-`Store.deliveryReports()` and continues draining. If both append and rebuild
-fail, the shell logs that the projection remains stale but still continues:
-canonical completion has already committed and is never sent through the
-pre-commit claim-release path. Every shell start rebuilds JSONL from SQLite
-before accepting work, so deleting or corrupting the projection is recoverable.
+Point the existing smee channel at it and open an issue on the sandbox. The canonical report and
+delivery completion are committed together in `shell.sqlite`. Startup still starts draining pending
+SQLite deliveries before listening. Automatic filesystem projection is not supported, and a polished
+operator report/query surface has not been built yet. `Store.deliveryReports()` is the current
+programmatic access to canonical reports.
 
 `data/` is never tracked (see the root `.gitignore`), the same rule as `lab/evidence/`.
 
@@ -90,4 +83,4 @@ before accepting work, so deleting or corrupting the projection is recoverable.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.
 
 The capture receiver in `packages/lab/src/capture.ts` was this package's embryo: same verify-first line,
-same 202 — it just wrote a file where the shell continues the sentence to its verb.
+same 202 — it just wrote a file where the shell continues through canonical SQLite completion.
