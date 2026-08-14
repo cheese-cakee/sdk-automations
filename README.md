@@ -1,92 +1,140 @@
-# sdk-automations
+<p align="center">
+  <img src="docs/assets/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
+</p>
 
-[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D23.4-blue)](https://github.com/hiero-hackers/sdk-automations/blob/main/package.json)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
+<p align="center">
+  <strong>One GitHub App. Repository-owned configuration. Durable, explainable decisions.</strong>
+</p>
 
-The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
-A repository enables only the capabilities it wants and maps them to its own workflow. The runnable application
-currently verifies and stores webhook deliveries, evaluates them in observe or dry-run mode, and persists canonical reports. Active GitHub writes are not implemented yet.
+<p align="center">
+  <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a>
+  <a href="https://github.com/hiero-hackers/sdk-automations/blob/main/package.json"><img alt="Node 23.4 or newer" src="https://img.shields.io/badge/node-%3E%3D23.4-blue"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge"></a>
+</p>
 
-The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Six
-packages live under [`packages/`](packages/) as a pnpm
-workspace), all pending stage-four ratification of the decisions they encode:
+<p align="center">
+  <a href="docs/quickstart.md">Quickstart</a> ·
+  <a href="docs/configuration.md">Configuration</a> ·
+  <a href="design/trace.md">System trace</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-- [`core/`](packages/core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
-  capability runtime boundary; its front door is one verb, `decide()`
-- [`store/`](packages/store/README.md) — the owned operational store
-- [`shell/`](packages/shell/README.md) — the transport: a webhook delivery in, a persisted report out; it owns
-  ordering and decides nothing
-- [`probes/`](packages/probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
-  exercise the capability boundary, supply current shell fixtures, and give P3 its first run in code
-- [`checks/`](packages/checks/README.md) — tests about the repository rather than any package: docs,
-  examples, and design documents held to the code they describe
-- [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
-  can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
+<br>
 
-Beyond `packages/` and `design/`, one user-facing root: [`docs/`](docs/README.md) — the configuration
-guide, every table locked to the code by `checks/`, and [`docs/examples/`](docs/examples/README.md), worked
-configurations parsed by the test suite on every commit. A top-level directory holds workspace packages
-or is one of `design/`, `docs/` — a rule the suite enforces, like the other sentences in this paragraph.
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <strong>Verified intake</strong><br><br>
+      Webhook signatures are checked against the exact bytes received before payload data is trusted.
+    </td>
+    <td width="33%" align="center">
+      <strong>Honest decisions</strong><br><br>
+      Observe and dry-run modes explain what the App found without pretending an external change happened.
+    </td>
+    <td width="33%" align="center">
+      <strong>Durable state</strong><br><br>
+      Accepted deliveries and canonical reports live in SQLite, with completion committed atomically.
+    </td>
+  </tr>
+</table>
 
-New here? [`design/trace.md`](design/trace.md) follows one real delivery through every stage of the
-system, introducing each term at the moment it acts.
+<p align="center">
+  <strong>Early development · observe and dry-run only</strong><br>
+  <sub>The App is not installable yet. Active GitHub writes remain disabled until one real effect has durable recovery.</sub>
+</p>
 
-## Reading order
+---
 
-1. [`design/planning/goals.md`](design/planning/goals.md) — the vision, the problem, and the hard limits.
-2. [`design/architecture.md`](design/architecture.md) — the current architecture proposal and its open
-   feasibility questions. [`design/decisions.md`](design/decisions.md) records accepted principles,
-   hypotheses, and open decisions.
-3. The component documents explain the candidate design in more detail.
-   - [`design/core/README.md`](design/core/README.md) explains the shared platform services and indexes the
-     rest of the core design.
-   - [`design/core/taxonomy.md`](design/core/taxonomy.md) describes an optional Hiero workflow profile and
-     the repository mappings it would require.
-   - [`design/core/manual-edits.md`](design/core/manual-edits.md) proposes safe behavior when a person changes
-     a mapped workflow label.
-   - [`design/config/schema.md`](design/config/schema.md) proposes the reviewed repository configuration.
-   - [`design/operations/README.md`](design/operations/README.md) describes hosting, rollout, rate limits,
-     failure reporting, and storage questions.
-   - [`design/operations/threat-model.md`](design/operations/threat-model.md) describes security threats,
-     required controls, and decisions that still depend on the implementation.
-4. [`design/modules/README.md`](design/modules/README.md) — candidate capabilities found in the audit. A
-   capability becomes product scope only after maintainer review and a safe test plan.
-5. [`design/testing/README.md`](design/testing/README.md) — how the system is tested.
-6. [`design/build-plan.md`](design/build-plan.md) is working planning material through November 2026. Its
-   dates and candidate milestones still require agreement and are not delivery commitments.
+## Why this exists
 
-## The evidence underneath
+Hiero SDK repositories repeat the same contributor-facing work: intake, triage, workflow labels,
+pull-request checks, and status reporting. Today that logic is scattered across repository-specific
+scripts and workflows.
 
-[`design/planning/lessons-learned.md`](design/planning/lessons-learned.md) distills the coupling anti-patterns
-(classes A–E) out of the audit; the audit itself lives in [`design/audit/`](design/audit/) — the C++, Python, and
-JavaScript SDK automation read at pinned commits, with `file:line` citations — and
-[`design/audit/services.md`](design/audit/services.md) is the cross-SDK synthesis of what exists today.
+SDK Automations is building one small, hosted GitHub App that lets each repository choose its
+automation in a reviewed YAML file. The goal is not a generic workflow platform. It is one clear,
+auditable path that maintainers can understand end to end.
 
-## Contributing
+## The supported path today
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup (two commands, no credentials), the DCO sign-off
-every commit needs, how the difficulty ladder works, and the ground rules — each one linked to the
-decision or check that earned it. Participation is under the
-[Code of Conduct](CODE_OF_CONDUCT.md); security reports go through [`SECURITY.md`](SECURITY.md).
+```text
+GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →  complete
+                       exact bytes       pure logic      SQLite transaction
+```
 
-## Tooling
+The runnable application verifies and stores webhook deliveries, evaluates repository configuration
+in `observe` or `dry-run` mode, and persists a canonical report. Unsupported active configuration is
+rejected before a decision can claim that GitHub was changed.
 
-Code style is enforced by [Prettier](https://prettier.io) (formatter-only) across all TypeScript
-packages; markdown, YAML, and JSON files are excluded — see `.prettierignore`. Run `pnpm format` to
-apply it, or `pnpm format:check` to verify without writing (CI runs the latter).
+> [!NOTE]
+> This boundary is intentional. The first active capability will return only with a real GitHub
+> adapter, explicit permissions, durable restart behavior, and honest handling of uncertain writes.
 
-ESLint enforces code quality separately — the two do not overlap. If you're wondering whether a new
-ESLint rule should be added: the answer is which defect class it catches, and whether a dedicated
-check in `checks/` would fit better than a rule catalogue entry.
+## See the configuration
 
-An opt-in pre-commit hook runs both on staged `packages/**/*.ts` files: `git config
-core.hooksPath .githooks`. It formats and re-stages with Prettier, then blocks the commit on ESLint
-errors only — warnings (like `no-explicit-any`) pass through. Know before opting in: re-staging
-covers the whole file, so a partially-staged file gets its unstaged hunks committed too — stash
-what you don't mean to commit. CI is the actual enforcement either way (the format check and lint
-jobs above), so the hook is convenience, not a gate; `git commit --no-verify` always skips it, and
-`@typescript-eslint/no-unused-vars` errors are not auto-fixable, so a mid-refactor WIP commit may
-need exactly that.
+```yaml
+schemaVersion: 1
+mode: dry-run
+
+capabilities:
+  intake:
+    enabled: true
+
+mappings:
+  labels:
+    awaitingTriage: "status: triage"
+```
+
+The [quickstart](docs/quickstart.md) explains the shape of the configuration, and every file in
+[`docs/examples/`](docs/examples/README.md) is parsed by the test suite. These documents describe the
+current contract; they are not hosted-service installation instructions yet.
+
+## Run the workspace
+
+You need [Node.js](https://nodejs.org/) 24 or newer and [pnpm](https://pnpm.io/) 10.29.1.
+
+```bash
+pnpm install
+pnpm -r test
+```
+
+All tracked tests run offline. No GitHub credentials or GitHub App configuration are required.
+
+## Explore the project
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Understand the system</strong><br><br>
+      Follow one delivery in the <a href="design/trace.md">system trace</a>, then read the
+      <a href="design/architecture.md">architecture</a> and <a href="design/decisions.md">decision register</a>.
+    </td>
+    <td width="50%">
+      <strong>Use the contract</strong><br><br>
+      Start with the <a href="docs/quickstart.md">quickstart</a>, then use the
+      <a href="docs/configuration.md">configuration reference</a> and
+      <a href="docs/troubleshooting.md">troubleshooting guide</a>.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Contribute</strong><br><br>
+      Read <a href="CONTRIBUTING.md">CONTRIBUTING.md</a> and choose an open
+      <a href="https://github.com/hiero-hackers/sdk-automations/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good first issue</a>.
+    </td>
+    <td width="50%">
+      <strong>Report a vulnerability</strong><br><br>
+      Please use the private reporting process documented in <a href="SECURITY.md">SECURITY.md</a>.
+    </td>
+  </tr>
+</table>
+
+---
+
+<p align="center">
+  Apache-2.0 licensed · <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> ·
+  Developer Certificate of Origin required for contributions
+</p>
