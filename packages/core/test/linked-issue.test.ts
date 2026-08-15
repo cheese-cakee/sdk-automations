@@ -8,7 +8,7 @@ import { parseConfigDocument, type RepositoryMode } from "../src/config.js";
 
 const repository = { owner: "Hiero", repo: "SDK" };
 const input = { repository, number: 42, state: "open" as const };
-const config = (mode: RepositoryMode, enabled = true) => ({ mode, enabled });
+const config = (mode: Exclude<RepositoryMode, "active">, enabled = true) => ({ mode, enabled });
 
 describe("linked-issue decisions", () => {
     it.each([
@@ -197,17 +197,21 @@ describe("pull-request admission", () => {
             },
         );
     });
-    it("refuses repository mismatches", () =>
+    it.each([
+        ["wrong repository", { name: "other", owner: { login: "hiero" } }],
+        ["wrong owner", { name: "sdk", owner: { login: "other" } }],
+    ])("refuses %s", (_case, payloadRepository) => {
         expect(
             admitPullRequest(
                 "pull_request",
-                payload({ repository: { name: "other", owner: { login: "hiero" } } }),
+                payload({ repository: payloadRepository }),
                 repository,
             ),
         ).toEqual({
             kind: "refused",
             reason: "payload repository does not match the configured repository",
-        }));
+        });
+    });
     it("refuses closed and inconsistent pull requests", () => {
         expect(
             admitPullRequest(
@@ -230,6 +234,10 @@ describe("pull-request admission", () => {
         [{ action: "opened" }, "payload repository identity is malformed"],
         [
             payload({ repository: { name: "sdk", owner: {} } }),
+            "payload repository identity is malformed",
+        ],
+        [
+            payload({ repository: { name: 123, owner: { login: "hiero" } } }),
             "payload repository identity is malformed",
         ],
         [payload({ pull_request: undefined }), "pull request number is malformed or inconsistent"],

@@ -1,13 +1,9 @@
 /**
  * Where a repository's configuration lives, and how the shell obtains it.
  *
- * `automations.yml` at the repository ROOT is the decided path (D93 —
- * Q14's path half): the file configures the automation platform, not
- * GitHub, and everywhere else in the design GitHub is an adapter detail —
- * a `.github/` home would contradict that at the most user-visible spot.
- * The first slice reads an operator-maintained LOCAL COPY of that file;
- * the read-only adapter later replaces `fileConfigSource` with a fetch of
- * the same path at the repository's default branch, behind this same seam.
+ * `.github/hiero-automations.yml` is the repository contract. Stage 3 reads
+ * an operator-maintained local copy; Stage 5 replaces `fileConfigSource`
+ * with a default-branch GitHub fetch behind this same seam.
  */
 
 import { createHash } from "node:crypto";

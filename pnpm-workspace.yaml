@@ -8,4 +8,4 @@ packages:
   - packages/lab
   - packages/shell
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: false

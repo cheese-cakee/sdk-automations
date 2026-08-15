@@ -86,12 +86,17 @@ export class Processor {
             configRevision: document.revision,
         };
         if (!config.ok) return { kind: "configRejected", ...identity, errors: config.errors };
-        if (config.config.mode === "active")
+        const repositoryConfig = config.config;
+        if (repositoryConfig.mode === "active")
             return {
                 kind: "modeUnsupported",
                 ...identity,
                 reason: "active mode is unsupported because GitHub effects are not implemented",
             };
+        const decisionConfig = {
+            mode: repositoryConfig.mode,
+            enabled: repositoryConfig.enabled,
+        };
         const admission = admitPullRequest(
             claimed.eventName,
             parsePayload(claimed.payload),
@@ -103,7 +108,7 @@ export class Processor {
                 ...identity,
                 report: {
                     capability: "linkedIssue",
-                    mode: config.config.mode,
+                    mode: decisionConfig.mode,
                     repository: this.options.repository,
                     pullRequest: null,
                     outcome: admission.kind,
@@ -112,11 +117,11 @@ export class Processor {
                     reason: admission.reason,
                 },
             };
-        if (config.config.mode === "disabled" || !config.config.enabled)
+        if (decisionConfig.mode === "disabled" || !decisionConfig.enabled)
             return {
                 kind: "linkedIssue",
                 ...identity,
-                report: decideLinkedIssue(config.config, admission.input, {
+                report: decideLinkedIssue(decisionConfig, admission.input, {
                     outcome: "unknown",
                     reason: "not read because the capability is disabled",
                 }),
@@ -125,7 +130,7 @@ export class Processor {
         return {
             kind: "linkedIssue",
             ...identity,
-            report: decideLinkedIssue(config.config, admission.input, observation),
+            report: decideLinkedIssue(decisionConfig, admission.input, observation),
         };
     }
 }

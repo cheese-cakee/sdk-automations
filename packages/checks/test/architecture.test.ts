@@ -45,13 +45,13 @@ interface Manifest {
 
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 
-/** Layer policy, not a copied workspace list. D93 owns shell -> probes. */
+/** Layer policy, not a copied workspace list. */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     core: new Set(),
     store: new Set(["core"]),
-    shell: new Set(["core", "store", "probes"]),
+    shell: new Set(["core", "store"]),
 };
-const NON_PRODUCTION = new Set(["checks", "lab", "probes"]);
+const NON_PRODUCTION = new Set(["checks", "lab"]);
 
 function role(workspacePackage: WorkspacePackage): string {
     return posix.basename(workspacePackage.directory);

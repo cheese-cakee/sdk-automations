@@ -34,14 +34,17 @@ export interface LinkedIssueReport {
     readonly desiredAdvisories: readonly string[];
     readonly reason?: string;
 }
+type LinkedIssueDecisionConfig = Omit<LinkedIssueConfig, "mode"> & {
+    readonly mode: Exclude<RepositoryMode, "active">;
+};
 export function decideLinkedIssue(
-    config: LinkedIssueConfig,
+    config: LinkedIssueDecisionConfig,
     input: PullRequestInput,
     observation: LinkedIssueObservation,
 ): LinkedIssueReport {
     const base = {
         capability: "linkedIssue" as const,
-        mode: config.mode as Exclude<RepositoryMode, "active">,
+        mode: config.mode,
         repository: input.repository,
         pullRequest: input.number,
     };

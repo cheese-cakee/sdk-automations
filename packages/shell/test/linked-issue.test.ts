@@ -148,11 +148,13 @@ describe("signed webhook to canonical SQLite report", () => {
         expect(reader.read).not.toHaveBeenCalled();
         expect(record()).toMatchObject({ kind: "modeUnsupported" });
     });
-    it("fails closed on repository mismatch without reading", async () => {
+    it.each([
+        ["wrong repository", payload.toString().replace('"name":"sdk"', '"name":"other"')],
+        ["wrong owner", payload.toString().replace('"login":"hiero"', '"login":"other"')],
+        ["missing owner", payload.toString().replace('"owner":{"login":"hiero"}', '"owner":{}')],
+        ["non-string repository", payload.toString().replace('"name":"sdk"', '"name":123')],
+    ])("fails closed on %s without reading", async (_case, body) => {
         config();
-        const mismatched = Buffer.from(
-            payload.toString().replace('"name":"sdk"', '"name":"other"'),
-        );
         const reader: LinkedIssueReader = { read: vi.fn() };
         const target = createShell({
             secret,
@@ -161,7 +163,7 @@ describe("signed webhook to canonical SQLite report", () => {
             linkedIssueReader: reader,
             repository,
         });
-        await deliver(target, mismatched);
+        await deliver(target, Buffer.from(body));
         await target.drain();
         expect(reader.read).not.toHaveBeenCalled();
         expect(linkedRecord().report).toMatchObject({ outcome: "refused", desiredAdvisories: [] });
