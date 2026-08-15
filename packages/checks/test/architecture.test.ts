@@ -356,7 +356,7 @@ describe("the workspace dependency graph preserves package ownership", () => {
         const actual = messages(
             architectureViolations(packages, [
                 source("shell", `import "${packageName("core")}/private";`),
-                source("probes", 'import "../../core/src/private.js";'),
+                source("shell", 'import "../../core/src/private.js";'),
             ]),
         );
         expect(actual.filter((message) => message.includes("public package export"))).toHaveLength(
@@ -365,7 +365,7 @@ describe("the workspace dependency graph preserves package ownership", () => {
         expect(actual).toEqual(
             expect.arrayContaining([
                 expect.stringContaining("packages/shell/src/example.ts"),
-                expect.stringContaining("packages/probes/src/example.ts"),
+                expect.stringContaining("packages/shell/src/example.ts"),
             ]),
         );
     });

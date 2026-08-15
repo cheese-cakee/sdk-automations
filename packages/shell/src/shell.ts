@@ -6,23 +6,17 @@
  */
 
 import { createServer, type Server } from "node:http";
-import {
-    validateCapabilityDeclarations,
-    type EngineCapability,
-    type RepositoryRef,
-} from "@hiero-hackers/automation-core";
+import type { LinkedIssueReader, RepositoryRef } from "@hiero-hackers/automation-core";
 import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";
 import type { ConfigSource } from "./config.js";
-import type { ShellExternals } from "./externals.js";
 
 export interface ShellOptions {
     readonly secret: string;
     readonly store: Store;
-    readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
-    readonly externals: ShellExternals;
+    readonly linkedIssueReader: LinkedIssueReader;
     readonly repository: RepositoryRef;
     readonly worker?: string;
     readonly clock?: () => Date;
@@ -35,18 +29,11 @@ export interface Shell {
 }
 
 export function createShell(options: ShellOptions): Shell {
-    const errors = validateCapabilityDeclarations(
-        options.capabilities.map(({ declaration }) => declaration),
-    );
-    if (errors.length > 0) {
-        throw new Error(`invalid capability declarations: ${errors.join("; ")}`);
-    }
     const clock = options.clock ?? (() => new Date());
     const processor = new Processor({
         store: options.store,
-        capabilities: options.capabilities,
         configSource: options.configSource,
-        externals: options.externals,
+        linkedIssueReader: options.linkedIssueReader,
         repository: options.repository,
         worker: options.worker ?? "shell-1",
         clock,

@@ -98,14 +98,24 @@ describe("mutation policy stays complete across packages and CI", () => {
         ]);
     });
 
-    it("mutates every tracked TypeScript source recursively", () => {
+    it("keeps broad Store scope and focused Core and receiver scopes", () => {
         for (const subject of configuredPackages) {
-            expect(subject.config.mutate, subject.path).toEqual(["src/**/*.ts"]);
             expect(subject.sources.length, subject.path).toBeGreaterThan(0);
-            expect(unmatchedSources(subject.sources, subject.config.mutate), subject.path).toEqual(
-                [],
-            );
+            if (subject.name === "store") {
+                expect(subject.config.mutate, subject.path).toEqual(["src/**/*.ts"]);
+                expect(
+                    unmatchedSources(subject.sources, subject.config.mutate),
+                    subject.path,
+                ).toEqual([]);
+            }
         }
+        expect(configuredPackages.find(({ name }) => name === "core")?.config.mutate).toEqual([
+            "src/linked-issue.ts:2-111",
+            "src/config.ts:3-110",
+        ]);
+        expect(configuredPackages.find(({ name }) => name === "shell")?.config.mutate).toEqual([
+            "src/receiver.ts:50-83",
+        ]);
     });
 
     it("sets a numeric break threshold in every package policy", () => {

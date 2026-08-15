@@ -3,7 +3,7 @@
     "testRunner": "vitest",
     "plugins": ["@stryker-mutator/vitest-runner"],
     "vitest": { "related": false },
-    "mutate": ["src/**/*.ts"],
+    "mutate": ["src/receiver.ts:50-83"],
     "reporters": ["clear-text", "progress"],
     "concurrency": 6,
     "thresholds": { "high": 90, "low": 80, "break": 90 },

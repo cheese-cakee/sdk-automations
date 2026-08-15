@@ -1,9 +1,0 @@
-# The smallest configuration that does anything: look, report, write nothing.
-#
-# `mode: observe` is also what a repository with NO file at all gets, so this
-# file is really a way of saying it out loud. Adopting the App starts here and
-# every later step is a reviewed diff against it.
-
-schemaVersion: 1
-mode: observe
-capabilities: {}

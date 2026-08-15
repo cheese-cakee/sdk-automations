@@ -50,9 +50,8 @@
 
 ## Why this exists
 
-Hiero SDK repositories repeat the same contributor-facing work: intake, triage, workflow labels,
-pull-request checks, and status reporting. Today that logic is scattered across repository-specific
-scripts and workflows.
+Hiero SDK repositories need a consistent way to tell contributors when a pull request is not linked
+to the issue it closes. Today that check is scattered across repository-specific workflows.
 
 SDK Automations is building one small, hosted GitHub App that lets each repository choose its
 automation in a reviewed YAML file. The goal is not a generic workflow platform. It is one clear,
@@ -65,9 +64,10 @@ GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →
                        exact bytes       pure logic      SQLite transaction
 ```
 
-The runnable application verifies and stores webhook deliveries, evaluates repository configuration
-in `observe` or `dry-run` mode, and persists a canonical report. Unsupported active configuration is
-rejected before a decision can claim that GitHub was changed.
+The runnable application verifies and stores supported pull-request webhook deliveries, checks the
+configured repository identity, and persists a canonical linked-issue report. Its temporary reader
+records `unknown` until the real GitHub adapter lands; it never guesses that unavailable data means
+the PR has no linked issue. Unsupported active configuration is rejected before processing.
 
 > [!NOTE]
 > This boundary is intentional. The first active capability will return only with a real GitHub
@@ -80,17 +80,12 @@ schemaVersion: 1
 mode: dry-run
 
 capabilities:
-  intake:
+  linkedIssue:
     enabled: true
-
-mappings:
-  labels:
-    awaitingTriage: "status: triage"
 ```
 
-The [quickstart](docs/quickstart.md) explains the shape of the configuration, and every file in
-[`docs/examples/`](docs/examples/README.md) is parsed by the test suite. These documents describe the
-current contract; they are not hosted-service installation instructions yet.
+The [quickstart](docs/quickstart.md) explains the complete configuration shape. These documents
+describe the current contract; they are not hosted-service installation instructions yet.
 
 ## Run the workspace
 

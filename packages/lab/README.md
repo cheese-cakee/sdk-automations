@@ -39,7 +39,7 @@ Next, in order, each on its trigger:
       the catalogue is the shopping list.
 - [ ] **Reviewed captures land directly in `packages/core/test/github/fixtures/`** — no waypoint: the
       capture trigger IS the normalizer trigger, and fixtures live where they kill mutants.
-- [ ] **Era-3 conformance probes + schedule** — when the adapter ships. Re-verify `BODY_PATTERNS`
+- [ ] **Era-3 conformance probes + schedule** — when the adapter ships, re-verify payload shapes
       and rate-limit semantics; stamp `probe-results.json`; add the `checks/` lock that reads it.
 
 ---

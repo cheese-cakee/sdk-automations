@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-core",
     "version": "0.0.0",
     "private": true,
-    "description": "Pure-logic core of the maintainer-automation platform: workflow state machine, safety engine, configuration validation. No I/O, no GitHub — see design/build-plan.md, the parallel track.",
+    "description": "Strict linked-issue configuration and pure advisory decisions.",
     "type": "module",
     "exports": {
         ".": {

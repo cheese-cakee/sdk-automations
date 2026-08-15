@@ -6,5 +6,4 @@
  */
 export * from "./receiver.js";
 export * from "./config.js";
-export * from "./externals.js";
 export * from "./shell.js";

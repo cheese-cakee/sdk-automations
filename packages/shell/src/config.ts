@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 /** The path inside the configured repository, relative to its root. */
-export const CONFIG_PATH = "automations.yml";
+export const CONFIG_PATH = ".github/hiero-automations.yml";
 
 export interface ConfigDocument {
     /** Names WHICH text was decided on; lands in every persisted record. */
