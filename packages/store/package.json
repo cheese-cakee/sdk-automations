@@ -15,12 +15,14 @@
     },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
+        "test:coverage": "tsc --noEmit && vitest run --coverage --testTimeout=15000",
         "test:watch": "vitest"
     },
     "dependencies": {
         "@hiero-hackers/automation-core": "workspace:*"
     },
     "devDependencies": {
+        "@hiero-hackers/automation-testkit": "workspace:*",
         "@stryker-mutator/core": "^9.6.1",
         "@stryker-mutator/vitest-runner": "^9.6.1",
         "@types/node": "^24.0.0",

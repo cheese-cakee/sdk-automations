@@ -7,12 +7,55 @@ import {
     type LabelObservation,
 } from "../../src/workflow/index.js";
 import { ISSUE_MEANINGS, PR_MEANINGS, type ClosureReason } from "../../src/workflow/index.js";
-import type { MappableMeaning } from "../../src/config/index.js";
+import { MAPPABLE_MEANINGS, type MappableMeaning } from "../../src/config/index.js";
 
 const observed = (
     meanings: readonly MappableMeaning[],
     closedBy: ClosureReason | null = null,
 ): LabelObservation => ({ closedBy, meanings });
+
+/**
+ * The exhaustive sweep, where everything below it checks examples: it
+ * enumerates the full input space and asserts the PROPERTY — the
+ * projection is total and exclusive over all meaning subsets.
+ */
+describe("projection: total and exclusive over every meaning subset", () => {
+    const subsets: MappableMeaning[][] = [];
+    for (let mask = 0; mask < 1 << MAPPABLE_MEANINGS.length; mask++) {
+        subsets.push(MAPPABLE_MEANINGS.filter((_, i) => mask & (1 << i)));
+    }
+
+    it.each([
+        ["issue", projectIssueObservation, ISSUE_MEANINGS],
+        ["pr", projectPrObservation, PR_MEANINGS],
+    ] as const)("all 128 subsets project coherently for %s", (_name, project, own) => {
+        const ownSet = new Set<MappableMeaning>(own);
+        for (const meanings of subsets) {
+            const ownPositions = meanings.filter((m) => ownSet.has(m));
+            const projection = project({ closedBy: null, meanings });
+            if (ownPositions.length > 1) {
+                expect(projection.kind).toBe("conflict");
+                if (projection.kind === "conflict") {
+                    expect([...projection.positions].sort()).toEqual([...ownPositions].sort());
+                    expect([...projection.ignored].sort()).toEqual(
+                        meanings.filter((m) => !ownSet.has(m) && m !== "blocked").sort(),
+                    );
+                }
+            } else {
+                expect(projection.kind).toBe("position");
+                if (projection.kind === "position") {
+                    expect(projection.state.meaning).toBe(ownPositions[0] ?? null);
+                    expect(projection.state.blocked).toBe(meanings.includes("blocked"));
+                    // Ignored is exactly the other flow's meanings.
+                    for (const m of projection.ignored) {
+                        expect(ownSet.has(m)).toBe(false);
+                        expect(m).not.toBe("blocked");
+                    }
+                }
+            }
+        }
+    });
+});
 
 describe("observation projection (manual-edits.md §3, §8)", () => {
     it.each(ISSUE_MEANINGS)("a single issue position %s projects to that position", (m) => {

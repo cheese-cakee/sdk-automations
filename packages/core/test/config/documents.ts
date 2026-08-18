@@ -1,5 +1,5 @@
 /**
- * The rejection corpus — every way a configuration file can be wrong, as data.
+ * The rejection corpus — every way a configuration can be wrong, as data.
  *
  * These began as files under `examples/config/invalid/`, which was the wrong
  * home for two reasons. The mundane one: nobody adopting the App reads
@@ -11,15 +11,60 @@
  *
  * As a table they are also cheaper to extend, which is the point: a code is
  * better demonstrated by three shapes that reach it than by one.
+ *
+ * TWO tables because there are two entry points, not two homes. A document is
+ * TEXT and only `parseConfigDocument` sees it, so `documentUnparseable` and
+ * `duplicateKey` are reachable from nowhere else; a value is what YAML already
+ * became, and `parseConfig` takes it from a file, a test, or any future
+ * caller. Folding them into one array would mean a `yaml?` and a `raw?` that
+ * are never both absent and never both present — a shape that lies about the
+ * layer it describes.
+ *
+ * `expectRejection` is here rather than in either driver for the same reason
+ * the corpus is: an optional field a driver forgets to assert is a field that
+ * silently does nothing, which is the failure mode the whole file exists to
+ * end. One assertion function, so both tables get every field honoured.
  */
 
-import type { ConfigErrorCode } from "../../src/config/index.js";
+import { expect } from "vitest";
+import type { ConfigErrorCode, ConfigResult } from "../../src/config/index.js";
 
+/**
+ * What every rejection says, whatever it was parsed from.
+ *
+ * `code` is the contract and is always asserted as the WHOLE distinct-code
+ * set: "this input produces this error and no other" is the claim, and a row
+ * that quietly grew a second error is a change in behaviour worth failing on.
+ *
+ * The optional fields exist because a bespoke `it()` that asserted more than
+ * a code had nowhere to fold to. Each is asserted only when present, so a row
+ * says exactly what it means to pin and nothing is asserted by accident:
+ *
+ *  - `alsoReports` — the other codes the SAME input must produce, in the
+ *    order `parse.ts` emits its sections. This is what pins multi-error
+ *    accumulation: a maintainer with three mistakes hears about all three.
+ *  - `messageIncludes` — the fragments of prose that are contract even though
+ *    the wording is not: a misspelt key quoted back, the list of legal modes,
+ *    the available capability names. D75 says the code is the contract; these
+ *    are the places a code alone would not tell a maintainer what to type.
+ *  - `path` — where to annotate. `null` is a real value here (a whole-document
+ *    problem has no path), so absence, not null, means "not asserted".
+ *  - `errorCount` — the total number of errors, for the rows whose point is
+ *    that exactly one thing was wrong.
+ */
 export interface RejectionCase {
-    /** The single code this document must produce, and no other. */
+    /** The first code this input must produce, and — with `alsoReports` — the only ones. */
     readonly code: ConfigErrorCode;
     /** What is wrong, in a few words — becomes the test name. */
     readonly why: string;
+    readonly alsoReports?: readonly ConfigErrorCode[];
+    readonly messageIncludes?: readonly string[];
+    readonly path?: string | null;
+    readonly errorCount?: number;
+}
+
+/** A rejection reachable only from text. Drives `parseConfigDocument`. */
+export interface DocumentRejection extends RejectionCase {
     readonly yaml: string;
     /**
      * True when core raises the error itself rather than relaying one the YAML
@@ -30,9 +75,48 @@ export interface RejectionCase {
     readonly synthesised?: true;
 }
 
+/** A rejection of an already-parsed value. Drives `parseConfig`. */
+export interface ValueRejection extends RejectionCase {
+    readonly raw: unknown;
+    /** The application's admitted capability names. Empty admits nothing. */
+    readonly known?: readonly string[];
+}
+
+/**
+ * Assert one rejection, honouring every field the case carries.
+ *
+ * The two assertions made unconditionally are the ones D38 §2.6 makes about
+ * every rejection whatever its cause: it is a rejection, and no partially
+ * applied configuration escapes on the failure arm.
+ */
+export function expectRejection(result: ConfigResult, rejection: RejectionCase): void {
+    expect(result.ok).toBe(false);
+    // Fail closed, whole-file: there is no half-read configuration to reach for.
+    expect("config" in result).toBe(false);
+    if (result.ok) return;
+
+    expect([...new Set(result.errors.map((e) => e.code))]).toEqual([
+        rejection.code,
+        ...(rejection.alsoReports ?? []),
+    ]);
+
+    if (rejection.errorCount !== undefined) {
+        expect(result.errors).toHaveLength(rejection.errorCount);
+    }
+    if (rejection.path !== undefined) {
+        expect(result.errors.find((e) => e.code === rejection.code)?.path).toBe(rejection.path);
+    }
+    const prose = result.errors.map((e) => e.message).join("\n");
+    for (const fragment of rejection.messageIncludes ?? []) expect(prose).toContain(fragment);
+
+    // Every rejection explains itself. The wording is not contract; having
+    // some is — the convention `safety.test.ts` set over verdict reasons.
+    for (const error of result.errors) expect(error.message.length).toBeGreaterThan(0);
+}
+
 const VALID_TAIL = `capabilities: {}\n`;
 
-export const REJECTIONS: readonly RejectionCase[] = [
+export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     // ---- document level: the file never became a mapping ----
     {
         code: "documentUnparseable",
@@ -81,6 +165,7 @@ export const REJECTIONS: readonly RejectionCase[] = [
         code: "duplicateKey",
         why: "mode is declared twice, and the second one wins",
         yaml: `schemaVersion: 1\nmode: observe\nmode: active\n${VALID_TAIL}`,
+        messageIncludes: ["line 3"],
     },
     {
         code: "duplicateKey",
@@ -107,6 +192,7 @@ export const REJECTIONS: readonly RejectionCase[] = [
         code: "unknownKey",
         why: "several unknown keys are all reported, not just the first",
         yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}nope: 1\nalsoNope: 2\n`,
+        errorCount: 2,
     },
 
     {
@@ -210,5 +296,448 @@ export const REJECTIONS: readonly RejectionCase[] = [
         code: "principalNotAString",
         why: "nor a list",
         yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: [a, b]\n`,
+    },
+];
+
+/**
+ * A document with nothing wrong with it. A row that spreads this one has
+ * exactly one mistake in it, so its distinct-code set is unambiguous and the
+ * `path` it pins is the path of the only error there is.
+ */
+const COMPLETE = {
+    schemaVersion: 1,
+    mode: "active",
+    capabilities: {},
+    mappings: { labels: {} },
+    principals: {},
+};
+
+/** The names `COMPLETE`-based rows admit, so `intake` is never also unknown. */
+const INTAKE = ["intake"];
+
+/** Two shipped capabilities, for the rows about what the App admits. */
+const SHIPPED = ["prQuality", "assignment"];
+
+export const VALUE_REJECTIONS: readonly ValueRejection[] = [
+    // ---- document level: what arrived was not a mapping at all ----
+    {
+        code: "notAMapping",
+        why: "a bare string has no path to point at",
+        raw: "not a mapping at all",
+        path: null,
+        errorCount: 1,
+    },
+    {
+        code: "notAMapping",
+        why: "a string trips its own guard, not whatever check happens to fail later",
+        raw: "a string",
+        messageIncludes: ["configuration must be a mapping"],
+    },
+    {
+        code: "notAMapping",
+        why: "a sequence is not a mapping",
+        raw: [],
+        messageIncludes: ["configuration must be a mapping"],
+    },
+    /**
+     * The prototype chain is not the document. `mode: "active"` sits one link
+     * up, and a reader that walked it would enable writes nobody wrote down —
+     * so this is rejected whole, before any section reads anything.
+     */
+    {
+        code: "notAMapping",
+        why: "an inherited mode is not configuration and must not activate",
+        raw: Object.assign(Object.create({ mode: "active" }), { schemaVersion: 1 }),
+        path: null,
+        errorCount: 1,
+    },
+
+    // ---- schema level: the version and the top-level keys ----
+    {
+        code: "schemaVersionUnsupported",
+        why: "a version that does not exist yet",
+        raw: { ...COMPLETE, schemaVersion: 2 },
+        known: INTAKE,
+        path: "schemaVersion",
+    },
+    {
+        code: "schemaVersionUnsupported",
+        why: "no version at all — a document must say which schema it is",
+        raw: { mode: "observe" },
+    },
+    {
+        code: "unknownKey",
+        why: "capabilities is misspelt, and the misspelling is quoted back",
+        raw: { schemaVersion: 1, mode: "observe", capabilties: {} },
+        path: "capabilties",
+        messageIncludes: ['unknown key "capabilties"'],
+    },
+    {
+        code: "unknownKey",
+        why: "a stray top-level key",
+        raw: { ...COMPLETE, stray: 1 },
+        known: INTAKE,
+        path: "stray",
+    },
+    {
+        code: "modeInvalid",
+        why: "a plausible word that is not one of the four modes",
+        raw: { ...COMPLETE, mode: "sideways" },
+        known: INTAKE,
+        path: "mode",
+    },
+    /**
+     * §2.6 in one row: `prQuality` is a well-formed block and it still buys
+     * nothing, because one error anywhere yields no configuration at all. It
+     * is also unshipped here, which is why the rejection names two codes.
+     */
+    {
+        code: "modeInvalid",
+        why: "a well-formed capability alongside a bad mode is discarded too",
+        raw: {
+            schemaVersion: 1,
+            mode: "actively",
+            capabilities: { prQuality: { enabled: true } },
+        },
+        alsoReports: ["capabilityUnknown"],
+        messageIncludes: ["disabled, observe, dry-run, active"],
+    },
+    // D56 — an ABSENT mode defaults to observe; a present but empty one is an
+    // error, because choosing on the maintainer's behalf is the silent
+    // interpretation §2.7 rejects.
+    {
+        code: "modeInvalid",
+        why: "mode: with no value is null, not a default",
+        raw: { schemaVersion: 1, mode: null },
+    },
+    {
+        code: "modeInvalid",
+        why: "an empty string is not a mode either",
+        raw: { schemaVersion: 1, mode: "" },
+    },
+
+    // ---- capability level ----
+    {
+        code: "notAMapping",
+        why: "a number where the capabilities block should be",
+        raw: { ...COMPLETE, capabilities: 3 },
+        known: INTAKE,
+        path: "capabilities",
+    },
+    {
+        code: "notAMapping",
+        why: "a sequence where the capabilities block should be",
+        raw: { schemaVersion: 1, capabilities: [] },
+        messageIncludes: ["capabilities must be a mapping"],
+    },
+    {
+        code: "notAMapping",
+        why: "a capability whose body is a sequence",
+        raw: { schemaVersion: 1, capabilities: { a: [] } },
+        path: "capabilities.a",
+        messageIncludes: ['capability "a" must be a mapping'],
+    },
+    {
+        code: "notAMapping",
+        why: "a null capability body is not an empty one",
+        raw: { schemaVersion: 1, capabilities: { assignment: null } },
+        messageIncludes: ['capability "assignment" must be a mapping'],
+    },
+    /**
+     * `undefined`, not `null`: the two reach `isPlainObject` down different
+     * arms, and only this one makes `Object.getPrototypeOf` throw. The guard
+     * that stops it is the first clause of that function, so this row is what
+     * makes the clause load-bearing rather than decorative.
+     */
+    {
+        code: "notAMapping",
+        why: "a capability key with no body at all",
+        raw: { schemaVersion: 1, capabilities: { assignment: undefined } },
+        path: "capabilities.assignment",
+        errorCount: 1,
+        messageIncludes: ['capability "assignment" must be a mapping'],
+    },
+    {
+        code: "notAMapping",
+        why: "settings is opaque, but it is still a mapping",
+        raw: { schemaVersion: 1, capabilities: { a: { settings: [] } } },
+        path: "capabilities.a.settings",
+        messageIncludes: ["settings must be a mapping"],
+    },
+    {
+        code: "capabilityNameInvalid",
+        why: "a dotted path is not a capability name",
+        raw: { schemaVersion: 1, capabilities: { "a.b": { enabled: false } } },
+    },
+    {
+        code: "capabilityNameInvalid",
+        why: "kebab-case is not a configuration key",
+        raw: { ...COMPLETE, capabilities: { "not-camel": { enabled: true } } },
+        known: INTAKE,
+        path: "capabilities.not-camel",
+    },
+    {
+        code: "capabilityNameInvalid",
+        why: "PascalCase is not a configuration key",
+        raw: { schemaVersion: 1, capabilities: { PascalCase: { enabled: false } } },
+    },
+    {
+        code: "capabilityNameInvalid",
+        why: "a leading underscore is not a configuration key",
+        raw: { schemaVersion: 1, capabilities: { _private: { enabled: false } } },
+    },
+    {
+        code: "capabilityNameInvalid",
+        why: "the empty name",
+        raw: { schemaVersion: 1, capabilities: { "": { enabled: false } } },
+    },
+    {
+        code: "unknownKey",
+        why: "an unknown key inside a capability block",
+        raw: { ...COMPLETE, capabilities: { intake: { enabled: true, stray: 1 } } },
+        known: INTAKE,
+        path: "capabilities.intake.stray",
+    },
+    /**
+     * Three sections wrong, three sections heard from — the humane half of
+     * D38. A maintainer is not made to fix one mistake per push, and the
+     * ORDER is `parse.ts`'s section order, which is the order they read.
+     */
+    {
+        code: "unknownKey",
+        why: "a misspelt capability key and an unmappable meaning are reported together",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { intake: { enable: true } },
+            mappings: { labels: { readyForDev: "status: ready" } },
+        },
+        alsoReports: ["capabilityUnknown", "meaningNotMappable"],
+        messageIncludes: ['unknown key "enable"', '"readyForDev" is not a mappable meaning'],
+    },
+    // §2.4 — only boolean true enables a capability; truthiness is not consent.
+    {
+        code: "capabilityEnabledNotBoolean",
+        why: "1 is not a boolean",
+        raw: { schemaVersion: 1, capabilities: { intake: { enabled: 1 } } },
+        known: INTAKE,
+    },
+    {
+        code: "capabilityEnabledNotBoolean",
+        why: "a quoted true is a string",
+        raw: { schemaVersion: 1, capabilities: { intake: { enabled: "true" } } },
+        known: INTAKE,
+    },
+    {
+        code: "capabilityEnabledNotBoolean",
+        why: "nor does yes mean yes",
+        raw: { ...COMPLETE, capabilities: { intake: { enabled: "yes" } } },
+        known: INTAKE,
+        path: "capabilities.intake.enabled",
+    },
+    {
+        code: "capabilityUnknown",
+        why: "a capability that does not ship, with the available names listed",
+        raw: { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
+        known: SHIPPED,
+        path: "capabilities.checksGate",
+        messageIncludes: ['"checksGate"', "not available", "assignment, prQuality"],
+    },
+    /**
+     * `knownCapabilities` is required, so omitting the admission authority is
+     * a compile error and `[]` is a stated choice: admit nothing.
+     */
+    {
+        code: "capabilityUnknown",
+        why: "an empty admission list says none rather than showing a blank list",
+        raw: { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
+        messageIncludes: ["(available: none)"],
+    },
+    {
+        code: "capabilityUnknown",
+        why: "a DISABLED unknown capability is rejected, not retained as a tombstone",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { removedProbe: { enabled: false, settings: { old: 1 } } },
+        },
+        known: SHIPPED,
+        path: "capabilities.removedProbe",
+        errorCount: 1,
+    },
+    {
+        code: "capabilityUnknown",
+        why: "a shipped capability alongside an unshipped one is discarded too",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { prQuality: { enabled: true }, checksGate: { enabled: true } },
+        },
+        known: SHIPPED,
+        path: "capabilities.checksGate",
+        errorCount: 1,
+    },
+    {
+        code: "capabilityUnknown",
+        why: "a capability the App never declared",
+        raw: { ...COMPLETE, capabilities: { ghost: { enabled: true } } },
+        known: INTAKE,
+        path: "capabilities.ghost",
+    },
+
+    // ---- mappings ----
+    {
+        code: "notAMapping",
+        why: "a sequence where the mappings block should be",
+        raw: { schemaVersion: 1, mappings: [] },
+        path: "mappings",
+        messageIncludes: ["mappings must be a mapping"],
+    },
+    {
+        code: "notAMapping",
+        why: "a sequence where the label table should be",
+        raw: { schemaVersion: 1, mappings: { labels: [] } },
+        path: "mappings.labels",
+        messageIncludes: ["mappings.labels must be a mapping"],
+    },
+    {
+        code: "unknownKey",
+        why: "labels is the only thing mappings has",
+        raw: { schemaVersion: 1, mappings: { fields: {} } },
+        path: "mappings.fields",
+        messageIncludes: ['mappings: unknown key "fields"'],
+    },
+    {
+        code: "meaningNotMappable",
+        why: "a meaning the platform does not have",
+        raw: { ...COMPLETE, mappings: { labels: { nonsense: "x" } } },
+        known: INTAKE,
+        path: "mappings.labels.nonsense",
+    },
+    {
+        code: "labelInvalid",
+        why: "whitespace maps a meaning onto nothing",
+        raw: { ...COMPLETE, mappings: { labels: { ready: "  " } } },
+        known: INTAKE,
+        path: "mappings.labels.ready",
+    },
+    // FINDING(config-label-injectivity) D34 — label→meaning must be readable
+    // backwards, so no two meanings may share a label.
+    /**
+     * The third fragment is the ABSENCE of the case-folding clause, stated as
+     * presence: when two meanings share a spelling exactly, the meaning pair
+     * runs straight into the rule citation with nothing interposed. Every
+     * shorter fragment survives a message that has grown an explanation
+     * nobody asked for — which is what "these labels differ only in case"
+     * would be here, since they do not differ at all.
+     */
+    {
+        code: "labelNotInjective",
+        why: "two meanings share a label exactly",
+        raw: {
+            schemaVersion: 1,
+            mappings: { labels: { ready: "status: wip", inProgress: "status: wip" } },
+        },
+        messageIncludes: [
+            '"status: wip"',
+            "injective",
+            '"ready" and "inProgress" — label mappings must be injective (schema.md §3)',
+        ],
+    },
+    {
+        code: "labelNotInjective",
+        why: "injectivity is not scoped per entity — the strict reading, pending D34",
+        raw: {
+            schemaVersion: 1,
+            mappings: { labels: { ready: "attention", needsReview: "attention" } },
+        },
+    },
+    {
+        code: "labelNotInjective",
+        why: "the second meaning is the one to annotate",
+        raw: { ...COMPLETE, mappings: { labels: { ready: "x", inProgress: "x" } } },
+        known: INTAKE,
+        path: "mappings.labels.inProgress",
+    },
+    /**
+     * D55 — GitHub treats label names case-insensitively for uniqueness, so
+     * exact-string injectivity let two meanings share ONE real label,
+     * reintroducing the ambiguity D34 exists to prevent. The message has to
+     * say so, or the maintainer sees two spellings and no collision.
+     */
+    {
+        code: "labelNotInjective",
+        why: "labels differing only in case are one label to GitHub",
+        raw: {
+            schemaVersion: 1,
+            mappings: { labels: { ready: "status: ready", needsReview: "Status: Ready" } },
+        },
+        messageIncludes: ["injective", "GitHub treats as the same label"],
+    },
+    {
+        code: "labelNotInjective",
+        why: "labels differing only in surrounding space are one label to GitHub",
+        raw: {
+            schemaVersion: 1,
+            mappings: { labels: { ready: "status: ready", needsReview: "  status: ready  " } },
+        },
+        messageIncludes: ["injective", "GitHub treats as the same label"],
+    },
+    {
+        code: "labelNotInjective",
+        why: "labels differing in both case and surrounding space",
+        raw: {
+            schemaVersion: 1,
+            mappings: { labels: { ready: "Status: Ready", needsReview: " status: ready " } },
+        },
+        messageIncludes: ["injective", "GitHub treats as the same label"],
+    },
+
+    // ---- principals ----
+    {
+        code: "notAMapping",
+        why: "a sequence where the principals block should be",
+        raw: { schemaVersion: 1, principals: [] },
+        path: "principals",
+        messageIncludes: ["principals must be a mapping"],
+    },
+    {
+        code: "principalNotAString",
+        why: "a principal is a name, not a number",
+        raw: { schemaVersion: 1, principals: { a: 1 } },
+        path: "principals.a",
+        messageIncludes: ["principals.a: must be a string"],
+    },
+    {
+        code: "principalNotAString",
+        why: "nor a number under a plausible role",
+        raw: { ...COMPLETE, principals: { reviewer: 3 } },
+        known: INTAKE,
+        path: "principals.reviewer",
+    },
+
+    // ---- hostile keys: `__proto__` reaches every level, and is ordinary at each ----
+    /**
+     * Built with `JSON.parse` on purpose. An object LITERAL with a `__proto__`
+     * key sets the prototype instead of creating the key, so the literal would
+     * not be the input this is about. Before the name check, this key passed
+     * validation, vanished from the result, AND replaced the prototype of the
+     * object it was assigned into.
+     */
+    {
+        code: "capabilityNameInvalid",
+        why: "a capability named __proto__ is rejected rather than lost after validation",
+        raw: JSON.parse('{"schemaVersion":1,"capabilities":{"__proto__":{"enabled":true}}}'),
+        path: "capabilities.__proto__",
+        messageIncludes: ["not a valid configuration key"],
+    },
+    {
+        code: "unknownKey",
+        why: "__proto__ at the top level is an ordinary unknown key",
+        raw: JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'),
+        path: "__proto__",
+    },
+    {
+        code: "meaningNotMappable",
+        why: "__proto__ under labels is an ordinary unmappable meaning",
+        raw: JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
+        path: "mappings.labels.__proto__",
     },
 ];

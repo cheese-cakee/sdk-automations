@@ -1,24 +1,27 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+/**
+ * The delivery's entry boundary: bytes are durable BEFORE the acknowledgment,
+ * a duplicate or a conflicting resend never displaces the original work, and
+ * claim, recovery, completion and retention keep exactly one worker on each
+ * item. Real SQLite throughout — the races run in worker threads through
+ * `worker-build.ts`, because two promises taking turns is not contention.
+ */
+
+import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import * as ts from "typescript";
+import { useTempDir } from "@hiero-hackers/automation-testkit";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Store } from "../src/store.js";
 import type { ClaimedDelivery } from "../src/deliveries.js";
+import { buildWorkerStoreModule } from "./worker-build.js";
 
-let dir: string;
+const temp = useTempDir("delivery-intake-test-");
 let path: string;
 
 beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "delivery-intake-test-"));
-    path = join(dir, "store.sqlite");
+    path = temp.file("store.sqlite");
 });
-
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function id(raw: string): DeliveryGuid {
     const deliveryId = asDeliveryGuid(raw);
@@ -89,39 +92,8 @@ const { parentPort, workerData } = require("node:worker_threads");
 });
 `;
 
-function buildWorkerStoreModule(): string {
-    const buildDir = join(dir, "worker-build");
-    mkdirSync(buildDir, { recursive: true });
-    const compilerOptions = {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.ESNext,
-    };
-    const idsSource = readFileSync(
-        new URL("github/ids.ts", import.meta.resolve("@hiero-hackers/automation-core")),
-        "utf8",
-    );
-    const storeSource = readFileSync(new URL("../src/store.ts", import.meta.url), "utf8");
-    const schemaSource = readFileSync(new URL("../src/schema.ts", import.meta.url), "utf8");
-    writeFileSync(
-        join(buildDir, "ids.js"),
-        ts.transpileModule(idsSource, { compilerOptions }).outputText,
-    );
-    const storeModule = join(buildDir, "store.js");
-    writeFileSync(
-        storeModule,
-        ts
-            .transpileModule(storeSource, { compilerOptions })
-            .outputText.replace("@hiero-hackers/automation-core", "./ids.js"),
-    );
-    writeFileSync(
-        join(buildDir, "schema.js"),
-        ts.transpileModule(schemaSource, { compilerOptions }).outputText,
-    );
-    return pathToFileURL(storeModule).href;
-}
-
 async function runConcurrent(operation: ConcurrentOperation): Promise<unknown[]> {
-    const storeModule = buildWorkerStoreModule();
+    const storeModule = buildWorkerStoreModule(temp.dir);
     const gate = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
     const gateView = new Int32Array(gate);
     let ready = 0;

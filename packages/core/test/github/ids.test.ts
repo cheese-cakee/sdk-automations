@@ -1,5 +1,34 @@
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import { asDeliveryGuid, asDeliveryRecordId } from "../../src/github/ids.js";
+
+/**
+ * Property-based tests (fast-check): randomized inputs with a fixed seed —
+ * deterministic runs, shrinking to minimal counterexamples on failure.
+ * They state the PROPERTY the examples below cannot: that accepted
+ * identifiers round-trip unchanged over a generated input space.
+ */
+const SEED = 20260725;
+
+describe("asDeliveryRecordId properties", () => {
+    it("accepts exactly digit strings, and accepted values round-trip unchanged", () => {
+        fc.assert(
+            fc.property(fc.string({ maxLength: 40 }), (s) => {
+                const id = asDeliveryRecordId(s);
+                expect(id !== undefined).toBe(/^\d+$/.test(s));
+                if (id !== undefined) expect(id).toBe(s); // opaque: never normalized
+            }),
+            { seed: SEED, numRuns: 500 },
+        );
+        // And digit strings beyond 2^53 — the whole point — are preserved.
+        fc.assert(
+            fc.property(fc.stringMatching(/^[1-9]\d{18,24}$/), (s) => {
+                expect(asDeliveryRecordId(s)).toBe(s);
+            }),
+            { seed: SEED, numRuns: 200 },
+        );
+    });
+});
 
 describe("delivery identifier separation (experiment 6.2)", () => {
     it("accepts the X-GitHub-Delivery GUID used to deduplicate webhook deliveries", () => {

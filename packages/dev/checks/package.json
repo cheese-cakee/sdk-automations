@@ -1,0 +1,23 @@
+{
+    "name": "@hiero-hackers/automation-checks",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Tests about the REPOSITORY, not about any package: docs and examples stay true to core's vocabularies, design diagrams match the edge tables, artifacts hold their invariants. No src/ — nothing here can or should kill a mutant. Depends on core only through its public barrel.",
+    "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "test": "tsc --noEmit && vitest run",
+        "test:watch": "vitest"
+    },
+    "devDependencies": {
+        "@hiero-hackers/automation-core": "workspace:*",
+        "@hiero-hackers/automation-testkit": "workspace:*",
+        "@types/node": "^24.0.0",
+        "dependency-cruiser": "^17.0.0",
+        "typescript": "^5.6.0",
+        "vitest": "^4.0.0",
+        "yaml": "^2.9.0"
+    }
+}

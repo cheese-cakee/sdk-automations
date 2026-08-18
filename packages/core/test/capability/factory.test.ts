@@ -9,6 +9,7 @@ import {
     declareCapability,
     deriveIdempotencyKey,
     intentFactory,
+    intentFactoryFor,
     screenIntent,
 } from "../../src/index.js";
 
@@ -17,6 +18,21 @@ const occasion = {
     item: { kind: "issue", number: 7 },
     observedAt: new Date("2026-08-07T01:00:00Z"),
 } as const;
+
+const declaration = declareCapability({
+    name: "triage",
+    triggers: [{ kind: "event", event: "issues" }],
+    configKeys: [],
+    observations: ["issueUpdated"],
+    resolvers: [],
+    intents: ["applyMappedLabel"],
+    operationalNeeds: {
+        schedule: false,
+        durableState: "none",
+        crossItemCoordination: false,
+        externalDelivery: false,
+    },
+});
 
 const make = intentFactory("triage", occasion);
 
@@ -97,22 +113,34 @@ describe("what the factory defaults", () => {
     });
 });
 
+/**
+ * The declaration-aware factory is the one capabilities are told to use, and
+ * until now only `slice.test.ts` ever called it — a composition test, which
+ * cannot say what this function alone owes. What it owes is two things: an
+ * intent that is byte-for-byte the untyped factory's, and the attribution
+ * taken from the DECLARATION rather than from a string the caller retypes.
+ */
+describe("intentFactoryFor — the declaration supplies the name", () => {
+    const spec = {
+        operation: "applyMappedLabel",
+        desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+        cause: "issueWithoutPosition",
+        explain: { summary: "New issue placed in triage." },
+    } as const;
+
+    it("attributes the intent to the declaration, not to a restated name", () => {
+        const intent = intentFactoryFor(declaration, occasion)(spec);
+        expect(intent.capability).toBe(declaration.name);
+        expect(intent.explanation.capability).toBe(declaration.name);
+    });
+
+    it("produces exactly what the untyped factory produces — it adds types, not behaviour", () => {
+        expect(intentFactoryFor(declaration, occasion)(spec)).toEqual(make(spec));
+    });
+});
+
 describe("factory output is screen-clean", () => {
     it("a factory-made intent passes the screens a hand-built one passes", () => {
-        const declaration = declareCapability({
-            name: "triage",
-            triggers: [{ kind: "event", event: "issues" }],
-            configKeys: [],
-            observations: ["issueUpdated"],
-            resolvers: [],
-            intents: ["applyMappedLabel"],
-            operationalNeeds: {
-                schedule: false,
-                durableState: "none",
-                crossItemCoordination: false,
-                externalDelivery: false,
-            },
-        });
         expect(
             screenIntent(label(), declaration, {
                 kind: "position",

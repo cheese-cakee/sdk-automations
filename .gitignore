@@ -1,10 +1,11 @@
 # The lab's local-only layer: era-1 harness (disposable, holds its own
 # node_modules), capture staging, and sandbox App credentials. Tracked:
 # protocols/, src/, test/. Reviewed captures go STRAIGHT to
-# core/test/github/fixtures/ — see lab/README.md and D88.
-packages/lab/harness/
-packages/lab/evidence/
-packages/lab/.env
+# testkit/fixtures/, reaching their packages through the testkit's
+# exports — see lab/README.md and D88.
+packages/dev/lab/harness/
+packages/dev/lab/evidence/
+packages/dev/lab/.env
 node_modules/
 .stryker-tmp/
 coverage/

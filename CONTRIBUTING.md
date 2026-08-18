@@ -85,15 +85,15 @@ than taking it on faith.
 - **One fact, one place.** If a value, list, or rule already exists somewhere, derive it — do not
   restate it. This is the single most repeated finding in the project ([`design/decisions.md`](design/decisions.md)).
 - **Every check gets a negative control.** A test that cannot fail is not a check; each invariant in
-  [`packages/checks/`](packages/checks/) carries a "proves the check can fail" case, and yours should too.
+  [`packages/dev/checks/`](packages/dev/checks/) carries a "proves the check can fail" case, and yours should too.
 - **Never weaken a gate to make it pass.** The mutation threshold in
   [`packages/core/stryker.config.json`](packages/core/stryker.config.json) breaks the build below 90 — if you
   cannot reach it, the answer is a better test, not a lower number.
 - **A claim in a document becomes an invariant.** If your change asserts something is true of this
-  repository, expect to be asked which check keeps it true ([`packages/checks/`](packages/checks/)).
+  repository, expect to be asked which check keeps it true ([`packages/dev/checks/`](packages/dev/checks/)).
 - **Credentials and raw captures are never tracked.** The lab's local-only layer holds sandbox
   secrets and unscrubbed payloads; a test enforces this and a `git add -f` will fail the build
-  ([`packages/lab/README.md`](packages/lab/README.md)).
+  ([`packages/dev/lab/README.md`](packages/dev/lab/README.md)).
 - **Comments carry constraints, not narration.** Say what must stay true and cite the decision; the
   story belongs in the register ([`design/testing/README.md`](design/testing/README.md)).
 

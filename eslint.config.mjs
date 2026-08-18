@@ -11,7 +11,7 @@ export default tseslint.config(
             // Never-tracked local-only trees. CI never sees them, so
             // linting them made `pnpm lint` disagree with CI on exactly
             // the machines that do the work (D95).
-            "packages/lab/harness/**",
+            "packages/dev/lab/harness/**",
             "packages/shell/data/**",
         ],
     },

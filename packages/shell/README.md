@@ -81,5 +81,5 @@ programmatic access to canonical reports.
   recovery path before active behavior can be enabled.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.
 
-The capture receiver in `packages/lab/src/capture.ts` was this package's embryo: same verify-first line,
+The capture receiver in `packages/dev/lab/src/capture.ts` was this package's embryo: same verify-first line,
 same 202 — it just wrote a file where the shell continues through canonical SQLite completion.

@@ -37,6 +37,22 @@ describe("observedMeaningsOf reassembles what projection split", () => {
         expect(observedMeaningsOf(projection)).toEqual(["awaitingTriage", "inProgress", "blocked"]);
     });
 
+    /**
+     * A conflict that is NOT paused. Every conflict above carried `blocked`,
+     * so a reassembly that simply asserted the pause on the conflict branch
+     * looked identical — and it is not: `blocked` is what the safety
+     * engine's `itemBlocked` rule reads, so an invented pause silences every
+     * capability on an item nobody paused.
+     */
+    it("a conflicted item that nobody paused does not read as paused", () => {
+        const projection = project({
+            closedBy: null,
+            meanings: ["awaitingTriage", "inProgress"],
+        });
+        expect(projection.kind).toBe("conflict");
+        expect(observedMeaningsOf(projection)).toEqual(["awaitingTriage", "inProgress"]);
+    });
+
     it("round-trips: any observed meaning set survives project → reassemble", () => {
         for (const meanings of [
             ["ready"],
@@ -136,6 +152,15 @@ describe("deriveWorld authoritative preconditions", () => {
         });
         expect(conflicted.kind).toBe("conflict");
         expect(deriveWorld(conflicted, emptyClaims).preconditionHolds).toBe(false);
+    });
+
+    it("carries the observation's own meanings, not an empty world", () => {
+        // The other half of the derived world, and the half the rules
+        // actually read: `itemBlocked` refuses on `observedMeanings`, so a
+        // world that answered `[]` for every projection would quietly unpause
+        // every paused item.
+        const paused = project({ closedBy: null, meanings: ["ready", "blocked"] });
+        expect(deriveWorld(paused, emptyClaims).observedMeanings).toEqual(["ready", "blocked"]);
     });
 
     it("checks requested facts against a clean authoritative projection", () => {

@@ -65,7 +65,7 @@ jobs:
           # findings from disposable era-1 harness code (D99).
           config: |
             paths-ignore:
-              - packages/lab/harness
+              - packages/dev/lab/harness
               - packages/shell/data
 
       - name: Analyze

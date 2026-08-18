@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noEmit": true,
+        "skipLibCheck": true
+    },
+    "include": ["test"],
+    "// exclude": "test/fixtures/architecture/ is a tree of deliberately broken imports — a named subpath that resolves to nothing is the point of one of them, so typechecking it would report exactly the fault it exists to demonstrate. dependency-cruiser reads those files; the compiler must not.",
+    "exclude": ["test/fixtures"]
+}

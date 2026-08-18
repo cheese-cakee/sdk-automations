@@ -1,26 +1,19 @@
 /**
  * `parseConfigDocument` — the layer between a file and `parseConfig`.
  *
- * In-package on purpose. The rejection corpus lived at the repository root as
- * `examples/config/invalid/*.yml` and scored this module at 0.00% mutation:
- * Stryker's sandbox is `core/` and nothing above it, so those files were never
- * copied and the tests reading them killed nothing. They ran, they passed, and
- * they measured nothing — the same silent-skip shape as the `src/*.ts` mutate
- * glob that stopped covering three modules when they moved into a directory.
+ * The rejection corpus stays IN-PACKAGE. Stryker's sandbox is `core/` and
+ * nothing above it, so a corpus at the repository root is never copied: the
+ * tests reading it run, pass, and kill no mutants. That is how this module
+ * once scored 0.00%.
  */
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { parseConfigDocument, type ConfigErrorCode } from "../../src/config/index.js";
-import { REJECTIONS } from "./documents.js";
+import { DOCUMENT_REJECTIONS, expectRejection } from "./documents.js";
 
 const OPTIONS = { revision: "rev-test", knownCapabilities: ["intake", "prQuality"] };
 const parse = (yaml: string) => parseConfigDocument(yaml, OPTIONS);
-
-const codesOf = (yaml: string): ConfigErrorCode[] => {
-    const result = parse(yaml);
-    return result.ok ? [] : [...new Set(result.errors.map((e) => e.code))];
-};
 
 describe("every rejection the catalogue names is reachable", () => {
     /**
@@ -47,30 +40,18 @@ describe("every rejection the catalogue names is reachable", () => {
     };
 
     it("has at least one document for every code", () => {
-        const covered = new Set(REJECTIONS.map((r) => r.code));
+        const covered = new Set(DOCUMENT_REJECTIONS.map((r) => r.code));
         expect(
             [...Object.keys(REQUIRED)].filter((c) => !covered.has(c as ConfigErrorCode)),
         ).toEqual([]);
     });
 
-    it.each(REJECTIONS.map((r) => [`${r.code}: ${r.why}`, r] as const))(
+    it.each(DOCUMENT_REJECTIONS.map((r) => [`${r.code}: ${r.why}`, r] as const))(
         "%s",
         (_name, rejection) => {
-            expect(codesOf(rejection.yaml)).toEqual([rejection.code]);
+            expectRejection(parse(rejection.yaml), rejection);
         },
     );
-
-    it("every rejection explains itself", () => {
-        for (const { yaml } of REJECTIONS) {
-            const result = parse(yaml);
-            expect(result.ok).toBe(false);
-            if (result.ok) continue;
-            // The wording is never asserted, only that there is some — the
-            // convention `safety.test.ts` set and the reason messages can be
-            // rewritten without touching a test.
-            for (const error of result.errors) expect(error.message.length).toBeGreaterThan(0);
-        }
-    });
 });
 
 describe("a document-level problem reports where it is", () => {
@@ -81,7 +62,7 @@ describe("a document-level problem reports where it is", () => {
      * paragraph, which is what D75 existed to stop.
      */
     it.each(
-        REJECTIONS.filter(
+        DOCUMENT_REJECTIONS.filter(
             (r) =>
                 !r.synthesised && (r.code === "documentUnparseable" || r.code === "duplicateKey"),
         ).map((r) => [r.why, r.yaml] as const),
@@ -95,21 +76,8 @@ describe("a document-level problem reports where it is", () => {
         }
     });
 
-    it("names the line a duplicate key was found on", () => {
-        const result = parse(`schemaVersion: 1\nmode: observe\nmode: active\ncapabilities: {}\n`);
-        expect(result.ok).toBe(false);
-        if (result.ok) return;
-        expect(result.errors[0]?.message).toContain("line 3");
-    });
-
-    /**
-     * The budget is a decision, so it is pinned. Without this the number could
-     * be deleted and only the extreme document would still be caught.
-     */
-    it("refuses at our budget, not the library's much larger default", () => {
-        const twenty = `a: &a observe\nb: [${Array.from({ length: 20 }, () => "*a").join(",")}]\n`;
-        expect(codesOf(twenty)).toEqual(["documentUnparseable"]);
-    });
+    // Which line, not just that there is one, is pinned by the duplicate-key
+    // row's `messageIncludes` in the corpus.
 });
 
 describe("no document, however hostile, escapes as an exception", () => {
@@ -162,14 +130,13 @@ describe("no document, however hostile, escapes as an exception", () => {
         }
     });
 
-    it("the alias budget refuses rather than throwing", () => {
-        const bomb =
-            `a: &a [x,x,x,x,x,x,x,x,x,x]\n` +
-            `b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a]\n` +
-            `c: [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b]\n`;
-        expect(codesOf(bomb)).toEqual(["documentUnparseable"]);
-        // A document using aliases WITHIN the budget is still accepted — the
-        // limit bounds expansion, it does not ban a YAML feature outright.
+    /**
+     * The corpus cannot make this claim: every row in it is a rejection, and
+     * what matters here is the rejection that did NOT happen. The limit
+     * bounds expansion, it does not ban a YAML feature — the alias resolves,
+     * and the only complaint is the anchor's own top-level key.
+     */
+    it("a document using aliases within the budget still resolves them", () => {
         const modest = `x: &x observe\nschemaVersion: 1\nmode: *x\ncapabilities: {}\n`;
         const result = parse(modest);
         expect(result.ok).toBe(false);

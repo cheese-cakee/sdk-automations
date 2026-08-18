@@ -7,8 +7,8 @@
  * state fields become a `ClosureReason`, and the label set becomes an
  * `ObservationProjection` (contract.md §2 — "the platform normalizes all
  * external facts before evaluation"). Built test-first against REAL
- * captured payloads in `packages/core/test/github/fixtures/` (protocol
- * 7.1), never against invented ones.
+ * captured payloads from the testkit (`packages/dev/testkit/fixtures/`,
+ * protocol 7.1), never against invented ones.
  *
  * Total, like everything at this boundary. A delivery this file does not
  * consume is `ignored` (normal — pushes, stars, pings); one it consumes

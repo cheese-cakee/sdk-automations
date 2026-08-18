@@ -2,7 +2,7 @@
 
 Three capability stubs that exist to test the boundary they plug into.
 They are **not** product scope, not a ranking, and not a prediction of what
-stage four will choose. Same rule as [`lab/`](../lab/README.md):
+stage four will choose. Same rule as [`lab/`](../dev/lab/README.md):
 the harness is disposable, the evidence is the product.
 
 ## Why this exists
@@ -40,6 +40,9 @@ Together they exercise the retained boundary without selecting a product capabil
 |---|---|
 | `test/boundary.test.ts` | The direct declaration set is admitted; the config projection leaks neither another capability's block nor a repository label string; the intent screen refuses undeclared, misattributed, and unprojected label intents |
 | `test/engine-matrix.test.ts` | **P3**, tested: all eight subsets, each capability's behaviour identical regardless of neighbours, disabled capabilities never evaluated, with a negative control so the matrix cannot pass vacuously |
+| `test/prQuality.test.ts` | A resolver that could not answer is never read as "no linked issue" — the sweep explains and emits nothing, while the same pull request with a real empty answer draws the comment |
+| `test/intake.test.ts` | Without a mapped `awaitingTriage` the sweep explains and skips; an item positioned anywhere is left alone, because intake is the entry gate only |
+| `test/inactivity.test.ts` | The act path dates `unassign` at `warnedAt` rather than the sweep — redating would restart the grace period — and a bot or undetermined assignee is skipped precisely where the next step is destructive |
 
 The P3 run is the one worth flagging: [`build-plan.md`](../../design/build-plan.md)
 §12 defers the toggle matrix past November because one capability cannot

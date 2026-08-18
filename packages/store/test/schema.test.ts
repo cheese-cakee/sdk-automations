@@ -4,24 +4,20 @@
  * migration inputs.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { asDeliveryGuid } from "@hiero-hackers/automation-core";
+import { useTempDir } from "@hiero-hackers/automation-testkit";
 import { CURRENT_STORAGE_SCHEMA_VERSION, migrateStorageSchema } from "../src/schema.js";
 import { Store, type StoreFaultPoint } from "../src/store.js";
 
-let directory: string;
+const temp = useTempDir("store-schema-");
 let databasePath: string;
 
 beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), "store-schema-"));
-    databasePath = join(directory, "store.sqlite");
+    databasePath = temp.file("store.sqlite");
 });
-
-afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
 const DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000001")!;
 const AT = "2026-07-23T10:00:00.000Z";

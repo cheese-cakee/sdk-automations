@@ -20,11 +20,11 @@ import {
     deriveIdempotencyKey,
     idempotencyOf,
     INTENT_OPERATIONS,
-    parseConfig,
     projectCapabilityView,
     screenIntent,
     type AnyIntent,
 } from "../../src/index.js";
+import { configWith } from "../config/builders.js";
 
 const declaration = declareCapability({
     name: "fixture",
@@ -136,19 +136,22 @@ describe("screenIntent", () => {
     });
 
     it("uses an observed conflict even when the capability claims a clean state", () => {
-        expect(
-            screenIntent(
-                intent({
-                    expected: {
-                        meaningsPresent: [],
-                        meaningsAbsent: ["ready", "inProgress"],
-                        closed: false,
-                    },
-                }),
-                declaration,
-                conflict,
-            ),
-        ).toMatchObject({ ok: false, code: "positionConflict" });
+        const screen = screenIntent(
+            intent({
+                expected: {
+                    meaningsPresent: [],
+                    meaningsAbsent: ["ready", "inProgress"],
+                    closed: false,
+                },
+            }),
+            declaration,
+            conflict,
+        );
+        expect(screen).toMatchObject({ ok: false, code: "positionConflict" });
+        // The refusal names WHICH positions collided: "the item is
+        // confused" is not something a maintainer can act on, and the
+        // conjunction is what makes two of them read as two.
+        if (!screen.ok) expect(screen.reason).toContain("ready and inProgress");
     });
 
     it("does not let a claimed current position replace the observed position", () => {
@@ -240,26 +243,14 @@ describe("deriveIdempotencyKey", () => {
 });
 
 describe("projectCapabilityView (contract.md §6)", () => {
-    const config = (() => {
-        const result = parseConfig(
-            {
-                schemaVersion: 1,
-                mode: "active",
-                capabilities: {
-                    fixture: {
-                        enabled: true,
-                        settings: { announce: true, undeclared: "leak" },
-                    },
-                    other: { enabled: true, settings: { secret: "theirs" } },
-                },
-                mappings: { labels: { awaitingTriage: "status: triage", blocked: "blocked" } },
-                principals: {},
-            },
-            { revision: "rev-test", knownCapabilities: ["fixture", "other"] },
-        );
-        if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
-        return result.config;
-    })();
+    const config = configWith({
+        capabilities: ["fixture", "other"],
+        settings: {
+            fixture: { announce: true, undeclared: "leak" },
+            other: { secret: "theirs" },
+        },
+        labels: { awaitingTriage: "status: triage", blocked: "blocked" },
+    });
 
     it("passes through only the capability's declared config keys", () => {
         const view = projectCapabilityView(declaration, config);
@@ -278,18 +269,8 @@ describe("projectCapabilityView (contract.md §6)", () => {
     });
 
     it("reports no mapped meanings when the repository mapped none", () => {
-        const bare = parseConfig(
-            {
-                schemaVersion: 1,
-                mode: "observe",
-                capabilities: {},
-                mappings: { labels: {} },
-                principals: {},
-            },
-            { revision: "rev-test", knownCapabilities: ["fixture"] },
-        );
-        if (!bare.ok) throw new Error("fixture config invalid");
-        const view = projectCapabilityView(declaration, bare.config);
+        const bare = configWith({ mode: "observe", known: ["fixture"] });
+        const view = projectCapabilityView(declaration, bare);
         expect(view.mappedMeanings).toEqual([]);
         expect(view.settings).toEqual({});
     });
@@ -325,6 +306,48 @@ describe("authoritative transition-map screening", () => {
         if (!wrongObserved.ok) expect(wrongObserved.reason).toContain("issue position");
     });
 
+    /**
+     * The same two refusals from the pull-request side. The screen has two
+     * entity branches and every wrong-flow test above entered the issue one,
+     * so the pull-request guards — and the half of the sentence that says
+     * "a pull request" — had never run at all.
+     */
+    it("refuses wrong-flow desired and observed positions on a pull request too", () => {
+        const wrongDesired = screenIntent(
+            intent({
+                item: { kind: "pullRequest", number: 9 },
+                desired: { meaning: "ready", cause: "checksPassed" },
+            }),
+            declaration,
+            pullRequestPosition(),
+        );
+        expect(wrongDesired).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+        if (!wrongDesired.ok) {
+            expect(wrongDesired.reason).toContain("not a pull request position");
+            expect(wrongDesired.reason).toContain("ready");
+        }
+
+        const wrongObserved = screenIntent(
+            intent({
+                item: { kind: "pullRequest", number: 9 },
+                desired: { meaning: "needsReview", cause: "checksPassed" },
+            }),
+            declaration,
+            {
+                kind: "position" as const,
+                // A human's issue label on a pull request: observable, and
+                // not a position this flow can move from.
+                state: { meaning: "awaitingTriage" as const, blocked: false, closedBy: null },
+                ignored: [],
+            },
+        );
+        expect(wrongObserved).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+        if (!wrongObserved.ok) {
+            expect(wrongObserved.reason).toContain("awaitingTriage");
+            expect(wrongObserved.reason).toContain("not a pull request position");
+        }
+    });
+
     it("refuses an undocumented issue edge from the observed position", () => {
         const screen = screenIntent(
             intent({ desired: { meaning: "inProgress", cause: "intakeObserved" } }),
@@ -342,17 +365,24 @@ describe("authoritative transition-map screening", () => {
             issuePosition(),
         );
         expect(wrongCause).toMatchObject({ ok: false, code: "transitionNotOnMap" });
-        if (!wrongCause.ok) expect(wrongCause.reason).toContain("issue-flow cause");
+        if (!wrongCause.ok) {
+            expect(wrongCause.reason).toContain("issue-flow cause");
+            // An item at no position says so. The alternative renders as a
+            // move that starts nowhere, which reads as a missing word.
+            expect(wrongCause.reason).toContain("no position → awaitingTriage");
+        }
     });
 
     it("refuses a capability-written pause", () => {
-        expect(
-            screenIntent(
-                intent({ desired: { meaning: "blocked", cause: "intakeObserved" } }),
-                declaration,
-                issuePosition(),
-            ),
-        ).toMatchObject({ ok: false, code: "pauseNotCapabilityWritable" });
+        const screen = screenIntent(
+            intent({ desired: { meaning: "blocked", cause: "intakeObserved" } }),
+            declaration,
+            issuePosition(),
+        );
+        expect(screen).toMatchObject({ ok: false, code: "pauseNotCapabilityWritable" });
+        // D79 is the whole content of this refusal: a capability that reads
+        // only the code learns nothing about who may pause an item.
+        if (!screen.ok) expect(screen.reason).toContain("only a human may set");
     });
 
     it("enforces pull-request causes and edges", () => {

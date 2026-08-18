@@ -7,4 +7,5 @@
 /.githooks/ @hiero-hackers/sdk-automations-maintainers
 /design/decisions.md @hiero-hackers/sdk-automations-maintainers
 /.gitignore @hiero-hackers/sdk-automations-maintainers
-/packages/checks/test/never-tracked.test.ts @hiero-hackers/sdk-automations-maintainers
+/packages/dev/checks/test/never-tracked.test.ts @hiero-hackers/sdk-automations-maintainers
+/packages/dev/testkit/fixtures/ @hiero-hackers/sdk-automations-maintainers

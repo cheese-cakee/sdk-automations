@@ -5,22 +5,18 @@
  * a FRESH instance on the same file ("the restarted process") and
  * asserting what it can and cannot know.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, it, expect, beforeEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
+import { useTempDir } from "@hiero-hackers/automation-testkit";
 import { Store } from "../src/store.js";
 import { asDeliveryGuid } from "@hiero-hackers/automation-core";
 
-let dir: string;
+const temp = useTempDir("store-test-");
 let path: string;
 
 beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "store-test-"));
-    path = join(dir, "store.sqlite");
+    path = temp.file("store.sqlite");
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const id = (raw: string) => {
     const v = asDeliveryGuid(raw);

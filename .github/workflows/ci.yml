@@ -25,6 +25,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Two test jobs, deliberately: `test` answers "is the code broken", and
+# `repository` answers "did a document, table or artifact drift". Mixing them
+# in one job made every red run ambiguous until someone opened the log. The
+# split also stops the repository invariants running once per Node version —
+# they do not vary by runtime, and `git ls-files` is not faster on 25.
 jobs:
   test:
     name: typecheck and tests (node ${{ matrix.node }})
@@ -48,8 +53,29 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Each package's own `test` script is `tsc --noEmit && vitest run`, so
-      # this covers typechecking too.
-      - run: pnpm -r test
+      # this covers typechecking too. `checks` is excluded here and owns the
+      # job below; `pnpm test` still runs both, which is what CONTRIBUTING
+      # tells a contributor to run.
+      - run: pnpm test:packages
+
+  repository:
+    name: repository invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Tests about the repository rather than any package: docs and examples
+      # held to core's vocabularies, the dependency graph, workflow hardening,
+      # citations that resolve. A failure here means a document drifted from
+      # the code, not that the code broke.
+      - run: pnpm test:repo
 
   lint:
     name: lint
@@ -85,8 +111,12 @@ jobs:
       - run: pnpm format:check
 
   coverage:
-    name: line coverage (core)
+    name: line coverage (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, probes, shell, store]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,11 +127,19 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Aggregate v8 floor (80 on lines/branches/functions/statements) in
-      # packages/core/vitest.config.ts. Mutation (below) stays the per-module quality
-      # gate; this is the coarser "did we delete the tests" tripwire that the
-      # dead-import cleanup in #76 could have defeated silently.
-      - run: pnpm --filter @hiero-hackers/automation-core test:coverage
+      # Enforces each runtime package's aggregate v8 floors. The numbers live
+      # in that package's own `vitest.config.ts` and are deliberately not
+      # repeated here: they are tuned per package against measured values, and
+      # a threshold restated in a comment is one that silently disagrees with
+      # the gate later — the drift class the checks package exists to kill
+      # (D50, D100). Fanning out over the same package set as mutation is the
+      # point of the matrix: a single `--filter core` run left every other
+      # package's configured floors gating nothing at all, which is the shape
+      # of a check that looks green because it never ran. Mutation (below) stays
+      # the per-module quality gate; this is the coarser "did we delete the
+      # tests" tripwire that the dead-import cleanup in #76 could have
+      # defeated silently.
+      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} test:coverage
 
   audit:
     name: dependency audit
@@ -142,17 +180,69 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [core, shell, store]
+        package: [core, probes, shell, store]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # main is authoritative, and restore and save are separate steps so that
+      # it stays that way. The combined action saves on every run, and GitHub
+      # searches a branch's OWN cache scope before the base branch's — so a
+      # PR's second push restored the entry its first push had just written,
+      # and Stryker seeded incremental output on top of incremental output
+      # instead of main's full build. Only the push to main saves now (the
+      # step below carries the same condition as the `--force` flag, so the
+      # two cannot drift apart); a pull request restores and writes nothing.
+      #
+      # The exact key hits only when the same commit is re-run. Everything
+      # else falls through the restore-keys prefix to the newest entry sharing
+      # it, which — since only main writes — is main's. The lockfile hash sits
+      # in the key deliberately: an incremental file built by a different
+      # toolchain must never be reused, so a dependency-bump PR misses the
+      # cache and gets a full run instead of trusting results from other
+      # dependencies.
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: packages/${{ matrix.package }}/reports/stryker-incremental.json
+          key: mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # On pull requests, evaluate whether changes to test helpers, fixtures,
+      # configs, or workspace dependencies require forcing a full mutation run
+      # instead of reusing incremental state.
+      - name: determine mutation invalidation
+        id: mode
+        if: github.event_name == 'pull_request'
+        run: |
+          FLAGS=$(node --experimental-strip-types packages/dev/checks/test/mutation-invalidation.ts ${{ matrix.package }} origin/${{ github.base_ref }})
+          echo "flags=${FLAGS}" >> "$GITHUB_OUTPUT"
       # Each package owns its mutation scope and threshold; the checks package
       # locks this static matrix to the set of tracked Stryker configs.
-      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run
+      #
+      # A pull request re-runs only the mutants whose covering code changed,
+      # seeded from main's cache, unless invalidation forced a full run; a push
+      # to main rebuilds the file from a full authoritative run (`--force`) and
+      # is the only run allowed to save it, so the seed every PR inherits is
+      # never itself incremental. A missing cache degrades to a full run, which
+      # is the safe direction to fail. The flag lives here and NOT in the
+      # `stryker.config.json` files on purpose: a local run stays full by
+      # default, which is what the parity measurement (4m05s full on core
+      # against 9s incremental with nothing changed) compares against.
+      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run --incremental${{ github.event_name == 'push' && ' --force' || steps.mode.outputs.flags }}
+      # The other half of the restore above, and the reason the seed stays
+      # authoritative: `push` is the same condition that adds `--force`, and
+      # `on.push.branches` admits only main — so the single entry any run can
+      # write is a full build of main. Written after Stryker, because the file
+      # this saves is the one it just produced.
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: packages/${{ matrix.package }}/reports/stryker-incremental.json
+          key: mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}

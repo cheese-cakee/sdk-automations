@@ -131,10 +131,12 @@ after.
    exercised crash pairs (18 trigger both crashes, 30 one, 16 none). Future multi-call effects must
    enumerate reachable failure points, assert every requested fault fired, add live overlap, and assert
    convergence plus non-duplication.
-5. **Mutation audits** (Stryker, one-off — not per-PR) measure whether the suite actually observes the
-   code, run at milestones where "the tests are the spec" is the claim under review: before stage-four
-   ratification and before each pilot ring. Surviving mutants are triaged to a new test, or documented as
-   provably equivalent.
+5. **Mutation audits** (Stryker) measure whether the suite actually observes the code. CI runs them on
+   every pull request and push for each package that owns a Stryker config — a deliberate cost, accepted
+   2026-08-15 because the score is the standing proof behind every test-suite consolidation. Full
+   surviving-mutant triage still happens at milestones where "the tests are the spec" is the claim under
+   review: before stage-four ratification and before each pilot ring. Surviving mutants are triaged to a
+   new test, or documented as provably equivalent.
 
 Two standing rules from the same evidence: a fake used by tiers 2–4 must state where it is kinder than the
 real dependency (see D46 — the crash grid's world answers reads with perfect consistency; GitHub does

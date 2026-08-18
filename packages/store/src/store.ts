@@ -3,11 +3,11 @@
  * made real, with the exact crash semantics protocol 6.5 demonstrated.
  * **Ratification pending** under the stage-four review.
  *
- * This file owns the state transitions and the timestamp contract every
- * one of them validates. `schema.ts` owns recognition and migration.
- * `deliveries.ts`, `effects.ts` and `schedules.ts` own the vocabulary
- * being moved between states; the only shapes declared here are the
- * store's own options and the private rows its queries return.
+ * This file owns the state transitions. `instants.ts` owns the timestamp
+ * contract every one of them validates. `schema.ts` owns recognition and
+ * migration. `deliveries.ts`, `effects.ts` and `schedules.ts` own the
+ * vocabulary being moved between states; the only shapes declared here are
+ * the store's own options and the private rows its queries return.
  *
  * Five sections, in this order: durable webhook intake, the effect
  * journal, effect claims, schedules, retention.
@@ -26,6 +26,7 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
+import { assertUtcInstant } from "./instants.js";
 import {
     assertSupportedStorageSchemaVersion,
     migrateStorageSchema,
@@ -55,31 +56,6 @@ export type StoreFaultPoint =
 /** Optional dependencies for deterministic durability fault injection. */
 export interface StoreOptions {
     readonly injectFault?: (point: StoreFaultPoint) => void;
-}
-
-/**
- * The ONE timestamp format the store accepts: exactly the
- * `Date.toISOString()` shape — millisecond precision, `Z` suffix.
- *
- * Constant width is what makes lexicographic order chronological order,
- * and every `<=` comparison in this file relies on that. Mixed precision
- * breaks it: `"…00Z" > "…00.500Z"` as strings, but earlier in time,
- * because `'Z'` sorts above `'.'`. An offset format sorts wrongly
- * outright. Both are caller bugs, so both throw rather than misorder.
- *
- * Exported so the shell can validate before a store call.
- */
-export function assertUtcInstant(value: string, param: string): void {
-    const epochMs = Date.parse(value);
-    if (
-        value.length !== 24 ||
-        !Number.isFinite(epochMs) ||
-        new Date(epochMs).toISOString() !== value
-    ) {
-        throw new TypeError(
-            `${param} must be a millisecond-precision UTC instant, exactly Date.toISOString() form (got ${JSON.stringify(value)})`,
-        );
-    }
 }
 
 function assertDeliveryGuid(value: DeliveryGuid): void {

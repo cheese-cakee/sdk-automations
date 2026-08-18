@@ -3,7 +3,7 @@
  * `design/core/taxonomy.md` §4–§5 as edge tables, and the question asked of
  * them. The table is the answer; `canTransition*` is how you ask.
  *
- * `packages/checks/test/doc-drift.test.ts` parses the diagrams out of that document and
+ * `packages/dev/checks/test/doc-drift.test.ts` parses the diagrams out of that document and
  * asserts these tables match them edge for edge, in both directions — the
  * tables ARE the design, transcribed, and a transcription with nothing
  * checking it is how D48's missing edge survived in both artifacts at once.

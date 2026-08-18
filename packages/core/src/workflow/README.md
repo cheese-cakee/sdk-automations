@@ -48,7 +48,7 @@ structural rather than a check anyone remembers to make.
 
 ## What keeps this honest
 
-[`packages/checks/test/doc-drift.test.ts`](../../../checks/test/doc-drift.test.ts) parses the state
+[`packages/dev/checks/test/doc-drift.test.ts`](../../../dev/checks/test/doc-drift.test.ts) parses the state
 diagrams out of the design document and asserts the edge tables match them **edge for edge, in both
 directions**. The tables are the design, transcribed — and a transcription with nothing checking it
 is how a missing edge once survived in both artifacts at once (D48).

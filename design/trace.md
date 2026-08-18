@@ -3,9 +3,9 @@
 Every term in this codebase is defined somewhere, but definitions don't teach a system; a journey
 does. This document follows **one real delivery** — the `issues.opened` webhook GitHub sent when
 issue #164 was opened on the sandbox (captured under protocol 7.1, scrubbed, promoted to
-`packages/core/test/github/fixtures/`) — from the shell's socket to the canonical report the store persists.
+`packages/dev/testkit/fixtures/`) — from the shell's socket to the canonical report the store persists.
 Every piece of output below is the pipeline's real output, not paraphrase; the same journey runs as
-a test in `packages/shell/test/slice.test.ts`, so this document can drift only until the suite runs.
+a test in `packages/shell/test/shell.test.ts`, so this document can drift only until the suite runs.
 
 Vocabulary is introduced **in bold** at the moment it does something. If you read nothing else in
 `design/`, read this.

@@ -199,7 +199,7 @@ tail -3 <file>
    diff <(strip "$ORIGINAL") <(strip "$REWRITTEN") && echo "comments only"
    ```
 4. **Run `pnpm -r test`.** Cited D-rows and file paths are checked by
-   `packages/checks/test/citations.test.ts`, so an invented `(D103)` fails the build.
+   `packages/dev/checks/test/citations.test.ts`, so an invented `(D103)` fails the build.
 
 Watch for two things a compression pass tends to break, both found by review rather than tests:
 keeping the footnote while deleting the fact ("Exported because…" is worthless if the reader

@@ -64,10 +64,10 @@ given a label on the wire, which meaning is it? Same word, two directions.
 ## Where the rules are enforced, not just stated
 
 The vocabularies here are locked to the documents that describe them:
-[`packages/checks/test/docs.test.ts`](../../../checks/test/docs.test.ts) asserts that
+[`packages/dev/checks/test/docs.test.ts`](../../../dev/checks/test/docs.test.ts) asserts that
 `docs/configuration.md`'s tables match `TOP_LEVEL_KEYS`, `REPOSITORY_MODES` and
 `ConfigErrorCode` in both directions, and
-[`packages/checks/test/examples.test.ts`](../../../checks/test/examples.test.ts) parses every
+[`packages/dev/checks/test/examples.test.ts`](../../../dev/checks/test/examples.test.ts) parses every
 shipped example in `docs/examples/` through the real entry point on each run. A rejection
 corpus covering every error code lives in
 [`packages/core/test/config/documents.ts`](../../test/config/documents.ts), exhaustive by a

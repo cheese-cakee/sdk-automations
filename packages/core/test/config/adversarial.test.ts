@@ -1,47 +1,27 @@
 /**
- * Adversarial-input tests for parseConfig: the config file is
- * repository-controlled content, so hostile keys and absurd shapes are
- * inputs, not edge cases. Two properties under attack:
- *  - "Pure; never throws" holds for ANY already-parsed value;
- *  - nothing validated ever silently vanishes from the result
- *    (the `__proto__` assignment hole: a plain `obj[key] = value`
+ * What SURVIVES a hostile input, and that nothing throws on the way.
+ *
+ * The config file is repository-controlled content, so hostile keys and
+ * absurd shapes are inputs rather than edge cases. The rejections they
+ * produce now live in the corpus (`documents.ts`) alongside every other
+ * rejection; what stays here is the two claims a corpus row cannot make,
+ * because neither is about one input reaching one code:
+ *  - "pure; never throws" holds for ANY already-parsed value, including the
+ *    ones that are perfectly fine;
+ *  - nothing validated ever silently vanishes from — or appears in — the
+ *    result (the `__proto__` assignment hole: a plain `obj[key] = value`
  *    both pollutes the prototype and loses the entry).
  */
 import { describe, it, expect } from "vitest";
 import { parseConfig } from "../../src/config/index.js";
 
-describe("hostile keys (the __proto__ hole)", () => {
-    it("rejects a capability named __proto__ instead of losing it after validation", () => {
-        // Before the fix this passed validation, vanished from the
-        // result, AND replaced the capabilities object's prototype.
-        const raw = JSON.parse('{"schemaVersion":1,"capabilities":{"__proto__":{"enabled":true}}}');
-        const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.errors.map((e) => e.message).join()).toContain(
-                "not a valid configuration key",
-            );
-        }
-    });
-
-    it.each(["a.b", "kebab-case", "PascalCase", "_private", ""])(
-        "rejects capability key %j — not a shippable capability name",
-        (name) => {
-            const result = parseConfig(
-                {
-                    schemaVersion: 1,
-                    capabilities: { [name]: { enabled: false } },
-                },
-                { revision: "rev-test", knownCapabilities: [] },
-            );
-            expect(result.ok).toBe(false);
-        },
-    );
-
+describe("hostile keys survive as data, never as prototype", () => {
+    /**
+     * `constructor` is valid camelCase, so it may legitimately be a
+     * capability. What must NEVER happen is an inherited member
+     * masquerading as configuration when the name is absent.
+     */
     it("Object.prototype member names are ordinary keys, and absent lookups are undefined", () => {
-        // `constructor` is valid camelCase — it may exist as config.
-        // What must NEVER happen is an inherited member masquerading
-        // as configuration when the name is absent.
         const result = parseConfig(
             {
                 schemaVersion: 1,
@@ -60,7 +40,13 @@ describe("hostile keys (the __proto__ hole)", () => {
         }
     });
 
-    it("a __proto__ principal survives as an own property — never pollution, never loss", () => {
+    /**
+     * Principal names are not pattern-checked, so `__proto__` is ACCEPTED
+     * here — which makes this the one place the assignment hole is reachable
+     * on a success path. It must land as an own property and leave the
+     * prototype alone: never pollution, never loss.
+     */
+    it("a __proto__ principal survives as an own property", () => {
         const raw = JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"team-x"}}');
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(true);
@@ -86,19 +72,6 @@ describe("hostile keys (the __proto__ hole)", () => {
             expect(Object.getPrototypeOf(result.config.capabilities)).toBe(null);
             expect(Object.getPrototypeOf(result.config.principals)).toBe(null);
         }
-    });
-
-    it("__proto__ as a top-level or mapping key is an ordinary rejected unknown key", () => {
-        const top = parseConfig(JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'), {
-            revision: "rev-test",
-            knownCapabilities: [],
-        });
-        expect(top.ok).toBe(false);
-        const mapping = parseConfig(
-            JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
-            { revision: "rev-test", knownCapabilities: [] },
-        );
-        expect(mapping.ok).toBe(false);
     });
 });
 
@@ -136,22 +109,12 @@ describe("never throws, for any already-parsed shape", () => {
         Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`k${String(i)}`, i])),
     ];
 
-    it("rejects null nested mappings instead of treating them as objects", () => {
-        const result = parseConfig(
-            {
-                schemaVersion: 1,
-                capabilities: { assignment: null },
-            },
-            { revision: "rev-test", knownCapabilities: [] },
-        );
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.errors.map((e) => e.message).join()).toContain(
-                'capability "assignment" must be a mapping',
-            );
-        }
-    });
-
+    /**
+     * Totality, not classification: several of these are ACCEPTED, and the
+     * claim is only that every one of them comes back as a value. That is
+     * why the list is not corpus rows — a row names a code, and half of
+     * these have none.
+     */
     it.each(hostile.map((value, i) => [i, value]))(
         "shape #%i returns a verdict instead of throwing",
         (_i, value) => {
@@ -165,30 +128,6 @@ describe("never throws, for any already-parsed shape", () => {
             }
         },
     );
-
-    it("non-mapping shapes are rejected with their NAMED error, not incidentally", () => {
-        // Each wrong shape must trip its own guard — not fall through
-        // to whatever later check happens to also fail.
-        const cases: readonly [unknown, string][] = [
-            ["a string", "configuration must be a mapping"],
-            [[], "configuration must be a mapping"],
-            [{ schemaVersion: 1, capabilities: [] }, "capabilities must be a mapping"],
-            [{ schemaVersion: 1, capabilities: { a: [] } }, 'capability "a" must be a mapping'],
-            [
-                { schemaVersion: 1, capabilities: { a: { settings: [] } } },
-                "settings must be a mapping",
-            ],
-            [{ schemaVersion: 1, mappings: [] }, "mappings must be a mapping"],
-            [{ schemaVersion: 1, mappings: { labels: [] } }, "mappings.labels must be a mapping"],
-            [{ schemaVersion: 1, principals: [] }, "principals must be a mapping"],
-            [{ schemaVersion: 1, principals: { a: 1 } }, "principals.a: must be a string"],
-        ];
-        for (const [raw, message] of cases) {
-            const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
-            expect(result.ok).toBe(false);
-            if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain(message);
-        }
-    });
 
     it("accepted entries are exactly the validated entries — nothing vanishes, nothing appears", () => {
         const result = parseConfig(

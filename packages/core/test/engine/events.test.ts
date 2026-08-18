@@ -1,67 +1,72 @@
 /**
  * The normalizer, tested against what GitHub actually sent.
  *
- * The fixtures stay under `test/github/`, where the observed-GitHub facts
- * live; what a delivery BECOMES is this file's subject.
+ * The payloads live in the testkit now — two packages needed them, which is
+ * this repository's admission rule for shared test support — and they reach
+ * this file through its export rather than a path, so they travel into
+ * Stryker's sandbox with the dependency. What a delivery BECOMES is this
+ * file's subject.
  *
- * Every fixture there is a real delivery from the 2026-08-07
- * capture session (protocol 7.1), scrubbed and human-reviewed. No payload
- * here was written by hand, and that is the point: the assumptions worth
- * testing are the ones GitHub gets to falsify.
+ * Every capture is a real delivery from the 2026-08-07 capture session
+ * (protocol 7.1), scrubbed and human-reviewed. No payload here was written
+ * by hand, and that is the point: the assumptions worth testing are the ones
+ * GitHub gets to falsify.
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { join } from "node:path";
-import { normalizeDelivery, parseConfig, type RepositoryConfig } from "../../src/index.js";
+import { WEBHOOK_CAPTURES, capture } from "@hiero-hackers/automation-testkit";
+import { normalizeDelivery, type RepositoryConfig } from "../../src/index.js";
+import { configWith } from "../config/builders.js";
 
-const fixturesDir = fileURLToPath(new URL("../github/fixtures/", import.meta.url));
-const fixture = (name: string): unknown =>
-    JSON.parse(readFileSync(join(fixturesDir, name), "utf8"));
-/** The event header, recoverable from the fixture naming scheme. */
-const eventOf = (name: string): string => name.split(".")[0]!;
-
-function configWith(labels: Record<string, string>): RepositoryConfig {
-    const result = parseConfig(
-        { schemaVersion: 1, mode: "active", capabilities: {}, mappings: { labels } },
-        { revision: "rev-test", knownCapabilities: [] },
-    );
-    if (!result.ok) throw new Error(result.errors.map((e) => e.code).join(","));
-    return result.config;
-}
+const fixture = (name: string): unknown => capture(name).json();
 
 /** The capture-session sandbox's mapping — matches the labels provoked. */
 const config = configWith({
-    awaitingTriage: "status: triage",
-    ready: "status: ready",
-    needsReview: "status: needs review",
-    blocked: "status: blocked",
+    labels: {
+        awaitingTriage: "status: triage",
+        ready: "status: ready",
+        needsReview: "status: needs review",
+        blocked: "status: blocked",
+    },
 });
 
 const observed = (name: string, cfg: RepositoryConfig = config) => {
-    const result = normalizeDelivery(eventOf(name), fixture(name), cfg);
+    const subject = capture(name);
+    const result = normalizeDelivery(subject.event, subject.json(), cfg);
     expect(result.kind, `${name} should normalize`).toBe("observation");
     if (result.kind !== "observation") throw new Error("unreachable");
     return result.observation;
 };
 
 describe("every captured fixture normalizes", () => {
-    it("the fixture directory is present and non-empty", () => {
-        const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".json"));
-        expect(files.length).toBeGreaterThanOrEqual(5);
+    it("the capture set is present and non-empty", () => {
+        // Vacuity guard: an empty set would pass the `it.each` below in
+        // silence, which is the whole reason this assertion exists.
+        expect(WEBHOOK_CAPTURES.length).toBeGreaterThanOrEqual(5);
     });
 
-    it.each(readdirSync(fixturesDir).filter((f) => f.endsWith(".json")))("%s", (name) => {
-        const result = normalizeDelivery(eventOf(name), fixture(name), config);
-        expect(result.kind).toBe("observation");
-    });
+    it.each(WEBHOOK_CAPTURES.map((subject) => [subject.name, subject] as const))(
+        "%s",
+        (_name, subject) => {
+            const result = normalizeDelivery(subject.event, subject.json(), config);
+            expect(result.kind).toBe("observation");
+        },
+    );
 });
 
 describe("issues, through the real payloads", () => {
     it("opened: no position, open, unpaused", () => {
         const o = observed("issues.opened.json");
         expect(o.kind).toBe("issueUpdated");
+        /**
+         * The repository, read literally off the capture rather than
+         * compared against another reading of it. Everything downstream —
+         * the report's subject, the idempotency key's first two fields —
+         * takes this pair on trust, and every existing assertion about it
+         * derived both sides from this same function (§9's standing rule:
+         * a constant compared against itself proves nothing).
+         */
+        expect(o.repository).toEqual({ owner: "scrubbed-1", repo: "scrubbed-2" });
         expect(o.item).toEqual({ kind: "issue", number: 164 });
         expect(o.position).toEqual({
             kind: "position",
@@ -99,7 +104,7 @@ describe("issues, through the real payloads", () => {
     });
 
     it("an unmapped repository sees the same delivery as meaningless", () => {
-        const bare = configWith({});
+        const bare = configWith();
         const o = observed("issues.labeled.json", bare);
         expect(o.position).toMatchObject({
             kind: "position",
@@ -124,6 +129,28 @@ describe("pull requests, through the real payloads", () => {
         expect(o.position).toMatchObject({
             kind: "position",
             state: { closedBy: "merged" },
+        });
+    });
+
+    /**
+     * The other closed pull request. Both captures are decided by `merged`
+     * alone — one true, one absent-and-open — so the branch that reads
+     * `state` on a pull request had never run, and D47's whole point is that
+     * the two closures stay distinguishable: progression credits a merge and
+     * must not credit an abandonment.
+     */
+    it("closed WITHOUT merging reads as closedByHuman, not merged (D47)", () => {
+        const abandoned = fixture("pull_request.closed.json") as {
+            pull_request: { merged: boolean; state: string };
+        };
+        abandoned.pull_request.merged = false;
+        abandoned.pull_request.state = "closed";
+        const result = normalizeDelivery("pull_request", abandoned, config);
+        expect(result.kind).toBe("observation");
+        if (result.kind !== "observation") return;
+        expect(result.observation.position).toMatchObject({
+            kind: "position",
+            state: { closedBy: "closedByHuman" },
         });
     });
 });
@@ -218,6 +245,17 @@ describe("what the normalizer refuses, and how", () => {
             {
                 repository: { owner: { login: "o" }, name: "r" },
                 issue: { number: 1, labels: "nope", updated_at: "2026-08-07T00:00:00Z" },
+            },
+        ],
+        // No `labels` key at all. The array guard is what turns this into a
+        // verdict; without it the walk is over `undefined` and the shell
+        // gets an exception where the contract promises a result.
+        [
+            "labelsUnreadable",
+            "issues",
+            {
+                repository: { owner: { login: "o" }, name: "r" },
+                issue: { number: 1, updated_at: "2026-08-07T00:00:00Z" },
             },
         ],
         [

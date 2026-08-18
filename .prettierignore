@@ -2,5 +2,5 @@
 *.yml
 *.yaml
 *.json
-packages/lab/harness/
+packages/dev/lab/harness/
 packages/shell/data/**

@@ -17,6 +17,66 @@ import { configEnabling } from "./world.js";
 const ALL = [prQuality, intake, inactivity];
 const NAMES = ALL.map((c) => c.declaration.name);
 
+/**
+ * A declaration is the whole of what the platform will let a capability see,
+ * ask and write, so each is pinned as a literal rather than sampled. The
+ * triad is also deliberately unalike — event and schedule triggers, one
+ * empty resolver list, one `durableState: "required"` — and only the full
+ * shapes side by side show that.
+ */
+describe("declared shape", () => {
+    it("prQuality declares one event trigger, one resolver, and one comment", () => {
+        expect(prQuality.declaration).toEqual({
+            name: "prQuality",
+            triggers: [{ kind: "event", event: "pull_request" }],
+            configKeys: ["marker"],
+            observations: ["pullRequestUpdated"],
+            resolvers: ["linkedIssues"],
+            intents: ["postManagedComment"],
+            operationalNeeds: {
+                schedule: false,
+                durableState: "none",
+                crossItemCoordination: false,
+                externalDelivery: false,
+            },
+        });
+    });
+
+    it("intake declares no resolver, and two intents from one observation", () => {
+        expect(intake.declaration).toEqual({
+            name: "intake",
+            triggers: [{ kind: "event", event: "issues" }],
+            configKeys: ["announce"],
+            observations: ["issueUpdated"],
+            resolvers: [],
+            intents: ["applyMappedLabel", "postManagedComment"],
+            operationalNeeds: {
+                schedule: false,
+                durableState: "none",
+                crossItemCoordination: false,
+                externalDelivery: false,
+            },
+        });
+    });
+
+    it("inactivity is the only probe declaring a schedule and durable state", () => {
+        expect(inactivity.declaration).toEqual({
+            name: "inactivity",
+            triggers: [{ kind: "schedule", description: "daily stale-assignment sweep" }],
+            configKeys: ["gracePeriodDays"],
+            observations: ["staleItemsDue"],
+            resolvers: ["isAutomationActor"],
+            intents: ["postManagedComment", "unassign"],
+            operationalNeeds: {
+                schedule: true,
+                durableState: "required",
+                crossItemCoordination: false,
+                externalDelivery: false,
+            },
+        });
+    });
+});
+
 describe("declarations", () => {
     it("admits the three direct probe declarations together", () => {
         expect(validateCapabilityDeclarations(ALL.map(({ declaration }) => declaration))).toEqual(

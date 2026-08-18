@@ -33,7 +33,7 @@ interface PostOverrides {
 /** One request against a real listening socket; the server lives per call. */
 async function post(handler: RequestHandler, overrides: PostOverrides = {}): Promise<number> {
     const server = createServer(handler);
-    await new Promise<void>((resolve) => server.listen(0, resolve));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
         const { port } = server.address() as AddressInfo;
         const body = Buffer.from(overrides.body ?? BODY);
@@ -144,7 +144,7 @@ async function interruptRealRequest(mode: "client-abort" | "server-error"): Prom
             request.destroy(new Error("injected socket failure"));
         }
     });
-    await new Promise<void>((resolve) => server.listen(0, resolve));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
     const socket = netConnect(port, "127.0.0.1");
     socket.on("error", () => undefined);
@@ -266,7 +266,7 @@ describe("acceptance comes before the acknowledgement", () => {
             });
             void receiver(request, response);
         });
-        await new Promise<void>((resolve) => server.listen(0, resolve));
+        await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
         try {
             const { port } = server.address() as AddressInfo;
             const body = Buffer.from(BODY);
@@ -356,47 +356,21 @@ describe("body limits and interrupted streams fail closed", () => {
 });
 
 describe("malformed requests get truthful statuses", () => {
-    it("a non-POST is 405", async () => {
+    /**
+     * Each row is one malformed request and the status it earns. Reaching
+     * `accept` is asserted against for every row, not just some: a delivery
+     * the edge could not even address must never reach the store.
+     */
+    it.each([
+        ["a non-POST", 405, { method: "GET", signature: null }],
+        ["a signed delivery without a GUID", 400, { guid: null }],
+        ["a signed delivery with a malformed GUID", 400, { guid: "not-a-guid" }],
+        ["a signed delivery without an event name", 400, { event: null }],
+        ["a signed delivery with an empty event name", 400, { event: "" }],
+    ] as const)("%s is %i", async (_name, expectedStatus, overrides) => {
         const { calls, accept } = recordingAccept();
-        const status = await post(createReceiver({ secret: SECRET, accept }), {
-            method: "GET",
-            signature: null,
-        });
-        expect(status).toBe(405);
-        expect(calls).toEqual([]);
-    });
-
-    it("a signed delivery without a GUID is 400", async () => {
-        const { calls, accept } = recordingAccept();
-        const status = await post(createReceiver({ secret: SECRET, accept }), {
-            guid: null,
-        });
-        expect(status).toBe(400);
-        expect(calls).toEqual([]);
-    });
-
-    it("a signed delivery with a malformed GUID is 400", async () => {
-        const { accept } = recordingAccept();
-        const status = await post(createReceiver({ secret: SECRET, accept }), {
-            guid: "not-a-guid",
-        });
-        expect(status).toBe(400);
-    });
-
-    it("a signed delivery without an event name is 400", async () => {
-        const { accept } = recordingAccept();
-        const status = await post(createReceiver({ secret: SECRET, accept }), {
-            event: null,
-        });
-        expect(status).toBe(400);
-    });
-
-    it("a signed delivery with an empty event name is 400", async () => {
-        const { calls, accept } = recordingAccept();
-        const status = await post(createReceiver({ secret: SECRET, accept }), {
-            event: "",
-        });
-        expect(status).toBe(400);
+        const status = await post(createReceiver({ secret: SECRET, accept }), overrides);
+        expect(status).toBe(expectedStatus);
         expect(calls).toEqual([]);
     });
 

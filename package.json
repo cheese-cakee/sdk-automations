@@ -6,6 +6,8 @@
     "description": "Workspace root — see README.md. Implementation packages: core (pure logic), store (owned operational store), shell (transport), probes (disposable).",
     "scripts": {
         "test": "pnpm -r test",
+        "test:packages": "pnpm -r --filter='!@hiero-hackers/automation-checks' --filter='!{.}' test",
+        "test:repo": "pnpm --filter @hiero-hackers/automation-checks test",
         "test:coverage": "pnpm -r test:coverage",
         "lint": "eslint .",
         "audit": "pnpm audit --audit-level moderate",

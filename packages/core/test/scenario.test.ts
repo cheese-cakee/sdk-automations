@@ -5,7 +5,6 @@
 import { describe, it, expect } from "vitest";
 import {
     validateCapabilityDeclarations,
-    parseConfig,
     projectIssueObservation,
     applyIssueTransition,
     evaluateWrite,
@@ -14,6 +13,7 @@ import {
     type IssueMeaning,
 } from "../src/index.js";
 import { assertedWorld } from "../src/safety/world.js";
+import { configWith } from "./config/builders.js";
 
 const assignment: CapabilityDeclaration = {
     name: "assignment",
@@ -38,22 +38,14 @@ describe("the assignment story, end to end in pure logic", () => {
 
     // 2. The repository's reviewed config enables the capability and
     //    maps its labels.
-    const configResult = parseConfig(
-        {
-            schemaVersion: 1,
-            mode: "active",
-            capabilities: { assignment: { enabled: true } },
-            mappings: {
-                labels: {
-                    ready: "status: ready for dev",
-                    inProgress: "status: in progress",
-                },
-            },
+    const config = configWith({
+        capabilities: ["assignment"],
+        known: declarations.map(({ name }) => name),
+        labels: {
+            ready: "status: ready for dev",
+            inProgress: "status: in progress",
         },
-        { revision: "rev-test", knownCapabilities: declarations.map(({ name }) => name) },
-    );
-    if (!configResult.ok) throw new Error(configResult.errors.map((e) => e.message).join("; "));
-    const config = configResult.config;
+    });
 
     it("wires admission → config → projection → transition → safety into one apply", () => {
         // 3. The shell observes the issue's labels and maps them to
@@ -142,16 +134,11 @@ describe("the assignment story, end to end in pure logic", () => {
     });
 
     it("dry-run mode records the same story instead of applying it", () => {
-        const dryConfig = parseConfig(
-            {
-                schemaVersion: 1,
-                mode: "dry-run",
-                capabilities: { assignment: { enabled: true } },
-            },
-            { revision: "rev-test", knownCapabilities: declarations.map(({ name }) => name) },
-        );
-        expect(dryConfig.ok).toBe(true);
-        if (!dryConfig.ok) return;
+        const dryConfig = configWith({
+            mode: "dry-run",
+            capabilities: ["assignment"],
+            known: declarations.map(({ name }) => name),
+        });
         const write = evaluateWrite(
             {
                 actionClass: "reversibleStateChange",
@@ -161,7 +148,7 @@ describe("the assignment story, end to end in pure logic", () => {
                 cause: "contributor requested /assign",
                 target: { item: "issue #7", change: "label 'status: in progress'" },
             },
-            dryConfig.config,
+            dryConfig,
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,

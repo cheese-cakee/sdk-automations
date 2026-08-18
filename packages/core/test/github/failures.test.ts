@@ -4,6 +4,7 @@
  * tested against what GitHub really sent, not paraphrases.
  */
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import {
     BODY_PATTERNS,
     classifyFailure,
@@ -353,6 +354,110 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         ];
         for (const failure of kinds) {
             expect(retryAdvice(failure, 0, 0).action).toBeTruthy();
+        }
+    });
+});
+
+/**
+ * Property-based tests (fast-check): randomized inputs with a fixed seed —
+ * deterministic runs, shrinking to minimal counterexamples on failure.
+ * They state the PROPERTIES the fixtures above cannot: that classification
+ * is total, and closed over the documented 403 classes.
+ */
+const SEED = 20260725;
+
+describe("classifyFailure properties", () => {
+    const observation = fc.record(
+        {
+            status: fc.integer({ min: 100, max: 599 }),
+            body: fc.string({ maxLength: 500 }),
+            headers: fc.dictionary(fc.stringMatching(/^[a-z][a-z-]{0,25}$/), fc.string(), {
+                maxKeys: 6,
+            }),
+            tokenPastExpiry: fc.boolean(),
+        },
+        { requiredKeys: ["status", "body", "headers"] },
+    );
+
+    it("is total, and every 403 lands in a documented 403 class with evidence", () => {
+        const FORBIDDEN_KINDS = new Set([
+            "secondaryLimit",
+            "primaryExhausted",
+            "rateLimitResponseUnusable",
+            "permissionMissing",
+            "installationSuspended",
+            "forbiddenUnrecognized",
+        ]);
+        fc.assert(
+            fc.property(observation, (o) => {
+                const failure = classifyFailure(o); // must not throw
+                if (o.status === 403) {
+                    expect(FORBIDDEN_KINDS.has(failure.kind)).toBe(true);
+                    if (failure.kind === "forbiddenUnrecognized") {
+                        // Ignorance always carries bounded evidence.
+                        expect(failure.bodySnippet).toBe(o.body.slice(0, 200));
+                    }
+                }
+                if (o.status === 401) {
+                    expect(failure.kind).toBe(
+                        o.tokenPastExpiry === true ? "tokenExpired" : "badCredentials",
+                    );
+                }
+            }),
+            { seed: SEED, numRuns: 500 },
+        );
+    });
+});
+
+/**
+ * The exhaustive sweep, where the examples above check cases: it
+ * enumerates the full input space and asserts the PROPERTY —
+ * `retryAdvice` always terminates in bounded advice.
+ */
+describe("retryAdvice: bounded for every class and attempt", () => {
+    const classes: FailureClass[] = [
+        { kind: "tokenExpired" },
+        { kind: "badCredentials" },
+        { kind: "permissionMissing", acceptedPermissions: "" },
+        { kind: "installationSuspended" },
+        { kind: "forbiddenUnrecognized", bodySnippet: "" },
+        {
+            kind: "rateLimitResponseUnusable",
+            headerName: "retry-after",
+            headerValue: "",
+            reason: "invalid",
+        },
+        { kind: "secondaryLimit" },
+        { kind: "primaryExhausted", resetAt: "1000" },
+        { kind: "primaryExhausted", resetAt: undefined },
+        { kind: "notFoundOrNotInstalled" },
+        { kind: "validationError" },
+        { kind: "transient" },
+    ];
+
+    it("every class × attempts 0..5 yields valid advice, and waits always end", () => {
+        for (const failure of classes) {
+            for (let attempt = 0; attempt <= 5; attempt++) {
+                const advice = retryAdvice(failure, attempt, 0);
+                if (advice.action === "retryAfterMs") {
+                    expect(advice.ms).toBeGreaterThanOrEqual(0);
+                    expect(Number.isFinite(advice.ms)).toBe(true);
+                }
+            }
+            // Past the bound, no advised-wait class waits forever.
+            const late = retryAdvice(
+                failure,
+                Math.max(MAX_RATE_LIMIT_ATTEMPTS, MAX_TOKEN_REFRESH_ATTEMPTS) + 1,
+                0,
+            );
+            if (
+                failure.kind === "tokenExpired" ||
+                failure.kind === "secondaryLimit" ||
+                failure.kind === "primaryExhausted" ||
+                failure.kind === "transient"
+            ) {
+                expect(late.action).toBe("doNotRetry");
+            }
         }
     });
 });

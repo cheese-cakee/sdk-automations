@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { assertUtcInstant } from "../src/store.js";
+import { assertUtcInstant } from "../src/instants.js";
 
 const SEED = 20260725;
 

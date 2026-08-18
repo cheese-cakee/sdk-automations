@@ -292,7 +292,7 @@ The tables and rules here are hand copies of their source documents, so
 the working rule is: any edit to a document in the "source of truth"
 column above must touch the matching module and its tests.
 
-One of those copies is now checked automatically. `packages/checks/test/doc-drift.test.ts`
+One of those copies is now checked automatically. `packages/dev/checks/test/doc-drift.test.ts`
 parses the state diagrams out of `design/core/taxonomy.md` and asserts
 they match `ISSUE_EDGES`/`PR_EDGES` edge for edge, in both directions — a
 missing edge and an extra edge are the same defect from either side. It
