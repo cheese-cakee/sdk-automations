@@ -133,7 +133,7 @@ describe("parseConfig properties", () => {
  * Every way an already-parsed value is wrong, from `documents.ts`. What
  * follows the corpus is only what a row cannot say.
  */
-describe("parseConfig rejections (design/config/schema.md)", () => {
+describe("parseConfig rejections (design/contracts/config-schema.md)", () => {
     it.each(VALUE_REJECTIONS.map((r) => [`${r.code}: ${r.why}`, r] as const))(
         "%s",
         (_name, rejection) => {
@@ -148,7 +148,7 @@ describe("parseConfig rejections (design/config/schema.md)", () => {
     );
 });
 
-describe("parseConfig acceptances (design/config/schema.md)", () => {
+describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     it("no configuration yields the safe default — observe mode, nothing enabled (§2.2)", () => {
         for (const raw of [undefined, null]) {
             const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });

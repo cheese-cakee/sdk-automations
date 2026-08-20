@@ -12,7 +12,7 @@ import type { PermissionGrant } from "../github/index.js";
 export type { RepositoryMode } from "../config/index.js";
 
 /**
- * How risky an action is, least to most (safety.md §1). The ladder is
+ * How risky an action is, least to most (`design/contracts/safety.md`). The ladder is
  * ordered: `INTENT_OPERATIONS` states a floor per operation and a capability
  * may declare stricter, never laxer.
  */
@@ -24,7 +24,7 @@ export type ActionClass =
     | "immediatePreventive";
 
 /**
- * What a capability must supply with every write request (safety.md §2.3).
+ * What a capability must supply with every write request (`design/contracts/safety.md`).
  *
  * `requiredPermissions` is supplied rather than derived, because core must
  * not depend on the capability layer to learn what an operation needs.
@@ -36,7 +36,7 @@ export interface WriteRequest {
     /** Dated cause — when the triggering observation was made. */
     readonly causeObservedAt: Date;
     readonly cause: string;
-    /** The exact item and value the adapter may change (safety.md §2.6). */
+    /** The exact item and value the adapter may change (`design/guides/effects.md`). */
     readonly target: { readonly item: string; readonly change: string };
 }
 
@@ -58,7 +58,7 @@ export type HumanChangeOrdering = Date | null | "unknown";
  */
 export interface WriteContext {
     readonly installationGrants: readonly PermissionGrant[];
-    /** Global / installation / repository / capability (safety.md §5). */
+    /** Global / installation / repository / capability kill switches. */
     readonly killSwitchActive: boolean;
     readonly latestHumanChangeAt: HumanChangeOrdering;
     readonly world: DerivedWorld;

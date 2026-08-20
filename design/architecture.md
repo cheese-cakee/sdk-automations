@@ -1,350 +1,325 @@
-# Architecture Proposal for the Hiero Workflow App
+# Architecture
 
-> This document is a draft for maintainer review. It describes the product direction, the technical
-> boundaries that are supported by current evidence, and the questions that still require experiments.
-> It does not approve a module list, a label system, a storage technology, a hosting provider, or a rollout
-> date.
+> Drawings. One italic line under each names the code or test that falsifies it.
+> Why: [`decisions.md`](decisions.md). Vocabulary: [`packages/core/README.md`](../packages/core/README.md).
 
-## 1. Product boundary
+## Part 1 — The system
 
-The product is one hosted GitHub App that provides shared automation infrastructure to many repositories.
-Each repository decides which workflow capabilities it wants and supplies the policy for those capabilities
-through reviewed configuration.
 
-The shared platform is universal because it handles the same GitHub and safety problems for every
-repository. The repository workflow is not universal. One repository may enable assignment and inactivity
-handling, another may enable only pull request feedback, and another may install nothing.
-
-The existing C++, Python, and JavaScript automation is the starting evidence. The App should replace useful
-behavior without copying accidental coupling, old label spellings, or policies that maintainers no longer
-want.
-
-## 2. Architecture overview
+### 1. Context
 
 ```mermaid
 flowchart LR
-    GH["GitHub webhooks and current repository state"] --> IN["Verified event intake"]
-    IN --> OBS["Normalized observation"]
-    CFG["Validated default-branch configuration"] --> REG["Capability registry"]
-    OBS --> REG
-    REG --> CAP["Enabled capability"]
-    CAP --> INTENT["Typed intent with reason and expected state"]
-    INTENT --> POL["Authorization and safety policy"]
-    POL --> WRITE["Effect-specific write path"]
-    WRITE --> ADP["Narrow GitHub adapter"]
-    ADP --> GH
-    WRITE --> VERIFY["Postcondition verification and reconciliation"]
-    VERIFY --> GH
-    WRITE --> OPS["Audit records, metrics, and recovery state"]
+    subgraph GitHub
+        WH["Webhook deliveries"]
+        REST["REST API"]
+        CFG["automations.yml on the default branch — intended source"]
+    end
+    subgraph App["The App — one process, one disk"]
+        SH["shell"]
+        DB[("SQLite, single file")]
+    end
+    M["Maintainers"] -->|review and merge config| CFG
+    WH -->|HTTP POST| SH
+    CFG -.->|future fetch; current shell reads an operator copy| SH
+    SH <--> DB
+    SH -.->|"future adapter; no repository writes exist (P5, D46)"| REST
 ```
 
-The main boundaries are as follows.
+*Sources: `packages/shell/src/receiver.ts`, `config.ts`, `main.ts` · [`decisions.md`](decisions.md)
+P5, D46, D93, D110. The default-branch fetch is an explicit missing seam, not current behavior.*
 
-1. The production intake layer verifies GitHub webhooks and durably accepts the delivery identity and work
-   before it returns a successful response within GitHub's time limit. Slow work does not run inside the
-   webhook response path. A local observation-only experiment may use a simpler queue, but it cannot claim
-   production recovery guarantees.
-2. The configuration layer loads policy from the repository's default branch, validates it, and reports the
-   effective configuration.
-3. The registry activates only the capabilities that the repository explicitly enabled.
-4. A capability receives normalized facts and its own configuration. It returns typed intent and an
-   explanation. It does not receive Octokit or another raw GitHub client.
-5. The policy layer checks repository mode, actor authority, required permissions, safety rules, and current
-   state before any write.
-6. Each future write path applies one approved effect, verifies its postcondition, and handles results that
-   are not immediately clear.
-7. The adapter is the only component that understands GitHub REST or GraphQL details.
-
-### As-built view
-
-The runnable application is observe and dry-run only. It verifies exact webhook bytes, accepts the
-delivery durably before acknowledgement, claims it for processing, loads configuration, runs the pure
-decision engine with the configured probes, and atomically stores the canonical report with delivery
-completion. Active GitHub writes and effect recovery are not implemented.
+### 2. Packages — runtime and development edges
 
 ```mermaid
-flowchart TB
-    GH["GitHub"]
-    subgraph SHELL["shell - current runtime"]
-        VERIFY["verify signed bytes"]
-        CLAIM["claim delivery"]
-        CFG["load and validate configuration"]
-        DECIDE["probe-backed decide()"]
-        UNSUPPORTED["reject active mode"]
+flowchart TD
+    subgraph runtime ["runnable path"]
+        shell["shell — transport"] --> core["core — pure logic"]
+        shell --> store["store — SQLite"]
+        shell --> probes["probes — disposable capability stubs"]
+        store --> core
+        probes --> core
     end
-    subgraph STORE["store - owned state"]
-        ACCEPT["accept delivery durably"]
-        COMPLETE["canonical report + completion"]
+    subgraph development ["development-only packages"]
+        checks["checks — repository invariants"]
+        lab["lab — GitHub experiments"]
+        testkit["testkit — fixtures and test support"]
     end
-    GH --> VERIFY --> ACCEPT --> ACK["202"]
-    ACCEPT --> CLAIM --> CFG
-    CFG -->|observe or dry-run| DECIDE --> COMPLETE
-    CFG -->|active| UNSUPPORTED --> COMPLETE
+    checks -.-> core
+    checks -.-> testkit
+    lab -.-> core
+    core -. "tests" .-> testkit
+    store -. "tests" .-> testkit
+    shell -. "tests" .-> testkit
 ```
 
-Two properties of this shape carry the current safety argument: intake reports a conflicted issue and
-produces no repair intent; and active configuration is rejected before a decision, so the runnable
-application has no GitHub write path.
+*Solid edges are runtime dependencies; dotted edges exist only in development/test packages. The exact
+layer policy, public-barrel rule, testkit test-only rule, and cycle ban are enforced by
+`.dependency-cruiser.cjs` via `packages/dev/checks/test/architecture.test.ts`.*
 
-### Load-bearing architecture rules
+## Part 2 — Inside each package
 
-This is the short index. The linked decisions hold the detail, evidence, and limits.
+### 3. shell — what the shell actually does
 
-Enforced by the implementation today:
+```mermaid
+flowchart LR
+    L["load config text"] --> P["core parses it"]
+    P -->|"rejected"| REC["configRejected"]
+    P -->|"active"| MU["modeUnsupported<br/>intercepted BEFORE decide()"]
+    P -->|"disabled · observe · dry-run"| D["decide()"]
+    D --> DEC["decision"]
+    REC --> C["atomic completion"]
+    MU --> C
+    DEC --> C
+```
 
-- Core stays pure: it owns decisions and no I/O ([capability contract](modules/contract.md#2-runtime-boundary)).
-- Every fact has one owner; consumers derive or validate it rather than create a second source of truth
-  ([D62, D65, D73, and D76](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
-- Uncertainty fails closed ([write rules](core/safety.md#2-rules-for-every-write)).
-- Store-owned state transitions are atomic
-  ([storage decision](operations/storage-decision.md#the-decision)).
-- Canonical SQLite report persistence and delivery completion are one atomic durable transition
-  ([D110](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
-- SQLite uses an explicit schema version contract and rejects unknown or modified schemas
-  ([storage decision](operations/storage-decision.md#durable-report-and-schema-amendment-2026-08-09)).
-The runnable shell supports observe and dry-run. It rejects parsed `active` configuration before
-`decide()` and atomically stores that rejection with delivery completion. Active GitHub writes and effect
-recovery are not implemented.
+Three steps: hand the text to core, intercept `active`, complete atomically whatever happened. Note
+`disabled` is **not** intercepted — it runs through `decide()` and the `modeDisabled` gate refuses each
+intent, which is why it sits with `observe` and `dry-run` rather than with `active`.
 
-Required before active mode, not current runtime guarantees:
+The outcome families, which are data rather than flow:
 
-- Each real GitHub effect gets narrow effect-specific persistence, reconciliation, and bounded retry.
-- Configuration has explicit migration and rollback requirements
-  ([configuration migration](config/schema.md#11-migration-and-rollback)).
-- Webhook queue capacity and future effect retries are bounded
-  ([platform ownership](#3-what-the-shared-platform-owns)).
-- Activation has sandbox and rollback evidence
-  ([P8](decisions.md#supported-product-principles) and
-  [D22](decisions.md#3-earlier-design-proposals-and-their-current-status)).
+| Configuration | Mode | Record |
+|---|---|---|
+| absent · empty document · no `mode` key | `observe` | `decision` |
+| `disabled` · `observe` · `dry-run` | as written | `decision` |
+| `active` | — | `modeUnsupported` |
+| any YAML or semantic rejection — including capability, mapping, and principal errors | — | `configRejected` |
 
-## 3. What the shared platform owns
+Every rejection in `ConfigErrorCode` **fails closed and still completes** — no retry loop, and a redelivery
+produces no second record. [`contracts/config-schema.md`](contracts/config-schema.md) is the exhaustive code
+table; this architecture table deliberately groups it rather than copying it.
 
-The shared platform may own the following technical responsibilities.
+*Sources: `packages/shell/src/processor.ts` · the parse outcomes are core's
+(`packages/core/src/config/parse.ts`, `sections.ts`) — pinned by
+`packages/core/test/config/parse.test.ts` and `packages/shell/test/shell.test.ts`.*
 
-- It authenticates as the GitHub App and as an installation, refreshes installation tokens, and identifies
-  the installation and repository for every operation.
-- It verifies webhook signatures, durably accepts work before acknowledging it, handles duplicate delivery
-  identifiers, applies queue limits, and supports manual redelivery and reconciliation.
-- It loads, validates, and explains repository configuration.
-- It checks whether the installation has the permissions required by an enabled capability.
-- It normalizes GitHub reads so capabilities do not depend on transport response shapes.
-- It exposes narrow write operations with explicit preconditions and postconditions.
-- It classifies API failures, applies bounded backoff, respects primary and secondary rate limits, and avoids
-  blind retries after an unclear write result.
-- It records enough information to explain decisions, recover incomplete work, and support dry-run mode.
-- It provides global, repository, capability, and item-level ways to stop automation.
-- It loads and isolates repository-selected capabilities.
+### 4. core — inside `decide()`
 
-The shared platform does not decide that every repository needs a skill ladder, a twelve-label taxonomy, an
-inactivity rule, or a review queue. Those are optional workflow policies.
+```mermaid
+flowchart TD
+    IN["input: delivery or observation"] --> K{"kind?"}
+    K -->|delivery| N["normalizeDelivery — GitHub's wire format dies here"]
+    K -->|observation| OBS
+    N -->|ignored| FI["finding: deliveryIgnored (info)"]
+    N -->|malformed| FM["finding: problem — one of seven malformed codes"]
+    N -->|observation| OBS["observation + projection, computed once"]
+    OBS --> LOOP{{"for each capability"}}
+    LOOP -->|"not enabled, or observation undeclared"| SKIP["skip — no finding, zero trace"]
+    LOOP --> VIEW["projectCapabilityView + EngineHandle"]
+    VIEW --> EV["capability.evaluate → intents"]
+    EV --> IL{{"for each intent: gateIntent"}}
+    IL --> SC["screen"] --> DW["derive world"] --> GT["gate"]
+    GT --> D["Decision — report + approved"]
+    FI --> D
+    FM --> D
+    SKIP --> D
+```
 
-## 4. Repository configuration
+*Source: `packages/core/src/engine/decide.ts` — total by construction; zero-trace skip proven by
+`packages/probes/test/engine-matrix.test.ts`.*
 
-Configuration is reviewed repository intent. It is not a substitute for runtime state, delivery records, or
-telemetry.
+### 5. core — the capability boundary (probes plug in here)
 
-The first schema uses strictly validated YAML and supports the following concepts. The exact path and final
-schema still require sandbox validation.
+```mermaid
+flowchart LR
+    subgraph engine ["engine — per admitted capability"]
+        CFG["RepositoryConfig"]
+        OB["observation"]
+        RES["externals.resolve"]
+    end
+    subgraph crosses ["the three values that cross"]
+        O["observation — positions and meanings, never labels"]
+        V["config view — own settings + mappedMeanings (names only)"]
+        P["platform — resolve (declared only) + explain"]
+    end
+    CFG -->|projectCapabilityView| V
+    OB --> O
+    RES -->|EngineHandle| P
+    O --> CAP["capability.evaluate()"]
+    V --> CAP
+    P --> CAP
+    CAP -->|returns| INT["intents — asking, never doing"]
+    subgraph absent ["absent by shape — no type to reach for"]
+        X1["✕ GitHub client / HTTP"]
+        X2["✕ raw webhook payload"]
+        X3["✕ a sibling capability's settings"]
+        X4["✕ repository label strings"]
+        X5["✕ mode, enabled, permissions"]
+        X6["✕ a claimable DerivedWorld"]
+    end
+```
 
-- The configuration declares a schema version.
-- The repository selects `disabled`, `observe`, `dry-run`, or `active` mode.
-- The repository explicitly enables capabilities.
-- Each capability receives only its own configuration block.
-- Stable internal meanings may be mapped to repository labels, native fields, teams, users, or notification
-  destinations.
-- Every user-facing capability defaults to disabled and must be explicitly enabled.
-- Profiles may provide mappings and settings, but they do not enable a capability.
-- The first version does not inherit configuration from another repository or organization.
-- The system reports the active configuration revision and effective value of each setting.
+*Sources: `packages/core/src/capability/boundary.ts` · the three probes (`prQuality`, `intake`,
+`inactivity`) are today's capabilities behind this boundary · leaks refuted by
+`packages/probes/test/boundary.test.ts` · independence (P3) by
+`packages/probes/test/engine-matrix.test.ts`.*
 
-No configuration means that the App performs no workflow-changing writes. Invalid configuration fails
-closed and produces a clear report for the repository maintainers. The design must still decide the YAML
-path, default-branch revision handling, schema migration, and rollback behavior. Inheritance may be
-considered later if repeated repository configuration demonstrates a need.
+### 6. core — safety: how an intent becomes a verdict
 
-## 5. Capabilities and workflow profiles
+```mermaid
+flowchart TD
+    I["intent"] --> SC{"screen — eight refusal codes"}
+    SC -->|"foreignCapability, undeclaredIntent, invalidCause, authoritativePositionUnavailable, positionConflict, pauseNotCapabilityWritable, meaningWrongEntity, transitionNotOnMap"| SF["finding (problem) — the gate never runs"]
+    SC -->|ok| DW["deriveWorld(projection, expected) — claims are checked, never trusted"]
+    DW --> PRE{"preflight"}
+    PRE -->|"killSwitch, preconditionStale"| R
+    PRE --> DOOR{"door policy"}
+    DOOR -->|"wrongEntryPoint, preventiveGateUnavailable"| R
+    DOOR --> GEN["general rules, in order — precedence is contract"]
+    GEN -->|observation| RO["record-only"]
+    GEN -->|"capabilityDisabled, permissionMissing, itemBlocked, humanOrderingUnknown, invalidTimestamp, newerHumanChange, modeDisabled"| R["refuse + SafetyRefusalCode"]
+    GEN -->|modeRecordsOnly| RO
+    GEN -->|"no rule fired"| AP["apply"]
+    AP --> APPR["Decision.approved"]
+    R --> F["verdictFinding — severity from one table"]
+    RO --> F
+    AP --> F
+    SF --> F
+```
 
-A capability is one user-facing automation function. It declares the following information.
+*Sources: `packages/core/src/safety/rules.ts` · `packages/core/src/safety/write.ts` ·
+`packages/core/src/report/convert.ts`. The destructive door
+(`packages/core/src/safety/destructive.ts`) is unreachable from `decide()` today.*
 
-- It declares the GitHub events and scheduled observations that can wake it.
-- It declares the configuration keys that it can read.
-- It declares the normalized facts that it needs.
-- It declares the typed intents that it may request.
-- It declares the GitHub permissions that those intents require.
-- It declares whether it needs scheduling, durable operational state, or cross-item coordination.
-- It declares its safe disablement and rollback behavior.
+### 7. core — the workflow state machine
 
-A capability never imports or calls another capability. Disabling a capability stops its triggers,
-scheduled work, capability-only reads, and writes. A capability does not require another capability to be
-enabled unless that compatibility rule is declared and validated.
+Drawn once, in [`contracts/taxonomy.md`](contracts/taxonomy.md), where
+`packages/dev/checks/test/doc-drift.test.ts` holds its every edge equal to `PROFILE_EDGES` in
+`packages/core/src/workflow/transitions.ts`. Not copied here — a second drawing would be the
+unchecked one.
 
-Manual entry into a workflow state is useful, but it does not by itself prove independence. Two capabilities
-may still share a workflow invariant or require a tested compatibility rule. Related capabilities may be
-offered as an optional workflow profile. For example, a Hiero contribution profile may combine intake,
-assignment, and inactivity policies while each capability remains separately implemented and configurable.
+### 8. store — five tables, five questions
 
-## 6. Internal meanings and repository labels
+| Table | The question it answers |
+|---|---|
+| `seen_delivery` | is this delivery durable, claimed, or done? |
+| `delivery_report` | what did we decide for this delivery? |
+| `effect_journal` | did this call reach GitHub? |
+| `effect_claim` | who holds this effect's lease right now? |
+| `schedule` | what clock-triggered work is due now? |
 
-The platform may use stable internal meanings such as `ready`, `inProgress`, or `needsReview`. A repository
-maps those meanings to its own GitHub representation when an enabled capability needs them.
+```mermaid
+erDiagram
+    seen_delivery {
+        TEXT delivery_id PK
+        TEXT event_name
+        BLOB payload "NULL iff done"
+        TEXT payload_digest "sha256 hex"
+        TEXT received_at
+        TEXT state "pending, processing, done"
+        TEXT claim_worker
+        TEXT claim_token
+        TEXT claimed_at
+        TEXT completed_at
+    }
+    delivery_report {
+        TEXT delivery_id PK
+        TEXT claim_token "the committing token"
+        TEXT report_json
+        TEXT completed_at
+    }
+    effect_journal {
+        TEXT effect_id PK
+        INTEGER call_seq PK
+        TEXT intent
+        TEXT status "sent, done"
+        TEXT at
+        INTEGER attempt
+        TEXT revision
+    }
+    effect_claim {
+        TEXT effect_id PK
+        TEXT worker
+        TEXT at "lease stamp"
+    }
+    schedule {
+        TEXT schedule_id PK
+        TEXT due_at
+        TEXT effect
+        TEXT status "pending, running, done"
+        TEXT claimed_at
+        TEXT claim_token
+    }
+    seen_delivery ||..o| delivery_report : "same GUID, no FK, one transaction"
+```
 
-A mapping may point to a label, a native GitHub field, or a supported Project field. The platform must not
-assume that every repository uses the same spelling or even the same concept. A Hiero workflow profile may
-provide recommended defaults, including the twelve-label draft, but those defaults are not the universal
-platform core.
+*Source: `packages/store/src/schema.ts` — schema version 4; drift rejected by the D110 fingerprint.*
 
-The mapping validator must reject missing required mappings, duplicate meanings, incompatible mappings, and
-unsupported field types before activation. The App removes only named values that it manages. It never
-removes every label under a namespace prefix.
+## Part 3 — How they interact
 
-## 7. The adapter boundary
+### 9. One delivery, in time
 
-The adapter exposes small operations rather than the full GitHub API. Candidate operations include the
-following examples.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant GH as GitHub
+    participant R as receiver
+    participant S as store
+    participant P as processor
+    participant E as core decide()
 
-- `readIssue` returns a normalized issue snapshot.
-- `readPullRequest` returns a normalized pull request snapshot.
-- `findLinkedIssues` uses one documented mechanism for the repository's link policy.
-- `addMappedLabelIfMissing` adds one configured label when its precondition still holds.
-- `removeMappedLabelIfPresent` removes one configured label without touching unrelated labels.
-- `assignIfUnassigned` assigns a named user only when the current state still permits it.
-- `renderManagedComment` creates or updates one App-authored comment identified by a stable marker.
-- `closeIfCurrent` closes an item only when the expected state and safety record still match.
+    rect rgb(235,235,235)
+    note over GH,S: synchronous — inside the HTTP request
+    GH->>R: POST bytes + delivery, event, signature headers
+    R->>R: verifyBody — HMAC-SHA256 of the raw bytes (fail → 401)
+    R->>S: acceptDelivery — exact bytes, state 'pending'
+    S-->>R: accepted, duplicate, or conflict — INSERT ON CONFLICT is the dedup
+    R-->>GH: 202 (conflict → 409)
+    note over R,GH: P9 — the durable row exists before the ack, so a crash one millisecond later loses nothing
+    end
 
-Every write operation states its required permission, expected current state, desired postcondition,
-idempotency key, retry rule, unclear-result behavior, and recovery rule.
+    rect rgb(247,247,247)
+    note over R,E: decoupled — after the response has flushed
+    R->>P: onAccepted fires drain (fire-and-forget)
+    P->>S: claimNextDelivery — 256-bit claim token, 15-minute stale takeover
+    P->>P: loadConfig, then parseConfigDocument (text + sha256 revision)
+    alt config rejected
+        P->>P: record kind 'configRejected' — fail closed, still completed
+    else mode active
+        P->>P: record kind 'modeUnsupported' — before decide()
+    else disabled, observe, or dry-run
+        P->>E: decide(delivery, config, capabilities, externals)
+        E-->>P: report → record kind 'decision'
+    end
+    P->>S: completeDeliveryWithReport — report row + 'done', one transaction
+    note over P,S: any failure before commit releases the claim
+    end
+```
 
-The adapter returns explicit results. At minimum, it must distinguish `applied`, `already`, `conflict`,
-`forbidden`, `retryLater`, and `unknown`. A capability never retries an `unknown` result by itself.
+*Sources: `packages/shell/src/receiver.ts` · `packages/shell/src/processor.ts` — pinned end to end
+by `packages/shell/test/shell.test.ts`.*
 
-## 8. Multi-call effects and storage
+## Part 4 — The goal
 
-GitHub label, assignee, comment, and close operations are separate API calls. The App cannot treat several
-calls as one transaction.
+### 10. What remains — solid is built, dashed is gated
 
-Before implementing a multi-call effect, the design must name the following details.
+```mermaid
+flowchart LR
+    subgraph today ["built and live"]
+        IN["intake → decide() → report"]
+        DORM["store: effect_journal, effect_claim, schedule<br/>(built, dormant — nothing reachable writes them)"]
+        DOOR["destructive door<br/>(built, unreachable from decide())"]
+    end
+    subgraph goal ["gated — each piece names its gate"]
+        ACT["active mode<br/>(D46 + stage-six evidence)"]
+        WP["one write path per effect<br/>(adoption record, decisions §3)"]
+        ADP["narrow adapter<br/>(operation list fixed by Q16 matrix)"]
+        REC["effect recovery + reconciliation<br/>(consumes the dormant journal and claim tables)"]
+        SWEEP["schedule sweeps → staleItemsDue<br/>(consumes the dormant schedule table)"]
+    end
+    IN -.-> ACT
+    ACT -.-> WP
+    WP -.-> ADP
+    ADP -.->|"writes, verified postconditions"| GH["GitHub REST"]
+    WP -.-> REC
+    DORM -.-> REC
+    DORM -.-> SWEEP
+    SWEEP -.-> IN
+    DOOR -.->|"first destructive capability"| WP
+```
 
-1. The design names the starting state and expected version of the relevant facts.
-2. The design lists the calls in their safe order.
-3. The design describes the valid state after each partial step.
-4. The design explains how a restart finds and continues or cancels the operation.
-5. The design explains how concurrent human changes take priority.
-6. The design states how the final postcondition is verified.
-
-GitHub remains authoritative for visible repository facts such as labels, assignees, comments, reviews, and
-open or closed state. The system may still need owned operational storage for webhook delivery identities,
-pending effects, retries, schedules, and coordination.
-
-Comment metadata is one recovery option for comment-related work. It is not the approved database for all
-operations. The personal-sandbox comparison has now run (protocol 6.5, 2026-07-23): recovery requires a
-small owned store as the detector and lock, with GitHub state as the resolver, and comment metadata serving
-as effect identity and receipt only. The decided minimum durable state is recorded in
-`design/operations/storage-decision.md`; ratification is pending under the stage-four review.
-
-## 9. Permissions
-
-The GitHub App registration defines the maximum permissions available to installations. Repository
-configuration cannot reduce the permission grant that maintainers see during installation.
-
-The design must maintain an endpoint and permission matrix for every candidate capability. A capability may
-run only when its required permissions are present. A capability that introduces a new organization-level or
-write permission needs separate justification and maintainer review.
-
-The App must never need permission to change repository code. Team membership, organization Projects, Checks,
-and off-GitHub notifications remain optional because they introduce additional permissions or external
-systems.
-
-## 10. Delivery, recovery, and rate limits
-
-Webhooks are fast triggers, not a durable ordered workflow. The design expects duplicate, delayed, missing,
-and manually redelivered events. Correctness comes from reading current GitHub state, checking preconditions,
-and reconciling postconditions.
-
-The final hosting design must answer the following questions.
-
-- It must state how the webhook endpoint responds within GitHub's time limit.
-- It must state whether a durable queue is required before acknowledgement.
-- It must state how failed and missing deliveries are found.
-- It must state whether one or several App processes may run at once.
-- It must state how rate-limit headers and secondary rate limits affect scheduling.
-- It must state how long operational and audit records are retained.
-
-These questions are feasibility work. The current documents do not assume that one in-memory process or one
-hourly sweep is sufficient.
-
-## 11. Safe validation and rollout
-
-The design uses the following rollout order.
-
-1. Pure logic and a fake adapter run locally without network writes.
-2. A separate development GitHub App runs against a personal sandbox repository.
-3. The App verifies authentication, webhooks, configuration, duplicate delivery handling, and dry-run output.
-4. The App creates or updates one managed comment and proves that repeated delivery does not create copies.
-5. The App applies one reversible mapped label and verifies the postcondition under injected failures.
-6. A clearly named Hiero Hackers sandbox is used only after explicit approval.
-7. One consenting repository may run in read-only or shadow mode.
-8. One reversible capability may enter a pilot after its rollback and kill switch have been tested.
-9. Destructive and cross-repository effects require separate approval and a longer clean observation period.
-
-The App never tests immature writes on a maintainer's working repository. Old and new automation never write
-the same managed state during migration.
-
-## 12. Current decisions and open questions
-
-The following principles are strong enough to guide the next work.
-
-- The product is one shared App with repository-selected capabilities.
-- No configuration causes no workflow-changing writes.
-- Capabilities do not receive a raw GitHub client.
-- GitHub remains authoritative for visible repository facts.
-- Label and field representations are repository mappings or profile defaults rather than universal core
-  strings.
-- Real repository writes wait for personal-sandbox evidence and explicit approval.
-
-The 2026-07-25 adoption record (`design/decisions.md` §3) proposed three architectural commitments. The
-store mechanics remain implemented, but the generic executor prototype was removed because the runnable
-application never called it:
-
-- **One write path.** A future real effect must own one narrow path with effect-specific persistence,
-  reconciliation, and retry behavior. No current component writes to GitHub.
-- **Owned operational state is required infrastructure.** The versioned single-file SQLite store (five
-  tables after the D42/D43/D110 amendments) underpins deduplication, recovery, coordination, schedules,
-  and canonical decision reports. Hosting must therefore provide a persistent single-writer disk; a
-  stateless or multi-writer deployment shape would reopen the storage decision.
-- **`active` mode is not runnable.** The shell rejects it before `decide()` because active GitHub writes
-  and effect recovery are not implemented.
-
-The following questions remain open.
-
-- The exact YAML path, schema migration rules, and rollback behavior remain open. Configuration inheritance
-  is deferred from the first version.
-- The exact capability list and first user-facing capability remain open.
-- The workflow profiles that Hiero repositories want remain open.
-- Durable production webhook intake is required; the operational records and versioned SQLite storage
-  contract are now adopted, with formal ratification at stage four.
-- The deployment model, hosting provider, and operator remain open — narrowed by the adopted storage
-  model to shapes with a persistent single-writer disk.
-- The adapter's operation list is fixed by the endpoint and permission matrix (Q16); the port's
-  freshness rule awaits the D46 staleness measurement.
-- The App permission manifest remains open until the first capability is selected.
-- The first pilot repository and rollout dates remain open.
-
-The decision register in `design/decisions.md` records how these questions will be resolved. Candidate
-capabilities are described in `design/modules/`, and the validation order is described in
-`design/build-plan.md`.
-
-## 13. Evidence used for this revision
-
-GitHub's official documentation supplies the platform constraints. Its guidance covers [webhook handling
-within ten seconds](https://docs.github.com/en/enterprise-cloud@latest/webhooks/using-webhooks/handling-webhook-deliveries),
-[failed delivery and manual redelivery](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries),
-[installation-token repository and permission scoping](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app),
-[GitHub App permission selection](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app),
-and [REST API rate-limit behavior](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
-
-Mature projects provide useful patterns without deciding Hiero policy. [Kubernetes Prow
-plugins](https://docs.prow.k8s.io/docs/components/plugins/) show repository-selected plugins behind shared
-webhook infrastructure. [Rust triagebot](https://forge.rust-lang.org/triagebot/index.html) shows reviewed
-per-repository feature configuration and uses owned operational storage. These examples support the shared
-platform and opt-in capability boundary. They do not prove that Hiero needs the same deployment, database,
-or workflow features.
+*The goal is drawn only where a register row supports it: gates and order in
+[`build-plan.md`](build-plan.md), stages five to eight · adapter operations in
+[`endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md) · everything else is
+an open question in [`decisions.md`](decisions.md) §4, deliberately not drawn.*

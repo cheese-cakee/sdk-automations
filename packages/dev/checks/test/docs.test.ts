@@ -1,9 +1,10 @@
 /**
- * `docs/`'s tables restate closed vocabularies the code owns — one fact in two
- * places, aimed at a reader who cannot run the compiler that would catch the
- * drift (D83). So each table is locked to its vocabulary in both directions:
- * where no runtime array exists the list here is a mapped type over the union
- * (D76), so a new code fails to COMPILE until the docs row follows.
+ * Several `docs/` tables restate closed vocabularies the code owns — one fact
+ * in two places, aimed at a reader who cannot run the compiler that would catch
+ * the drift (D83). This file locks the identifier columns and severity groups
+ * it names below; explanatory and behavior prose remains review-owned. Where
+ * no runtime array exists, a mapped type makes a new code fail to compile until
+ * the corresponding documented vocabulary follows (D76).
  */
 
 import { describe, expect, it } from "vitest";
@@ -25,14 +26,14 @@ const page = (name: string): string => normalizeNewlines(readFileSync(join(docsD
 function tableCodes(markdown: string, heading: string): string[] {
     const section = markdown.split(/^## /m).find((s) => s.startsWith(heading));
     expect(section, `section "${heading}" exists`).toBeDefined();
-    return [...(section ?? "").matchAll(/^\|\s*`([a-zA-Z-]+)`\s*\|/gm)].map((m) => m[1]!);
+    return [...(section ?? "").matchAll(/^\|\s*`([^`\r\n]+)`\s*\|/gm)].map((m) => m[1]!);
 }
 
 /** Every backtick-quoted token in a section, for the non-table list. */
 function inlineCodes(markdown: string, heading: string): string[] {
     const section = markdown.split(/^## /m).find((s) => s.startsWith(heading));
     expect(section, `section "${heading}" exists`).toBeDefined();
-    return [...(section ?? "").matchAll(/`([a-zA-Z]+)`/g)].map((m) => m[1]!);
+    return [...(section ?? "").matchAll(/`([^`\r\n]+)`/g)].map((m) => m[1]!);
 }
 
 describe("documentation parsing", () => {
@@ -44,10 +45,15 @@ describe("documentation parsing", () => {
             "| --- | --- |",
             "| `first` | one |",
             "| `second` | two |",
+            "| `invented_2` | three |",
             "",
             "## Next",
         ].join(newline);
-        expect(tableCodes(normalizeNewlines(markdown), "Codes")).toEqual(["first", "second"]);
+        expect(tableCodes(normalizeNewlines(markdown), "Codes")).toEqual([
+            "first",
+            "second",
+            "invented_2",
+        ]);
     });
 });
 
@@ -94,16 +100,23 @@ describe("docs/quickstart.md", () => {
 describe("docs/configuration.md", () => {
     const doc = page("configuration.md");
 
-    /**
-     * Both reference pages tell the reader their tables are asserted against
-     * the code — this is that assertion noticing itself. A page cannot keep
-     * the promise after losing the checks, because dropping either one here
-     * fails, and the two arrive together.
-     */
-    it("carries the provenance promise, as does troubleshooting", () => {
-        for (const name of ["configuration.md", "troubleshooting.md"]) {
-            expect(page(name), name).toContain("asserted against the code by the test suite");
+    /** Both pages state the exact scope of their locks and disclaim prose coverage. */
+    it("states the scope and limit of its drift checks, as does troubleshooting", () => {
+        const promises = {
+            "configuration.md":
+                "The test suite locks this page's closed vocabularies—top-level keys, modes, meanings, and rejection\ncodes—against the code on every commit. Explanatory behavior still requires review.",
+            "troubleshooting.md":
+                "The test suite locks the code membership and severity grouping on this page against the implementation\non every commit. The plain-language explanations still require review.",
+        } as const;
+        const unscoped = /every table.{0,80}(code-derived|locked|against the code)/is;
+
+        for (const [name, promise] of Object.entries(promises)) {
+            expect(page(name), name).toContain(promise);
+            expect(page(name), name).not.toMatch(unscoped);
         }
+        expect(unscoped.test("Every table is code-derived and locked against the code.")).toBe(
+            true,
+        );
     });
 
     /**

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
+  <img src="design/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
 </p>
 
 <p align="center">
@@ -17,7 +17,6 @@
 <p align="center">
   <a href="docs/quickstart.md">Quickstart</a> ·
   <a href="docs/configuration.md">Configuration</a> ·
-  <a href="design/trace.md">System trace</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
@@ -42,7 +41,7 @@
 </table>
 
 <p align="center">
-  <strong>Early development · observe and dry-run only</strong><br>
+  <strong>Early development · non-writing modes only</strong><br>
   <sub>The App is not installable yet. Active GitHub writes remain disabled until one real effect has durable recovery.</sub>
 </p>
 
@@ -65,9 +64,9 @@ GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →
                        exact bytes       pure logic      SQLite transaction
 ```
 
-The runnable application verifies and stores webhook deliveries, evaluates repository configuration
-in `observe` or `dry-run` mode, and persists a canonical report. Unsupported active configuration is
-rejected before a decision can claim that GitHub was changed.
+The runnable application verifies and stores webhook deliveries, evaluates `disabled`, `observe`, or
+`dry-run` configuration from an operator-maintained local copy, and persists a canonical report.
+Unsupported active configuration is rejected before a decision can claim that GitHub was changed.
 
 > [!NOTE]
 > This boundary is intentional. The first active capability will return only with a real GitHub
@@ -109,8 +108,9 @@ All tracked tests run offline. No GitHub credentials or GitHub App configuration
   <tr>
     <td width="50%">
       <strong>Understand the system</strong><br><br>
-      Follow one delivery in the <a href="design/trace.md">system trace</a>, then read the
-      <a href="design/architecture.md">architecture</a> and <a href="design/decisions.md">decision register</a>.
+      Read the <a href="design/architecture.md">architecture</a>, then the
+      <a href="design/decisions.md">decision register</a>. The
+      <a href="packages/core/README.md">core README</a> holds the glossary.
     </td>
     <td width="50%">
       <strong>Use the contract</strong><br><br>

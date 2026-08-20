@@ -67,7 +67,7 @@ Everything reading issues or PRs reads only. The single PR-state write is `pr_ch
 `statuses: write`. The only broader scopes are Pages (`pages: write`, `id-token: write`) and Release
 (`contents: write`, `id-token: write`), both for publishing. `build.yml` declares `pull-requests: write` but
 uses it for coverage upload, not issue or PR management. The result matches the least-privilege principle in
-`planning/goals.md`, but reached by having almost no automation rather than by design.
+`design/goals.md`, but reached by having almost no automation rather than by design.
 
 ## Appendix: other `.github` config
 

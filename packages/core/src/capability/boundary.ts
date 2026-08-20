@@ -1,6 +1,6 @@
 /**
- * How the platform CALLS a capability — `design/modules/contract.md` §2 and
- * §6 as types.
+ * How the platform CALLS a capability — `design/contracts/contract.md` §2 as
+ * types.
  *
  * `declaration.ts` says what a capability is; this says how it is invoked and
  * what it is allowed to see. The shape of what is ABSENT from `PlatformHandle`
@@ -34,17 +34,17 @@ export type IntentFor<D extends TypedDeclaration> = Extract<
 // ─── The view a capability sees ──────────────────────────────────────
 
 /**
- * contract.md §6 — the projection a capability sees. Four deliberate
+ * contract.md §2 — the projection a capability sees. Four deliberate
  * omissions, each of which would hand a capability a decision that is not
  * its own:
  *
  * - no `mode`: dry-run and active are policy. A capability that branched
  *   on mode would be deciding whether to write, which is rule 10's job.
- * - no `enabled`: a disabled capability is never evaluated (§8), so the
+ * - no `enabled`: a disabled capability is never evaluated (§4), so the
  *   field could only ever read `true` — and a capability that could read
  *   it could try to act while off.
- * - no other capability's block (§6, P3).
- * - **no label strings.** §6 says a capability "refers to internal
+ * - no other capability's block (§2, P3).
+ * - **no label strings.** §2 says a capability receives internal
  *   meanings rather than repository label strings", so the view reports
  *   WHICH meanings a repository has mapped, never what it calls them.
  *   Passing `mappings.labels` through would have satisfied the types and
@@ -60,7 +60,7 @@ export interface CapabilityView<D extends TypedDeclaration> {
 
 /**
  * Build that view. Undeclared settings keys are dropped rather than
- * rejected — the capability's own schema owns its block (§6), and this
+ * rejected — the capability's own schema owns its block (§2), and this
  * function's job is the isolation cut, not validation.
  */
 export function projectCapabilityView<const D extends TypedDeclaration>(
@@ -105,8 +105,7 @@ export interface PlatformHandle<D extends TypedDeclaration> {
  *
  * `evaluate` is pure with respect to the repository — a capability decides,
  * it never writes. Everything it returns is a REQUEST the policy layer may
- * refuse, which is why it cannot report success, and why `EffectResult`
- * (contract.md §4) is never handed back to it.
+ * refuse, which is why it cannot report success or receive an effect result.
  */
 export interface Capability<D extends TypedDeclaration> {
     readonly declaration: D;

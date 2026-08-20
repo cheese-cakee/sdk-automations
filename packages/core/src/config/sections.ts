@@ -33,14 +33,14 @@ export function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 const KNOWN_TOP_LEVEL = new Set<string>(TOP_LEVEL_KEYS);
 
-/** schema.md §2.7 — unknown top-level keys are rejected, never ignored. */
+/** config-schema.md §3 — unknown top-level keys are rejected, never ignored. */
 export function checkTopLevelKeys(raw: Record<string, unknown>): readonly ConfigError[] {
     return Object.keys(raw)
         .filter((key) => !KNOWN_TOP_LEVEL.has(key))
         .map((key) =>
             err(
                 "unknownKey",
-                `unknown key "${key}" (unknown keys are rejected, schema.md §2.7)`,
+                `unknown key "${key}" (unknown keys are rejected, config-schema.md §3)`,
                 key,
             ),
         );
@@ -249,7 +249,7 @@ export function readMappings(
                         (sameSpelling
                             ? ""
                             : ` (differing only in case or surrounding space from ${JSON.stringify(owner.label)}, which GitHub treats as the same label)`) +
-                        ` — label mappings must be injective (schema.md §3)`,
+                        ` — label mappings must be injective (config-schema.md §3)`,
                     `mappings.labels.${meaning}`,
                 ),
             );

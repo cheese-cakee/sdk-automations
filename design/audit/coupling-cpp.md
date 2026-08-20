@@ -5,8 +5,8 @@
 > through shared state, which services are entangled, which are cleanly separable, and where the concrete
 > obstacles to "decouple by function" sit today.
 > **Source state:** `main` at `a898153` (2026-05-14), same commit the Phase 1 and Phase 2 audits read.
-> **Phase:** 3 (Service dependency and coupling). It builds on `audit/services-cpp.md` (the service
-> inventory) and `audit/labels-cpp.md` (the label state machines), and serves goals.md Goal 1
+> **Phase:** 3 (Service dependency and coupling). It builds on `design/audit/services-cpp.md` (the service
+> inventory) and `design/audit/labels-cpp.md` (the label state machines), and serves goals.md Goal 1
 > ("decoupled by function: every capability is an independent feature a repo can enable, disable, or dial
 > up").
 >
@@ -16,7 +16,7 @@
 >
 > **Scope:** maintainer automation only. The build, CI, lint, and test workflows (`zxc-*`,
 > `flow-pull-request-checks`, `on-schedule-builds`) are a project non-goal and were already shown to touch
-> no shared maintainer state (see `audit/labels-cpp.md` Appendix C). They are left out here.
+> no shared maintainer state (see `design/audit/labels-cpp.md` Appendix C). They are left out here.
 >
 > **C++ is the primary subject of this phase.** Python is touched only as a contrast at the end (section
 > 7), per the maintainer's "focus less on python now" steer.
@@ -42,7 +42,7 @@ then draws the coupling together and states the decoupling problem.
 
 The skill and priority labels are shared read-only inputs too, but they are fixed (no service writes
 them), so they couple services only at the config layer (channel 4), not as moving state. The full label
-read or write detail is in `audit/labels-cpp.md`; this document uses it rather than repeating it.
+read or write detail is in `design/audit/labels-cpp.md`; this document uses it rather than repeating it.
 
 ## 2. The shared-state channels
 
@@ -54,7 +54,7 @@ itself is referenced by eight distinct services. It is the token that says "this
 so almost everything reads or moves it.
 
 The full per-label read or write breakdown and the two state machines (issue and PR) are in
-`audit/labels-cpp.md`. The two facts that matter for coupling:
+`design/audit/labels-cpp.md`. The two facts that matter for coupling:
 
 1. **`ready for dev` is a handoff baton.** `/finalize` is the only service that produces it from triage
    (`awaiting triage` to `ready for dev`). `/assign` is the only service that consumes it into work
@@ -67,7 +67,7 @@ The full per-label read or write breakdown and the two state machines (issue and
    `bot-inactivity.js`) both remove every label whose name starts with `status:`, then optionally re-add
    `ready for dev`. This is a prefix operation, so it also strips `status:` labels the config does not
    know about (`status: needs info`, `status: awaiting merge`), which is the namespace-coupling risk
-   already recorded in `audit/labels-cpp.md` Appendix D. For coupling purposes the point is that these two
+   already recorded in `design/audit/labels-cpp.md` Appendix D. For coupling purposes the point is that these two
    services own the whole `status:` namespace at strip time, not just their own labels.
 
 ### 2.2 Bot comments: three markers, one cross-service read
@@ -271,7 +271,7 @@ Read it as two clusters joined by the config file and the merge:
 
 ## 4. Entangled versus separable
 
-Grouped by the seven service groups from `audit/services.md`, here is how independent each C++ service is
+Grouped by the seven service groups from `design/audit/services.md`, here is how independent each C++ service is
 today. "Separable" means it runs on its own with only the shared config; "soft-coupled" means it shares
 read-or-write state but does not strictly need another service to function; "hard-coupled" means it cannot
 run, move, or switch off without another service or a file edit.
@@ -289,7 +289,7 @@ run, move, or switch off without another service or a file edit.
 | 5. Progression | Post-Merge Recommendation, Cleanup, Milestone | hard-coupled | co-located with Sibling Conflict in `on-pr-close.yaml`; the milestone check gates the recommendation step in one path; strips status on linked issues; feeds `ready for dev` candidates back to `/assign`. |
 | 7. Admin | Slash Command Dispatcher | hard-coupled | it is the single entry point for all three slash commands; the commands cannot be separated from it without restructuring. |
 
-Group 6 (Notifications) has no C++ implementation; it is Python-only (see `audit/services.md` section 2).
+Group 6 (Notifications) has no C++ implementation; it is Python-only (see `design/audit/services.md` section 2).
 The repo-hygiene part of Group 7 is CI-adjacent and out of scope.
 
 The pattern: the four read-or-own-their-state services (`/finalize`, `/unassign`, PR Open Checks,
@@ -368,7 +368,7 @@ features today without also taking on the shared state and files that tie them t
 ## 7. Python as a contrast (reference only)
 
 Per the maintainer's steer to focus less on Python now, this is a contrast, not a re-audit. The full
-Python detail is in `audit/services-python.md` and `audit/labels-python.md`.
+Python detail is in `design/audit/services-python.md` and `design/audit/labels-python.md`.
 
 The two SDKs trade one kind of coupling for the other.
 
@@ -377,7 +377,7 @@ The two SDKs trade one kind of coupling for the other.
   shared file, but the data is consistent (one config, zero label drift, no runtime-created labels).
 - **Python has lower deployment coupling, higher data coupling.** It is roughly 40 small workflows, so a
   feature is closer to "one file you can delete," but the shared state is messier: four label-drift sets
-  (`audit/labels-python.md`), labels created at runtime by the review-queue sync, and the Workflow Failure
+  (`design/audit/labels-python.md`), labels created at runtime by the review-queue sync, and the Workflow Failure
   Notifier that matches seven CI checks by exact workflow-name string (the same exact-string fragility
   class as the C++ artifact relay, in a different place). So Python's features are easier to pull apart as
   files but harder to keep consistent as data.

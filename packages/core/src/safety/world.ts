@@ -17,7 +17,7 @@ import { MAPPABLE_MEANINGS, type MappableMeaning } from "../config/index.js";
 import { closureOf, type ObservationProjection } from "../workflow/index.js";
 
 /**
- * What a capability claims about the world — safety.md's language. The
+ * What a capability claims about the world — contracts/safety.md's language. The
  * intent layer re-exports this as `ExpectedFacts`; it is defined here so
  * the derivation and the claim share one shape without the safety module
  * depending on the capability layer.

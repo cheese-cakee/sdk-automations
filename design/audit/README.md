@@ -5,10 +5,10 @@ Python — actually did in July 2026: their labels, their services, their coupli
 Decisions in [`../decisions.md`](../decisions.md) and the workflow tables in `packages/core/src/workflow/`
 cite specific files here as the ground they stand on.
 
-**Frozen on 2026-07-17.** Nothing here is edited, even when wrong — a correction would silently
-change what a decision appears to have been based on. If the fieldwork is later found to be
-mistaken, the correction is a new decision row citing the mistake, and if the repositories change,
-that is a new audit, not an update to this one.
+**Evidence frozen on 2026-07-17.** Observations, counts, grades, and conclusions are never rewritten, even
+when later found wrong — a correction is a new decision row, and repository change is a new audit.
+Repository-maintenance edits may update paths or links after a file move, but must not change an evidentiary
+claim. This distinction keeps the archive navigable without silently changing what a decision relied on.
 
 | File | What it records |
 |---|---|

@@ -1,6 +1,6 @@
 /**
  * The transition tables (`PROFILE_EDGES`) and the state diagrams in
- * `design/core/taxonomy.md` are hand copies of each other, so nothing failed
+ * `design/contracts/taxonomy.md` are hand copies of each other, so nothing failed
  * when they diverged (D48, D50). Every edge in one appears in the other.
  *
  * (from, to) PAIRS only: arrow prose is written for humans and causes are
@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { PROFILE_EDGES } from "@hiero-hackers/automation-core";
 import { repoRoot } from "./repository.js";
 
-const DOC = join(repoRoot, "design", "core", "taxonomy.md");
+const DOC = join(repoRoot, "design", "contracts", "taxonomy.md");
 
 /** Every ```mermaid fence in the document, body only. */
 function mermaidBlocks(markdown: string): string[] {
@@ -42,7 +42,7 @@ function codePairs(
     return new Set(edges.map((e) => `${String(e.from)}->${String(e.to)}`));
 }
 
-describe("src/workflow/transitions.ts tables ≡ design/core/taxonomy.md diagrams", () => {
+describe("src/workflow/transitions.ts tables ≡ design/contracts/taxonomy.md diagrams", () => {
     const markdown = readFileSync(DOC, "utf8");
     const diagrams = mermaidBlocks(markdown).filter((b) => b.includes("stateDiagram"));
 

@@ -638,7 +638,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         messageIncludes: [
             '"status: wip"',
             "injective",
-            '"ready" and "inProgress" — label mappings must be injective (schema.md §3)',
+            '"ready" and "inProgress" — label mappings must be injective (config-schema.md §3)',
         ],
     },
     {

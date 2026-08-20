@@ -21,7 +21,7 @@ export interface OperationalNeeds {
     readonly externalDelivery: boolean;
 }
 
-/** A capability's self-description — `design/modules/contract.md` §1. */
+/** A capability's self-description — `design/contracts/contract.md` §1. */
 export interface CapabilityDeclaration {
     readonly name: string;
     readonly triggers: readonly Trigger[];

@@ -1,6 +1,6 @@
 /**
  * What intake decides at the entry gate. Two facts it may not assume: that
- * the repository has mapped `awaitingTriage` (contract.md §6), and that an
+ * the repository has mapped `awaitingTriage` (contract.md §2), and that an
  * issue carrying no position is one it should still be placed in. Each
  * refusal is paired with the input that does produce a label intent.
  *

@@ -12,29 +12,37 @@ labels: "beginner"
 
 ## The task
 
-<!-- ✍️ Author: this is the only section you write. State the problem and the
-     expected outcome, and point at the files and one or two similar patterns in
-     the codebase worth studying first. Leave implementation decisions to the
-     contributor. -->
+<!-- ✍️ Author: this is the only section you write. Unlike a Good First Issue, give
+     the shape of the work, not the steps — the contributor researches and designs
+     the approach, and that research is most of the value at this level. -->
 
-**Problem:**
+**Why We Need Help:**
+<!-- ✍️ Author: in 1-2 sentences summarize the problem, its magnitude or impact, and point to the relevant part of the codebase -->
 
-**What done looks like:**
+**What Solution We Require:**
+<!-- ✍️ Author: in 1 sentence summarize what help we need to solve this problem (the task). Be clear and direct -->
 
-**Where to look first:** `checks/`, `docs/`, or the package named in the issue — and study a similar existing pattern before coding.
+**High-Level Implementation:**
+<!-- ✍️ Author: about 3 high-level steps — the shape of the work, not instructions. No file-by-file walkthrough: the contributor is expected to research the codebase and design the correct approach themselves -->
+
+**Where to Look First:**
+<!-- ✍️ Author: name 2-3 files, and one existing pattern in the codebase worth studying before coding -->
 
 ## How to work on this
 
-1. **Claim it:** comment on the issue and wait to be assigned before opening a PR.
-2. **Research before coding:** read the files above and their tests; most of the value of this level is building an accurate picture before changing anything.
-3. **Set up and solve it** with `pnpm install` and `pnpm -r test`. The [contributor guide](https://github.com/hiero-hackers/sdk-automations/blob/main/CONTRIBUTING.md) has the details.
+1. **Claim it:** comment `/assign` on the issue and wait to be assigned before opening a PR.
+2. **Get oriented:** read [ground rules](https://github.com/hiero-hackers/sdk-automations/blob/main/CONTRIBUTING.md#ground-rules-for-changes) and [signing requirements](https://github.com/hiero-ledger/sdk-collaboration-hub/blob/main/guides/issue-progression/for-developers/signing.md)
+3. **Research, design, then solve it:** read the files above and their tests, work out the approach yourself, then follow the formatting and test requirements in the [contributor guide](https://github.com/hiero-hackers/sdk-automations/blob/main/CONTRIBUTING.md). AI assistance is welcome within the [AI policy](https://github.com/hiero-hackers/sdk-automations/blob/main/AI_POLICY.md); purely AI generated PRs are not accepted.
 
 **Before opening your PR:**
 
-- [ ] I spent real time reading the relevant code before writing any
+- [ ] I read the relevant code and its tests before writing any
+- [ ] I worked out the approach myself and am prepared to defend it
 - [ ] The implementation works and follows the surrounding patterns
-- [ ] I added basic tests for what I changed, following the package's existing test layout
-- [ ] `pnpm -r test` passes; scope is limited to this issue
-- [ ] The basics from your first issue still apply — signed commits, linked issue, clean history
+- [ ] I added tests for what I changed, following the package's existing test layout
+- [ ] My changes stay within the scope of this issue
+- [ ] The PR description links this issue with `Closes #<number>`
+- [ ] `pnpm -r test` and `pnpm lint` pass
+- [ ] My commits are signed off for DCO: `git commit -s -m "fix: description"`
 
-**Stuck?** Comment here with what you have tried. See the [contributor guide](https://github.com/hiero-hackers/sdk-automations/blob/main/CONTRIBUTING.md) for setup and expectations.
+**Stuck?** Comment here with what you have tried. A maintainer will respond.

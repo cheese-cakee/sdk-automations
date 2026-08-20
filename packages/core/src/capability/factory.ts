@@ -7,7 +7,7 @@
  *
  * - **Every intent explains itself.** `explain.summary` is required: the
  *   report's story for applied and recorded effects comes from here, and a
- *   capability that cannot say why it acts should not act (safety.md).
+ *   capability that cannot say why it acts should not act (contracts/safety.md).
  * - **The claimed world defaults to no claim.** An omitted `expected` is
  *   vacuous (`closed: null`), never an accidental assertion. Claims are
  *   CHECKED under the engine's derived preconditions, so the default must be

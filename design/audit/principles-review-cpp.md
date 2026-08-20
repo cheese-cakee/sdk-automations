@@ -8,9 +8,9 @@
 > the top-down cross-check on the bottom-up findings: if the coupling the audit found is real, it should
 > show up as a principle being missed. It does.
 >
-> **Source:** the same commit and files as the rest of the audit (`audit/services-cpp.md`,
-> `audit/labels-cpp.md`, `audit/coupling-cpp.md`); `§` references point into `coupling-cpp.md` unless
-> noted. Cross-references to `planning/lessons-learned.md` use its entry codes (A1, B1, …).
+> **Source:** the same commit and files as the rest of the audit (`design/audit/services-cpp.md`,
+> `design/audit/labels-cpp.md`, `design/audit/coupling-cpp.md`); `§` references point into `coupling-cpp.md` unless
+> noted. Cross-references to `design/audit/lessons-learned.md` use its entry codes (A1, B1, …).
 >
 > **Framework:** classic software-design principles (single source of truth, least privilege, single
 > responsibility, explicit contracts, …), chosen over the cloud-infra Well-Architected pillars because
@@ -51,7 +51,7 @@ duplicating. (§2.2 · keep-list)
 
 ### 4. Testability — unit/handler A · seam/integration D
 
-This principle splits, and the split is the finding (full read in `audit/testing-cpp.md`). A dedicated
+This principle splits, and the split is the finding (full read in `design/audit/testing-cpp.md`). A dedicated
 `zxc-test-bot-scripts` CI job runs ~10k lines across 16 files — one per handler plus the helpers — each
 driving a whole handler against a mocked GitHub (REST + GraphQL), with an injectable clock. **Unit/handler
 testability is an A**: even cross-entity *reads* are mockable (issue assignees, closing refs), so the
@@ -125,7 +125,7 @@ another, what happens when that dependency breaks. C++ is, by these principles, 
 well-architected parts wired together by implicit contracts over shared, unowned state.
 
 Testability is the sharpest demonstration, because the one principle straddles both bands: the *same*
-suite scores an A at the handler level and a D at the seam level (`audit/testing-cpp.md`). Where a unit can
+suite scores an A at the handler level and a D at the seam level (`design/audit/testing-cpp.md`). Where a unit can
 be isolated it is tested thoroughly; where two units are coupled across handlers or YAML, the test boundary
 ends — the relay coupling has no test file at all. The two bands are not two sets of principles; they are
 the same system measured locally versus across its seams.

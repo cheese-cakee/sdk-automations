@@ -2,7 +2,7 @@
 
 > **Scope:** every label the automation under `.github/` of
 > [`hiero-ledger/hiero-sdk-js`](https://github.com/hiero-ledger/hiero-sdk-js) reads or writes.
-> **Source:** `main` at `a7c39d2` (2026-06-26). Builds on `audit/services-js.md`. **Descriptive.**
+> **Source:** `main` at `a7c39d2` (2026-06-26). Builds on `design/audit/services-js.md`. **Descriptive.**
 
 ## Headline
 

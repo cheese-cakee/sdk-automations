@@ -45,10 +45,10 @@ Together they exercise the retained boundary without selecting a product capabil
 | `test/inactivity.test.ts` | The act path dates `unassign` at `warnedAt` rather than the sweep — redating would restart the grace period — and a bot or undetermined assignee is skipped precisely where the next step is destructive |
 
 The P3 run is the one worth flagging: [`build-plan.md`](../../design/build-plan.md)
-§12 defers the toggle matrix past November because one capability cannot
-violate the principle. That is right about the arithmetic and wrong about the
-prerequisite — P3 is structural, so stubs test it as well as shipped code does
-(D70).
+once deferred the toggle matrix until a second shipped capability existed, because one
+capability cannot violate the principle. That was right about the arithmetic and wrong
+about the prerequisite — P3 is structural, so stubs test it as well as shipped code does
+(D70); the plan's capability loop now re-runs the matrix per capability.
 
 ## Deleting this package
 

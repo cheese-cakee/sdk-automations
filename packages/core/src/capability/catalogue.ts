@@ -40,7 +40,7 @@ export interface ItemRef {
 }
 
 /**
- * safety.md's "explains each action in a comment" as structure rather
+ * contracts/safety.md's explanation requirement as structure rather
  * than prose: `summary` is the human sentence, `detail` the supporting
  * facts, `capability` the attribution every managed write owes. Kept
  * structured so the managed comment, the dry-run report, and the operator
@@ -52,7 +52,7 @@ export interface StructuredExplanation {
     readonly detail: readonly string[];
 }
 
-/** contract.md §3 — a cause is always dated (safety.md rule 5). */
+/** contract.md §3 — a cause is always dated (contracts/safety.md). */
 export interface DatedCause {
     readonly cause: string;
     readonly observedAt: Date;

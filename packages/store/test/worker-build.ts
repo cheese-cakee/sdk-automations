@@ -26,7 +26,7 @@
  * delivery. The other runs N finalizers, each with its own optional fault
  * point, and settles on worker exit as well as on a result. A runner
  * parameterised over both would be a fake whose kindness you cannot see —
- * the standing rule in `design/testing/README.md` §9. Each suite keeps the
+ * the standing rule in `design/guides/testing.md` §9. Each suite keeps the
  * harness whose shape matches the claim it is making.
  */
 

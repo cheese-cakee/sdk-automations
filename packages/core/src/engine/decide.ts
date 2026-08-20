@@ -77,7 +77,7 @@ export interface Decision {
 // ─── The gates one intent passes ─────────────────────────────────────
 
 /**
- * safety.md §2.6 wants "the exact item and value the adapter may change".
+ * contracts/safety.md requires the exact item and value an adapter may change.
  * The exhaustive switch means a new catalogue operation fails to compile
  * until someone states what it changes.
  */

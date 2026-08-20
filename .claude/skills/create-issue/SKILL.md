@@ -40,9 +40,11 @@ gh api -X POST repos/hiero-hackers/sdk-automations/issues/<N>/dependencies/block
 
 - `design/decisions.md` — the register; rows D1–D89+. An issue implementing a row's "notes" column should cite the row.
 - `docs/to-do.md` — recorded gaps with their unblocking conditions; check an issue isn't already recorded there with a different trigger.
-- `checks/` — the invariant package; issues adding "keep X true" checks belong there, one file per invariant or watched target.
+- `packages/dev/checks/` — the invariant package; issues adding "keep X true" checks belong there, one file per invariant or watched target.
 - CI conventions: SHA-pinned actions with version comments, least-privilege permissions per job, never `pull_request_target` (`.github/workflows/ci.yml` explains each).
 
-## After #44 lands
+## Use the templates
 
-Issue templates in `.github/ISSUE_TEMPLATE/` will carry the tier banners and boilerplate. From then on: fill a template's "The task" section rather than authoring the banner by hand, and keep this skill's job to tier selection, body conventions, and the gh mechanics.
+Issue templates in `.github/ISSUE_TEMPLATE/` carry the tier banners and boilerplate. Fill the selected
+template's “The task” section rather than authoring the banner by hand; this skill handles tier selection,
+body conventions, and the GitHub mechanics.

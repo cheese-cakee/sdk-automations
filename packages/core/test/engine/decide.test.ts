@@ -568,7 +568,7 @@ describe("paths the delivery tests never walk", () => {
     });
 });
 
-describe("describeChange — §2.6's exact item and value, pinned", () => {
+describe("describeChange — effects.md's exact item and value, pinned", () => {
     it("names each operation's change precisely", () => {
         const base = intentFactory("triage", {
             repository: { owner: "o", repo: "r" },

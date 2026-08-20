@@ -4,8 +4,8 @@ Every decision the App makes carries a code, and every code is in the three tabl
 common question — "why didn't it act here?" — is almost always answered by the first table: the App
 prefers doing nothing over doing something you didn't ask for.
 
-*Every table on this page is asserted against the code by the test suite, on every commit — the
-reference cannot drift from the product.*
+*The test suite locks the code membership and severity grouping on this page against the implementation
+on every commit. The plain-language explanations still require review.*
 
 ## It did nothing on purpose
 
@@ -13,9 +13,9 @@ Nothing to fix — this is your configuration, or our caution, behaving as speci
 
 | Code | In plain terms |
 |---|---|
-| `killSwitch` | The emergency stop is on; nothing writes anywhere |
-| `modeDisabled` | Your file says `disabled` |
-| `modeRecordsOnly` | Your file says `dry-run` — the action was recorded, not applied |
+| `killSwitch` | The intent-level emergency brake is on; returned intents are refused after capability evaluation |
+| `modeDisabled` | Your file says `disabled`; enabled capabilities may be evaluated, but every screened intent is refused |
+| `modeRecordsOnly` | Your file says `observe` or `dry-run` — currently both record the action instead of applying it |
 | `observation` | It was only ever a read; there was nothing to apply |
 | `capabilityDisabled` | The capability is `enabled: false` (or absent) in your file |
 | `itemBlocked` | A human marked the item `blocked`, so the App keeps its hands off |

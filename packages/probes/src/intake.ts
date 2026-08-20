@@ -60,7 +60,7 @@ export const intake: Capability<IntakeDeclaration> = {
 
         /**
          * A capability may only use a meaning the repository has mapped
-         * (contract.md §6). It learns that the meaning is AVAILABLE and
+         * (contract.md §2). It learns that the meaning is AVAILABLE and
          * never what the repository calls it — the label string is the
          * adapter's business.
          */

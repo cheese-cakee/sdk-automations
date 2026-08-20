@@ -7,8 +7,8 @@
 > value a maintainer would miss if the service were gone, what actually ties that service to its neighbours
 > so that you cannot simply switch it off on its own, and whether it could stand as an independent feature
 > that runs on the shared config and a read of the shared status labels. It builds directly on
-> `audit/services-cpp.md` (the service inventory), `audit/labels-cpp.md` (the label state machines), and
-> `audit/coupling-cpp.md` (the coupling map), and it serves the first project goal: that every capability
+> `design/audit/services-cpp.md` (the service inventory), `design/audit/labels-cpp.md` (the label state machines), and
+> `design/audit/coupling-cpp.md` (the coupling map), and it serves the first project goal: that every capability
 > should be an independent feature a repo can turn on, turn off, or dial up on its own.
 >
 > **Where the facts come from.** Everything here is read against `main` at commit `a898153`, the same commit
@@ -30,7 +30,7 @@
 
 ## 1. How to read each group
 
-The service groups are the seven laid out in `audit/services.md`. Six of them have a C++ implementation, and
+The service groups are the seven laid out in `design/audit/services.md`. Six of them have a C++ implementation, and
 those six are covered here: intake, assignment, PR quality and review, lifecycle, progression, and the
 admin dispatcher. Each one is read the same way, through three questions written out as plain paragraphs.
 
@@ -40,7 +40,7 @@ is coupled to another when the two share something: a label they both read and w
 and the other reads, a config file they both depend on, a link between an issue and a PR that one of them
 follows, or simply the same workflow file. That shared thing is what stops you from moving or disabling one
 service without thinking about the other, and it is drawn from the six shared channels mapped in
-`audit/coupling-cpp.md`. The third question is about independence: given only the shared config and a read
+`design/audit/coupling-cpp.md`. The third question is about independence: given only the shared config and a read
 of the shared status labels, could the service run on its own, and if not, what small change would let it.
 
 It helps to keep three different senses of "independent" apart, because a service can have one and lack the
@@ -335,7 +335,7 @@ All references are against `hiero-ledger/hiero-sdk-cpp` at `a898153`, under `.gi
 against live `main` on 2026-07-11, which is unchanged since the audit.
 
 - The `/finalize` validation checks are at `commands/finalize.js:99-102,133,167`, and its dependence on the
-  native issue type is documented in `audit/labels-cpp.md`.
+  native issue type is documented in `design/audit/labels-cpp.md`.
 - The `/assign` gates are the no-assignee check at `commands/assign.js:257`, the ready-for-dev check at
   `commands/assign.js:275`, the limit bypass at `commands/assign.js:391` (which calls `hasNeedsReviewPR` at
   `helpers/api.js:1033-1100`), the fresh-fetch race guard at `commands/assign.js:333-348`, and

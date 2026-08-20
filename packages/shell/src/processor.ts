@@ -3,7 +3,7 @@
  * mode or call the one verb, then commit the outcome with completion. The
  * receiver acknowledged long ago; GitHub never observes retries here.
  *
- * `process` below is the right lane of design/trace.md stations 3–12,
+ * `process` below is stations ③ to ⑤ of this package's README table,
  * one named step per station.
  */
 
@@ -112,7 +112,7 @@ export class Processor {
         return this.draining;
     }
 
-    /** Build one delivery's canonical record, stations 4–11 in reading order. */
+    /** Build one delivery's canonical record, stations ③ to ⑤ in reading order. */
     private async process(claimed: ClaimedDelivery): Promise<ShellRecord> {
         const config = await this.loadConfig();
         // One instant serves as the record's `decidedAt` AND the gates'

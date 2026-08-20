@@ -1,6 +1,6 @@
 # workflow/ — what states exist, and how they move
 
-The state machine from [`design/core/taxonomy.md`](../../../../design/core/taxonomy.md) §4–§5,
+The state machine from [`design/contracts/taxonomy.md`](../../../../design/contracts/taxonomy.md) §4–§5,
 as code. Two flows — issues and pull requests — each with its own positions, its own causes, and
 its own edge table.
 

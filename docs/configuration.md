@@ -1,18 +1,19 @@
 # Configuration reference
 
-Everything the App does in your repository is controlled by one file: `.github/hiero-automations.yml`.
-This page defines every key.
+The intended hosted App is controlled by `automations.yml` in your repository root. The runnable shell
+currently reads an operator-maintained local copy; fetching the default-branch file is the next adapter
+seam. This page defines every shared key the parser accepts today.
 
-*Every table on this page is asserted against the code by the test suite, on every commit — the
-reference cannot drift from the product.*
+*The test suite locks this page's closed vocabularies—top-level keys, modes, meanings, and rejection
+codes—against the code on every commit. Explanatory behavior still requires review.*
 
 New here? Start with the [Quickstart](quickstart.md). Want a file to copy?
 [`docs/examples/`](examples/).
 
 ## The file at a glance
 
-5 top-level keys, 3 levels deep at most. The tree below is the entire shape — every key the
-file can contain is on it, and indentation (two spaces per level) is the only structure YAML has:
+5 top-level keys and three shared wrapper levels. The tree below is the entire shared shape; content
+inside `settings` is deliberately capability-owned and may be deeper:
 
 ```yaml
 schemaVersion: 1              # ── top level. Required — the only required key
@@ -37,11 +38,11 @@ Two things that prevent most mistakes:
 
 - In headings below, dots mean **nesting**, not key names: `capabilities.<name>.enabled` is the
   `enabled` line inside one capability's block, three levels deep.
-- Any key not on this tree is an error, wherever it appears. The file cannot be extended, only
-  filled in.
+- Any shared key not on this tree is an error. Keys inside `settings` are the one exception: the shared
+  parser preserves them for the capability and does not validate their names or values.
 
-Nothing is required except `schemaVersion`. Every default is the inert one — an empty file is a
-valid file, and it does nothing.
+Nothing is required except `schemaVersion`. Every default is non-writing—an empty file is valid and
+produces an `observe` decision rather than an active effect.
 
 ## Key definitions
 
@@ -53,8 +54,8 @@ valid file, and it does nothing.
 | Required | **yes**, unless the file is completely empty |
 | Allowed | `1` |
 
-Must be the unquoted number `1`. `"1"` is a string and is rejected. There is no version 2 yet; when
-there is, version 1 files keep working.
+Must be the unquoted number `1`. `"1"` is a string and is rejected. There is no version 2 yet, and the
+migration/deprecation policy for any future version remains deliberately undecided.
 
 ### `mode`
 
@@ -65,17 +66,19 @@ there is, version 1 files keep working.
 | Default | `observe` |
 | Allowed | `disabled`, `observe`, `dry-run`, `active` |
 
-Core recognizes all four values, but the runnable shell supports observe and dry-run only. Active is
+Core recognizes all four values, but the runnable shell supports the three non-active modes. Active is
 reserved and rejected before a decision. Values are case-sensitive, and unquoted `no` is a YAML boolean
 rather than a mode — quote anything you are unsure of.
 
 | Mode | Reads | Reports | Records what it would do | Writes |
 |---|---|---|---|---|
-| `disabled` | no | says only that it is disabled | no | no |
-| `observe` | yes | yes | no | no |
-| `dry-run` | yes | yes | yes | no |
+| `disabled` | yes | findings plus `modeDisabled` refusals | no | no |
+| `observe` | yes | yes | yes—record-only | no |
+| `dry-run` | yes | yes | yes—currently the same path as `observe` | no |
 | `active` | configuration only | unsupported-mode rejection | no | no |
 
+Enabled capabilities and their declared resolvers run before the mode verdict, including in `disabled`.
+The distinction between `observe` and `dry-run` is reserved but not implemented in decision output yet.
 Active GitHub writes and effect recovery are not implemented.
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
@@ -111,9 +114,10 @@ consent, and consent is not inferred from anything that merely looks true.
 | Required | no |
 | Default | `{}` |
 
-The capability's own options. The schema does not check what is inside; the capability does. Settings
-are validated even when `enabled: false`, which is the supported way to stage a capability: get its
-configuration reviewed and dormant now, then enable it later with a one-word diff.
+The capability's own options. The shared schema checks only that `settings` is a mapping. No shipped
+capability-specific settings validator exists yet, and a disabled capability is not invoked, so arbitrary
+contents are accepted and dormant rather than prevalidated. A real capability must validate its settings
+before it can ship; until then, enabling cannot be treated as a pre-reviewed one-word activation.
 
 Each capability only ever sees its own block. It cannot read another capability's settings.
 
@@ -180,10 +184,11 @@ to match your real GitHub label character for character.
 
 ## Rules that may surprise you
 
-- **Any error rejects the whole file**, and the App then behaves as if there were no file: it watches
-  and writes nothing. Every error is reported at once, not one per push.
-- **Unknown keys are errors, not ignored.** A typo like `capabilties:` fails loudly instead of
-  silently disabling everything you thought you had enabled.
+- **Any error rejects the whole file.** The shell stores one `configRejected` record, completes the
+  delivery, and never evaluates capabilities with a partial or no-config fallback. Every error is reported
+  at once, not one per push.
+- **Unknown shared keys are errors, not ignored.** A typo like `capabilties:` fails loudly. Keys inside
+  `settings` remain opaque until a capability owns their validation.
 - **An empty file, or no file, means `observe`.** Never `active`.
 - **Duplicate keys are errors.** YAML would otherwise keep the last value silently — the one case
   where a typo could change your mode while the file still looks right.

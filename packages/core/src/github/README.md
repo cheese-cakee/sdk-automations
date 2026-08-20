@@ -61,7 +61,7 @@ is the whole contrast with the three rows above them.
 **Cadence:** quarterly for the dated rows, plus ad-hoc whenever the
 first-symptom column starts showing up in operator reports. **Owner:**
 unassigned — falls out of Q13, and is one of the unfilled rows in
-`design/build-plan.md` §14.
+`design/build-plan.md`.
 
 ## Why the failure mode is quiet
 
@@ -81,7 +81,7 @@ As the platform reaches GitHub, more observed knowledge will want this home —
 at which point subdirectories may start to earn their keep:
 
 - `endpoints.ts` — the confirmed operation list from
-  `design/operations/endpoint-permission-matrix.md`.
+  `design/findings/endpoint-permission-matrix.md`.
 - `subscriptions.ts` — the webhook subscription list, including the
   `pull_request_review` gap experiment 6.6 found.
 - the read-after-write freshness rule (D46, experiment 6.7), which is not

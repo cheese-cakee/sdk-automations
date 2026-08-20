@@ -3,9 +3,9 @@
 # Core retains active in its configuration vocabulary, but the runnable shell
 # rejects this mode before deciding. It performs no GitHub effect.
 #
-# `assignment` shows the staging pattern: its settings are present, validated
-# and dormant. Enabling it later is a one-word, pre-reviewed diff rather than a
-# new block of untested configuration.
+# `assignment` demonstrates the opaque settings shape while disabled. The
+# shared parser confirms only that `settings` is a mapping; safe activation
+# still requires a shipped capability and its capability-owned validator.
 
 schemaVersion: 1
 mode: active

@@ -1,6 +1,6 @@
 /**
  * Which moves are legal: the two workflow diagrams from
- * `design/core/taxonomy.md` §4–§5 as edge tables, and the question asked of
+ * `design/contracts/taxonomy.md` §4–§5 as edge tables, and the question asked of
  * them. The table is the answer; `canTransition*` is how you ask.
  *
  * `packages/dev/checks/test/doc-drift.test.ts` parses the diagrams out of that document and

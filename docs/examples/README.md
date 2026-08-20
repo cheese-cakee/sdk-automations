@@ -30,6 +30,6 @@ testing. As files here they ran, passed, and measured nothing.
 
 ## What is deliberately not decided here
 
-These files show the SHAPE of a configuration. They do not fix the path the App reads it from, and
-`capabilities.*.settings` is opaque to the platform — the keys under `intake` and `prQuality` are those
-capabilities' own contracts, validated by them and not by the schema.
+These files show the SHAPE of a configuration at the decided repository-root path, `automations.yml`.
+They do not implement the future default-branch fetch. `capabilities.*.settings` is opaque to the shared
+parser, and the probe settings shown here are currently consumed without capability-specific validation.

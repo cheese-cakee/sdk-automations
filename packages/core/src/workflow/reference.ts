@@ -49,7 +49,7 @@ function walk<M, C extends TransitionCause>(
             verdict: {
                 allowed: false,
                 code: "itemBlocked",
-                reason: "item is blocked — capability writes are paused (safety.md §5)",
+                reason: "item is blocked — capability writes are paused (contracts/safety.md §3)",
             },
         };
     }

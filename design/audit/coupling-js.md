@@ -2,8 +2,8 @@
 
 > **Scope:** how the automation services in
 > [`hiero-ledger/hiero-sdk-js`](https://github.com/hiero-ledger/hiero-sdk-js) depend on each other, in the
-> terms of `audit/coupling-cpp.md`.
-> **Source:** `main` at `a7c39d2` (2026-06-26). Builds on `audit/services-js.md` and `audit/labels-js.md`.
+> terms of `design/audit/coupling-cpp.md`.
+> **Source:** `main` at `a7c39d2` (2026-06-26). Builds on `design/audit/services-js.md` and `design/audit/labels-js.md`.
 > Serves goals.md Goal 1 ("decoupled by function"). **Descriptive.**
 
 ## Headline
@@ -13,7 +13,7 @@ C++ binds its services through six shared-state channels; the JavaScript SDK sha
 
 ## The six C++ channels, checked here
 
-| # | Channel (from `audit/coupling-cpp.md`) | In JS? | Detail |
+| # | Channel (from `design/audit/coupling-cpp.md`) | In JS? | Detail |
 |---|---|:--:|---|
 | 1 | Status labels as shared state | No | no service writes a label |
 | 2 | Bot comments updated in place | No | nothing posts back to an issue or PR |
@@ -35,4 +35,4 @@ them.
 The six notifiers each hard-code the same Slack channel id (`C0958RN2ZTR`) and the same four-name bot
 filter. That is copy-paste duplication (like Python's repeated excluded-author lists), not a runtime
 dependency. If notification logic ever grew, those are the obvious candidates for one shared value, the
-small-scale version of the config-driven principle in `planning/goals.md`.
+small-scale version of the config-driven principle in `design/goals.md`.

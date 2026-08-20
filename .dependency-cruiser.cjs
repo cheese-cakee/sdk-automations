@@ -13,7 +13,7 @@
  * because that list is discovered from `pnpm-workspace.yaml` and a config
  * file cannot run discovery.
  *
- * These rules are a LAYER POLICY, not a copied workspace list. The six role
+ * These rules are a LAYER POLICY, not a copied workspace list. The seven role
  * names below are spelled out only because this file cannot execute the
  * discovery the gate does; everything else — which directories exist, which
  * packages are present — stays derived.

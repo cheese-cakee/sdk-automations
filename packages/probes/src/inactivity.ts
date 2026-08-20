@@ -59,7 +59,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
             if (!isBot.ok || isBot.value) continue;
 
             if (entry.warnedAt === null) {
-                // First stale observation warns. It never acts (§3).
+                // First stale observation warns. It never acts (effects.md).
                 const make = intentFactoryFor(inactivityDeclaration, {
                     repository: observation.repository,
                     item: entry.item,

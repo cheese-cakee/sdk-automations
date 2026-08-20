@@ -6,7 +6,7 @@ Set up in two minutes: one file, one merge, no per-repository installation.
 
 ## Add the file
 
-**1.** Create `.github/hiero-automations.yml`:
+**1.** Create `automations.yml` in your repository root:
 
 ```yaml
 schemaVersion: 1
@@ -28,8 +28,9 @@ mappings:
 **2.** Edit the label names on the right to match your repository's labels. Only labels you list
 here are ever touched.
 
-**3.** Merge to your default branch. Configuration changes only take effect from there — a config in
-an open pull request does nothing until it lands.
+**3.** In the intended hosted path, merge to your default branch; a config in an open pull request must not
+take effect. The development shell does not fetch that branch yet: its operator points `CONFIG_FILE` at a
+local copy of the repository file.
 
 That is the whole setup.
 
@@ -40,14 +41,14 @@ writes and effect recovery are not implemented.
 
 ## Choosing a mode
 
-The runnable shell supports `observe` and `dry-run`. It rejects `active` configuration before making a
-decision because no real GitHub effect path is connected yet.
+The runnable shell supports `disabled`, `observe` and `dry-run`. It rejects `active` configuration before
+making a decision because no real GitHub effect path is connected yet.
 
 | Mode | Use it when |
 |---|---|
-| `disabled` | You want the App inert without uninstalling it |
-| `observe` | You want to see what it notices before letting it act |
-| `dry-run` | You want the exact actions it would take, recorded and reviewable |
+| `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
+| `observe` | You want a non-writing decision record; today it includes record-only requested effects |
+| `dry-run` | Today, the same decision path as `observe`; a distinct rollout/report treatment is deferred |
 | `active` | Unsupported by the runnable shell |
 
 Active behavior will return only with a real GitHub effect and durable recovery path.

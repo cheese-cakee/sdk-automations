@@ -13,16 +13,17 @@
   enabled capability with an unmapped meaning becomes a **configuration error with a path**, caught
   at PR time. Then `configuration.md` gains a per-capability requirements table, locked like every
   other list. (D84.)
-- **The config path is an assumption, not a decision.** Every page says
-  `.github/hiero-automations.yml`; the register still has the path unchosen. If the decision goes
-  another way, every page and example needs the rename. (D84 notes; `design/config/schema.md` §12.)
+- ~~**The config path is an assumption, not a decision.**~~ **Resolved by D93 (2026-08-07):** the
+  path is `automations.yml` in the repository root — the file configures the platform, not GitHub, so
+  it does not live in `.github/`. The `docs/` pages were renamed to match on 2026-08-17. Only the
+  schema *migration* policy remains open (Q14).
 
 ## Missing, blocked on the App existing
 
 - **Installation and credentials.** There is no page for: installing the GitHub App, what permissions
   it requests and why, org-wide versus per-repository installation, and how to revoke it. Cannot be
   written truthfully before the App and its permission manifest exist — the manifest is designed
-  (`design/operations/endpoint-permission-matrix.md`) but has never been submitted to GitHub.
+  (`design/findings/endpoint-permission-matrix.md`) but has never been submitted to GitHub.
   Note for then: users hold **no credentials at all** — no tokens, no secrets in the repo — and
   saying that loudly will be one of the docs' best sentences.
 - **Who may change the config.** The file is as powerful as branch protection; the docs should

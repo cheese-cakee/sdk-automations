@@ -8,10 +8,9 @@
  * C, C's OBSERVABLE DECISION — its approved intents and its findings — is
  * identical to C running alone. Enabling a neighbour changes nothing.
  *
- * The 3(b) run surfaced a tension here (unprojected claims were refused
- * `preconditionStale`); 3(c) resolved it by act-time deferral — the claim
- * rides to the adapter's write-time recheck — so `inactivity` now warns
- * through the engine like everything else.
+ * An unprojected scheduled observation cannot verify an intent's claim. The
+ * matrix therefore pins `inactivity` to `preconditionStale`; a future adapter
+ * recheck cannot make an unapproved intent safe by itself (D116).
  */
 
 import { describe, expect, it } from "vitest";

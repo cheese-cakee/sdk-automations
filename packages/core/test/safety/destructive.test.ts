@@ -1,7 +1,7 @@
 /**
- * The other write door — the §3–§4 ladder `evaluateDestructive` climbs: a
+ * The other write door — the effects.md ladder `evaluateDestructive` climbs: a
  * recorded warning, a warning that authorizes THIS request, a plan whose
- * metadata is coherent, the §4 grace floor, the grace fully elapsed, no
+ * metadata is coherent, the grace floor, the grace fully elapsed, no
  * qualifying activity. Each rung is refused on its own and the two grace
  * boundaries are pinned to the millisecond. The D51-D53 findings that
  * entered by this door are here; the general door's are in `write.test.ts`.
@@ -120,7 +120,7 @@ describe("audit findings, pinned (D51-D53)", () => {
     });
 });
 
-describe("evaluateDestructive (safety.md §3–§4)", () => {
+describe("evaluateDestructive (guides/effects.md)", () => {
     /**
      * These plans are from the `inactivity` capability, so the rechecked
      * context must describe that same capability — D53's link check
@@ -260,18 +260,21 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         }
     });
 
-    it.each([0, -1, MIN_GRACE_DAYS - 1])("refuses a grace period of %s days (§4 floor)", (days) => {
-        const plan = destructive();
-        const verdict = evalDestructive(
-            {
-                ...plan,
-                warning: warningFor(plan.request, { gracePeriodDays: days }),
-            },
-            dContext(),
-            afterGrace,
-        );
-        expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
-    });
+    it.each([0, -1, MIN_GRACE_DAYS - 1])(
+        "refuses a grace period of %s days (grace floor)",
+        (days) => {
+            const plan = destructive();
+            const verdict = evalDestructive(
+                {
+                    ...plan,
+                    warning: warningFor(plan.request, { gracePeriodDays: days }),
+                },
+                dContext(),
+                afterGrace,
+            );
+            expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
+        },
+    );
 
     it.each([
         ["a non-finite grace period", Number.NaN, new Date("2026-07-01T00:00:00Z"), afterGrace],

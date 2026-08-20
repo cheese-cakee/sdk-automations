@@ -10,7 +10,7 @@
  * and are read back by the processor, so what was verified is what is
  * decided on.
  *
- * `handle` below is the left lane of design/trace.md stations 1–2, one
+ * `handle` below is stations ① and ② of this package's README table, one
  * named step per station, each answering for itself.
  */
 

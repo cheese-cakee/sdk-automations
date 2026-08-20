@@ -5,7 +5,7 @@
  * `isPermissionGrant` had none at all — the 2026-08-15 mutation run scored
  * this module at 40.00% with every pattern mutant alive, which is what a
  * regex nobody calls looks like from the outside. The pattern is the whole
- * content of the module (`design/modules` keeps the ratified CEILING
+ * content of the module (`design/guides/capabilities` keeps the ratified CEILING
  * elsewhere), so the rows below are the specification: what GitHub's
  * `scope:level` form admits, and what it must not.
  */

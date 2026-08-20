@@ -30,6 +30,14 @@ pnpm --filter @hiero-hackers/automation-core test
 pnpm lint
 ```
 
+```bash
+pnpm format
+```
+
+CI runs `pnpm format:check` and fails the build on a formatting difference, so run `pnpm format`
+before pushing — or let your editor do it. Prettier is formatter-only here and markdown is excluded;
+what it covers is [`.prettierignore`](.prettierignore)'s business, not this page's.
+
 ## Sign your commits (DCO)
 
 Every commit needs a Developer Certificate of Origin sign-off:
@@ -44,10 +52,8 @@ at [developercertificate.org](https://developercertificate.org/).
 
 If you forget on your last commit: `git commit --amend -s --no-edit`.
 
-> Enforcement status, as investigated for issue #46: sign-offs are used but **not enforced by a bot**
-> — spot-checking recent commits on both this repository and `hiero-x402` shows a mix of signed and
-> unsigned. Turning on a DCO check is a maintainer-side setting and is not something a contributor
-> should attempt.
+The repository's DCO check enforces this on every pull request. `-s` is the required sign-off; GPG/SSH
+commit signing (`-S`) is a separate optional mechanism and is not required by this guide.
 
 ## Which issue to pick
 
@@ -68,14 +74,17 @@ These are here because each one has actually cost this project time.
 - **Claim one issue at a time.** Comment on the issue to claim it, finish it, then take the next.
   Self-assigning several at once blocks other contributors from work you are not yet doing.
 - **You must be able to explain every line you submit.** AI assistance is fine and normal here — the
-  maintainer uses it. What is not fine is submitting code or prose you cannot defend in review: if
-  you cannot say why a line is there, it is not ready, and reviewing it costs more than writing it
-  would have.
+  maintainer uses it. What is not fine is submitting code or prose you cannot defend in review. See
+  the [AI policy](AI_POLICY.md).
 - **Answer the feedback on your open pull request before starting new work.** A review comment
   waiting for a reply is the most expensive thing in the queue; opening more work while it sits
   means nothing lands.
 - **Small and finished beats large and nearly.** A focused pull request that makes the suite green
   is worth more than a broad one that needs three rounds.
+- **A large change divides so that every piece merges green with the system still running.** Isolation
+  comes from seams that already exist and from environment gates, not from feature flags. Measurement
+  is its own piece and carries no code. Removing the scaffolding is the last piece, and it is what
+  closes the issue. [`design/guides/adapter.md`](design/guides/adapter.md) is the worked example.
 
 ## Ground rules for changes
 
@@ -95,15 +104,18 @@ than taking it on faith.
   secrets and unscrubbed payloads; a test enforces this and a `git add -f` will fail the build
   ([`packages/dev/lab/README.md`](packages/dev/lab/README.md)).
 - **Comments carry constraints, not narration.** Say what must stay true and cite the decision; the
-  story belongs in the register ([`design/testing/README.md`](design/testing/README.md)).
+  story belongs in the register ([`design/guides/testing.md`](design/guides/testing.md)).
 
 ## Where the "why" lives
 
-- [`design/trace.md`](design/trace.md) — one real webhook delivery followed all the way to its
-  persisted report, introducing each term where it acts. **Start here** if the vocabulary is new.
+- [`packages/core/README.md`](packages/core/README.md) — the glossary and the reading path.
+  **Start here** if the vocabulary is new.
+- [`design/architecture.md`](design/architecture.md) — the system as diagrams, each naming the code
+  or test that falsifies it.
 - [`design/decisions.md`](design/decisions.md) — the register: every non-obvious choice, its
   reasoning, its costs, and what would reopen it.
-- [`docs/`](docs/README.md) — user-facing configuration guide, with its tables locked to the code.
+- [`docs/`](docs/README.md) — user-facing configuration guide, with its closed code vocabularies
+  guarded by repository checks and its explanatory prose owned by review.
 
 Pull requests are reviewed by the maintainers listed in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).

@@ -54,6 +54,7 @@ WEBHOOK_SECRET=…            # the sandbox App's webhook secret
 REPO_OWNER=owner-sandbox    # the repository this endpoint serves
 REPO_NAME=automation-sandbox
 PORT=8790                   # optional
+HOST=127.0.0.1              # optional; omit to use Node's default bind host
 CONFIG_FILE=…               # optional; default data/automations.yml (copy of the repo's file)
 STORE_PATH=…                # optional; default data/shell.sqlite
 KILL_SWITCH=1               # optional; refuse everything, loudly
@@ -69,14 +70,16 @@ SQLite deliveries before listening. Automatic filesystem projection is not suppo
 operator report/query surface has not been built yet. `Store.deliveryReports()` is the current
 programmatic access to canonical reports.
 
-`data/` is never tracked (see the root `.gitignore`), the same rule as `lab/evidence/`.
+`data/` is never tracked (see the root `.gitignore`), the same rule as
+`packages/dev/lab/evidence/`.
 
 ## Deliberately out of the first slice
 
 - **The scheduler** — `staleItemsDue` is queried, not delivered; it arrives as a second caller of
   `decide()`, not a second pipeline.
 - **Config hot-fetch** — the seam exists (`ConfigSource`); the fetch is the read adapter's.
-- **Active mode** — the runnable shell supports observe and dry-run and rejects active configuration.
+- **Active mode** — the runnable shell supports disabled, observe and dry-run and rejects active
+  configuration.
   Active GitHub writes are not implemented yet; each real effect will need its own write and durable
   recovery path before active behavior can be enabled.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.

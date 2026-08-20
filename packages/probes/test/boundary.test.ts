@@ -1,6 +1,6 @@
 /**
  * Conformance of the runtime boundary itself (`packages/core/src/capability/`), and
- * the subset of contract.md §8's kit that needs no adapter.
+ * the contract.md §5 checks that need no adapter.
  */
 
 import { describe, expect, it } from "vitest";
@@ -95,7 +95,7 @@ describe("declarations", () => {
     });
 });
 
-describe("configuration isolation (contract.md §6)", () => {
+describe("configuration isolation (contract.md §2)", () => {
     const config = configEnabling(NAMES, NAMES, {
         intake: { announce: true, secretKnob: "not declared" },
     });

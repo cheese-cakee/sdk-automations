@@ -8,20 +8,18 @@ rather than aspirationally.
 
 ## Key posture
 
-- No production credentials live in tracked code. `lab/` keeps credentials and
+- No production credentials live in tracked code. `packages/dev/lab/` keeps credentials and
   raw evidence in local-only, untracked paths, and `.env` is never tracked.
-- `core/` is pure logic: no I/O and no clock reads; the shell supplies
-  observations. The owned operational store lives in `store/`, and `probes/`
+- `packages/core/` is pure logic: no I/O and no clock reads; the shell supplies
+  observations. The owned operational store lives in `packages/store/`, and `packages/probes/`
   are deliberately disposable capability stubs.
-- GitHub remains authoritative for visible repository facts. Configuration is
-  fail-closed: an invalid file yields no configuration and drops the
-  repository to `observe`, where the platform reads and reports but performs
-  no workflow-changing writes.
+- GitHub remains authoritative for visible repository facts. Configuration is fail-closed: the shell
+  persists one `configRejected` record, completes that delivery, and never calls the decision engine with a
+  partial or fallback configuration.
 - Webhook signature verification is implemented and tested in
   [`packages/core/src/github/signatures.ts`](packages/core/src/github/signatures.ts).
-- The recovery design treats effect claims as leases and relies on journaling
-  plus GitHub re-reads rather than assuming a single in-flight worker. The
-  overlap contract and retention windows are still open decisions in
+- The store schema contains effect claims and a journal for future recovery. No effect executor is wired
+  today; the overlap contract and retention windows are still open decisions in
   [`design/decisions.md`](design/decisions.md).
 
 ## Supply chain
@@ -32,14 +30,36 @@ rather than aspirationally.
   code executes with a read-only token and no secrets.
 - `pnpm install --frozen-lockfile` keeps dependency resolution reproducible;
   `pnpm audit --audit-level moderate` runs on every push and pull request.
-- The test pipeline runs typecheck and tests on Node 24 and 25, plus mutation
-  thresholds for `core/` that fail the build when coverage regresses.
+- The test pipeline runs typecheck and tests on Node 24 and 25, plus line and mutation gates for the
+  packages that declare them (`core`, `probes`, `shell`, and `store` currently).
 - Contributions are signed off with `git commit -s`; maintainers enforce the
   DCO.
 
-## Reporting
+## Supported versions
 
-Please use GitHub's private vulnerability reporting on this repository rather
-than a public issue. Security-sensitive design discussion belongs in
-[`design/operations/threat-model.md`](design/operations/threat-model.md), where
+| Version | Supported |
+|---|---|
+| `main` | Yes — the only supported branch |
+| Tagged releases | None exist yet; there is no published package or hosted service |
+
+No hosted service or production installation exists, so a vulnerability here
+affects contributors and anyone running the code locally, not end users.
+
+## Reporting a vulnerability
+
+**Report privately at
+<https://github.com/hiero-hackers/sdk-automations/security/advisories/new>** —
+GitHub's private vulnerability reporting. Please do not open a public issue for
+a suspected vulnerability.
+
+If that page is unavailable to you, report it through the LFDT (Hyperledger) in the Hiero section
+Discord at <https://discord.com/invite/hyperledger> and ask to reach a
+maintainer of `hiero-hackers/sdk-automations` privately. Do not include the
+details of the report in a public channel.
+
+**What to expect.** Expect an acknowledgement within **7 days**, an initial assessment within **14 days**,
+and a fix or a documented decision not to fix before any public disclosure. 
+
+Security-sensitive design discussion that is *not* a vulnerability report
+belongs in [`design/guides/threat-model.md`](design/guides/threat-model.md), where
 open threats and required controls are tracked explicitly.

@@ -1,6 +1,6 @@
 /**
  * The reviewed repository configuration: its vocabulary and its shape.
- * See `design/config/schema.md` §2–§4.
+ * See `design/contracts/config-schema.md` §2–§4.
  *
  * Declarations only. What comes BACK from validating a document is
  * `results.ts`; the section checks are `sections.ts`; the entry point is
@@ -15,7 +15,7 @@ export const REPOSITORY_MODES = ["disabled", "observe", "dry-run", "active"] as 
 /** Derived from the array, so a new mode needs no edit anywhere else (D76). */
 export type RepositoryMode = (typeof REPOSITORY_MODES)[number];
 
-/** The meanings a repository may map. See design/core/taxonomy.md §2. */
+/** The meanings a repository may map. See design/contracts/taxonomy.md §2. */
 export const MAPPABLE_MEANINGS = [
     "awaitingTriage",
     "ready",
@@ -57,7 +57,7 @@ export const MEANING_FACTS = {
 
 /**
  * Capability names double as configuration keys (`capabilities.<name>`,
- * schema.md §3). One shape covers both ends: `declaration.ts` checks shipped
+ * config-schema.md §3). One shape covers both ends: `declaration.ts` checks shipped
  * names, `validate.ts` checks the keys it reads from a document.
  */
 export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;

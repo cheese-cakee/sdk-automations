@@ -1,7 +1,7 @@
 # A file with nothing in it.
 #
-# Not an error. schema.md §2.2 — no configuration causes no workflow-changing
-# writes — so this is identical to having no file at all, and both land in
-# `observe`. Here as an example because "did they mean to disable it, or did
+# Not an error. config-schema.md §1 and §4 make this identical to having no
+# file at all: both land in `observe` with no capabilities, mappings or
+# principals. Here as an example because "did they mean to disable it, or did
 # they truncate the file" is a question the reports have to answer the same
 # way every time.

@@ -1,7 +1,7 @@
 # store/ — the owned operational store
 
 The single-file SQLite store decided by protocol 6.5 and amended by D110 —
-`design/operations/storage-decision.md` — **ratification pending** under
+`design/findings/storage-decision.md` — **ratification pending** under
 the stage-four review. The recovery experiment required four operational
 tables; the delivery completion boundary adds a fifth canonical-report table.
 

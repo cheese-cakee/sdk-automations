@@ -40,7 +40,7 @@ export function fileConfigSource(path: string): ConfigSource {
             } catch (error) {
                 if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
                 // An absent file and an empty file agree by construction:
-                // both parse to no-config's observe mode (schema.md §2.2).
+                // both parse to no-config's observe mode (config-schema.md §1, §4).
                 return { revision: "sha256:absent", text: "" };
             }
             return { revision: revisionOf(text), text };

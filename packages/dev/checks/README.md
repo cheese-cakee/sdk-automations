@@ -39,9 +39,16 @@ One row per file; the summary is that file's own header, not a paraphrase.
 | [`toplevel.test.ts`](test/toplevel.test.ts) | The top level holds `packages/` and two knowledge roots, with the package root derived from the workspace file rather than assumed |
 | [`sources.test.ts`](test/sources.test.ts) | Source files stay readable to text tools — born from the NUL byte that turned a source file binary to `grep` |
 | [`enumerations.test.ts`](test/enumerations.test.ts) | Every exported const array derives its union (D76) — the answer to the fifth sighting of one fact stored twice |
+| [`hooks.test.ts`](test/hooks.test.ts) | The opt-in pre-commit hook stays executable and formats the same tracked source scope as CI |
 | [`mutation-coverage.test.ts`](test/mutation-coverage.test.ts) | Stryker's mutate globs cover every core module — born from `src/*.ts` silently skipping three modules the day they moved into subdirectories |
-| [`docs.test.ts`](test/docs.test.ts) | `docs/` is mostly tables, and every table restates a closed vocabulary the code owns — so the tables are locked in both directions |
+| [`mutation-invalidation.test.ts`](test/mutation-invalidation.test.ts) | Incremental mutation reuse is invalidated when a package, dependency, shared testkit, or mutation configuration change could make cached results stale |
+| [`catalogue-drift.test.ts`](test/catalogue-drift.test.ts) | The capability catalogue's observation, resolver, intent-operation and meaning identifiers match code exactly; each intent row also carries its permission, idempotency and action-class facts |
+| [`contract-drift.test.ts`](test/contract-drift.test.ts) | The capability contract's declaration and operational-needs interfaces match the TypeScript types exactly |
+| [`safety-drift.test.ts`](test/safety-drift.test.ts) | The safety contract lists every refusal and record-only verdict code exactly |
+| [`spec-drift.test.ts`](test/spec-drift.test.ts) | The configuration contract's modes, top-level keys, and rejection codes exactly match the parser vocabularies |
+| [`docs.test.ts`](test/docs.test.ts) | User-doc mode, key, meaning and error-code membership stays aligned with code; troubleshooting codes stay in their implementation-derived severity groups; entry links, examples and scoped drift promises stay intact |
 | [`examples.test.ts`](test/examples.test.ts) | `docs/examples/` is documentation that runs: the shipped configurations still parse, and still mean what they say |
+| [`commands.test.ts`](test/commands.test.ts) | Contributor-facing `pnpm` commands resolve to real scripts, and every ordinary CI gate is documented where contributors will see it |
 | [`doc-drift.test.ts`](test/doc-drift.test.ts) | The drift detector `core/README.md` promised and did not have: the design document's diagrams against the transition tables in code |
 | [`workflows.test.ts`](test/workflows.test.ts) | The three security claims the workflow comments make: actions stay SHA-pinned with version comments, and fork code never runs privileged |
 | [`never-tracked.test.ts`](test/never-tracked.test.ts) | Every local-only layer stays out of the repository — the lab's credentials and unscrubbed captures, and the shell's raw payload store — checked as written, as effective, and as untracked |
@@ -50,6 +57,7 @@ One row per file; the summary is that file's own header, not a paraphrase.
 | [`codeowners.test.ts`](test/codeowners.test.ts) | Every non-comment pattern in `.github/CODEOWNERS` matches at least one tracked file, checked with `git` itself rather than a hand-rolled matcher |
 | [`node-floor.test.ts`](test/node-floor.test.ts) | The Node floor agrees everywhere it is stated: every workspace package's `engines.node`, the README badge, the CI matrix, CONTRIBUTING's prose, and dependabot's `@types/node` policy comment |
 | [`placement.test.ts`](test/placement.test.ts) | Every file in a package's test tree answers to a name a maintainer can find: a spec mirrors the module it holds to account or is registered with the question it answers, and nothing under `test/` is named by kind |
+| [`invariants.test.ts`](test/invariants.test.ts) | This table and the checks directory agree in both directions — the invariant map is itself an invariant (#92) |
 | [`repository.test.ts`](test/repository.test.ts) | Portable repository parsing: the path, line-ending, and directory derivations every check above shares ([`repository.ts`](test/repository.ts)) — one home, so a layout move edits one file |
 
 Every one carries a negative control — a case asserting the check would still fail if the thing it

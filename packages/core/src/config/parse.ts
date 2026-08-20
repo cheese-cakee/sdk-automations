@@ -31,10 +31,11 @@ export function cleanRecord<V>(
 }
 
 /**
- * What a repository with no configuration file gets. schema.md §2.2 says no
- * configuration causes no workflow-changing writes.
+ * What a repository with no configuration file gets. config-schema.md §1 and
+ * §4 say no configuration causes no workflow-changing writes.
  *
- * FINDING(config-no-config-mode): §2.2 does not say which mode that is.
+ * FINDING(config-no-config-mode): the contract now records `observe`, the
+ * current implementation choice.
  * `observe` obeys the rule and still shows findings. `disabled` is the
  * stricter reading. Undecided, and this constant is where the assumption sits.
  */

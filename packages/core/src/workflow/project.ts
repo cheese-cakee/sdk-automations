@@ -1,6 +1,6 @@
 /**
  * Observed labels to workflow position — the projection step that
- * `design/core/manual-edits.md` §3 implies but no document owns.
+ * `design/guides/manual-edits.md` §3 implies but no document owns.
  *
  * GitHub's reality is a SET of labels; the state machine's is a scalar
  * position. The shell turns label strings into meanings through the

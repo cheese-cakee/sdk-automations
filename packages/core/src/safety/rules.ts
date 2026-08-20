@@ -1,10 +1,10 @@
 /**
  * The general rules every write passes, and the preflight before them.
  *
- * safety.md §2's mechanically checkable subset only. Rules 7–10 —
- * postcondition verification, unclear-outcome reconciliation, tested
- * rollback, dry-run-before-active rollout — cannot be decided from one
- * request and belong to a future write path and to process.
+ * `design/contracts/safety.md`'s mechanically checkable subset only. Rules
+ * 6–10 — naming the exact value, postcondition verification, unclear-outcome
+ * reconciliation, tested rollback, dry-run-before-active rollout — cannot be
+ * decided from one request and are `design/guides/effects.md`'s.
  *
  * Precedence is policy: kill switch → authoritative precondition → observation
  * → consent → permissions → pause → human conflict → mode. Only the kill
@@ -29,7 +29,9 @@ import type {
 
 /** Kill switch and authoritative precondition run before either write door. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
-    // Before the observation short-circuit: "stop" stops reads too (D39).
+    // Before the observation-intent short-circuit: the brake refuses those
+    // requests too. `decide()` has already evaluated the capability and any
+    // resolver, so this is not a transport/read stop (D117).
     if (context.killSwitchActive) {
         return {
             outcome: "refuse",
@@ -109,7 +111,7 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
         "itemBlocked",
         (f) =>
             isBlocked(f.context.world.observedMeanings)
-                ? refuse("itemBlocked", "the item is blocked — capability writes are paused (§5)")
+                ? refuse("itemBlocked", "the item is blocked — capability writes are paused")
                 : null,
     ],
     [

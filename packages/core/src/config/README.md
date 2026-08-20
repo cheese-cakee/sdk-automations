@@ -2,7 +2,7 @@
 
 Six files turning a YAML file in someone's repository into a `RepositoryConfig` the rest of the
 platform can trust, or into every reason it was rejected. The rules being implemented live in
-[`design/config/schema.md`](../../../../design/config/schema.md) §2–§4; this directory is those
+[`design/contracts/config-schema.md`](../../../../design/contracts/config-schema.md) §2–§4; this directory is those
 rules as code.
 
 Two properties hold throughout, and most of the design follows from them:

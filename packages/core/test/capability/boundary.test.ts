@@ -242,7 +242,7 @@ describe("deriveIdempotencyKey", () => {
     });
 });
 
-describe("projectCapabilityView (contract.md §6)", () => {
+describe("projectCapabilityView (contract.md §2)", () => {
     const config = configWith({
         capabilities: ["fixture", "other"],
         settings: {

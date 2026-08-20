@@ -293,7 +293,7 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
         expect(state.meaning).toBe("inProgress");
     });
 
-    it("a blocked item refuses every capability transition (safety.md §5)", () => {
+    it("a blocked item refuses every capability transition (contracts/safety.md)", () => {
         for (const to of [...ISSUE_MEANINGS, null]) {
             for (const cause of ALL_ISSUE_CAUSES) {
                 const { state, verdict } = applyIssueTransition(at("ready", { blocked: true }), {

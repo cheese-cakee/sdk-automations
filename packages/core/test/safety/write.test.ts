@@ -1,5 +1,5 @@
 /**
- * The general write door — `evaluateWrite` alone (safety.md §2). Widest
+ * The general write door — `evaluateWrite` alone (contracts/safety.md). Widest
  * first: the enumeration fixing `apply ⇔ every rule passes`, then the
  * examples naming a code or an ordering the sweep never inspects, then the
  * D51-D53 findings that entered by THIS door. `destructive.test.ts` is the
@@ -150,14 +150,14 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
     });
 });
 
-describe("evaluateWrite (safety.md §2)", () => {
+describe("evaluateWrite (contracts/safety.md)", () => {
     // The sweep above enumerates plain apply/not-apply, so what survives here
     // asserts a specific code, reason, or ordering it never checks.
 
     it.each([
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
         ["missing permission (rule 2)", { installationGrants: [] as const }, "permissionMissing"],
-        ["blocked item (§5)", { world: assertedWorld(["blocked"], true) }, "itemBlocked"],
+        ["blocked item (pause)", { world: assertedWorld(["blocked"], true) }, "itemBlocked"],
         [
             "failed precondition recheck (rule 4)",
             { world: assertedWorld([], false) },
@@ -313,7 +313,7 @@ describe("evaluateWrite (safety.md §2)", () => {
 
 describe("audit findings, pinned (D51-D53)", () => {
     /**
-     * D52 — the headline: the §3 gates must be inescapable, not a
+     * D52 — the headline: the destructive gates must be inescapable, not a
      * calling convention. Before this, the same call answered `apply`.
      */
     it("evaluateWrite refuses a destructive request instead of applying it", () => {
