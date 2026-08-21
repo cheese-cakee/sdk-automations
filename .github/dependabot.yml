@@ -14,6 +14,19 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(ci)"
+    # Same MINOR-AND-PATCH-ONLY rule as npm below, for the same reason, plus
+    # one specific to actions: `github/codeql-action/init`, `/analyze` and
+    # `/upload-sarif` are one repository pinned to one SHA. Ungrouped they
+    # arrived as PRs #127, #128 and #129 — three reviews of one upstream
+    # release, and a merge order in which CodeQL initialises on one version
+    # and analyses on another. Upstream never ships that pairing, and
+    # nothing here would report it.
+    groups:
+      actions:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: npm
     directory: /
