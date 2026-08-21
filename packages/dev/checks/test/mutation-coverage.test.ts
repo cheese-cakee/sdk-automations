@@ -135,6 +135,7 @@ const coverage = coverageJob(workflowContent);
 describe("mutation policy stays complete across packages and CI", () => {
     it("discovers every configured workspace package", () => {
         expect(configuredPackages.map(({ name }) => name).sort()).toEqual([
+            "adapter",
             "core",
             "probes",
             "shell",
@@ -189,6 +190,7 @@ describe("mutation policy stays complete across packages and CI", () => {
                 "    strategy:",
                 "      matrix:",
                 "        package:",
+                "          - adapter",
                 "          - core",
                 "          - probes",
                 "          - shell",
@@ -211,6 +213,7 @@ describe("mutation policy stays complete across packages and CI", () => {
 describe("coverage policy stays complete across packages and CI", () => {
     it("discovers every package owning a test:coverage script", () => {
         expect(coveragePackages.map(({ name }) => name).sort()).toEqual([
+            "adapter",
             "core",
             "probes",
             "shell",
@@ -234,15 +237,17 @@ describe("coverage policy stays complete across packages and CI", () => {
 
     it("proves missing, extra, or misspelled coverage matrix packages fail", () => {
         const configured = coveragePackages.map(({ name }) => name);
-        expect(matrixDrift(configured, ["core", "shell", "store"])).toEqual({
+        expect(matrixDrift(configured, ["adapter", "core", "shell", "store"])).toEqual({
             missing: ["probes"],
             extra: [],
         });
-        expect(matrixDrift(configured, ["core", "probes", "shell", "store", "checks"])).toEqual({
+        expect(
+            matrixDrift(configured, ["adapter", "core", "probes", "shell", "store", "checks"]),
+        ).toEqual({
             missing: [],
             extra: ["checks"],
         });
-        expect(matrixDrift(configured, ["core", "probes", "shlel", "store"])).toEqual({
+        expect(matrixDrift(configured, ["adapter", "core", "probes", "shlel", "store"])).toEqual({
             missing: ["shell"],
             extra: ["shlel"],
         });

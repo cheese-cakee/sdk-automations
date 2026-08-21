@@ -3,6 +3,7 @@
 # glob would hand it a pattern where it needs paths.
 packages:
     - packages/core
+    - packages/adapter
     - packages/store
     - packages/shell
     - packages/probes

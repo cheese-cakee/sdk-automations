@@ -1,0 +1,31 @@
+{
+    "name": "@hiero-hackers/automation-adapter",
+    "version": "0.0.0",
+    "private": true,
+    "description": "The only place that talks to GitHub. App authentication now; the HTTP client, operations and seam implementations follow. See README.md.",
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "test": "tsc --noEmit && vitest run",
+        "test:coverage": "tsc --noEmit && vitest run --coverage --testTimeout=15000",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "@hiero-hackers/automation-core": "workspace:*"
+    },
+    "devDependencies": {
+        "@stryker-mutator/core": "^9.6.1",
+        "@stryker-mutator/vitest-runner": "^9.6.1",
+        "@types/node": "^24.0.0",
+        "typescript": "^5.6.0",
+        "vitest": "^4.0.0"
+    }
+}
