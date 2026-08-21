@@ -26,9 +26,10 @@ flowchart TD
 | The shell does not change | Everything lands behind the four seams |
 | Nothing throws across a seam | Every failure is a typed value |
 | Unknown is never absence (D51) | A failed read must never become a default |
-| Core stays pure | A new package; core adds only `classifyFailure` |
+| Core stays pure | A new package; core's one edit is making one seam async — below |
 | Fail closed on identity | Config fetches pin the default branch |
 
+- The package is `packages/adapter`, importing `core` alone; `shell → adapter` exists only in `main.ts`.
 - The final shell diff across the whole sequence is one composition-root conditional.
 - Typed failures are why one bad delivery can never wedge the queue.
 - The contents API serves fork-authored content at a PR head sha (observed, 6.6).
@@ -87,9 +88,15 @@ flowchart TD
 ## The seams, once implemented
 
 - **`githubConfigSource`** — fetches at the default branch; `revision` is the blob sha.
-- A 404 maps to the absent-file default, matching `fileConfigSource`'s semantics exactly.
+- A 404 maps to the absent-file default, matching `fileConfigSource`'s semantics exactly — one shared `sha256:absent` sentinel, never a re-spelling.
 - **`liveExternals`** — the real grant list, and `latestHumanChangeAt` from the timeline.
+- The grant list costs zero calls: it is a field of the mint response, cached and refreshed with the token.
 - It answers **unknown** when evidence cannot be established within budget.
+- The seam turns async on the way: `main` types `latestHumanChangeAt` synchronously, which a
+  timeline read cannot answer and the shell cannot prefetch — `intent.item` exists only inside
+  `decide()`. It becomes `Promise`-returning like `resolve` beside it; `decide()` is already
+  async, so the one verb's signature and the shell both hold.
+- Timeline answers memoize within a delivery, never across one (the 6.8 freshness rule).
 - That is the moment dry-run stops overstating. `killSwitchActive` stays operator environment.
 - **`linkedIssuesResolver`** — an empty answer and a failed answer are different values.
 - Wiring: with the three credential variables present, `main.ts` composes live implementations.
