@@ -64,7 +64,19 @@ flowchart TD
 - A free 304 is how the Q10 budget stays comfortable.
 - Classification calls core's `classifyFailure` — no parallel vocabulary.
 - Retry: `tokenExpired` refreshes and retries once · `transient` retries once · the rest return at once.
-- `secondaryLimit` is **never** auto-retried: it carries no wait signal at all.
+- `secondaryLimit` is **never** auto-retried by the client. The observed write-path block
+  carried no wait signal (6.4); GitHub documents that `retry-after` may be present, and core
+  honours it when it is. The read path is unprobed — `REPROBE(secondary-limit-read-path)`.
+- Deterministic refusals are not weather: what never left the process is `notSent`, a refused
+  3xx is `redirected` — both `doNotRetry`, so a wiring defect or a renamed repo cannot burn
+  the retry budget under the `transient` label. `notSent` is adapter-local because it is not a
+  GitHub response; every response class, including `redirected`, still comes from core.
+- **How the two retry layers compose:** the client owns exactly one immediate in-process
+  retry (`tokenExpired` after a refresh, `transient` once); core's `retryAdvice` owns durable,
+  paced, restart-surviving retries at the operation layer, treating each client call as one
+  attempt. With its current zero-based advice (wait after attempts 0, 1, and 2), the initial
+  client call plus three durable retries can each make two HTTP attempts: **8 requests per
+  persistent transient episode**. That number is accepted here, deliberately, once.
 - Its tests replay every row of the failure catalogue, whose body snapshots are the fixtures —
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).
 

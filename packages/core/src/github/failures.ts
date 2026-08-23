@@ -46,7 +46,7 @@ export type FailureClass =
     | { readonly kind: "permissionMissing"; readonly acceptedPermissions: string }
     /** 403, body names suspension, and the permissions header is absent (6.1). */
     | { readonly kind: "installationSuspended" }
-    /** 403 secondary limit: body prose only — no `retry-after`, primary quota untouched (6.4, FINDING(secondary-limit-no-wait-signal)). */
+    /** 403/429 secondary limit. Write-path evidence only (6.4, FINDING(secondary-limit-no-wait-signal), REPROBE(secondary-limit-read-path)). */
     | {
           readonly kind: "secondaryLimit";
           readonly retryAfterSeconds?: number;
@@ -66,7 +66,16 @@ export type FailureClass =
     | { readonly kind: "notFoundOrNotInstalled" }
     /** 422 with structured `errors[]` — maintainer-showable verbatim (6.4). */
     | { readonly kind: "validationError" }
-    /** 5xx and everything else worth one bounded retry. */
+    /** A 3xx the client refused to follow; 301/308 are permanent, so the remedy is `location`, never a retry. */
+    | {
+          readonly kind: "redirected";
+          readonly status: number;
+          readonly location?: string;
+          readonly permanent: boolean;
+      }
+    /** An otherwise-unclassified 4xx. Repeating the same request cannot repair it. */
+    | { readonly kind: "clientError"; readonly status: number }
+    /** A transport failure, request timeout, 408, or 5xx worth a bounded retry. */
     | { readonly kind: "transient" };
 
 // ─── The perishable surface ──────────────────────────────────────────
@@ -106,6 +115,17 @@ export const BODY_PATTERNS = {
 /** Read one failed response into exactly one class. */
 export function classifyFailure(o: FailureObservation): FailureClass {
     const body = o.body;
+    // 304 is a conditional-read result, not a redirect. A transport with no
+    // matching cached representation treats it as transient below.
+    if (o.status >= 300 && o.status < 400 && o.status !== 304) {
+        const location = o.headers.location;
+        return {
+            kind: "redirected",
+            status: o.status,
+            permanent: o.status === 301 || o.status === 308,
+            ...(location === undefined ? {} : { location }),
+        };
+    }
     if (o.status === 401) {
         // The 6.1 probe falsified body-based detection: an expired
         // token and a wrong key both return "Bad credentials". Local
@@ -156,6 +176,9 @@ export function classifyFailure(o: FailureObservation): FailureClass {
     }
     if (o.status === 404) return { kind: "notFoundOrNotInstalled" };
     if (o.status === 422) return { kind: "validationError" };
+    if (o.status >= 400 && o.status < 500 && o.status !== 408) {
+        return { kind: "clientError", status: o.status };
+    }
     return { kind: "transient" };
 }
 
@@ -226,6 +249,8 @@ export function retryAdvice(
         case "forbiddenUnrecognized":
         case "rateLimitResponseUnusable":
         case "notFoundOrNotInstalled":
+        case "redirected":
+        case "clientError":
             return { action: "doNotRetry", surfaceTo: "operator" };
     }
 }
