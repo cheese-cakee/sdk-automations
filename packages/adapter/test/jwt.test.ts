@@ -5,35 +5,15 @@
  * with it.
  */
 
-import { createVerify, generateKeyPairSync } from "node:crypto";
+import { createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
     ASSERTION_BACKDATE_SECONDS,
     ASSERTION_LIFETIME_SECONDS,
     signAppAssertion,
-    type AppCredentials,
 } from "../src/jwt.js";
+import { credentials, keyPair, TEST_NOW as NOW } from "./harness.js";
 
-/**
- * Lazily, never at describe-time: a fixture built during collection turns a
- * mutant that breaks signing into a collection crash, which vitest reports as
- * "no tests" and Stryker scores as SURVIVED (D89).
- */
-let keys: { publicKey: string; privateKey: string } | undefined;
-function keyPair(): { publicKey: string; privateKey: string } {
-    keys ??= generateKeyPairSync("rsa", {
-        modulusLength: 2048,
-        publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    return keys;
-}
-
-function credentials(): AppCredentials {
-    return { appId: "123456", privateKeyPem: keyPair().privateKey, installationId: "789" };
-}
-
-const NOW = new Date("2026-08-20T12:00:00.000Z");
 const NOW_SECONDS = Math.floor(NOW.getTime() / 1000);
 
 function claimsOf(assertion: string): Record<string, unknown> {

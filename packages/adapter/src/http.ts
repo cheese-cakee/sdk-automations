@@ -7,11 +7,17 @@
  * failure classes. Core owns the vocabulary for GitHub responses; this file
  * adds only the typed `notSent` result for a request refused locally. Which
  * token to send is `token.ts`. In order below: the chosen bounds, the
- * contract, the local judgements, the client.
+ * contract, the local judgements, the representation cache, the client.
  */
 
 import { classifyFailure, type FailureClass } from "@hiero-hackers/automation-core";
-import { isPastExpiry, type InstallationToken, type TokenSource } from "./token.js";
+import {
+    isPastExpiry,
+    isWellFormedTokenOutcome,
+    type InstallationToken,
+    type TokenOutcome,
+    type TokenSource,
+} from "./token.js";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
 
@@ -35,6 +41,9 @@ export const DEFAULT_ETAG_CACHE_ENTRY_BYTES = 512 * 1024;
 
 const DEFAULT_ACCEPT = "application/vnd.github+json";
 const USER_AGENT = "hiero-hackers-sdk-automations";
+
+/** Attempts per request: the first, then at most one retry on a fresh token. */
+const REQUEST_ATTEMPTS = 2;
 
 // ─── The contract ────────────────────────────────────────────────────
 
@@ -67,9 +76,20 @@ export interface GitHubFailure {
 export type NotSentReason =
     "disallowedMethod" | "disallowedOrigin" | "malformedUrl" | "invalidHeaders" | "brokenSeam";
 
+/**
+ * The injected seam a `brokenSeam` refusal names as the one that failed.
+ *
+ * A seam failure is rare and hard to reproduce, so the one report an
+ * operator gets must say which piece of wiring broke.
+ */
+export type BrokenSeam =
+    "tokenSource" | "clock" | "timeoutSignal" | "tokenValue" | "invalidate" | "response";
+
 /** Core owns response classes; the adapter adds only its pre-response refusal. */
 export type GitHubHttpFailureClass =
-    FailureClass | { readonly kind: "notSent"; readonly reason: NotSentReason };
+    | FailureClass
+    | { readonly kind: "notSent"; readonly reason: Exclude<NotSentReason, "brokenSeam"> }
+    | { readonly kind: "notSent"; readonly reason: "brokenSeam"; readonly seam: BrokenSeam };
 
 /** What one call to `request()` resolves to — it never throws. */
 export type GitHubOutcome = GitHubSuccess | GitHubFailure;
@@ -152,12 +172,102 @@ function transportFailure(): GitHubFailure {
 }
 
 /** The request never left the process; retrying cannot help. */
-function notSentFailure(reason: NotSentReason): GitHubFailure {
+function notSentFailure(reason: Exclude<NotSentReason, "brokenSeam">): GitHubFailure {
     return { ok: false, failure: { kind: "notSent", reason } };
+}
+
+/** A wiring defect in the named injected seam — never weather, never retried. */
+function brokenSeamFailure(seam: BrokenSeam): GitHubFailure {
+    return { ok: false, failure: { kind: "notSent", reason: "brokenSeam", seam } };
 }
 
 function isRetriable(failure: GitHubHttpFailureClass): boolean {
     return failure.kind === "tokenExpired" || failure.kind === "transient";
+}
+
+/** Ready-to-send headers and the variant they select, or the refusal. */
+type PreparedHeaders =
+    | { readonly ok: true; readonly headers: Headers; readonly variant: string }
+    | { readonly ok: false; readonly refusal: GitHubFailure };
+
+/**
+ * The operation's headers with the controlled fields installed.
+ *
+ * Controlled fields never select a representation: caller values for them
+ * are deleted before the variant is derived, then ours are installed.
+ */
+function prepareHeaders(request: GitHubRequest, token: InstallationToken): PreparedHeaders {
+    let headers: Headers;
+    try {
+        headers = new Headers(request.headers);
+    } catch {
+        return { ok: false, refusal: notSentFailure("invalidHeaders") };
+    }
+    headers.set("accept", headers.get("accept") ?? DEFAULT_ACCEPT);
+    headers.delete("authorization");
+    headers.delete("if-none-match");
+    headers.delete("user-agent");
+    headers.delete("x-github-api-version");
+    const variant = JSON.stringify(headersToRecord(headers));
+    try {
+        headers.set("authorization", `Bearer ${token.value}`);
+        headers.set("user-agent", USER_AGENT);
+        headers.set("x-github-api-version", GITHUB_API_VERSION);
+    } catch {
+        // Our two constants are known-good header values; only the token
+        // value can make this throw.
+        return { ok: false, refusal: brokenSeamFailure("tokenValue") };
+    }
+    return { ok: true, headers, variant };
+}
+
+// ─── The representation cache ────────────────────────────────────────
+
+/** The bounded, least-recently-used store of reusable representations. */
+interface RepresentationCache {
+    /** The entry for this URL under this variant, made newest by the read. */
+    lookup(url: string, variant: string): CachedRepresentation | undefined;
+    store(url: string, entry: CachedRepresentation): void;
+    remove(url: string): void;
+}
+
+function createRepresentationCache(): RepresentationCache {
+    const entries = new Map<string, CachedRepresentation>();
+    let retainedBytes = 0;
+
+    const remove = (url: string): void => {
+        const entry = entries.get(url);
+        if (entry !== undefined) {
+            retainedBytes -= entry.body.length;
+            entries.delete(url);
+        }
+    };
+
+    return {
+        lookup(url: string, variant: string): CachedRepresentation | undefined {
+            const entry = entries.get(url);
+            if (entry === undefined || entry.variant !== variant) return undefined;
+            // Reading an entry makes it newest in the bounded LRU.
+            entries.delete(url);
+            entries.set(url, entry);
+            return entry;
+        },
+        /** Insert as newest, then evict oldest-first until under both bounds. */
+        store(url: string, entry: CachedRepresentation): void {
+            remove(url);
+            entries.set(url, entry);
+            retainedBytes += entry.body.length;
+            while (
+                entries.size > DEFAULT_ETAG_CACHE_ENTRIES ||
+                retainedBytes > DEFAULT_ETAG_CACHE_BYTES
+            ) {
+                // `size > a non-negative limit` proves an entry exists, and the
+                // per-entry byte cap proves a one-entry cache is under the total.
+                remove(entries.keys().next().value as string);
+            }
+        },
+        remove,
+    };
 }
 
 // ─── The client ──────────────────────────────────────────────────────
@@ -169,29 +279,8 @@ export function createGitHubHttpClient({
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     timeoutSignal = AbortSignal.timeout,
 }: GitHubHttpClientOptions): GitHubHttpClient {
-    const cache = new Map<string, CachedRepresentation>();
-    let cacheBytes = 0;
+    const cache = createRepresentationCache();
     let latestRateLimit: RateLimitSnapshot | null = null;
-
-    const removeEntry = (url: string): void => {
-        const entry = cache.get(url);
-        if (entry !== undefined) {
-            cacheBytes -= entry.body.length;
-            cache.delete(url);
-        }
-    };
-
-    /** Insert as newest, then evict oldest-first until under both bounds. */
-    const storeEntry = (url: string, entry: CachedRepresentation): void => {
-        removeEntry(url);
-        cache.set(url, entry);
-        cacheBytes += entry.body.length;
-        while (cache.size > DEFAULT_ETAG_CACHE_ENTRIES || cacheBytes > DEFAULT_ETAG_CACHE_BYTES) {
-            // `size > a non-negative limit` proves an entry exists, and the
-            // per-entry byte cap proves a one-entry cache is under the total.
-            removeEntry(cache.keys().next().value as string);
-        }
-    };
 
     const rememberRateLimit = (
         url: string,
@@ -205,36 +294,12 @@ export function createGitHubHttpClient({
         request: GitHubRequest,
         token: InstallationToken,
     ): Promise<GitHubOutcome> => {
-        let headers: Headers;
-        try {
-            headers = new Headers(request.headers);
-        } catch {
-            return notSentFailure("invalidHeaders");
-        }
-        const accept = headers.get("accept") ?? DEFAULT_ACCEPT;
-        headers.set("accept", accept);
-        // Controlled fields never select a representation. Delete any caller
-        // values before deriving the variant, then install our own below.
-        headers.delete("authorization");
-        headers.delete("if-none-match");
-        headers.delete("user-agent");
-        headers.delete("x-github-api-version");
-        const variant = JSON.stringify(headersToRecord(headers));
-        try {
-            headers.set("authorization", `Bearer ${token.value}`);
-            headers.set("user-agent", USER_AGENT);
-            headers.set("x-github-api-version", GITHUB_API_VERSION);
-        } catch {
-            return notSentFailure("brokenSeam");
-        }
+        const prepared = prepareHeaders(request, token);
+        if (!prepared.ok) return prepared.refusal;
+        const { headers, variant } = prepared;
 
-        const cached = cache.get(request.url);
-        if (cached !== undefined && cached.variant === variant) {
-            // Reading an entry makes it newest in the bounded LRU.
-            cache.delete(request.url);
-            cache.set(request.url, cached);
-            headers.set("if-none-match", cached.etag);
-        }
+        const cached = cache.lookup(request.url, variant);
+        if (cached !== undefined) headers.set("if-none-match", cached.etag);
 
         // Capture the local age at send time. A later clock read could turn a
         // live request into a false `tokenExpired` diagnosis.
@@ -242,14 +307,14 @@ export function createGitHubHttpClient({
         try {
             tokenPastExpiry = isPastExpiry(token, clock());
         } catch {
-            return notSentFailure("brokenSeam");
+            return brokenSeamFailure("clock");
         }
         // A throwing timeout factory is a wiring defect, not retriable weather.
         let signal: AbortSignal;
         try {
             signal = timeoutSignal(timeoutMs);
         } catch {
-            return notSentFailure("brokenSeam");
+            return brokenSeamFailure("timeoutSignal");
         }
         const init: RequestInit = {
             method: "GET",
@@ -272,7 +337,9 @@ export function createGitHubHttpClient({
         rememberRateLimit(request.url, response.status, responseHeaders);
 
         if (response.status === 304) {
-            if (cached === undefined || cached.variant !== variant) {
+            // A 304 with nothing to reuse: the entry was evicted mid-flight,
+            // or the server misbehaved. Either way a full re-read fixes it.
+            if (cached === undefined) {
                 return {
                     ok: false,
                     status: response.status,
@@ -308,7 +375,7 @@ export function createGitHubHttpClient({
             if (response.status === 200) {
                 const etag = response.headers.get("etag");
                 if (etag !== null && body.length <= DEFAULT_ETAG_CACHE_ENTRY_BYTES) {
-                    storeEntry(request.url, {
+                    cache.store(request.url, {
                         etag,
                         variant,
                         body,
@@ -316,7 +383,7 @@ export function createGitHubHttpClient({
                     });
                 } else {
                     // A 200 with no retainable validator leaves any kept entry stale.
-                    removeEntry(request.url);
+                    cache.remove(request.url);
                 }
             }
             return {
@@ -348,31 +415,16 @@ export function createGitHubHttpClient({
             const parsed = githubApiUrl(request.url);
             if (!parsed.ok) return notSentFailure(parsed.refused);
             const safeRequest = { ...request, url: parsed.url };
-            let attempt = 0;
-            while (true) {
-                let tokenOutcome;
+            for (let attempt = 1; ; attempt += 1) {
+                let tokenOutcome: TokenOutcome;
                 try {
                     tokenOutcome = await tokenSource.current();
-                    if (
-                        typeof tokenOutcome !== "object" ||
-                        tokenOutcome === null ||
-                        typeof tokenOutcome.ok !== "boolean" ||
-                        (tokenOutcome.ok
-                            ? typeof tokenOutcome.token !== "object" ||
-                              tokenOutcome.token === null ||
-                              typeof tokenOutcome.token.value !== "string" ||
-                              !(tokenOutcome.token.expiresAt instanceof Date) ||
-                              !Number.isFinite(tokenOutcome.token.expiresAt.getTime()) ||
-                              !Array.isArray(tokenOutcome.token.grants)
-                            : typeof tokenOutcome.failure !== "object" ||
-                              tokenOutcome.failure === null ||
-                              typeof tokenOutcome.failure.kind !== "string")
-                    ) {
-                        return notSentFailure("brokenSeam");
+                    if (!isWellFormedTokenOutcome(tokenOutcome)) {
+                        return brokenSeamFailure("tokenSource");
                     }
                 } catch {
                     // `current()` promises not to throw.
-                    return notSentFailure("brokenSeam");
+                    return brokenSeamFailure("tokenSource");
                 }
                 if (!tokenOutcome.ok) return tokenOutcome;
 
@@ -380,20 +432,21 @@ export function createGitHubHttpClient({
                 try {
                     outcome = await sendOnce(safeRequest, tokenOutcome.token);
                 } catch {
-                    // `sendOnce()` contains expected transport failures itself.
-                    // Anything escaping it is a broken local seam, never weather.
-                    return notSentFailure("brokenSeam");
+                    // `sendOnce()` contains expected transport failures itself;
+                    // what escapes it is a response object that broke mid-read.
+                    return brokenSeamFailure("response");
                 }
                 if (outcome.ok || !isRetriable(outcome.failure)) return outcome;
+                // A rejected token is dropped even on the final attempt, so
+                // the next `request()` starts on a fresh mint.
                 if (outcome.failure.kind === "tokenExpired") {
                     try {
                         tokenSource.invalidate(tokenOutcome.token);
                     } catch {
-                        return notSentFailure("brokenSeam");
+                        return brokenSeamFailure("invalidate");
                     }
                 }
-                if (attempt === 1) return outcome;
-                attempt += 1;
+                if (attempt === REQUEST_ATTEMPTS) return outcome;
             }
         },
         latestRateLimit(): RateLimitSnapshot | null {

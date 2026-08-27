@@ -6,7 +6,6 @@
  * claim of this file.
  */
 
-import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
     createTokenSource,
@@ -16,53 +15,15 @@ import {
     MINT_FLOOR_SECONDS,
     MINT_RETRY_COOLDOWN_SECONDS,
     REFRESH_SKEW_SECONDS,
-    type InstallationToken,
     type TokenOutcome,
 } from "../src/token.js";
-import type { AppCredentials } from "../src/jwt.js";
-
-/** Lazily, for the reason `jwt.test.ts` records (D89). */
-let keys: { publicKey: string; privateKey: string } | undefined;
-function credentials(): AppCredentials {
-    keys ??= generateKeyPairSync("rsa", {
-        modulusLength: 2048,
-        publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    return { appId: "123456", privateKeyPem: keys.privateKey, installationId: "789" };
-}
-
-const START = new Date("2026-08-20T12:00:00.000Z");
-const HOUR_MS = 3_600_000;
-
-function token(value: string, expiresAt: Date): InstallationToken {
-    return { value, expiresAt, grants: ["issues:write"] };
-}
-
-/** A clock the test moves by hand, and the mints it provoked. */
-function harness(outcomes: readonly TokenOutcome[]) {
-    let now = START;
-    const assertions: string[] = [];
-    const source = createTokenSource({
-        credentials: credentials(),
-        clock: () => now,
-        mint: (assertion, given) => {
-            // The source hands over its own credentials, so a mint can never
-            // authenticate as an installation the source does not believe in.
-            expect(given.installationId).toBe("789");
-            assertions.push(assertion);
-            const outcome = outcomes[Math.min(assertions.length - 1, outcomes.length - 1)];
-            return Promise.resolve(outcome!);
-        },
-    });
-    return {
-        source,
-        assertions,
-        advance: (ms: number) => {
-            now = new Date(now.getTime() + ms);
-        },
-    };
-}
+import {
+    credentials,
+    HOUR_MS,
+    installationToken as token,
+    TEST_NOW as START,
+    tokenHarness as harness,
+} from "./harness.js";
 
 const minted = (value: string, expiresAt: Date): TokenOutcome => ({
     ok: true,

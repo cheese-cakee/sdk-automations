@@ -18,79 +18,17 @@ import {
     type FetchLike,
     type GitHubRequest,
 } from "../src/http.js";
-import type { InstallationToken, TokenOutcome, TokenSource } from "../src/token.js";
-
-const NOW = new Date("2026-08-21T10:00:00.000Z");
-const URL = "https://api.github.com/repos/hiero-hackers/sdk-automations/issues/132";
-
-function token(value: string, expiresAt = new Date(NOW.getTime() + 3_600_000)): InstallationToken {
-    return { value, expiresAt, grants: ["issues:write"] };
-}
-
-function tokenSource(outcomes: readonly TokenOutcome[]) {
-    const invalidated: InstallationToken[] = [];
-    let calls = 0;
-    const source: TokenSource = {
-        current: () => {
-            const outcome = outcomes[Math.min(calls, outcomes.length - 1)];
-            calls += 1;
-            return Promise.resolve(outcome!);
-        },
-        invalidate: (rejected) => invalidated.push(rejected),
-    };
-    return { source, invalidated, calls: () => calls };
-}
-
-type ResponseStep = Response | Error | ((url: string, init: RequestInit) => Response);
-
-function responseScript(steps: readonly ResponseStep[]) {
-    const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
-    const fetch: FetchLike = (input, init) => {
-        const url = String(input);
-        const given = init ?? {};
-        calls.push({ url, init: given });
-        const step = steps[Math.min(calls.length - 1, steps.length - 1)]!;
-        if (step instanceof Error) return Promise.reject(step);
-        return Promise.resolve(typeof step === "function" ? step(url, given) : step);
-    };
-    return { fetch, calls };
-}
-
-function success(body = '{"ok":true}', headers?: HeadersInit): Response {
-    return new Response(body, headers === undefined ? { status: 200 } : { status: 200, headers });
-}
-
-function failure(status: number, body: string, headers?: HeadersInit): Response {
-    return new Response(body, headers === undefined ? { status } : { status, headers });
-}
-
-function request(
-    overrides: {
-        readonly url?: string;
-        readonly headers?: Readonly<Record<string, string>>;
-    } = {},
-): GitHubRequest {
-    return { url: URL, method: "GET", ...overrides };
-}
-
-function harness(
-    steps: readonly ResponseStep[],
-    outcomes: readonly TokenOutcome[] = [{ ok: true, token: token("installation-token") }],
-) {
-    const scripted = responseScript(steps);
-    const tokens = tokenSource(outcomes);
-    const timeoutCalls: number[] = [];
-    const client = createGitHubHttpClient({
-        tokenSource: tokens.source,
-        fetch: scripted.fetch,
-        clock: () => NOW,
-        timeoutSignal: (milliseconds) => {
-            timeoutCalls.push(milliseconds);
-            return AbortSignal.abort("test timeout signal");
-        },
-    });
-    return { client, scripted, tokens, timeoutCalls };
-}
+import {
+    failure,
+    githubRequest as request,
+    httpHarness as harness,
+    installationToken as token,
+    responseScript,
+    scriptedTokenSource as tokenSource,
+    success,
+    TEST_NOW as NOW,
+    TEST_URL as URL,
+} from "./harness.js";
 
 describe("request shaping", () => {
     it("owns authentication, API version, defaults, and the timeout signal", async () => {
@@ -124,13 +62,8 @@ describe("request shaping", () => {
     });
 
     it("uses the configured timeout and creates a signal for each retry", async () => {
-        const scripted = responseScript([new Error("socket closed"), success()]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
         const signals: AbortSignal[] = [];
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
+        const { client } = harness([new Error("socket closed"), success()], {
             timeoutMs: 321,
             timeoutSignal: () => {
                 const signal = new AbortController().signal;
@@ -161,6 +94,7 @@ describe("request shaping", () => {
             tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
             fetch,
             clock: () => NOW,
+            // Kept off the harness: the abort choreography IS this test.
             timeoutSignal: () => {
                 const controller = new AbortController();
                 queueMicrotask(() =>
@@ -193,10 +127,9 @@ describe("request shaping", () => {
     });
 
     it("returns a typed token-source failure without calling fetch", async () => {
-        const { client, scripted } = harness(
-            [success()],
-            [{ ok: false, failure: { kind: "installationSuspended" } }],
-        );
+        const { client, scripted } = harness([success()], {
+            outcomes: [{ ok: false, failure: { kind: "installationSuspended" } }],
+        });
 
         expect(await client.request(request())).toEqual({
             ok: false,
@@ -206,16 +139,13 @@ describe("request shaping", () => {
     });
 
     it("turns a token-source rejection into a typed value without calling fetch", async () => {
-        const scripted = responseScript([success()]);
-        const source: TokenSource = {
-            current: () => Promise.reject(new Error("broken token source")),
-            invalidate: () => undefined,
-        };
-        const client = createGitHubHttpClient({ tokenSource: source, fetch: scripted.fetch });
+        const { client, scripted } = harness([success()], {
+            outcomes: [new Error("broken token source")],
+        });
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "tokenSource" },
         });
         expect(scripted.calls).toHaveLength(0);
     });
@@ -236,27 +166,17 @@ describe("request shaping", () => {
         ["a missing failure kind", { ok: false, failure: {} }],
         ["a non-string failure kind", { ok: false, failure: { kind: 1 } }],
     ])("contains malformed resolved token outcome: %s", async (_label, outcome) => {
-        const scripted = responseScript([success()]);
-        const source: TokenSource = {
-            current: () => Promise.resolve(outcome as never),
-            invalidate: () => undefined,
-        };
-        const client = createGitHubHttpClient({ tokenSource: source, fetch: scripted.fetch });
+        const { client, scripted } = harness([success()], { outcomes: [outcome as never] });
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "tokenSource" },
         });
         expect(scripted.calls).toHaveLength(0);
     });
 
     it("contains invalid caller headers without retrying or calling fetch", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-        });
+        const { client, scripted, tokens } = harness([success()]);
 
         expect(
             await client.request(request({ headers: { "x-invalid": "line one\nline two" } })),
@@ -269,11 +189,7 @@ describe("request shaping", () => {
     });
 
     it("contains a throwing clock as a broken seam without retrying", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
+        const { client, scripted, tokens } = harness([success()], {
             clock: () => {
                 throw new Error("clock failed");
             },
@@ -281,60 +197,44 @@ describe("request shaping", () => {
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "clock" },
         });
         expect(tokens.calls()).toBe(1);
         expect(scripted.calls).toHaveLength(0);
     });
 
     it("contains an invalid token value as a broken seam before fetch", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("line one\nline two") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
+        const { client, scripted, tokens } = harness([success()], {
+            outcomes: [{ ok: true, token: token("line one\nline two") }],
         });
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "tokenValue" },
         });
         expect(tokens.calls()).toBe(1);
         expect(scripted.calls).toHaveLength(0);
     });
 
     it("contains an invalid injected response shape as a broken seam", async () => {
-        let fetchCalls = 0;
-        const client = createGitHubHttpClient({
-            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
-            fetch: () => {
-                fetchCalls += 1;
-                return Promise.resolve(
-                    Object.defineProperty({}, "headers", {
-                        get: () => {
-                            throw new Error("invalid response seam");
-                        },
-                    }) as Response,
-                );
-            },
-            clock: () => NOW,
-        });
+        const { client, scripted } = harness([
+            () =>
+                Object.defineProperty({}, "headers", {
+                    get: () => {
+                        throw new Error("invalid response seam");
+                    },
+                }) as Response,
+        ]);
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "response" },
         });
-        expect(fetchCalls).toBe(1);
+        expect(scripted.calls).toHaveLength(1);
     });
 
     it("rejects cleartext and non-GitHub URLs before acquiring a token", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("must-not-leak") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-        });
+        const { client, scripted, tokens } = harness([success()]);
 
         for (const [url, reason] of [
             ["http://api.github.com/repos/hiero-hackers/sdk-automations", "disallowedOrigin"],
@@ -404,12 +304,7 @@ describe("request shaping", () => {
     });
 
     it("rejects mutation methods before acquiring a token", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("must-not-be-used") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-        });
+        const { client, scripted, tokens } = harness([success()]);
         const mutation = { url: URL, method: "DELETE" } as unknown as GitHubRequest;
 
         expect(await client.request(mutation)).toEqual({
@@ -546,6 +441,39 @@ describe("conditional reads", () => {
         expect(new Headers(scripted.calls[1]!.init.headers).get("if-none-match")).toBeNull();
     });
 
+    it("derives one variant regardless of header casing and order", async () => {
+        // A quiet failure mode: a normalization change that splits the cache
+        // raises rate usage on unchanged reads without failing anything.
+        const { client, scripted } = harness([
+            success("ranged", { etag: '"range"' }),
+            new Response(null, { status: 304 }),
+        ]);
+
+        await client.request(request({ headers: { "X-Custom": "1", Range: "bytes=0-99" } }));
+        const cached = await client.request(
+            request({ headers: { range: "bytes=0-99", "x-custom": "1" } }),
+        );
+
+        expect(new Headers(scripted.calls[1]!.init.headers).get("if-none-match")).toBe('"range"');
+        expect(cached).toMatchObject({ ok: true, fromCache: true, body: "ranged" });
+    });
+
+    it("normalizes the URL, so a spelled-out default port shares the entry", async () => {
+        const { client, scripted } = harness([
+            success("issue", { etag: '"v1"' }),
+            new Response(null, { status: 304 }),
+        ]);
+
+        await client.request(request({ url: "https://api.github.com:443/repos/o/r/issues/1" }));
+        const cached = await client.request(
+            request({ url: "https://api.github.com/repos/o/r/issues/1" }),
+        );
+
+        expect(scripted.calls[0]!.url).toBe("https://api.github.com/repos/o/r/issues/1");
+        expect(new Headers(scripted.calls[1]!.init.headers).get("if-none-match")).toBe('"v1"');
+        expect(cached).toMatchObject({ ok: true, fromCache: true, body: "issue" });
+    });
+
     it("keys representations by caller headers, not only URL and Accept", async () => {
         const { client, scripted } = harness([
             success("ranged", { etag: '"range"' }),
@@ -566,18 +494,12 @@ describe("conditional reads", () => {
         const first = urls[0]!;
         const second = urls[1]!;
         const overflow = `${GITHUB_API_ORIGIN}/repos/o/r/issues/overflow`;
-        const scripted = responseScript([
+        const { client, scripted } = harness([
             ...urls.map((_, index) => success(String(index + 1), { etag: `"${index + 1}"` })),
             new Response(null, { status: 304 }),
             success("overflow", { etag: '"overflow"' }),
             success("second again", { etag: '"second-2"' }),
         ]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
-        });
 
         for (const url of urls) await client.request(request({ url }));
         await client.request(request({ url: first })); // touch first; second is now oldest
@@ -637,16 +559,10 @@ describe("conditional reads", () => {
             { length: fill },
             (_, index) => `${GITHUB_API_ORIGIN}/repos/o/r/contents/${index}`,
         );
-        const scripted = responseScript([
+        const { client, scripted } = harness([
             ...urls.map((_, index) => success(body, { etag: `"${index}"` })),
             success("first again", { etag: '"first-2"' }),
         ]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
-        });
 
         for (const url of urls) await client.request(request({ url }));
         await client.request(request({ url: urls[0]! }));
@@ -665,15 +581,10 @@ describe("conditional reads", () => {
             { length: exactFill },
             (_, index) => `${GITHUB_API_ORIGIN}/repos/o/r/contents/exact-${index}`,
         );
-        const scripted = responseScript([
+        const { client, scripted } = harness([
             ...urls.map((_, index) => success(body, { etag: `"${index}"` })),
             new Response(null, { status: 304 }),
         ]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
-        });
 
         for (const url of urls) await client.request(request({ url }));
         const oldest = await client.request(request({ url: urls[0]! }));
@@ -683,6 +594,48 @@ describe("conditional reads", () => {
             '"0"',
         );
         expect(oldest).toMatchObject({ ok: true, fromCache: true, body });
+    });
+
+    it("keeps the cache and rate snapshot coherent across overlapping requests", async () => {
+        const deferred: Array<(response: Response) => void> = [];
+        const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
+        const fetch: FetchLike = (input, init) => {
+            calls.push({ url: String(input), init: init ?? {} });
+            return new Promise((resolve) => deferred.push(resolve));
+        };
+        const client = createGitHubHttpClient({
+            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+            fetch,
+            clock: () => NOW,
+            timeoutSignal: () => new AbortController().signal,
+        });
+        const settle = () => new Promise((resolve) => setTimeout(resolve));
+
+        const first = client.request(request());
+        const second = client.request(request());
+        await settle();
+
+        // Both miss the cache; neither claims the other's in-flight validator.
+        expect(calls).toHaveLength(2);
+        expect(new Headers(calls[0]!.init.headers).get("if-none-match")).toBeNull();
+        expect(new Headers(calls[1]!.init.headers).get("if-none-match")).toBeNull();
+
+        // Completion out of order: the later start resolves first.
+        deferred[1]!(success("second", { etag: '"second"', "x-ratelimit-used": "2" }));
+        expect(await second).toMatchObject({ ok: true, body: "second", fromCache: false });
+        deferred[0]!(success("first", { etag: '"first"', "x-ratelimit-used": "1" }));
+        expect(await first).toMatchObject({ ok: true, body: "first", fromCache: false });
+
+        // The last response to ARRIVE owns both the entry and the snapshot.
+        expect(client.latestRateLimit()).toMatchObject({
+            headers: { "x-ratelimit-used": "1" },
+        });
+        const third = client.request(request());
+        await settle();
+        expect(calls).toHaveLength(3);
+        expect(new Headers(calls[2]!.init.headers).get("if-none-match")).toBe('"first"');
+        deferred[2]!(new Response(null, { status: 304 }));
+        expect(await third).toMatchObject({ ok: true, fromCache: true, body: "first" });
     });
 
     it("treats an impossible cacheless 304 as transient and still bounds the retry", async () => {
@@ -703,6 +656,11 @@ describe("conditional reads", () => {
 });
 
 describe("classification and bounded retry", () => {
+    /**
+     * Deliberately overlaps core's own classification suite: these rows
+     * prove the WIRING — a real response, through the real client, lands on
+     * the expected catalogue row — not the classification logic itself.
+     */
     const catalogue: ReadonlyArray<{
         readonly name: string;
         readonly response: Response;
@@ -796,10 +754,12 @@ describe("classification and bounded retry", () => {
         const fresh = token("fresh");
         const { client, scripted, tokens } = harness(
             [failure(401, "Bad credentials"), success("fresh response")],
-            [
-                { ok: true, token: expired },
-                { ok: true, token: fresh },
-            ],
+            {
+                outcomes: [
+                    { ok: true, token: expired },
+                    { ok: true, token: fresh },
+                ],
+            },
         );
 
         expect(await client.request(request())).toMatchObject({ ok: true, body: "fresh response" });
@@ -814,10 +774,12 @@ describe("classification and bounded retry", () => {
         const second = token("expired-2", new Date(NOW.getTime() - 1));
         const { client, scripted, tokens } = harness(
             [failure(401, "Bad credentials"), failure(401, "Bad credentials")],
-            [
-                { ok: true, token: first },
-                { ok: true, token: second },
-            ],
+            {
+                outcomes: [
+                    { ok: true, token: first },
+                    { ok: true, token: second },
+                ],
+            },
         );
 
         expect(await client.request(request())).toMatchObject({
@@ -830,22 +792,16 @@ describe("classification and bounded retry", () => {
 
     it("contains an invalidation failure instead of reusing the rejected token", async () => {
         const expired = token("expired", new Date(NOW.getTime() - 1));
-        const scripted = responseScript([failure(401, "Bad credentials"), success()]);
-        const source: TokenSource = {
-            current: () => Promise.resolve({ ok: true, token: expired }),
-            invalidate: () => {
+        const { client, scripted } = harness([failure(401, "Bad credentials"), success()], {
+            outcomes: [{ ok: true, token: expired }],
+            onInvalidate: () => {
                 throw new Error("cache failed");
             },
-        };
-        const client = createGitHubHttpClient({
-            tokenSource: source,
-            fetch: scripted.fetch,
-            clock: () => NOW,
         });
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "invalidate" },
         });
         expect(scripted.calls).toHaveLength(1);
     });
@@ -890,11 +846,7 @@ describe("classification and bounded retry", () => {
     });
 
     it("contains failures thrown by injected request machinery", async () => {
-        const scripted = responseScript([success()]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
-        const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
-            fetch: scripted.fetch,
+        const { client, scripted } = harness([success()], {
             timeoutSignal: () => {
                 throw new Error("bad timeout factory");
             },
@@ -902,7 +854,7 @@ describe("classification and bounded retry", () => {
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "brokenSeam" },
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "timeoutSignal" },
         });
         expect(scripted.calls).toHaveLength(0);
     });
@@ -1028,9 +980,8 @@ describe("rate awareness", () => {
                 return success("done", { "x-ratelimit-remaining": "40" });
             },
         ]);
-        const tokens = tokenSource([{ ok: true, token: token("t") }]);
         const client = createGitHubHttpClient({
-            tokenSource: tokens.source,
+            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
             fetch: scripted.fetch,
             clock: () => NOW,
         });

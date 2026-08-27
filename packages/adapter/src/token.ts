@@ -40,6 +40,35 @@ export type TokenOutcome =
     | { readonly ok: false; readonly failure: FailureClass };
 
 /**
+ * Did a `TokenSource` keep this contract at runtime?
+ *
+ * A source is an injected implementation, so the HTTP client checks each
+ * outcome here before trusting it with a live request — a malformed one
+ * accepted would surface later as a garbled Authorization header.
+ */
+export function isWellFormedTokenOutcome(outcome: TokenOutcome): boolean {
+    if (typeof outcome !== "object" || outcome === null || typeof outcome.ok !== "boolean") {
+        return false;
+    }
+    if (!outcome.ok) {
+        return (
+            typeof outcome.failure === "object" &&
+            outcome.failure !== null &&
+            typeof outcome.failure.kind === "string"
+        );
+    }
+    const token = outcome.token;
+    return (
+        typeof token === "object" &&
+        token !== null &&
+        typeof token.value === "string" &&
+        token.expiresAt instanceof Date &&
+        Number.isFinite(token.expiresAt.getTime()) &&
+        Array.isArray(token.grants)
+    );
+}
+
+/**
  * The mint call itself, injected.
  *
  * Credentials are a parameter, not something an implementation closes over:
@@ -133,6 +162,19 @@ export function createTokenSource({ credentials, mint, clock }: TokenSourceOptio
     const withinMintFloor = (mintedAt: Date, now: Date): boolean =>
         now.getTime() - mintedAt.getTime() < MINT_FLOOR_SECONDS * 1000;
 
+    /** A failed mint left a pause that has not elapsed yet. */
+    const retryPaused = (now: Date): boolean =>
+        retry !== null && now.getTime() < retry.notBefore.getTime();
+
+    /**
+     * The header's three ages, in decision order: too new to doubt serves
+     * unconditionally; otherwise the token must be usable, and is served
+     * only while no refresh is due or the refresh pause is still running.
+     */
+    const mayServeHeldToken = (held: InstallationToken, mintedAt: Date, now: Date): boolean =>
+        withinMintFloor(mintedAt, now) ||
+        (!isPastExpiry(held, now) && (!isDueForRefresh(held, now) || retryPaused(now)));
+
     /**
      * Signing is local but still fallible, and an injected implementation can
      * break its no-throw promise. Neither failure may escape this seam.
@@ -191,16 +233,10 @@ export function createTokenSource({ credentials, mint, clock }: TokenSourceOptio
     return {
         current(): Promise<TokenOutcome> {
             const now = clock();
-            if (
-                cached !== null &&
-                (withinMintFloor(cached.mintedAt, now) ||
-                    (!isPastExpiry(cached.token, now) &&
-                        (!isDueForRefresh(cached.token, now) ||
-                            (retry !== null && now.getTime() < retry.notBefore.getTime()))))
-            ) {
+            if (cached !== null && mayServeHeldToken(cached.token, cached.mintedAt, now)) {
                 return Promise.resolve({ ok: true, token: cached.token });
             }
-            if (retry !== null && now.getTime() < retry.notBefore.getTime()) {
+            if (retry !== null && retryPaused(now)) {
                 return Promise.resolve(retry.failure);
             }
             // Concurrent callers share one mint. A proactive failure may
