@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
     createTokenSource,
+    isWellFormedTokenOutcome,
     grantsFromPermissions,
     isDueForRefresh,
     isPastExpiry,
@@ -380,5 +381,49 @@ describe("grants from a mint response", () => {
 
     it("answers an empty grant list for an installation with none", () => {
         expect(grantsFromPermissions({})).toEqual([]);
+    });
+});
+
+describe("the token-outcome contract, held directly", () => {
+    // The HTTP client contains every throw, so a predicate that crashed on a
+    // malformed shape would be indistinguishable there. Only a direct call
+    // can tell refusing from exploding.
+    const valid = { ok: true as const, token: token("t", new Date(START.getTime() + HOUR_MS)) };
+
+    it("accepts both well-formed outcomes", () => {
+        expect(isWellFormedTokenOutcome(valid)).toBe(true);
+        expect(isWellFormedTokenOutcome({ ok: false, failure: { kind: "transient" } })).toBe(true);
+    });
+
+    it.each([
+        ["undefined", undefined],
+        ["null", null],
+        ["a number", 7],
+        ["a missing discriminator", {}],
+        ["a non-boolean discriminator", { ok: "yes" }],
+        ["a truthy non-boolean ok beside a valid token", { ok: "yes", token: valid.token }],
+        [
+            "a function failure carrying a kind",
+            { ok: false, failure: Object.assign(() => 0, { kind: "transient" }) },
+        ],
+        ["a null token", { ok: true, token: null }],
+        ["a string token", { ok: true, token: "token" }],
+        [
+            "a function token with token fields",
+            { ok: true, token: Object.assign(() => 0, valid.token) },
+        ],
+        ["a non-string value", { ok: true, token: { ...valid.token, value: 1 } }],
+        ["a string expiry", { ok: true, token: { ...valid.token, expiresAt: "later" } }],
+        [
+            "an invalid Date expiry",
+            { ok: true, token: { ...valid.token, expiresAt: new Date(Number.NaN) } },
+        ],
+        ["non-array grants", { ok: true, token: { ...valid.token, grants: {} } }],
+        ["a null failure", { ok: false, failure: null }],
+        ["a string failure", { ok: false, failure: "transient" }],
+        ["a missing failure kind", { ok: false, failure: {} }],
+        ["a non-string failure kind", { ok: false, failure: { kind: 1 } }],
+    ])("refuses %s without throwing", (_label, outcome) => {
+        expect(isWellFormedTokenOutcome(outcome as never)).toBe(false);
     });
 });

@@ -89,7 +89,6 @@ export function githubMintInstallationToken(
         } catch {
             return { ok: false, failure: { kind: "transient" } };
         }
-
         let body: string;
         try {
             body = await response.text();

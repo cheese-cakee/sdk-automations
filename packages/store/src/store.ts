@@ -395,24 +395,6 @@ export class Store {
         }
     }
 
-    /** Read canonical reports in deterministic completion and delivery order. */
-    deliveryReports(): CanonicalDeliveryReport[] {
-        const rows = this.db
-            .prepare(
-                `
-                SELECT delivery_id, report_json, completed_at
-                FROM delivery_report
-                ORDER BY completed_at, delivery_id
-            `,
-            )
-            .all() as unknown as CanonicalDeliveryReportRow[];
-        return rows.map((row) => ({
-            deliveryId: row.delivery_id as DeliveryGuid,
-            reportJson: row.report_json,
-            completedAt: row.completed_at,
-        }));
-    }
-
     /** Return only this token's in-flight work to the pending queue. */
     releaseDelivery(deliveryId: DeliveryGuid, claimToken: string): ReleaseDeliveryResult {
         assertDeliveryGuid(deliveryId);
@@ -447,6 +429,24 @@ export class Store {
         return rows
             .map((row) => row.delivery_id as DeliveryGuid)
             .sort((left, right) => left.localeCompare(right));
+    }
+
+    /** Read canonical reports in deterministic completion and delivery order. */
+    deliveryReports(): CanonicalDeliveryReport[] {
+        const rows = this.db
+            .prepare(
+                `
+                SELECT delivery_id, report_json, completed_at
+                FROM delivery_report
+                ORDER BY completed_at, delivery_id
+            `,
+            )
+            .all() as unknown as CanonicalDeliveryReportRow[];
+        return rows.map((row) => ({
+            deliveryId: row.delivery_id as DeliveryGuid,
+            reportJson: row.report_json,
+            completedAt: row.completed_at,
+        }));
     }
 
     // ── Effect journal (detector) ───────────────────────────────────
@@ -665,6 +665,20 @@ export class Store {
         }));
     }
 
+    /** Complete a firing, and only for the token that claimed it. */
+    scheduleDone(scheduleId: string, claimToken: string): boolean {
+        const result = this.db
+            .prepare(
+                `
+                UPDATE schedule
+                SET status = 'done', claimed_at = NULL, claim_token = NULL
+                WHERE schedule_id = ? AND status = 'running' AND claim_token = ?
+            `,
+            )
+            .run(scheduleId, claimToken);
+        return result.changes === 1;
+    }
+
     /**
      * The sweep's redrive: atomically return stuck `running` schedules,
      * claimed at or before `claimedBefore`, to `pending`.
@@ -697,20 +711,6 @@ export class Store {
             dueAt: r.due_at,
             effect: r.effect,
         }));
-    }
-
-    /** Complete a firing, and only for the token that claimed it. */
-    scheduleDone(scheduleId: string, claimToken: string): boolean {
-        const result = this.db
-            .prepare(
-                `
-                UPDATE schedule
-                SET status = 'done', claimed_at = NULL, claim_token = NULL
-                WHERE schedule_id = ? AND status = 'running' AND claim_token = ?
-            `,
-            )
-            .run(scheduleId, claimToken);
-        return result.changes === 1;
     }
 
     // ── Retention (the sweep's pruning half — D43's adopted windows) ─

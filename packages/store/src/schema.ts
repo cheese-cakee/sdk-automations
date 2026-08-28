@@ -21,53 +21,6 @@ const SEEN_DELIVERY_V1 = `
         at          TEXT NOT NULL
     )`;
 
-const EFFECT_JOURNAL_V1 = `
-    CREATE TABLE effect_journal (
-        effect_id TEXT NOT NULL,
-        call_seq  INTEGER NOT NULL,
-        intent    TEXT NOT NULL,
-        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-        at        TEXT NOT NULL,
-        PRIMARY KEY (effect_id, call_seq)
-    )`;
-
-const EFFECT_JOURNAL_V2 = `
-    CREATE TABLE effect_journal (
-        effect_id TEXT NOT NULL,
-        call_seq  INTEGER NOT NULL,
-        intent    TEXT NOT NULL,
-        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-        at        TEXT NOT NULL,
-        attempt   INTEGER NOT NULL,
-        revision  TEXT NOT NULL,
-        PRIMARY KEY (effect_id, call_seq)
-    )`;
-
-const EFFECT_CLAIM = `
-    CREATE TABLE effect_claim (
-        effect_id TEXT PRIMARY KEY,
-        worker    TEXT NOT NULL,
-        at        TEXT NOT NULL
-    )`;
-
-const SCHEDULE_V1 = `
-    CREATE TABLE schedule (
-        schedule_id TEXT PRIMARY KEY,
-        due_at      TEXT NOT NULL,
-        effect      TEXT NOT NULL,
-        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done'))
-    )`;
-
-const SCHEDULE_V2 = `
-    CREATE TABLE schedule (
-        schedule_id TEXT PRIMARY KEY,
-        due_at      TEXT NOT NULL,
-        effect      TEXT NOT NULL,
-        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
-        claimed_at  TEXT,
-        claim_token TEXT
-    )`;
-
 const SEEN_DELIVERY_V3 = `
     CREATE TABLE seen_delivery (
         delivery_id   TEXT PRIMARY KEY,
@@ -95,6 +48,10 @@ const SEEN_DELIVERY_V3 = `
         )
     )`;
 
+const DELIVERY_WORK = `
+    CREATE INDEX delivery_work
+        ON seen_delivery(state, received_at, delivery_id)`;
+
 const DELIVERY_REPORT_V4 = `
     CREATE TABLE delivery_report (
         delivery_id TEXT PRIMARY KEY,
@@ -103,13 +60,56 @@ const DELIVERY_REPORT_V4 = `
         completed_at TEXT NOT NULL
     )`;
 
+const EFFECT_JOURNAL_V1 = `
+    CREATE TABLE effect_journal (
+        effect_id TEXT NOT NULL,
+        call_seq  INTEGER NOT NULL,
+        intent    TEXT NOT NULL,
+        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
+        at        TEXT NOT NULL,
+        PRIMARY KEY (effect_id, call_seq)
+    )`;
+
+const EFFECT_JOURNAL_V2 = `
+    CREATE TABLE effect_journal (
+        effect_id TEXT NOT NULL,
+        call_seq  INTEGER NOT NULL,
+        intent    TEXT NOT NULL,
+        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
+        at        TEXT NOT NULL,
+        attempt   INTEGER NOT NULL,
+        revision  TEXT NOT NULL,
+        PRIMARY KEY (effect_id, call_seq)
+    )`;
+
 const OPEN_INTENTS = `
     CREATE INDEX open_intents
         ON effect_journal(at) WHERE status = 'sent'`;
 
-const DELIVERY_WORK = `
-    CREATE INDEX delivery_work
-        ON seen_delivery(state, received_at, delivery_id)`;
+const EFFECT_CLAIM = `
+    CREATE TABLE effect_claim (
+        effect_id TEXT PRIMARY KEY,
+        worker    TEXT NOT NULL,
+        at        TEXT NOT NULL
+    )`;
+
+const SCHEDULE_V1 = `
+    CREATE TABLE schedule (
+        schedule_id TEXT PRIMARY KEY,
+        due_at      TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done'))
+    )`;
+
+const SCHEDULE_V2 = `
+    CREATE TABLE schedule (
+        schedule_id TEXT PRIMARY KEY,
+        due_at      TEXT NOT NULL,
+        effect      TEXT NOT NULL,
+        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
+        claimed_at  TEXT,
+        claim_token TEXT
+    )`;
 
 const SCHEMA_BY_VERSION = {
     1: {
@@ -146,6 +146,100 @@ const SCHEMA_BY_VERSION = {
 
 type StorageSchemaVersion = keyof typeof SCHEMA_BY_VERSION;
 type DetectedStorageSchemaVersion = 0 | Exclude<StorageSchemaVersion, 4>;
+
+function schemaObjects(
+    db: DatabaseSync,
+): ReadonlyArray<{ readonly name: string; readonly sql: string }> {
+    return db
+        .prepare(
+            `
+        SELECT name, sql FROM sqlite_schema
+        WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+    `,
+        )
+        .all() as Array<{ name: string; sql: string }>;
+}
+
+function normalizeSql(sql: string): string {
+    // Stryker disable next-line Regex: Replacing one whitespace character or one run at a time produces the same normalized SQL.
+    return sql.replace(/\s+/g, "");
+}
+
+function schemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): boolean {
+    const actual = Object.fromEntries(
+        schemaObjects(db).map((object) => [object.name, normalizeSql(object.sql)]),
+    );
+    const expected = Object.fromEntries(
+        Object.entries(SCHEMA_BY_VERSION[version]).map(([name, sql]) => [name, normalizeSql(sql)]),
+    );
+    return isDeepStrictEqual(actual, expected);
+}
+
+function assertSchemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): void {
+    if (!schemaMatchesVersion(db, version)) {
+        throw new Error(`storage schema does not match declared version ${String(version)}`);
+    }
+}
+
+function detectUnversionedSchema(db: DatabaseSync): DetectedStorageSchemaVersion {
+    if (schemaObjects(db).length === 0) return 0;
+    for (const version of [1, 2, 3] as const) {
+        if (schemaMatchesVersion(db, version)) return version;
+    }
+    throw new Error("unrecognized unversioned storage schema");
+}
+
+function setVersion(db: DatabaseSync, version: number): void {
+    db.exec(`PRAGMA user_version = ${String(version)}`);
+}
+
+function createOriginalOperationalSchema(db: DatabaseSync): void {
+    db.exec(`${SEEN_DELIVERY_V1};${EFFECT_JOURNAL_V1};${EFFECT_CLAIM};${SCHEDULE_V1};`);
+}
+
+function addRecoveryOwnershipState(db: DatabaseSync): void {
+    db.exec(`
+        ALTER TABLE effect_journal RENAME TO effect_journal_v1;
+        ${EFFECT_JOURNAL_V2};
+        INSERT INTO effect_journal
+            SELECT effect_id, call_seq, intent, status, at, 1, 'legacy:unknown'
+            FROM effect_journal_v1;
+        DROP TABLE effect_journal_v1;
+
+        ALTER TABLE schedule RENAME TO schedule_v1;
+        ${SCHEDULE_V2};
+        INSERT INTO schedule
+            SELECT schedule_id, due_at, effect,
+                   CASE status WHEN 'running' THEN 'pending' ELSE status END,
+                   NULL, NULL
+            FROM schedule_v1;
+        DROP TABLE schedule_v1;
+
+        ${OPEN_INTENTS};
+    `);
+}
+
+function addDurableDeliveryWork(db: DatabaseSync): void {
+    db.exec(`
+        ALTER TABLE seen_delivery RENAME TO seen_delivery_v2;
+        ${SEEN_DELIVERY_V3};
+        INSERT INTO seen_delivery (
+            delivery_id, event_name, payload, payload_digest, received_at,
+            state, claim_worker, claim_token, claimed_at, completed_at
+        )
+        SELECT delivery_id, 'legacy.unknown', NULL,
+               '0000000000000000000000000000000000000000000000000000000000000000',
+               at, 'done', NULL, NULL, NULL, at
+        FROM seen_delivery_v2;
+        DROP TABLE seen_delivery_v2;
+
+        ${DELIVERY_WORK};
+    `);
+}
+
+function addCanonicalDeliveryReports(db: DatabaseSync): void {
+    db.exec(`${DELIVERY_REPORT_V4};`);
+}
 
 const MIGRATIONS: ReadonlyArray<{
     readonly version: StorageSchemaVersion;
@@ -207,98 +301,4 @@ export function migrateStorageSchema(
         }
         throw error;
     }
-}
-
-function detectUnversionedSchema(db: DatabaseSync): DetectedStorageSchemaVersion {
-    if (schemaObjects(db).length === 0) return 0;
-    for (const version of [1, 2, 3] as const) {
-        if (schemaMatchesVersion(db, version)) return version;
-    }
-    throw new Error("unrecognized unversioned storage schema");
-}
-
-function assertSchemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): void {
-    if (!schemaMatchesVersion(db, version)) {
-        throw new Error(`storage schema does not match declared version ${String(version)}`);
-    }
-}
-
-function schemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVersion): boolean {
-    const actual = Object.fromEntries(
-        schemaObjects(db).map((object) => [object.name, normalizeSql(object.sql)]),
-    );
-    const expected = Object.fromEntries(
-        Object.entries(SCHEMA_BY_VERSION[version]).map(([name, sql]) => [name, normalizeSql(sql)]),
-    );
-    return isDeepStrictEqual(actual, expected);
-}
-
-function schemaObjects(
-    db: DatabaseSync,
-): ReadonlyArray<{ readonly name: string; readonly sql: string }> {
-    return db
-        .prepare(
-            `
-        SELECT name, sql FROM sqlite_schema
-        WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
-    `,
-        )
-        .all() as Array<{ name: string; sql: string }>;
-}
-
-function normalizeSql(sql: string): string {
-    // Stryker disable next-line Regex: Replacing one whitespace character or one run at a time produces the same normalized SQL.
-    return sql.replace(/\s+/g, "");
-}
-
-function setVersion(db: DatabaseSync, version: number): void {
-    db.exec(`PRAGMA user_version = ${String(version)}`);
-}
-
-function createOriginalOperationalSchema(db: DatabaseSync): void {
-    db.exec(`${SEEN_DELIVERY_V1};${EFFECT_JOURNAL_V1};${EFFECT_CLAIM};${SCHEDULE_V1};`);
-}
-
-function addRecoveryOwnershipState(db: DatabaseSync): void {
-    db.exec(`
-        ALTER TABLE effect_journal RENAME TO effect_journal_v1;
-        ${EFFECT_JOURNAL_V2};
-        INSERT INTO effect_journal
-            SELECT effect_id, call_seq, intent, status, at, 1, 'legacy:unknown'
-            FROM effect_journal_v1;
-        DROP TABLE effect_journal_v1;
-
-        ALTER TABLE schedule RENAME TO schedule_v1;
-        ${SCHEDULE_V2};
-        INSERT INTO schedule
-            SELECT schedule_id, due_at, effect,
-                   CASE status WHEN 'running' THEN 'pending' ELSE status END,
-                   NULL, NULL
-            FROM schedule_v1;
-        DROP TABLE schedule_v1;
-
-        ${OPEN_INTENTS};
-    `);
-}
-
-function addDurableDeliveryWork(db: DatabaseSync): void {
-    db.exec(`
-        ALTER TABLE seen_delivery RENAME TO seen_delivery_v2;
-        ${SEEN_DELIVERY_V3};
-        INSERT INTO seen_delivery (
-            delivery_id, event_name, payload, payload_digest, received_at,
-            state, claim_worker, claim_token, claimed_at, completed_at
-        )
-        SELECT delivery_id, 'legacy.unknown', NULL,
-               '0000000000000000000000000000000000000000000000000000000000000000',
-               at, 'done', NULL, NULL, NULL, at
-        FROM seen_delivery_v2;
-        DROP TABLE seen_delivery_v2;
-
-        ${DELIVERY_WORK};
-    `);
-}
-
-function addCanonicalDeliveryReports(db: DatabaseSync): void {
-    db.exec(`${DELIVERY_REPORT_V4};`);
 }

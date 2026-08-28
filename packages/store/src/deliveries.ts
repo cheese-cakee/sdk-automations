@@ -69,13 +69,13 @@ export type CompleteDeliveryWithReportResult =
     | { readonly outcome: "identityMismatch" }
     | { readonly outcome: "reportConflict" };
 
+/** Whether the supplied token released its delivery claim. */
+export type ReleaseDeliveryResult =
+    { readonly outcome: "released" } | { readonly outcome: "notOwned" };
+
 /** One canonical report in deterministic projection-replay order. */
 export interface CanonicalDeliveryReport {
     readonly deliveryId: DeliveryGuid;
     readonly reportJson: string;
     readonly completedAt: string;
 }
-
-/** Whether the supplied token released its delivery claim. */
-export type ReleaseDeliveryResult =
-    { readonly outcome: "released" } | { readonly outcome: "notOwned" };

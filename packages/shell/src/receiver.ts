@@ -70,7 +70,7 @@ async function handle(
     }
     const body = await readBody(request, response);
     if (body === null) return;
-    if (!verifiedDelivery(request, body, options.secret)) {
+    if (!isVerifiedDelivery(request, body, options.secret)) {
         response.writeHead(401).end();
         return;
     }
@@ -82,42 +82,36 @@ async function handle(
     acceptThenAck({ ...identity, payload: body }, response, options);
 }
 
-/** Collect the exact bytes, capped; answers the 413 itself. */
-function readBody(request: IncomingMessage, response: ServerResponse): Promise<Buffer | null> {
-    return new Promise((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        let settled = false;
-        const fail = (error: Error): void => {
-            if (settled) return;
-            settled = true;
-            reject(error);
-        };
-        request.on("data", (chunk: Buffer) => {
-            if (settled) return;
-            size += chunk.length;
-            if (size > MAX_BODY_BYTES) {
-                settled = true;
-                response.writeHead(413).end();
-                resolve(null);
-                request.destroy();
-                return;
-            }
-            chunks.push(chunk);
-        });
-        request.on("end", () => {
-            if (settled) return;
-            settled = true;
-            resolve(Buffer.concat(chunks));
-        });
-        request.on("aborted", () => fail(new Error("request aborted")));
-        request.on("error", fail);
-    });
+/**
+ * Collect the exact bytes, capped; answers the 413 itself. A failed
+ * request rejects the iteration, which lands on `createReceiver`'s 500
+ * boundary like any other escape.
+ */
+async function readBody(
+    request: IncomingMessage,
+    response: ServerResponse,
+): Promise<Buffer | null> {
+    // `aborted` is deprecated and usually accompanied by a stream error,
+    // but not always; folding it into destroy() sends the lone signal
+    // through the same rejection path as every other failure.
+    request.once("aborted", () => request.destroy(new Error("request aborted")));
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of request as AsyncIterable<Buffer>) {
+        size += chunk.length;
+        if (size > MAX_BODY_BYTES) {
+            response.writeHead(413).end();
+            request.destroy();
+            return null;
+        }
+        chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
 }
 
 /** Station 1's gate: the HMAC of the raw bytes, checked before anything
  * else is even read. Total — a missing header is `false`, never a throw. */
-function verifiedDelivery(request: IncomingMessage, body: Buffer, secret: string): boolean {
+function isVerifiedDelivery(request: IncomingMessage, body: Buffer, secret: string): boolean {
     const signature = request.headers[SIGNATURE_HEADER];
     return verifyBody(secret, body, typeof signature === "string" ? signature : undefined);
 }
@@ -161,6 +155,8 @@ function acceptThenAck(
         return;
     }
     if (options.onAccepted !== undefined) {
+        // The pump starts only after the ack is on the wire, so processing
+        // latency can never delay the 202 GitHub is waiting for.
         response.once("finish", options.onAccepted);
     }
     response.writeHead(202).end();

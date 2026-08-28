@@ -13,7 +13,7 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
-import { Processor } from "./processor.js";
+import { createProcessor } from "./processor.js";
 import type { ConfigSource } from "./config.js";
 import type { ExternalsForDelivery } from "./externals.js";
 
@@ -42,7 +42,7 @@ export function createShell(options: ShellOptions): Shell {
         throw new Error(`invalid capability declarations: ${errors.join("; ")}`);
     }
     const clock = options.clock ?? (() => new Date());
-    const processor = new Processor({
+    const processor = createProcessor({
         store: options.store,
         capabilities: options.capabilities,
         configSource: options.configSource,

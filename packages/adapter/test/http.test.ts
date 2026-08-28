@@ -9,6 +9,7 @@ import { BODY_PATTERNS, type FailureClass } from "@hiero-hackers/automation-core
 import { describe, expect, it } from "vitest";
 import {
     createGitHubHttpClient,
+    lastPageFromLink,
     DEFAULT_ETAG_CACHE_BYTES,
     DEFAULT_ETAG_CACHE_ENTRIES,
     DEFAULT_ETAG_CACHE_ENTRY_BYTES,
@@ -996,5 +997,24 @@ describe("rate awareness", () => {
         (snapshot.headers as Record<string, string>)["x-ratelimit-remaining"] = "0";
 
         expect(client.latestRateLimit()!.headers["x-ratelimit-remaining"]).toBe("40");
+    });
+});
+
+describe("lastPageFromLink, held directly", () => {
+    it("reads a multi-digit last page with parameters after it", () => {
+        expect(
+            lastPageFromLink('<https://api.github.com/x?page=12&per_page=100>; rel="last"'),
+        ).toBe(12);
+    });
+
+    it("tolerates a missing space before rel", () => {
+        expect(lastPageFromLink('<https://api.github.com/x?page=3>;rel="last"')).toBe(3);
+    });
+
+    it.each([
+        ["no header", undefined],
+        ["no rel=last", '<https://api.github.com/x?page=2>; rel="next"'],
+    ])("answers null for %s", (_label, link) => {
+        expect(lastPageFromLink(link)).toBeNull();
     });
 });

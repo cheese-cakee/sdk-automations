@@ -144,6 +144,14 @@ describe("ordering evidence", () => {
         expect(await lookup(ITEM)).toBeNull();
     });
 
+    it.each(["labeled", "unlabeled", "assigned", "unassigned", "closed", "reopened"])(
+        "counts a lone %s event as a human change",
+        async (kind) => {
+            const { lookup } = source([page([entry(kind, "maintainer", "2026-08-20T10:00:00Z")])]);
+            expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T10:00:00Z"));
+        },
+    );
+
     it("excludes the cause but keeps ties from another actor and later changes", async () => {
         const cause = CAUSE;
         const causeOnly = source(

@@ -10,7 +10,7 @@ import { asDeliveryGuid, toEngine, type EngineCapability } from "@hiero-hackers/
 import { Store } from "@hiero-hackers/automation-store";
 import { intake, intakeDeclaration } from "@hiero-hackers/automation-probes";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
-import { Processor } from "../src/processor.js";
+import { createProcessor } from "../src/processor.js";
 import { stubbedExternals } from "../src/externals.js";
 import type { ConfigSource } from "../src/config.js";
 
@@ -49,7 +49,7 @@ afterEach(() => {
 
 function processor(capability: EngineCapability, firstTickMs = 1_000) {
     let tick = 0;
-    return new Processor({
+    return createProcessor({
         store,
         capabilities: [capability],
         configSource,
@@ -95,7 +95,7 @@ describe("a crash releases the claim", () => {
         // The live path derives its cause fingerprint from this argument;
         // a processor that stopped passing it would break exclusion quietly.
         const seen: unknown[] = [];
-        const observing = new Processor({
+        const observing = createProcessor({
             store,
             capabilities: [toEngine(intake)],
             configSource,

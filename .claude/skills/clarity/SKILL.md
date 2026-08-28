@@ -1,6 +1,6 @@
 ---
 name: clarity
-description: How a function body reads in this repo — the no-throw pipeline shape, what earns a named step, how deep to distrust input, and the house vocabulary. Use when writing or reviewing function bodies, when code feels dense or hard to narrate, or when deciding whether to extract a helper.
+description: How a function body reads in this repo — the no-throw pipeline shape, what earns a named step, how deep to distrust input, factory versus class, and the house vocabulary. Use when writing or reviewing function bodies, when code feels dense or hard to narrate, or when deciding whether to extract a helper or how to shape a stateful component.
 ---
 
 # How a function body reads in sdk-automations
@@ -51,6 +51,29 @@ Extract when the piece answers a question you can name — never to shrink a lin
 Do NOT extract plumbing that has no question — passing six closure variables to a helper just
 moves text. And do not extract below the narratable-block level: a pipeline should stay flat,
 top to bottom, in one place.
+
+## Factories or classes
+
+The repo holds both, and the split is a rule, not a taste:
+
+- **A factory for a narrow seam**: a small surface that is injected and scripted — the token
+  source, the HTTP client, the receiver, the processor. Dependencies are destructured once at
+  the top; the returned interface is the whole public story; internals are sealed, so tests
+  script the seams and can never poke the worker. Adding a method means widening a named
+  interface — a visible decision, not a habit.
+- **A class for a stateful engine room**: `Store` (a live SQLite connection, many method
+  families), core's `EngineHandle` (a per-evaluation accumulator). Real state earns named
+  fields.
+
+The tiebreaker is the state inventory: count the mutable pieces. One latch behind a two-method
+surface is a seam; a connection with growing method families is an engine room. `createProcessor`
+is the worked case — kept a factory because the write path will make its two-method contract a
+real module boundary, and its design deliberately keeps durable state in the store.
+
+And when the complaint is NOISE — `this.options.` dragging on every line — reach for the
+proportionate fix first (destructure once in the constructor) before reaching for a rewrite. A
+wholesale rewrite of a safety-critical file spends reviewer attention that belongs on its
+choreography; shape changes there must be decided against this rule, never felt.
 
 ## Distrust in proportion
 

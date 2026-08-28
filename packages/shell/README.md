@@ -27,6 +27,26 @@ flowchart LR
 | ④ Decide with one verb | [`src/processor.ts`](src/processor.ts) | core's `decide()`; the shell cannot assert a world — `DerivedWorld` has no public constructor |
 | ⑤ Commit report plus completion | [`src/processor.ts`](src/processor.ts) → store's `completeDeliveryWithReport` | store verifies delivery identity and claim ownership, then creates one canonical report and marks the delivery done in one transaction |
 
+## Why a delivery goes into the database and comes back out
+
+The two lanes never speak directly: the receiver's only output is a durable row, and the
+processor's only input is that row — inside the same process. If that looks over-engineered,
+price every crash:
+
+| A crash… | Costs |
+|---|---|
+| before the durable row | nothing — no 202 was sent, so GitHub redelivers |
+| after the 202 | nothing — the row waits; the next drain (or next start) finds it |
+| mid-decision | nothing — the claim stales after 15 minutes and is reclaimed |
+
+The counterfactual is the reason: handle a delivery in memory and there is a window between the
+202 and the finished work where a crash loses it **permanently** — and experiment 6.2 measured
+GitHub's own delivery ledger recording exactly such a lost delivery as *successfully delivered*.
+No sweep or redelivery button would ever find it. The accept-before-ack ordering (P9), the claim
+token, and the stale rule exist to make that window's width zero; D18's one-process,
+business-hours posture is safe *because* anything a crash leaves mid-flight is repaired by a
+later pass.
+
 The configuration file lives at **`automations.yml` in the repository root** (D93): it configures the
 automation platform, not GitHub, and everywhere else in the design GitHub is an adapter detail — a
 `.github/` home would say otherwise at the most user-visible spot.

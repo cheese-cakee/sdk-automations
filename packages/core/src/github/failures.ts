@@ -18,7 +18,7 @@
 
 import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS, parseSecondsHeader } from "./rate-limits.js";
 
-// ─── What arrived ────────────────────────────────────────────────────
+// ─── The vocabulary: what arrived, what it turned out to be ─────────
 
 /**
  * The inputs classification needs — transport-agnostic.
@@ -113,34 +113,36 @@ export const BODY_PATTERNS = {
 // ─── Classification ──────────────────────────────────────────────────
 
 /** Read one failed response into exactly one class. */
-export function classifyFailure(o: FailureObservation): FailureClass {
-    const body = o.body;
+export function classifyFailure(observation: FailureObservation): FailureClass {
+    const body = observation.body;
     // 304 is a conditional-read result, not a redirect. A transport with no
     // matching cached representation treats it as transient below.
-    if (o.status >= 300 && o.status < 400 && o.status !== 304) {
-        const location = o.headers.location;
+    if (observation.status >= 300 && observation.status < 400 && observation.status !== 304) {
+        const location = observation.headers.location;
         return {
             kind: "redirected",
-            status: o.status,
-            permanent: o.status === 301 || o.status === 308,
+            status: observation.status,
+            permanent: observation.status === 301 || observation.status === 308,
             ...(location === undefined ? {} : { location }),
         };
     }
-    if (o.status === 401) {
+    if (observation.status === 401) {
         // The 6.1 probe falsified body-based detection: an expired
         // token and a wrong key both return "Bad credentials". Local
         // token age is the only distinguisher.
-        return o.tokenPastExpiry === true ? { kind: "tokenExpired" } : { kind: "badCredentials" };
+        return observation.tokenPastExpiry === true
+            ? { kind: "tokenExpired" }
+            : { kind: "badCredentials" };
     }
-    if (o.status === 403 || o.status === 429) {
+    if (observation.status === 403 || observation.status === 429) {
         // Both primary and secondary exhaustion can arrive as 403 or
         // 429. GitHub's documented primary signal therefore takes
         // precedence over status alone.
-        if (o.headers["x-ratelimit-remaining"] === "0") {
-            return { kind: "primaryExhausted", resetAt: o.headers["x-ratelimit-reset"] };
+        if (observation.headers["x-ratelimit-remaining"] === "0") {
+            return { kind: "primaryExhausted", resetAt: observation.headers["x-ratelimit-reset"] };
         }
-        if (BODY_PATTERNS.secondaryRateLimit.pattern.test(body) || o.status === 429) {
-            const retryAfter = parseSecondsHeader(o.headers["retry-after"]);
+        if (BODY_PATTERNS.secondaryRateLimit.pattern.test(body) || observation.status === 429) {
+            const retryAfter = parseSecondsHeader(observation.headers["retry-after"]);
             switch (retryAfter.kind) {
                 case "missing":
                     return { kind: "secondaryLimit" };
@@ -165,7 +167,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
                           };
             }
         }
-        const accepted = o.headers["x-accepted-github-permissions"];
+        const accepted = observation.headers["x-accepted-github-permissions"];
         if (accepted !== undefined) {
             return { kind: "permissionMissing", acceptedPermissions: accepted };
         }
@@ -174,10 +176,10 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         }
         return { kind: "forbiddenUnrecognized", bodySnippet: body.slice(0, 200) };
     }
-    if (o.status === 404) return { kind: "notFoundOrNotInstalled" };
-    if (o.status === 422) return { kind: "validationError" };
-    if (o.status >= 400 && o.status < 500 && o.status !== 408) {
-        return { kind: "clientError", status: o.status };
+    if (observation.status === 404) return { kind: "notFoundOrNotInstalled" };
+    if (observation.status === 422) return { kind: "validationError" };
+    if (observation.status >= 400 && observation.status < 500 && observation.status !== 408) {
+        return { kind: "clientError", status: observation.status };
     }
     return { kind: "transient" };
 }
@@ -204,12 +206,14 @@ export const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
  * bounds must survive a restart — a counter that resets with the process is
  * not a bound (D42, D24).
  */
+/** Transient backoff, doubling-ish; the list's length IS the attempt bound. */
+const BACKOFF_MS = [500, 2_000, 8_000] as const;
+
 export function retryAdvice(
     failure: FailureClass,
     attempt: number,
     nowEpochSeconds: number,
 ): RetryAdvice {
-    const BACKOFF_MS = [500, 2_000, 8_000] as const;
     switch (failure.kind) {
         case "tokenExpired":
             return attempt >= MAX_TOKEN_REFRESH_ATTEMPTS

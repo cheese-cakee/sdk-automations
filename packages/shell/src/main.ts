@@ -61,8 +61,16 @@ const host = env["HOST"];
 const killSwitchActive = env["KILL_SWITCH"] === "1";
 const repository = { owner, repo };
 
-let externals: ExternalsForDelivery;
-if (appId && installationId && privateKeyPath) {
+/** The credentialed path: adapter-composed facts, per delivery. */
+function liveExternals({
+    appId,
+    installationId,
+    privateKeyPath,
+}: {
+    appId: string;
+    installationId: string;
+    privateKeyPath: string;
+}): ExternalsForDelivery {
     let privateKeyPem: string;
     try {
         privateKeyPem = readFileSync(privateKeyPath, "utf8");
@@ -76,7 +84,7 @@ if (appId && installationId && privateKeyPath) {
         clock: () => new Date(),
     });
     const http = createGitHubHttpClient({ tokenSource });
-    externals = async ({ payload }) => {
+    return async ({ payload }) => {
         const outcome = await liveExternalsForDelivery({ tokenSource, http, repository }, payload);
         if (!outcome.ok) {
             // Rejecting releases the processor's claim; the delivery retries.
@@ -84,9 +92,12 @@ if (appId && installationId && privateKeyPath) {
         }
         return { killSwitchActive, ...outcome.facts };
     };
-} else {
-    externals = () => stubbedExternals({ killSwitchActive });
 }
+
+const externals: ExternalsForDelivery =
+    appId && installationId && privateKeyPath
+        ? liveExternals({ appId, installationId, privateKeyPath })
+        : () => stubbedExternals({ killSwitchActive });
 
 const shell = createShell({
     secret,

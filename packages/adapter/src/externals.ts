@@ -178,7 +178,6 @@ async function readOrdering(
         // even when two same-second actions straddle a page boundary.
         recent.push(...outcome.events);
         const newest = newestIn(recent, itemCause);
-        if (newest === "unknown") return "unknown";
         if (newest !== null) return newest;
     }
     // Nothing in the newest block; only complete coverage may answer null.
