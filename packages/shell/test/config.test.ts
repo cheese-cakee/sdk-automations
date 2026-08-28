@@ -20,8 +20,20 @@ describe("configuration source", () => {
             writeFileSync(path, "mode: observe\n");
 
             await expect(fileConfigSource(path).load()).resolves.toEqual({
-                revision: "sha256:d7c5e99c8a84",
-                text: "mode: observe\n",
+                ok: true,
+                document: { revision: "sha256:d7c5e99c8a84", text: "mode: observe\n" },
+            });
+        });
+    });
+
+    it("drops a leading BOM, matching the live source's decode", async () => {
+        await withTempDir("shell-config-", async (directory) => {
+            const path = join(directory, CONFIG_PATH);
+            writeFileSync(path, "\uFEFFmode: observe\n");
+
+            await expect(fileConfigSource(path).load()).resolves.toEqual({
+                ok: true,
+                document: { revision: "sha256:d7c5e99c8a84", text: "mode: observe\n" },
             });
         });
     });
@@ -29,10 +41,14 @@ describe("configuration source", () => {
     it("maps only an absent file to the no-config document", async () => {
         await withTempDir("shell-config-", async (directory) => {
             await expect(fileConfigSource(join(directory, "missing.yml")).load()).resolves.toEqual({
-                revision: "sha256:absent",
-                text: "",
+                ok: true,
+                document: { revision: "sha256:absent", text: "" },
             });
         });
-        await expect(fileConfigSource("\0").load()).rejects.toThrow();
+        // A non-ENOENT filesystem failure is transient, typed, never a throw.
+        await expect(fileConfigSource("\0").load()).resolves.toMatchObject({
+            ok: false,
+            permanent: false,
+        });
     });
 });

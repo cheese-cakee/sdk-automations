@@ -1,8 +1,8 @@
 # The read-only adapter
 
-> **Not built — build guide.** The first component that talks to GitHub at runtime. It lands behind
-> seams that already exist on `main`, so the shell does not change. How the work divides is below;
-> its order and estimates live on issue #111, not here.
+> **Partly built — build guide and status.** Auth, the shared HTTP client, live config, grants, and
+> timeline evidence exist. Resolvers remain. Each part lands behind an existing seam; `main.ts`
+> only chooses between live and credential-free implementations.
 
 ```mermaid
 flowchart TD
@@ -23,8 +23,8 @@ flowchart TD
 
 | Rule | Consequence |
 |---|---|
-| The shell does not change | Everything lands behind the four seams |
-| Nothing throws across a seam | Every failure is a typed value |
+| The shell changes only when a seam's contract does (D122) | Live reads land behind the existing seams |
+| Nothing throws across a seam | Every failure is a typed value — `ConfigLoadOutcome`, `"unknown"` |
 | Unknown is never absence (D51) | A failed read must never become a default |
 | Core stays pure | A new package; core's one edit is making one seam async — below |
 | Fail closed on identity | Config fetches pin the default branch |
@@ -84,7 +84,7 @@ flowchart TD
 
 | Function | Endpoint | Fills | Matrix status |
 |---|---|---|---|
-| `fetchConfigFile(ref)` | `GET …/contents/{path}` | `ConfigSource` | confirmed |
+| `githubConfigSource()` | `GET …/contents/{path}` | `ConfigSource` | confirmed |
 | `fetchInstallationGrants()` | token mint response | `installationGrants` | confirmed |
 | `readIssueTimeline(n)` | `GET …/issues/{n}/timeline` | `latestHumanChangeAt` | confirmed |
 | `readLinkedIssues(pr)` | GraphQL `closingIssuesReferences` | `resolve: linkedIssues` | semantics measured; App-auth shapes open |
@@ -97,11 +97,11 @@ flowchart TD
 - **404 means "not found *or* not installed"** — it maps to `notFoundOrNotInstalled`, never to a
   confident absence.
 
-## The seams, once implemented
+## The seams
 
-- **`githubConfigSource`** — fetches at the default branch; `revision` is the blob sha.
+- **`githubConfigSource`** — fetches at the default branch; `revision` is the blob sha. Built.
 - A 404 maps to the absent-file default, matching `fileConfigSource`'s semantics exactly — one shared `sha256:absent` sentinel, never a re-spelling.
-- **`liveExternals`** — the real grant list, and `latestHumanChangeAt` from the timeline.
+- **`liveExternals`** — the real grant list, and `latestHumanChangeAt` from the timeline. Built.
 - The grant list costs zero calls: it is a field of the mint response, cached and refreshed with the token.
 - It answers **unknown** when evidence cannot be established within budget.
 - The seam turns async on the way: `main` types `latestHumanChangeAt` synchronously, which a

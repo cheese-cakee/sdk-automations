@@ -133,6 +133,15 @@ interface CachedRepresentation {
 
 // ─── Local judgements ────────────────────────────────────────────────
 
+/** The one spelling of a repository's API path — owner and repo encoded
+ * once, identically, for every operation that names one. */
+export function repoPath(repository: { readonly owner: string; readonly repo: string }): string {
+    return (
+        `${GITHUB_API_ORIGIN}/repos/${encodeURIComponent(repository.owner)}` +
+        `/${encodeURIComponent(repository.repo)}`
+    );
+}
+
 /** Lower-cased header record, the shape core's classifier reads. */
 export function headersToRecord(headers: Headers): Record<string, string> {
     const record: Record<string, string> = {};
@@ -148,6 +157,7 @@ export function headersToRecord(headers: Headers): Record<string, string> {
  * the cache retains `link` on stored representations for exactly this read.
  */
 export function lastPageFromLink(link: string | undefined): number | null {
+    // Stryker disable next-line ConditionalExpression: exec stringifies undefined and misses; the guard is for readers.
     if (link === undefined) return null;
     const match = /[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(link);
     return match === null ? null : Number(match[1]);

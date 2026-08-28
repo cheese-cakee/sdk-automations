@@ -18,11 +18,12 @@ import { inactivity, intake, prQuality } from "@hiero-hackers/automation-probes"
 import {
     createGitHubHttpClient,
     createTokenSource,
+    githubConfigSource,
     githubMintInstallationToken,
     liveExternalsForDelivery,
 } from "@hiero-hackers/automation-adapter";
 import { createShell } from "./shell.js";
-import { CONFIG_PATH, fileConfigSource } from "./config.js";
+import { CONFIG_PATH, fileConfigSource, type ConfigSource } from "./config.js";
 import { stubbedExternals, type ExternalsForDelivery } from "./externals.js";
 
 const env = process.env;
@@ -61,8 +62,12 @@ const host = env["HOST"];
 const killSwitchActive = env["KILL_SWITCH"] === "1";
 const repository = { owner, repo };
 
-/** The credentialed path: adapter-composed facts, per delivery. */
-function liveExternals({
+interface LiveGitHub {
+    readonly configSource: ConfigSource;
+    readonly externals: ExternalsForDelivery;
+}
+
+function liveGitHub({
     appId,
     installationId,
     privateKeyPath,
@@ -70,7 +75,7 @@ function liveExternals({
     appId: string;
     installationId: string;
     privateKeyPath: string;
-}): ExternalsForDelivery {
+}): LiveGitHub {
     let privateKeyPem: string;
     try {
         privateKeyPem = readFileSync(privateKeyPath, "utf8");
@@ -84,28 +89,37 @@ function liveExternals({
         clock: () => new Date(),
     });
     const http = createGitHubHttpClient({ tokenSource });
-    return async ({ payload }) => {
-        const outcome = await liveExternalsForDelivery({ tokenSource, http, repository }, payload);
-        if (!outcome.ok) {
-            // Rejecting releases the processor's claim; the delivery retries.
-            throw new Error(`live externals unavailable: ${outcome.failure.kind}`);
-        }
-        return { killSwitchActive, ...outcome.facts };
+    return {
+        configSource: githubConfigSource({ client: http, repository }),
+        externals: async ({ payload }) => {
+            const outcome = await liveExternalsForDelivery(
+                { tokenSource, http, repository },
+                payload,
+            );
+            if (!outcome.ok) {
+                throw new Error(`live externals unavailable: ${outcome.failure.kind}`);
+            }
+            return { killSwitchActive, ...outcome.facts };
+        },
     };
 }
 
-const externals: ExternalsForDelivery =
+const live =
     appId && installationId && privateKeyPath
-        ? liveExternals({ appId, installationId, privateKeyPath })
-        : () => stubbedExternals({ killSwitchActive });
+        ? liveGitHub({ appId, installationId, privateKeyPath })
+        : null;
+const configSource = live?.configSource ?? fileConfigSource(configFile);
+const externals = live?.externals ?? (() => stubbedExternals({ killSwitchActive }));
+const configDescription =
+    live === null
+        ? `config copy of ${CONFIG_PATH}: ${configFile}`
+        : `live config from ${owner}/${repo}'s default branch: ${CONFIG_PATH}`;
 
 const shell = createShell({
     secret,
     store: new Store(storeFile),
     capabilities: [toEngine(intake), toEngine(prQuality), toEngine(inactivity)],
-    // An operator-maintained copy of the repository's CONFIG_PATH file;
-    // the read-only adapter later fetches the live one behind this seam.
-    configSource: fileConfigSource(configFile),
+    configSource,
     externals,
     repository,
 });
@@ -117,6 +131,6 @@ void shell.drain().catch((error) => {
 // An undefined host is the unnamed case: node reads it as no host at all.
 shell.server.listen(port, host, () => {
     console.log(
-        `shell listening on :${port} for ${owner}/${repo} (config copy of ${CONFIG_PATH}: ${configFile}); canonical reports stored in ${storeFile}`,
+        `shell listening on :${port} for ${owner}/${repo} (${configDescription}); canonical reports stored in ${storeFile}`,
     );
 });

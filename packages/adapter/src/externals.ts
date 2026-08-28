@@ -11,12 +11,7 @@ import type {
     PermissionGrant,
     RepositoryRef,
 } from "@hiero-hackers/automation-core";
-import {
-    GITHUB_API_ORIGIN,
-    lastPageFromLink,
-    type GitHubHttpClient,
-    type GitHubOutcome,
-} from "./http.js";
+import { lastPageFromLink, repoPath, type GitHubHttpClient, type GitHubOutcome } from "./http.js";
 import type { TokenSource } from "./token.js";
 import { field, jsonArrayOf } from "./untrusted.js";
 
@@ -78,11 +73,13 @@ const sameSecond = (a: Date, b: Date): boolean =>
 
 /**
  * When this timeline entry counts as a human change: a `Date`; `null` for
- * an entry that does not count — an ignored kind or a known bot.
- * `"unparsable"` for an entry that counts but cannot be ordered.
+ * an entry that does not count — an ignored kind or a known bot;
+ * `"unparsable"` for one that cannot be trusted either way — an unknown
+ * actor type or an unorderable timestamp, refusing rather than ignoring.
  */
 function humanChangeAt(entry: unknown): Date | null | "unparsable" {
     const kind = field(entry, "event");
+    // Stryker disable next-line ConditionalExpression: Set.has answers false for any non-string already; the typeof arm is for readers.
     if (typeof kind !== "string" || !HUMAN_CHANGE_EVENTS.has(kind)) return null;
     const actor = field(entry, "actor");
     const actorType = field(actor, "type");
@@ -120,6 +117,7 @@ function newestIn(events: readonly unknown[], cause?: CauseFingerprint): HumanCh
             cause = undefined;
             continue;
         }
+        // Stryker disable next-line EqualityOperator: at an exact tie the kept and the replacing Date are equal values — the mutant is equivalent.
         if (newest === null || at.getTime() > newest.getTime()) newest = at;
     }
     return newest;
@@ -154,8 +152,7 @@ async function readOrdering(
     item: ItemRef,
 ): Promise<HumanChangeOrdering> {
     const pageUrl = (page: number): string =>
-        `${GITHUB_API_ORIGIN}/repos/${repository.owner}/${repository.repo}` +
-        `/issues/${String(item.number)}/timeline` +
+        `${repoPath(repository)}/issues/${String(item.number)}/timeline` +
         `?per_page=${String(TIMELINE_PAGE_SIZE)}&page=${String(page)}`;
     const read = async (page: number): Promise<TimelinePage | "unknown"> =>
         parsePage(await http.request({ url: pageUrl(page), method: "GET" }));
@@ -164,12 +161,14 @@ async function readOrdering(
     if (first === "unknown") return "unknown";
     const lastPage = first.lastPage ?? 1;
     const itemCause = cause?.itemNumber === item.number ? cause : undefined;
+    // Stryker disable next-line ConditionalExpression: the general path below answers a one-page timeline identically; the early return is for readers.
     if (lastPage === 1) return newestIn(first.events, itemCause);
 
     const descending: number[] = [];
     for (let page = lastPage; page > 1 && descending.length < TIMELINE_READ_CAP - 1; page -= 1) {
         descending.push(page);
     }
+    // Stryker disable next-line ArrayDeclaration: a seeded junk entry is inert — humanChangeAt answers null for anything unrecognizable.
     const recent: unknown[] = [];
     for (const page of descending) {
         const outcome = await read(page);
@@ -199,8 +198,10 @@ export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefin
     const itemNumber = field(item, "number");
     const action = field(payload, "action");
     if (typeof login !== "string" || typeof updatedAt !== "string") return undefined;
+    // Stryker disable next-line ConditionalExpression: isSafeInteger answers false for any non-number; the typeof arm is for readers.
     if (typeof itemNumber !== "number" || !Number.isSafeInteger(itemNumber) || itemNumber < 1)
         return undefined;
+    // Stryker disable next-line ConditionalExpression: Set.has answers false for any non-string; the typeof arm is for readers.
     if (typeof action !== "string" || !HUMAN_CHANGE_EVENTS.has(action)) return undefined;
     const target = changeTarget(payload, action);
     if (target !== null && typeof target !== "string") return undefined;
@@ -266,6 +267,7 @@ export async function liveExternalsForDelivery(
             latestHumanChangeAt: orderingEvidenceSource({
                 http,
                 repository,
+                // Stryker disable next-line ConditionalExpression: spreading { cause: undefined } is runtime-identical; the guard serves exactOptionalPropertyTypes.
                 ...(cause === undefined ? {} : { cause }),
             }),
         },

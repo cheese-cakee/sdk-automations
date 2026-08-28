@@ -16,6 +16,7 @@
 import {
     decide,
     parseConfigDocument,
+    UNREADABLE_CONFIG_REVISION,
     type ConfigResult,
     type ConfigError,
     type Decision,
@@ -110,7 +111,34 @@ export function createProcessor(options: ProcessorOptions): Processor {
         readonly revision: string;
         readonly result: ConfigResult;
     }> => {
-        const document = await configSource.load();
+        const loaded = await configSource.load();
+        if (!loaded.ok) {
+            if (loaded.permanent) {
+                // Fail closed and COMPLETE, exactly like a config that
+                // parses wrong: redelivering cannot fix a defective file.
+                return {
+                    revision: loaded.revision ?? UNREADABLE_CONFIG_REVISION,
+                    result: {
+                        ok: false,
+                        // documentUnparseable, not a new code: the error
+                        // catalogue only admits codes a DOCUMENT can reach
+                        // (D76's demonstration rule), and an unreadable file
+                        // is the parse failure's upstream twin. The message
+                        // carries which one it was.
+                        errors: [
+                            {
+                                code: "documentUnparseable",
+                                message: `unreadable before parsing: ${loaded.detail}`,
+                                path: null,
+                            },
+                        ],
+                    },
+                };
+            }
+            // Transient: the throw releases the claim; the delivery retries.
+            throw new Error(`configuration unavailable: ${loaded.detail}`);
+        }
+        const { document } = loaded;
         return {
             revision: document.revision,
             result: parseConfigDocument(document.text, {

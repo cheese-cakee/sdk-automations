@@ -79,6 +79,34 @@ function source(steps: Parameters<typeof harness>[0], cause?: CauseFingerprint) 
     return { lookup, scripted: built.scripted };
 }
 
+describe("cause exclusion respects the action kind", () => {
+    it("does not exclude a different counted kind sharing actor, second, and a null target", async () => {
+        // cause: a close (target null); timeline: a reopen by the same
+        // actor in the same second — different human intent, must count.
+        const cause: CauseFingerprint = {
+            actorLogin: "maintainer",
+            observedAt: new Date(AT),
+            itemNumber: 7,
+            action: "closed",
+            target: null,
+        };
+        const { lookup } = source([page([entry("reopened", "maintainer", AT)])], cause);
+
+        expect(await lookup(ITEM)).toEqual(new Date(AT));
+    });
+
+    it("replaces an older find with a newer one on the same page", async () => {
+        const { lookup } = source([
+            page([
+                entry("labeled", "maintainer", "2026-08-20T10:00:00Z"),
+                entry("closed", "maintainer", "2026-08-20T12:00:00Z"),
+            ]),
+        ]);
+
+        expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T12:00:00Z"));
+    });
+});
+
 describe("installation grants", () => {
     it("answers with the live token's grants", async () => {
         const { source } = tokenSource([{ ok: true, token: token("t") }]);

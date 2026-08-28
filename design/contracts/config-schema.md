@@ -12,8 +12,8 @@ future work; they are listed in §7 rather than written here as if they already 
 ## 1. Source and authority
 
 - The repository file is **`automations.yml` at the repository root** (D93).
-- The future read adapter must fetch it from the repository's default branch. The runnable shell currently
-  reads an operator-maintained local copy through the same `ConfigSource` seam.
+- With App credentials, the read adapter fetches it from the repository's default branch. Credential-free
+  development and CI read an operator-maintained local copy through the same `ConfigSource` seam.
 - An absent file and an empty file both produce the no-configuration result: `observe`, no capabilities,
   no mappings, and no principals.
 - A parsed configuration is stamped with the revision supplied by the caller. The revision is not a YAML
@@ -132,7 +132,6 @@ Until those exist, `active` remains unsupported by the shell.
 ## 7. Deliberately deferred
 
 - Define and enforce each shipped capability's settings schema and required meanings.
-- Fetch the file from the default branch and bind the reported revision to that fetch.
 - Check mapped-label existence and live installation grants before activation.
 - Build the pull-request validation check and effective-configuration report required by D38.
 - Decide schema-version migration, deprecation, retention, and rollback policy (Q14).

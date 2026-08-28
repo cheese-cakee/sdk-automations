@@ -1,8 +1,9 @@
 # Configuration reference
 
-The intended hosted App is controlled by `automations.yml` in your repository root. The runnable shell
-currently reads an operator-maintained local copy; fetching the default-branch file is the next adapter
-seam. This page defines every shared key the parser accepts today.
+The App is controlled by `automations.yml` in your repository root. With App credentials, the shell
+reads the file from the repository's default branch. Credential-free development and CI can use an
+operator-maintained local copy through `CONFIG_FILE`. This page defines every shared key the parser
+accepts today.
 
 *The test suite locks this page's closed vocabularies—top-level keys, modes, meanings, and rejection
 codes—against the code on every commit. Explanatory behavior still requires review.*

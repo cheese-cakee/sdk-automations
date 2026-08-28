@@ -65,7 +65,8 @@ GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →
 ```
 
 The runnable application verifies and stores webhook deliveries, evaluates `disabled`, `observe`, or
-`dry-run` configuration from an operator-maintained local copy, and persists a canonical report.
+`dry-run` configuration, and persists a canonical report. App credentials select the repository's
+default-branch file; credential-free development and CI use an operator-maintained local copy.
 Unsupported active configuration is rejected before a decision can claim that GitHub was changed.
 
 > [!NOTE]

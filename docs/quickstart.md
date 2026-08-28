@@ -28,9 +28,9 @@ mappings:
 **2.** Edit the label names on the right to match your repository's labels. Only labels you list
 here are ever touched.
 
-**3.** In the intended hosted path, merge to your default branch; a config in an open pull request must not
-take effect. The development shell does not fetch that branch yet: its operator points `CONFIG_FILE` at a
-local copy of the repository file.
+**3.** Merge to your default branch; a config in an open pull request does not take effect. With App
+credentials the shell reads that branch. Credential-free development and CI may point `CONFIG_FILE`
+at a local copy.
 
 That is the whole setup.
 

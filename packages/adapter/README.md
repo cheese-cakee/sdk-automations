@@ -10,11 +10,26 @@ operation list and its costs are
 
 ## What is here today
 
+```mermaid
+flowchart LR
+    CRED["App credentials\n(untracked env)"] --> JWT["jwt.ts\nsign the assertion"]
+    JWT --> MINT["mint.ts\nits own POST — a token\ncannot fetch its own mint"]
+    MINT --> TOK["token.ts\ncache, refresh,\nsingle flight"]
+    TOK --> HTTP["http.ts\nETags, retry, classify,\norigin pin"]
+    HTTP --> CFG["config.ts\nConfigSource"]
+    HTTP --> EXT["externals.ts\nordering evidence"]
+    TOK -->|"grants ride\nthe mint response"| EXT
+    UNT["untrusted.ts\nfield / jsonRecordOf"] -.->|"every body parse"| MINT & CFG & EXT
+    CFG --> SHELL["the shell's seams\n(composed in main.ts only)"]
+    EXT --> SHELL
+```
+
 | File | The question it answers |
 |---|---|
 | `jwt.ts` | What proves we are the App? |
 | `token.ts` | What token may we call with, right now? |
 | `http.ts` | How does every operation make one bounded, classified GitHub call? |
+| `config.ts` | Which configuration is on the repository's default branch? |
 | `externals.ts` | Which of core's external facts does GitHub answer, live? |
 | `mint.ts` | How is a token minted when no token exists yet? |
 | `untrusted.ts` | How are GitHub's bytes read without trusting them? |
@@ -47,6 +62,7 @@ changing — so they are here for coverage, not for the quarterly pass.
 | REST request version is `2026-03-10` | `GITHUB_API_VERSION` | GitHub's version docs | documented | the version approaches sunset | response carries `deprecation`/`sunset`, then calls return 410 |
 | Authenticated conditional GET returning 304 costs no primary quota | `http.ts` ETag cache | GitHub's best-practice docs, experiment 6.4 | documented + 2026-07-23 | GitHub changes conditional accounting | rate usage rises on unchanged reads |
 | Mint answers 201 with `token`, `expires_at`, `permissions` | `mint.ts` | experiment 6.1, matrix row | 2026-07-23 | the response shape changes | unreadable token/expiry is transient; missing permissions grant nothing |
+| Contents API wraps a file as `{type, encoding, content, sha}` — base64 inline, `encoding: "none"` past 1 MB | `config.ts` decode | GitHub's contents docs | documented | the envelope or the 1 MB behavior changes | **quiet-ish**: healthy configs read as defective (fail-closed records) or unrecognized (retries) |
 | Timeline entries name `event`, a typed `actor`, second-precision `created_at`; pages ascend | `externals.ts` six-kind filter | GitHub's timeline docs, matrix row | documented + 2026-07-23 | the shape or the kinds change | missing actor/date on a counted event is unknown; **quiet**: new kinds remain uncounted |
 
 **The quiet rows are the ones that matter.** A wrong JWT bound fails loudly within minutes; a TTL
@@ -62,8 +78,8 @@ operator reports. **Owner:** unassigned, the same unfilled row as its sibling in
 ## Still to arrive
 
 The remaining operations — one per confirmed matrix row, each adding only its URL and its parse
-on top of `http.ts` — and the two seams still stubbed in the shell: `githubConfigSource` and the
-resolvers. `design/guides/adapter.md` holds the order and what each one is blocked on.
+on top of `http.ts` — and the resolver seam still stubbed in the shell.
+`design/guides/adapter.md` holds the order and what each one is blocked on.
 
 ## What keeps it honest
 

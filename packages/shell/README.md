@@ -61,7 +61,7 @@ listening. Without them the stubs run, which is CI's permanent path.
 
 | Named hole | Live fill | Status |
 |---|---|---|
-| `fileConfigSource` (operator's local copy) | fetch `automations.yml` at the default branch | still a stub |
+| `fileConfigSource` (operator's local copy) | fetch `automations.yml` at the default branch | **filled** (#133) |
 | `installationGrants: ["issues:write"]` | the installation's live grant list, riding the mint response | **filled** (#134) |
 | `latestHumanChangeAt: () => null` | timeline evidence per item (D119) | **filled** (#134) |
 | no `resolve` | `linkedIssues` / `isAutomationActor` lookups | still a stub |
@@ -81,7 +81,7 @@ PRIVATE_KEY_PATH=…
 INSTALLATION_ID=…
 PORT=8790                   # optional
 HOST=127.0.0.1              # optional; omit to use Node's default bind host
-CONFIG_FILE=…               # optional; default data/automations.yml (copy of the repo's file)
+CONFIG_FILE=…               # credential-free fallback; default data/automations.yml
 STORE_PATH=…                # optional; default data/shell.sqlite
 KILL_SWITCH=1               # optional; refuse everything, loudly
 ```
@@ -103,7 +103,8 @@ programmatic access to canonical reports.
 
 - **The scheduler** — `staleItemsDue` is queried, not delivered; it arrives as a second caller of
   `decide()`, not a second pipeline.
-- **Config hot-fetch** — the seam exists (`ConfigSource`); the fetch is the read adapter's.
+- **Config schema migration** — live and local reads intentionally share today's schema; migrations
+  remain separate work.
 - **Active mode** — the runnable shell supports disabled, observe and dry-run and rejects active
   configuration.
   Active GitHub writes are not implemented yet; each real effect will need its own write and durable

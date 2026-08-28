@@ -21,13 +21,13 @@ flowchart LR
     end
     M["Maintainers"] -->|review and merge config| CFG
     WH -->|HTTP POST| SH
-    CFG -.->|future fetch; current shell reads an operator copy| SH
+    CFG -->|credentialed default-branch read| SH
     SH <--> DB
     SH -.->|"future adapter; no repository writes exist (P5, D46)"| REST
 ```
 
 *Sources: `packages/shell/src/receiver.ts`, `config.ts`, `main.ts` · [`decisions.md`](decisions.md)
-P5, D46, D93, D110. The default-branch fetch is an explicit missing seam, not current behavior.*
+P5, D46, D93, D110. Credential-free development and CI retain the local `CONFIG_FILE` source.*
 
 ### 2. Packages — runtime and development edges
 

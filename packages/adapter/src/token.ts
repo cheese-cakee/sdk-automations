@@ -236,6 +236,7 @@ export function createTokenSource({ credentials, mint, clock }: TokenSourceOptio
             if (cached !== null && mayServeHeldToken(cached.token, cached.mintedAt, now)) {
                 return Promise.resolve({ ok: true, token: cached.token });
             }
+            // Stryker disable next-line ConditionalExpression: retryPaused already checks the null; the outer arm exists to narrow the type.
             if (retry !== null && retryPaused(now)) {
                 return Promise.resolve(retry.failure);
             }

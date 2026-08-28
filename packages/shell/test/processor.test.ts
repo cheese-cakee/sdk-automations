@@ -27,7 +27,7 @@ capabilities:
       announce: false
 `;
 const configSource: ConfigSource = {
-    load: async () => ({ revision: "rev-test-1", text: CONFIG_TEXT }),
+    load: async () => ({ ok: true, document: { revision: "rev-test-1", text: CONFIG_TEXT } }),
 };
 
 const BASE = new Date("2026-08-07T10:00:00.000Z");
@@ -65,6 +65,52 @@ function records(): Record<string, unknown>[] {
         .deliveryReports()
         .map((report) => JSON.parse(report.reportJson) as Record<string, unknown>);
 }
+
+describe("a config source that cannot answer", () => {
+    const withSource = (load: ConfigSource["load"]) =>
+        createProcessor({
+            store,
+            capabilities: [toEngine(intake)],
+            configSource: { load },
+            externals: () => stubbedExternals(),
+            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            worker: "test-worker",
+            clock: () => new Date(BASE.getTime() + 1000),
+        });
+
+    it("completes a permanent defect as configRejected — retrying cannot fix a file", async () => {
+        const wedged = withSource(async () => ({
+            ok: false,
+            permanent: true,
+            detail: "the config file is not valid UTF-8",
+            revision: "deadbeef",
+        }));
+
+        expect(await wedged.processOnce()).toBe(true);
+        expect(records()).toEqual([
+            expect.objectContaining({
+                kind: "configRejected",
+                configRevision: "deadbeef",
+                errors: [expect.objectContaining({ code: "documentUnparseable" })],
+            }),
+        ]);
+    });
+
+    it("releases the claim on a transient failure so the delivery retries", async () => {
+        const failing = withSource(async () => ({
+            ok: false,
+            permanent: false,
+            detail: "config read failed: transient",
+        }));
+
+        await expect(failing.processOnce()).rejects.toThrow("configuration unavailable");
+        expect(records()).toEqual([]);
+
+        const healthy = withSource(configSource.load);
+        expect(await healthy.processOnce()).toBe(true);
+        expect(records()).toHaveLength(1);
+    });
+});
 
 describe("a crash releases the claim", () => {
     it("the delivery survives its processor and is retried by the next one", async () => {

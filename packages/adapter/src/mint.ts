@@ -36,6 +36,7 @@ const unreadableMint: TokenOutcome = { ok: false, failure: { kind: "transient" }
 /** The minted token a 2xx body carries, or `null` when it cannot be read. */
 function mintedTokenOf(body: string): InstallationToken | null {
     const record = jsonRecordOf(body);
+    // Stryker disable next-line ConditionalExpression: field() answers undefined on null, so the checks below refuse anyway; this is for readers.
     if (record === null) return null;
     const value = field(record, "token");
     const expiresAtRaw = field(record, "expires_at");
@@ -74,6 +75,7 @@ export function githubMintInstallationToken(
             `${GITHUB_API_ORIGIN}/app/installations/` +
             `${credentials.installationId}/access_tokens`;
         let response: Response;
+        // Stryker disable BlockStatement: an emptied catch is absorbed downstream — the following stage answers the same refusal.
         try {
             response = await send(url, {
                 method: "POST",
@@ -89,12 +91,15 @@ export function githubMintInstallationToken(
         } catch {
             return { ok: false, failure: { kind: "transient" } };
         }
+        // Stryker restore BlockStatement
         let body: string;
+        // Stryker disable BlockStatement: an emptied catch is absorbed downstream — the following stage answers the same refusal.
         try {
             body = await response.text();
         } catch {
             return unreadableMint;
         }
+        // Stryker restore BlockStatement
         if (!response.ok) {
             return {
                 ok: false,

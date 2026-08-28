@@ -414,6 +414,12 @@ async function withPaths<T>(
 
 /** A child-only fetch double: it proves live composition without network access. */
 function writeFetchPreload(path: string, logPath: string, mintStatus = 201): void {
+    const configBody = JSON.stringify({
+        type: "file",
+        encoding: "base64",
+        content: Buffer.from(CONFIG).toString("base64"),
+        sha: "0123456789abcdef0123456789abcdef01234567",
+    });
     writeFileSync(
         path,
         `import { appendFileSync } from "node:fs";
@@ -431,6 +437,9 @@ globalThis.fetch = async (input, init = {}) => {
             expires_at: "2099-01-01T00:00:00Z",
             permissions: { issues: "write" },
         }), { status: 201 });
+    }
+    if (String(input).includes("/contents/automations.yml")) {
+        return new Response(${JSON.stringify(configBody)}, { status: 200 });
     }
     return new Response("[]", { status: 200 });
 };
@@ -524,12 +533,21 @@ describe("the sandbox entry point, as a process", () => {
     );
 
     it.each([
-        { title: "composes live externals", mintStatus: 201, completes: true },
-        { title: "does not fall back to stubs when mint fails", mintStatus: 401, completes: false },
+        {
+            title: "composes live config and externals",
+            mintStatus: 201,
+            failureText: null,
+        },
+        {
+            title: "does not fall back to stubs when mint fails",
+            mintStatus: 401,
+            failureText: "configuration unavailable",
+        },
     ])(
         "$title",
-        async ({ mintStatus, completes }) => {
+        async ({ mintStatus, failureText }) => {
             await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
+                writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
                 const { privateKey } = generateKeyPairSync("rsa", {
                     modulusLength: 2048,
                     privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -551,10 +569,15 @@ describe("the sandbox entry point, as a process", () => {
                         PORT: String(port),
                     },
                     async (shell) => {
-                        await listeningLine(shell);
+                        expect(await listeningLine(shell)).toBe(
+                            `shell listening on :${String(port)} for ${OWNER}/${REPO} ` +
+                                `(live config from ${OWNER}/${REPO}'s default branch: automations.yml); ` +
+                                `canonical reports stored in ${storeFile}`,
+                        );
                         expect(await post(port, GUID, FIXTURE)).toBe(202);
-                        if (completes) {
-                            await persisted(storeFile, GUID);
+                        if (failureText === null) {
+                            const decided = await persisted(storeFile, GUID);
+                            expect(decided.report?.mode).toBe("dry-run");
                             const requests = readFileSync(fetchLog, "utf8")
                                 .trim()
                                 .split("\n")
@@ -573,19 +596,24 @@ describe("the sandbox entry point, as a process", () => {
                                 (request) =>
                                     request.method === "GET" && request.url.includes("/timeline"),
                             );
+                            const config = requests.find((request) =>
+                                request.url.includes("/contents/automations.yml"),
+                            );
                             expect(mint).toMatchObject({ method: "POST" });
                             expect(mint?.authorization).toMatch(/^Bearer [^.]+\.[^.]+\.[^.]+$/);
                             expect(timeline).toMatchObject({
                                 method: "GET",
                                 authorization: "Bearer shell-test-installation-token",
                             });
+                            expect(config).toMatchObject({
+                                method: "GET",
+                                authorization: "Bearer shell-test-installation-token",
+                            });
+                            expect(new URL(config!.url).search).toBe("");
                         } else {
                             await until(
-                                () =>
-                                    shell.stderr().includes("live externals unavailable")
-                                        ? true
-                                        : undefined,
-                                "the live mint failure to release the delivery",
+                                () => (shell.stderr().includes(failureText) ? true : undefined),
+                                "the live read failure to release the delivery",
                             );
                             const store = new Store(storeFile);
                             try {
