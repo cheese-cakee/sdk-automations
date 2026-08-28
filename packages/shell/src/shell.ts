@@ -15,14 +15,14 @@ import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";
 import type { ConfigSource } from "./config.js";
-import type { ShellExternals } from "./externals.js";
+import type { ExternalsForDelivery } from "./externals.js";
 
 export interface ShellOptions {
     readonly secret: string;
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
-    readonly externals: ShellExternals;
+    readonly externals: ExternalsForDelivery;
     readonly repository: RepositoryRef;
     readonly worker?: string;
     readonly clock?: () => Date;

@@ -156,6 +156,9 @@ importers:
 
   packages/shell:
     dependencies:
+      '@hiero-hackers/automation-adapter':
+        specifier: workspace:*
+        version: link:../adapter
       '@hiero-hackers/automation-core':
         specifier: workspace:*
         version: link:../core

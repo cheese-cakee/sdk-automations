@@ -1,0 +1,38 @@
+/**
+ * Reading bytes GitHub sent, without trusting them.
+ *
+ * Every reader here is total: a bad shape answers `null` or `undefined`,
+ * never a throw. Response-body parsers across the package read in this one
+ * idiom, so a shape surprise is a value a pipeline can refuse — and the
+ * next operation does not invent a second dialect.
+ */
+
+/** A property read that cannot throw, whatever shape arrived. */
+export const field = (value: unknown, name: string): unknown =>
+    typeof value === "object" && value !== null
+        ? (value as Record<string, unknown>)[name]
+        : undefined;
+
+/** The body as a JSON object, or `null` when it is anything else. */
+export function jsonRecordOf(body: string): Record<string, unknown> | null {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(body);
+    } catch {
+        return null;
+    }
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+}
+
+/** The body as a JSON array, or `null` when it is anything else. */
+export function jsonArrayOf(body: string): readonly unknown[] | null {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(body);
+    } catch {
+        return null;
+    }
+    return Array.isArray(parsed) ? parsed : null;
+}

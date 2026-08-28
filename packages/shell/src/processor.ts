@@ -20,7 +20,7 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { ClaimedDelivery, Store } from "@hiero-hackers/automation-store";
 import type { ConfigSource } from "./config.js";
-import type { ShellExternals } from "./externals.js";
+import type { ExternalsForDelivery } from "./externals.js";
 
 /** A processing claim older than this is presumed dead and taken over. */
 const STALE_CLAIM_MINUTES = 15;
@@ -30,7 +30,7 @@ export interface ProcessorOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
-    readonly externals: ShellExternals;
+    readonly externals: ExternalsForDelivery;
     /**
      * The shell's routing knowledge (`DecideInput` asks for it): the one
      * repository this endpoint serves. When a payload is readable the
@@ -189,17 +189,22 @@ export class Processor {
     /** Stations 5–10 live behind this one call: normalize, evaluate,
      * screen, derive the world, gate. The shell's contribution ends at
      * the parenthesis. */
-    private decideOn(claimed: ClaimedDelivery, config: RepositoryConfig): Promise<Decision> {
+    private async decideOn(claimed: ClaimedDelivery, config: RepositoryConfig): Promise<Decision> {
+        const payload = parsePayload(claimed.payload);
+        // Built per delivery: the live path binds its ordering-evidence
+        // memo to exactly this delivery. A rejection here releases the
+        // claim like any pre-completion failure, and the delivery retries.
+        const externals = await this.options.externals({ payload });
         return decide(
             {
                 kind: "delivery",
                 repository: this.options.repository,
                 event: claimed.eventName,
-                payload: parsePayload(claimed.payload),
+                payload,
             },
             config,
             this.options.capabilities,
-            this.options.externals,
+            externals,
         );
     }
 }
@@ -211,6 +216,8 @@ export class Processor {
 function parsePayload(bytes: Uint8Array): unknown {
     try {
         return JSON.parse(Buffer.from(bytes).toString("utf8"));
+        // Stryker disable next-line BlockStatement: an emptied catch falls
+        // through to the same implicit undefined — the mutant is equivalent.
     } catch {
         return undefined;
     }

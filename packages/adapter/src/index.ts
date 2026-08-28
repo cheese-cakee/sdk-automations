@@ -11,6 +11,19 @@
  */
 
 export { signAppAssertion, type AppCredentials } from "./jwt.js";
+export { githubMintInstallationToken, type GitHubMintOptions } from "./mint.js";
+export {
+    causeFingerprintOf,
+    installationGrants,
+    liveExternalsForDelivery,
+    orderingEvidenceSource,
+    type CauseFingerprint,
+    type GrantsOutcome,
+    type LiveExternalFacts,
+    type LiveExternalsOptions,
+    type LiveExternalsOutcome,
+    type OrderingEvidenceOptions,
+} from "./externals.js";
 export {
     createTokenSource,
     grantsFromPermissions,

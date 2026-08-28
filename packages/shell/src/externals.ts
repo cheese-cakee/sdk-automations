@@ -1,7 +1,8 @@
 /**
- * The facts core cannot know, in their first-slice form: stubs with the
- * shape of the truth. Every stub is a named hole the read-only adapter
- * fills — the table of which stub becomes which read is in README.md.
+ * The facts core cannot know, and how the processor obtains them for one
+ * delivery. The live fill lives in the adapter and is composed only at
+ * `main.ts`; the stub below is the credential-free path — CI permanently,
+ * and any run without App credentials.
  */
 
 import type { DecideExternals } from "@hiero-hackers/automation-core";
@@ -9,18 +10,31 @@ import type { DecideExternals } from "@hiero-hackers/automation-core";
 /** Per-decision `now` is the processor's job; the rest stands between deliveries. */
 export type ShellExternals = Omit<DecideExternals, "now">;
 
+/**
+ * One delivery's externals, built from its raw payload.
+ *
+ * The live path resolves grants and binds the delivery's ordering-evidence
+ * memo here; the stub path ignores the payload. A rejection releases the
+ * processor's claim, so the delivery retries later rather than deciding on
+ * facts that could not be established.
+ */
+export type ExternalsForDelivery = (delivery: {
+    readonly payload: unknown;
+}) => ShellExternals | Promise<ShellExternals>;
+
 export function stubbedExternals(overrides: Partial<ShellExternals> = {}): ShellExternals {
     return {
         killSwitchActive: false,
-        // Mirrors the sandbox App's actual grant; the adapter replaces this
-        // with the installation's live grant list.
+        // Mirrors the sandbox App's actual grant; the live path answers
+        // with the installation's real grant list instead.
         installationGrants: ["issues:write"],
         /**
          * `null` (no ordering evidence), NOT `"unknown"`: `"unknown"` is a
          * safe conflict (manual-edits.md §2) and would refuse every write,
          * burying dry-run's interesting findings under a uniform refusal.
-         * Until the adapter supplies timeline evidence, dry-run reports
-         * OVERSTATE what would apply — recorded here and in D93.
+         * On this CREDENTIAL-FREE path dry-run reports OVERSTATE what
+         * would apply (D93); the live path answers from the issue
+         * timeline instead (D119).
          */
         latestHumanChangeAt: () => null,
         ...overrides,

@@ -64,7 +64,7 @@ function buildShell(capability: EngineCapability = toEngine(intake)): Shell {
         store,
         capabilities: [capability],
         configSource: fileConfigSource(configFile),
-        externals: stubbedExternals(),
+        externals: () => stubbedExternals(),
         repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
         clock: () => new Date(BASE.getTime() + 1000 * tick++),
     });
@@ -126,7 +126,7 @@ describe("the first slice, end to end", () => {
                     prQualityCapability,
                 ],
                 configSource: fileConfigSource(configFile),
-                externals: stubbedExternals(),
+                externals: () => stubbedExternals(),
                 repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
             }),
         ).toThrow(

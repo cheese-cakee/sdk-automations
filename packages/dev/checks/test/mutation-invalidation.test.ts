@@ -13,7 +13,7 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
     const workspaceDeps: WorkspaceDependencyMap = {
         core: { dependencies: [], consumesTestkit: true },
         probes: { dependencies: ["core"], consumesTestkit: false },
-        shell: { dependencies: ["core", "probes", "store"], consumesTestkit: true },
+        shell: { dependencies: ["adapter", "core", "probes", "store"], consumesTestkit: true },
         store: { dependencies: ["core"], consumesTestkit: true },
     };
 
@@ -25,7 +25,7 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
         expect(discovered.store?.dependencies).toEqual(["core"]);
         expect(discovered.store?.consumesTestkit).toBe(true);
 
-        expect(discovered.shell?.dependencies).toEqual(["core", "probes", "store"]);
+        expect(discovered.shell?.dependencies).toEqual(["adapter", "core", "probes", "store"]);
         expect(discovered.shell?.consumesTestkit).toBe(true);
 
         expect(discovered.probes?.dependencies).toEqual(["core"]);

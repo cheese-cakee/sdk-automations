@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-shell",
     "version": "0.0.0",
     "private": true,
-    "description": "The transport shell: webhook in → verify → durably accept → 202 → mode check → persisted outcome. Owns ordering, decides nothing — see README.md and D93.",
+    "description": "The transport shell: webhook in \u2192 verify \u2192 durably accept \u2192 202 \u2192 mode check \u2192 persisted outcome. Owns ordering, decides nothing \u2014 see README.md and D93.",
     "type": "module",
     "exports": {
         ".": {
@@ -20,6 +20,7 @@
         "start": "tsx src/main.ts"
     },
     "dependencies": {
+        "@hiero-hackers/automation-adapter": "workspace:*",
         "@hiero-hackers/automation-core": "workspace:*",
         "@hiero-hackers/automation-probes": "workspace:*",
         "@hiero-hackers/automation-store": "workspace:*"

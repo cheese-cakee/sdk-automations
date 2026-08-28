@@ -53,7 +53,7 @@ function processor(capability: EngineCapability, firstTickMs = 1_000) {
         store,
         capabilities: [capability],
         configSource,
-        externals: stubbedExternals(),
+        externals: () => stubbedExternals(),
         repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
         worker: "test-worker",
         clock: () => new Date(BASE.getTime() + firstTickMs + 1000 * tick++),
@@ -89,6 +89,28 @@ describe("a crash releases the claim", () => {
                 configRevision: "rev-test-1",
             }),
         ]);
+    });
+
+    it("hands the externals factory the delivery's parsed payload", async () => {
+        // The live path derives its cause fingerprint from this argument;
+        // a processor that stopped passing it would break exclusion quietly.
+        const seen: unknown[] = [];
+        const observing = new Processor({
+            store,
+            capabilities: [toEngine(intake)],
+            configSource,
+            externals: (delivery) => {
+                seen.push(delivery.payload);
+                return stubbedExternals();
+            },
+            repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            worker: "test-worker",
+            clock: () => new Date(BASE.getTime() + 1000),
+        });
+
+        expect(await observing.processOnce()).toBe(true);
+        expect(seen).toHaveLength(1);
+        expect(seen[0]).toMatchObject({ action: expect.any(String) });
     });
 
     it("an empty queue reports itself instead of pretending to work", async () => {

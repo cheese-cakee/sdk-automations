@@ -11,8 +11,9 @@
  * calls what main calls. Rewiring the composition would not have failed it.
  *
  * v8 attributes nothing across a spawn, so src/main.ts is excluded from
- * coverage in vitest.config.ts. The exclusion records where the coverage
- * went, not that the file is untested.
+ * coverage in vitest.config.ts. The Stryker harness below forwards the
+ * active mutant into the child and folds its coverage back into the parent,
+ * so the process boundary does not make main.ts a mutation blind spot.
  *
  * Every child is killed twice over: a hard timer inside `withShell`, and
  * the wrapper's own `finally`. A boot that never reaches `listen` has to
@@ -23,6 +24,7 @@
 
 import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -68,6 +70,9 @@ const SHELL_VARIABLES = [
     "REPO_OWNER",
     "REPO_NAME",
     "CONFIG_FILE",
+    "APP_ID",
+    "PRIVATE_KEY_PATH",
+    "INSTALLATION_ID",
     "STORE_PATH",
     "PORT",
     "HOST",
@@ -151,10 +156,8 @@ const flush = () => {
     );
 };
 process.on("exit", flush);
-process.on("SIGTERM", () => {
-    flush();
-    process.exit(0);
-});
+process.stdin.on("end", () => process.exit(0));
+process.stdin.resume();
 `;
 
 /** Where one child leaves its coverage, and the hook that puts it there. */
@@ -214,6 +217,7 @@ function absorbCoverage(drop: CoverageDrop): void {
 async function withShell<T>(
     overrides: Readonly<Record<string, string>>,
     body: (shell: Shell) => Promise<T>,
+    preload?: string,
 ): Promise<T> {
     const environment = { ...process.env };
     for (const key of SHELL_VARIABLES) delete environment[key];
@@ -224,6 +228,7 @@ async function withShell<T>(
             "--import",
             "tsx",
             ...(drop === undefined ? [] : ["--import", pathToFileURL(drop.hook).href]),
+            ...(preload === undefined ? [] : ["--import", pathToFileURL(preload).href]),
             "src/main.ts",
         ],
         {
@@ -283,7 +288,11 @@ async function withShell<T>(
         });
     } finally {
         clearTimeout(hardKill);
-        if (!done) child.kill("SIGTERM");
+        if (!done) {
+            // Windows kills do not run exit hooks. EOF lets coverage flush first.
+            if (drop !== undefined) child.stdin.end();
+            else child.kill("SIGTERM");
+        }
         const lastResort = setTimeout(() => child.kill("SIGKILL"), 2_000);
         lastResort.unref();
         await exit;
@@ -390,16 +399,43 @@ function codes(record: StoredRecord): string[] {
 
 /** A temporary directory holding the dry-run config and the store. */
 async function withPaths<T>(
-    body: (paths: { configFile: string; storeFile: string }) => Promise<T>,
+    body: (paths: { configFile: string; storeFile: string; privateKeyFile: string }) => Promise<T>,
 ): Promise<T> {
     const dir = mkdtempSync(join(tmpdir(), "shell-main-"));
     const configFile = join(dir, "automations.yml");
+    const privateKeyFile = join(dir, "app-private-key.pem");
     writeFileSync(configFile, CONFIG);
     try {
-        return await body({ configFile, storeFile: join(dir, "shell.sqlite") });
+        return await body({ configFile, privateKeyFile, storeFile: join(dir, "shell.sqlite") });
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
+}
+
+/** A child-only fetch double: it proves live composition without network access. */
+function writeFetchPreload(path: string, logPath: string, mintStatus = 201): void {
+    writeFileSync(
+        path,
+        `import { appendFileSync } from "node:fs";
+globalThis.fetch = async (input, init = {}) => {
+    const headers = Object.fromEntries(new Headers(init.headers).entries());
+    appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({
+        url: String(input),
+        method: init.method ?? "GET",
+        authorization: headers.authorization ?? null,
+    }) + "\\n");
+    if (String(input).includes("/access_tokens")) {
+        if (${String(mintStatus)} !== 201) return new Response("{}", { status: ${String(mintStatus)} });
+        return new Response(JSON.stringify({
+            token: "shell-test-installation-token",
+            expires_at: "2099-01-01T00:00:00Z",
+            permissions: { issues: "write" },
+        }), { status: 201 });
+    }
+    return new Response("[]", { status: 200 });
+};
+`,
+    );
 }
 
 describe("the sandbox entry point, as a process", () => {
@@ -417,6 +453,150 @@ describe("the sandbox entry point, as a process", () => {
                 expect(shell.stdout()).toBe("");
                 expect(await shell.exit).toBe(1);
                 expect(shell.stderr().trim()).toBe(MISSING_VARIABLES);
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    it.each([
+        { title: "APP_ID only", credentials: { APP_ID: "1" } },
+        { title: "PRIVATE_KEY_PATH only", credentials: { PRIVATE_KEY_PATH: "missing.pem" } },
+        { title: "INSTALLATION_ID only", credentials: { INSTALLATION_ID: "1" } },
+        {
+            title: "APP_ID and PRIVATE_KEY_PATH",
+            credentials: { APP_ID: "1", PRIVATE_KEY_PATH: "missing.pem" },
+        },
+        { title: "APP_ID and INSTALLATION_ID", credentials: { APP_ID: "1", INSTALLATION_ID: "1" } },
+        {
+            title: "PRIVATE_KEY_PATH and INSTALLATION_ID",
+            credentials: { PRIVATE_KEY_PATH: "missing.pem", INSTALLATION_ID: "1" },
+        },
+    ])(
+        "fails closed when $title are present",
+        async ({ credentials }) => {
+            await withShell(
+                {
+                    ...bootEnvironment(),
+                    ...credentials,
+                },
+                async (shell) => {
+                    await until(
+                        () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                        "the partial credential set to be refused",
+                    );
+                    expect(shell.stdout()).toBe("");
+                    expect(await shell.exit).toBe(1);
+                    expect(shell.stderr().trim()).toBe(
+                        "APP_ID, PRIVATE_KEY_PATH and INSTALLATION_ID must be provided together to use live GitHub access.",
+                    );
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    it(
+        "fails closed when PRIVATE_KEY_PATH names no readable file",
+        async () => {
+            await withPaths(async ({ privateKeyFile }) => {
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        APP_ID: "123",
+                        PRIVATE_KEY_PATH: privateKeyFile,
+                        INSTALLATION_ID: "789",
+                    },
+                    async (shell) => {
+                        await until(
+                            () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                            "the missing private key to be refused",
+                        );
+                        expect(shell.stdout()).toBe("");
+                        expect(await shell.exit).toBe(1);
+                        expect(shell.stderr().trim()).toBe(
+                            `PRIVATE_KEY_PATH could not be read: ${privateKeyFile}`,
+                        );
+                    },
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    it.each([
+        { title: "composes live externals", mintStatus: 201, completes: true },
+        { title: "does not fall back to stubs when mint fails", mintStatus: 401, completes: false },
+    ])(
+        "$title",
+        async ({ mintStatus, completes }) => {
+            await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
+                const { privateKey } = generateKeyPairSync("rsa", {
+                    modulusLength: 2048,
+                    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+                    publicKeyEncoding: { type: "spki", format: "pem" },
+                });
+                writeFileSync(privateKeyFile, privateKey);
+                const fetchLog = `${privateKeyFile}.fetch.log`;
+                const preload = `${privateKeyFile}.fetch.mjs`;
+                writeFetchPreload(preload, fetchLog, mintStatus);
+                const port = await freePort();
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        APP_ID: "123",
+                        PRIVATE_KEY_PATH: privateKeyFile,
+                        INSTALLATION_ID: "789",
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                    },
+                    async (shell) => {
+                        await listeningLine(shell);
+                        expect(await post(port, GUID, FIXTURE)).toBe(202);
+                        if (completes) {
+                            await persisted(storeFile, GUID);
+                            const requests = readFileSync(fetchLog, "utf8")
+                                .trim()
+                                .split("\n")
+                                .map(
+                                    (line) =>
+                                        JSON.parse(line) as {
+                                            url: string;
+                                            method: string;
+                                            authorization: string | null;
+                                        },
+                                );
+                            const mint = requests.find((request) =>
+                                request.url.endsWith("/app/installations/789/access_tokens"),
+                            );
+                            const timeline = requests.find(
+                                (request) =>
+                                    request.method === "GET" && request.url.includes("/timeline"),
+                            );
+                            expect(mint).toMatchObject({ method: "POST" });
+                            expect(mint?.authorization).toMatch(/^Bearer [^.]+\.[^.]+\.[^.]+$/);
+                            expect(timeline).toMatchObject({
+                                method: "GET",
+                                authorization: "Bearer shell-test-installation-token",
+                            });
+                        } else {
+                            await until(
+                                () =>
+                                    shell.stderr().includes("live externals unavailable")
+                                        ? true
+                                        : undefined,
+                                "the live mint failure to release the delivery",
+                            );
+                            const store = new Store(storeFile);
+                            try {
+                                expect(store.deliveryReports()).toEqual([]);
+                            } finally {
+                                store.close();
+                            }
+                        }
+                    },
+                    preload,
+                );
             });
         },
         TEST_TIMEOUT_MS,

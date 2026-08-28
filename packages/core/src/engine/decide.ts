@@ -27,7 +27,12 @@ import { EngineHandle, type EngineCapability, type ResolverSource } from "./invo
 import { normalizeDelivery } from "./events.js";
 import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
 import type { ObservationProjection } from "../workflow/index.js";
-import { deriveWorld, evaluateWrite, type WriteRequest } from "../safety/index.js";
+import {
+    deriveWorld,
+    evaluateWrite,
+    type HumanChangeOrdering,
+    type WriteRequest,
+} from "../safety/index.js";
 import {
     explanationFinding,
     finding,
@@ -46,8 +51,15 @@ export type EngineObservation = ObservationCatalogue[keyof ObservationCatalogue]
 export interface DecideExternals {
     readonly killSwitchActive: boolean;
     readonly installationGrants: readonly PermissionGrant[];
-    /** Ordering evidence per item; `"unknown"` is a safe conflict (manual-edits.md §2). */
-    readonly latestHumanChangeAt: (item: ItemRef) => Date | null | "unknown";
+    /**
+     * Ordering evidence per item; `"unknown"` is a safe conflict
+     * (manual-edits.md §2). The engine awaits either shape, so a synchronous
+     * stub and a timeline-reading live implementation satisfy the same seam —
+     * a lookup that returns a promise is still a lookup, not I/O in core.
+     */
+    readonly latestHumanChangeAt: (
+        item: ItemRef,
+    ) => HumanChangeOrdering | Promise<HumanChangeOrdering>;
     /** Resolver answers, when the shell has them. Absent means unavailable. */
     readonly resolve?: ResolverSource;
 }
@@ -102,15 +114,17 @@ const projectionOf = (observation: EngineObservation): EngineProjection =>
 
 /**
  * One intent through every gate — screen, derived world, verdict —
- * returning its findings and, if it may act, the intent itself.
+ * returning its findings and, if it may act, the intent itself. Async for
+ * exactly one fact: the ordering evidence, awaited after the screen so a
+ * screened-out intent costs no lookup.
  */
-function gateIntent(
+async function gateIntent(
     intent: AnyIntent,
     declaration: TypedDeclaration,
     projection: EngineProjection,
     config: RepositoryConfig,
     externals: DecideExternals,
-): { readonly findings: readonly Finding[]; readonly approved: AnyIntent | null } {
+): Promise<{ readonly findings: readonly Finding[]; readonly approved: AnyIntent | null }> {
     const subject = {
         kind: "item",
         capability: declaration.name,
@@ -136,7 +150,7 @@ function gateIntent(
     const context = {
         killSwitchActive: externals.killSwitchActive,
         installationGrants: externals.installationGrants,
-        latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
+        latestHumanChangeAt: await externals.latestHumanChangeAt(intent.item),
         world: deriveWorld(projection, intent.expected),
     };
     const verdict = evaluateWrite(request, config, context);
@@ -242,7 +256,7 @@ export async function decide(
             }
 
             for (const intent of intents) {
-                const gated = gateIntent(intent, declaration, projection, config, externals);
+                const gated = await gateIntent(intent, declaration, projection, config, externals);
                 findings.push(...gated.findings);
                 if (gated.approved !== null) approved.push(gated.approved);
             }
