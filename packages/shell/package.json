@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-shell",
     "version": "0.0.0",
     "private": true,
-    "description": "The transport shell: webhook in \u2192 verify \u2192 durably accept \u2192 202 \u2192 mode check \u2192 persisted outcome. Owns ordering, decides nothing \u2014 see README.md and D93.",
+    "description": "The transport shell: webhook in → verify → durably accept → 202 → mode check → persisted outcome. Owns ordering, decides nothing — see README.md and D93.",
     "type": "module",
     "exports": {
         ".": {
@@ -28,10 +28,10 @@
     "devDependencies": {
         "@hiero-hackers/automation-testkit": "workspace:*",
         "@stryker-mutator/core": "^10.0.0",
-        "@stryker-mutator/vitest-runner": "^9.6.1",
+        "@stryker-mutator/vitest-runner": "^10.0.0",
         "@types/node": "^24.0.0",
         "tsx": "^4.23.12",
         "typescript": "^5.6.0",
-        "vitest": "^4.0.0"
+        "vitest": "^4.1.11"
     }
 }

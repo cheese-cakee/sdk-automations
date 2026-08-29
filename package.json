@@ -15,10 +15,10 @@
         "format:check": "prettier --check \"packages/**/*.ts\""
     },
     "devDependencies": {
-        "@vitest/coverage-v8": "^4.1.10",
-        "eslint": "^9.39.5",
+        "@vitest/coverage-v8": "^4.1.11",
+        "eslint": "^10.9.0",
         "prettier": "^3.9.6",
-        "typescript-eslint": "^8.67.0"
+        "typescript-eslint": "^8.68.0"
     },
     "pnpm": {
         "overrides": {

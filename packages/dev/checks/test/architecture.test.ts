@@ -385,7 +385,9 @@ const cruiseRoots = workspacePackages()
 const FIXTURES = "test/fixtures/architecture";
 
 describe("source imports follow the layer policy, checked by dependency-cruiser", () => {
-    it("accepts the real tree", async () => {
+    // Cruising every workspace root outlasts the 5s default while the other
+    // packages' suites run in parallel under `pnpm -r test`.
+    it("accepts the real tree", { timeout: 30_000 }, async () => {
         expect(cruiseRoots.length).toBeGreaterThan(5);
         expect(await cruiseViolations(cruiseRoots, repoRoot)).toEqual([]);
     });
