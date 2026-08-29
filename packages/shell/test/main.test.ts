@@ -48,6 +48,8 @@ const REPO = "automation-sandbox";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
 const UNREADABLE_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6a";
 const FIXTURE = capture("issues.opened.json").bytes();
+const PULL_REQUEST_FIXTURE = capture("pull_request.opened.json").bytes();
+const PULL_REQUEST_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6b";
 
 const MISSING_VARIABLES =
     "WEBHOOK_SECRET, REPO_OWNER and REPO_NAME are required (the sandbox App's secret and the repository this endpoint serves).";
@@ -62,6 +64,13 @@ capabilities:
 mappings:
   labels:
     awaitingTriage: "status: triage"
+`;
+
+const PULL_REQUEST_CONFIG = `schemaVersion: 1
+mode: dry-run
+capabilities:
+  prQuality:
+    enabled: true
 `;
 
 /** Everything main.ts reads, cleared from the inherited environment. */
@@ -337,13 +346,14 @@ async function post(
     port: number,
     deliveryId: string,
     body: Uint8Array<ArrayBuffer>,
+    event = "issues",
 ): Promise<number> {
     const response = await fetch(`http://${LOOPBACK}:${String(port)}/`, {
         method: "POST",
         headers: {
             [SIGNATURE_HEADER]: signBody(SECRET, body),
             "x-github-delivery": deliveryId,
-            "x-github-event": "issues",
+            "x-github-event": event,
         },
         body,
     });
@@ -413,11 +423,11 @@ async function withPaths<T>(
 }
 
 /** A child-only fetch double: it proves live composition without network access. */
-function writeFetchPreload(path: string, logPath: string, mintStatus = 201): void {
+function writeFetchPreload(path: string, logPath: string, mintStatus = 201, config = CONFIG): void {
     const configBody = JSON.stringify({
         type: "file",
         encoding: "base64",
-        content: Buffer.from(CONFIG).toString("base64"),
+        content: Buffer.from(config).toString("base64"),
         sha: "0123456789abcdef0123456789abcdef01234567",
     });
     writeFileSync(
@@ -429,17 +439,26 @@ globalThis.fetch = async (input, init = {}) => {
         url: String(input),
         method: init.method ?? "GET",
         authorization: headers.authorization ?? null,
+        body: init.body ?? null,
     }) + "\\n");
     if (String(input).includes("/access_tokens")) {
         if (${String(mintStatus)} !== 201) return new Response("{}", { status: ${String(mintStatus)} });
         return new Response(JSON.stringify({
             token: "shell-test-installation-token",
             expires_at: "2099-01-01T00:00:00Z",
-            permissions: { issues: "write" },
+            permissions: { issues: "write", pull_requests: "read" },
         }), { status: 201 });
     }
     if (String(input).includes("/contents/automations.yml")) {
         return new Response(${JSON.stringify(configBody)}, { status: 200 });
+    }
+    if (String(input).endsWith("/graphql")) {
+        return new Response(JSON.stringify({ data: { repository: {
+            nameWithOwner: ${JSON.stringify(`${OWNER}/${REPO}`)},
+            pullRequest: { number: 165, closingIssuesReferences: {
+                nodes: [], pageInfo: { hasNextPage: false, endCursor: null },
+            } },
+        } } }), { status: 200 });
     }
     return new Response("[]", { status: 200 });
 };
@@ -534,18 +553,26 @@ describe("the sandbox entry point, as a process", () => {
 
     it.each([
         {
-            title: "composes live config and externals",
+            title: "composes live config, externals and resolvers",
             mintStatus: 201,
             failureText: null,
+            config: PULL_REQUEST_CONFIG,
+            fixture: PULL_REQUEST_FIXTURE,
+            deliveryId: PULL_REQUEST_GUID,
+            event: "pull_request",
         },
         {
             title: "does not fall back to stubs when mint fails",
             mintStatus: 401,
             failureText: "configuration unavailable",
+            config: CONFIG,
+            fixture: FIXTURE,
+            deliveryId: GUID,
+            event: "issues",
         },
     ])(
         "$title",
-        async ({ mintStatus, failureText }) => {
+        async ({ mintStatus, failureText, config, fixture, deliveryId, event }) => {
             await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
                 writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
                 const { privateKey } = generateKeyPairSync("rsa", {
@@ -556,7 +583,7 @@ describe("the sandbox entry point, as a process", () => {
                 writeFileSync(privateKeyFile, privateKey);
                 const fetchLog = `${privateKeyFile}.fetch.log`;
                 const preload = `${privateKeyFile}.fetch.mjs`;
-                writeFetchPreload(preload, fetchLog, mintStatus);
+                writeFetchPreload(preload, fetchLog, mintStatus, config);
                 const port = await freePort();
                 await withShell(
                     {
@@ -574,9 +601,9 @@ describe("the sandbox entry point, as a process", () => {
                                 `(live config from ${OWNER}/${REPO}'s default branch: automations.yml); ` +
                                 `canonical reports stored in ${storeFile}`,
                         );
-                        expect(await post(port, GUID, FIXTURE)).toBe(202);
+                        expect(await post(port, deliveryId, fixture, event)).toBe(202);
                         if (failureText === null) {
-                            const decided = await persisted(storeFile, GUID);
+                            const decided = await persisted(storeFile, deliveryId);
                             expect(decided.report?.mode).toBe("dry-run");
                             const requests = readFileSync(fetchLog, "utf8")
                                 .trim()
@@ -599,6 +626,9 @@ describe("the sandbox entry point, as a process", () => {
                             const config = requests.find((request) =>
                                 request.url.includes("/contents/automations.yml"),
                             );
+                            const graphql = requests.find((request) =>
+                                request.url.endsWith("/graphql"),
+                            );
                             expect(mint).toMatchObject({ method: "POST" });
                             expect(mint?.authorization).toMatch(/^Bearer [^.]+\.[^.]+\.[^.]+$/);
                             expect(timeline).toMatchObject({
@@ -607,6 +637,10 @@ describe("the sandbox entry point, as a process", () => {
                             });
                             expect(config).toMatchObject({
                                 method: "GET",
+                                authorization: "Bearer shell-test-installation-token",
+                            });
+                            expect(graphql).toMatchObject({
+                                method: "POST",
                                 authorization: "Bearer shell-test-installation-token",
                             });
                             expect(new URL(config!.url).search).toBe("");

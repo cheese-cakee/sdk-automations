@@ -1,7 +1,7 @@
 # The read-only adapter
 
-> **Partly built — build guide and status.** Auth, the shared HTTP client, live config, grants, and
-> timeline evidence exist. Resolvers remain. Each part lands behind an existing seam; `main.ts`
+> **Partly built — build guide and status.** Auth, the shared HTTP client, live config, grants,
+> timeline evidence, and the two catalogued resolvers exist. Each part lands behind an existing seam; `main.ts`
 > only chooses between live and credential-free implementations.
 
 ```mermaid

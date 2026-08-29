@@ -64,9 +64,9 @@ listening. Without them the stubs run, which is CI's permanent path.
 | `fileConfigSource` (operator's local copy) | fetch `automations.yml` at the default branch | **filled** (#133) |
 | `installationGrants: ["issues:write"]` | the installation's live grant list, riding the mint response | **filled** (#134) |
 | `latestHumanChangeAt: () => null` | timeline evidence per item (D119) | **filled** (#134) |
-| no `resolve` | `linkedIssues` / `isAutomationActor` lookups | still a stub |
+| no `resolve` | `linkedIssues` / `isAutomationActor` lookups | **filled** (#136) |
 
-The stub's `() => null` and not `() => "unknown"` deliberately: `"unknown"` is a safe conflict and
+The ordering stub's `() => null` and not `() => "unknown"` deliberately: `"unknown"` is a safe conflict and
 would refuse every write, burying dry-run's real findings under a uniform refusal. On the
 credential-free path, dry-run reports **overstate** what would apply.
 

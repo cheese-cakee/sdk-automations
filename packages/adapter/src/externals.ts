@@ -10,8 +10,10 @@ import type {
     ItemRef,
     PermissionGrant,
     RepositoryRef,
+    ResolverSource,
 } from "@hiero-hackers/automation-core";
 import { lastPageFromLink, repoPath, type GitHubHttpClient, type GitHubOutcome } from "./http.js";
+import { createResolverSource } from "./resolvers.js";
 import type { TokenSource } from "./token.js";
 import { field, jsonArrayOf } from "./untrusted.js";
 
@@ -234,6 +236,7 @@ export function orderingEvidenceSource(
 export interface LiveExternalFacts {
     readonly installationGrants: readonly PermissionGrant[];
     readonly latestHumanChangeAt: (item: ItemRef) => Promise<HumanChangeOrdering>;
+    readonly resolve: ResolverSource;
 }
 
 /** One delivery's live facts, or the classified reason there are none. */
@@ -269,6 +272,10 @@ export async function liveExternalsForDelivery(
                 repository,
                 // Stryker disable next-line ConditionalExpression: spreading { cause: undefined } is runtime-identical; the guard serves exactOptionalPropertyTypes.
                 ...(cause === undefined ? {} : { cause }),
+            }),
+            resolve: createResolverSource({
+                http,
+                repository,
             }),
         },
     };

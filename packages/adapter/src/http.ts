@@ -10,7 +10,11 @@
  * contract, the local judgements, the representation cache, the client.
  */
 
-import { classifyFailure, type FailureClass } from "@hiero-hackers/automation-core";
+import {
+    classifyFailure,
+    type FailureClass,
+    type PermissionGrant,
+} from "@hiero-hackers/automation-core";
 import {
     isPastExpiry,
     isWellFormedTokenOutcome,
@@ -26,6 +30,9 @@ export const GITHUB_API_VERSION = "2026-03-10";
 
 /** Installation credentials never leave GitHub's public API origin. */
 export const GITHUB_API_ORIGIN = "https://api.github.com";
+
+/** The only POST target: GitHub's read-only GraphQL query endpoint. */
+export const GITHUB_GRAPHQL_URL = `${GITHUB_API_ORIGIN}/graphql`;
 
 /** A request gets this long per attempt unless the composition root chooses less. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -46,15 +53,26 @@ const DEFAULT_ACCEPT = "application/vnd.github+json";
 
 /** Attempts per request: the first, then at most one retry on a fresh token. */
 const REQUEST_ATTEMPTS = 2;
+const LINKED_ISSUES_GRANTS: readonly PermissionGrant[] = ["issues:read", "pull_requests:read"];
 
 // ─── The contract ────────────────────────────────────────────────────
 
 /** The operation-specific part of a GitHub request. */
-export interface GitHubRequest {
+interface GitHubGetRequest {
     readonly url: string;
     readonly method: "GET";
     readonly headers?: Readonly<Record<string, string>>;
 }
+
+interface GitHubGraphqlRequest {
+    readonly url: string;
+    readonly method: "POST";
+    readonly body: string;
+    readonly headers?: Readonly<Record<string, string>>;
+}
+
+/** REST reads, or a GraphQL query at the one admitted POST endpoint. */
+export type GitHubRequest = GitHubGetRequest | GitHubGraphqlRequest;
 
 /** A usable response, whether GitHub sent the body or the cache held it. */
 export interface GitHubSuccess {
@@ -76,7 +94,12 @@ export interface GitHubFailure {
 
 /** Why the adapter refused or could not construct a request locally. */
 export type NotSentReason =
-    "disallowedMethod" | "disallowedOrigin" | "malformedUrl" | "invalidHeaders" | "brokenSeam";
+    | "disallowedMethod"
+    | "disallowedOrigin"
+    | "malformedUrl"
+    | "invalidHeaders"
+    | "invalidBody"
+    | "brokenSeam";
 
 /**
  * The injected seam a `brokenSeam` refusal names as the one that failed.
@@ -209,6 +232,11 @@ function isRetriable(failure: GitHubHttpFailureClass): boolean {
     return failure.kind === "tokenExpired" || failure.kind === "transient";
 }
 
+function hasReadGrant(token: InstallationToken, required: PermissionGrant): boolean {
+    const write = `${required.slice(0, -4)}write`;
+    return token.grants.some((grant) => grant === required || grant === write);
+}
+
 /** Ready-to-send headers and the variant they select, or the refusal. */
 type PreparedHeaders =
     | { readonly ok: true; readonly headers: Headers; readonly variant: string }
@@ -232,6 +260,10 @@ function prepareHeaders(request: GitHubRequest, token: InstallationToken): Prepa
     headers.delete("if-none-match");
     headers.delete("user-agent");
     headers.delete("x-github-api-version");
+    if (request.method === "POST") {
+        headers.delete("content-length");
+        headers.set("content-type", "application/json");
+    }
     const variant = JSON.stringify(headersToRecord(headers));
     try {
         headers.set("authorization", `Bearer ${token.value}`);
@@ -322,7 +354,7 @@ export function createGitHubHttpClient({
         if (!prepared.ok) return prepared.refusal;
         const { headers, variant } = prepared;
 
-        const cached = cache.lookup(request.url, variant);
+        const cached = request.method === "GET" ? cache.lookup(request.url, variant) : undefined;
         if (cached !== undefined) headers.set("if-none-match", cached.etag);
 
         // Capture the local age at send time. A later clock read could turn a
@@ -341,13 +373,14 @@ export function createGitHubHttpClient({
             return brokenSeamFailure("timeoutSignal");
         }
         const init: RequestInit = {
-            method: "GET",
+            method: request.method,
             headers,
             // Following is deliberately not delegated to fetch: hidden 3xx
             // calls would evade origin validation, rate tracking, failure
             // classification, and the two-attempt bound.
             redirect: "manual",
             signal,
+            ...(request.method === "POST" ? { body: request.body } : {}),
         };
 
         let response: Response;
@@ -396,7 +429,7 @@ export function createGitHubHttpClient({
         if (response.ok) {
             // Only a 200 speaks about the representation; a 202 or 204 must
             // not evict a validator that is still good.
-            if (response.status === 200) {
+            if (response.status === 200 && request.method === "GET") {
                 const etag = response.headers.get("etag");
                 if (etag !== null && body.length <= DEFAULT_ETAG_CACHE_ENTRY_BYTES) {
                     cache.store(request.url, {
@@ -435,9 +468,29 @@ export function createGitHubHttpClient({
 
     return {
         async request(request): Promise<GitHubOutcome> {
-            if (request.method !== "GET") return notSentFailure("disallowedMethod");
+            if (request.method !== "GET" && request.method !== "POST") {
+                return notSentFailure("disallowedMethod");
+            }
             const parsed = githubApiUrl(request.url);
             if (!parsed.ok) return notSentFailure(parsed.refused);
+            if (request.method === "POST") {
+                if (parsed.url !== GITHUB_GRAPHQL_URL) {
+                    return notSentFailure("disallowedMethod");
+                }
+                if (typeof request.body !== "string") return notSentFailure("invalidBody");
+                try {
+                    const body = JSON.parse(request.body) as Record<string, unknown>;
+                    if (
+                        body.operationName !== "LinkedIssues" ||
+                        typeof body.query !== "string" ||
+                        !/^\s*query\s+LinkedIssues(?:\s|\()/.test(body.query)
+                    ) {
+                        return notSentFailure("invalidBody");
+                    }
+                } catch {
+                    return notSentFailure("invalidBody");
+                }
+            }
             const safeRequest = { ...request, url: parsed.url };
             for (let attempt = 1; ; attempt += 1) {
                 let tokenOutcome: TokenOutcome;
@@ -451,6 +504,20 @@ export function createGitHubHttpClient({
                     return brokenSeamFailure("tokenSource");
                 }
                 if (!tokenOutcome.ok) return tokenOutcome;
+                if (request.method === "POST") {
+                    const missing = LINKED_ISSUES_GRANTS.filter(
+                        (grant) => !hasReadGrant(tokenOutcome.token, grant),
+                    );
+                    if (missing.length > 0) {
+                        return {
+                            ok: false,
+                            failure: {
+                                kind: "permissionMissing",
+                                acceptedPermissions: missing.join(", "),
+                            },
+                        };
+                    }
+                }
 
                 let outcome: GitHubOutcome;
                 try {

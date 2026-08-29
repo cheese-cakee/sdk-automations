@@ -13,6 +13,7 @@
 export { signAppAssertion, type AppCredentials } from "./jwt.js";
 export { githubMintInstallationToken, type GitHubMintOptions } from "./mint.js";
 export { githubConfigSource, type GitHubConfigSourceOptions } from "./config.js";
+export { createResolverSource, type ResolverSourceOptions } from "./resolvers.js";
 export {
     causeFingerprintOf,
     installationGrants,

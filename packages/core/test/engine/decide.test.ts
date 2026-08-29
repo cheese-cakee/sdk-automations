@@ -289,12 +289,12 @@ describe("the gates, each visible in the report", () => {
                 return [];
             },
         };
-        const decision = await decide(
-            delivery("issues.opened.json"),
-            configIn("active"),
-            [nosy],
-            externals,
-        );
+        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [nosy], {
+            ...externals,
+            resolve: async () => {
+                throw new Error("an undeclared resolver must not reach its source");
+            },
+        });
         expect(decision.report.findings).toEqual([
             {
                 severity: "problem",
