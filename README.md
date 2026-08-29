@@ -41,8 +41,8 @@
 </table>
 
 <p align="center">
-  <strong>Early development · non-writing modes only</strong><br>
-  <sub>The App is not installable yet. Active GitHub writes remain disabled until one real effect has durable recovery.</sub>
+  <strong>Read-only foundation · live GitHub evidence · no repository writes</strong><br>
+  <sub>The sandbox App reads default-branch configuration, installation permissions, and issue and pull-request timelines. It is not a hosted service yet.</sub>
 </p>
 
 ---
@@ -57,21 +57,87 @@ SDK Automations is building one small, hosted GitHub App that lets each reposito
 automation in a reviewed YAML file. The goal is not a generic workflow platform. It is one clear,
 auditable path that maintainers can understand end to end.
 
+## How it works
+
+The intended product flow keeps repository policy, decision-making, GitHub access, and recovery
+separate:
+
+```mermaid
+flowchart TB
+    REPO["Your GitHub repository<br/>activity · configuration · current state"]
+
+    subgraph APP["SDK Automations · installed GitHub App"]
+        SHELL["shell<br/>verify and coordinate"]
+        ADAPTER["adapter<br/>GitHub reads and writes"]
+        STORE[("store<br/>work · audit · recovery")]
+        CORE["core<br/>capabilities propose outcomes"]
+        SAFETY{"core safety gates"}
+        EFFECT["effect path<br/>journal · recheck · apply · reconcile"]
+        OUTCOME["explainable outcome"]
+
+        SHELL -->|"persist before processing"| STORE
+        STORE -->|"claim or recover work"| SHELL
+
+        ADAPTER -->|"config and live evidence"| SHELL
+        SHELL -->|"trusted event and facts"| CORE
+        CORE -->|"intents, not API calls"| SAFETY
+
+        SAFETY -->|"record-only or refuse"| OUTCOME
+        SAFETY -->|"approved effect"| EFFECT
+
+        EFFECT <-->|"journal and recover"| STORE
+        EFFECT <-->|"perform and verify"| ADAPTER
+        EFFECT -->|"observed result"| OUTCOME
+        OUTCOME -->|"record"| STORE
+    end
+
+    REPO -->|"signed webhook"| SHELL
+    REPO -->|"automations.yml + current state"| ADAPTER
+    ADAPTER -->|"apply approved change"| REPO
+
+    classDef repo fill:#DCEEFF,stroke:#2878B8,color:#142B3D,stroke-width:2px
+    classDef shell fill:#E7F0FF,stroke:#3367B1,color:#172B4D,stroke-width:2px
+    classDef adapter fill:#DFF5EC,stroke:#278567,color:#173B32,stroke-width:2px
+    classDef core fill:#EEE7FF,stroke:#7353BA,color:#2D2050,stroke-width:2px
+    classDef safety fill:#FFF1CC,stroke:#C48A00,color:#443100,stroke-width:2px
+    classDef store fill:#FFE5E0,stroke:#B85C4A,color:#4A211B,stroke-width:2px
+    classDef effect fill:#FFE7C2,stroke:#C56A00,color:#462500,stroke-width:2px
+    classDef outcome fill:#E3F5E6,stroke:#39834B,color:#173D21,stroke-width:2px
+
+    class REPO repo
+    class SHELL shell
+    class ADAPTER adapter
+    class STORE store
+    class CORE core
+    class SAFETY safety
+    class EFFECT effect
+    class OUTCOME outcome
+```
+
+The repository owns the policy. The App verifies and stores each event before capabilities evaluate
+it, checks every proposed outcome against current GitHub evidence and platform safety rules, and
+records what happened. Approved writes use a durable effect path that verifies the result and
+reconciles uncertainty instead of retrying blindly.
+
 ## The supported path today
 
 ```text
-GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →  complete
-                       exact bytes       pure logic      SQLite transaction
+signed webhook  →  verify  →  persist  →  read policy and evidence  →  decide  →  store report
 ```
 
-The runnable application verifies and stores webhook deliveries, evaluates `disabled`, `observe`, or
-`dry-run` configuration, and persists a canonical report. App credentials select the repository's
-default-branch file; credential-free development and CI use an operator-maintained local copy.
-Unsupported active configuration is rejected before a decision can claim that GitHub was changed.
+The runnable sandbox now authenticates as a GitHub App. With credentials, it reads `automations.yml`
+from the repository's default branch, obtains the installation's real permission grants, and uses
+issue and pull-request timelines to determine whether a newer human change should block a proposed
+outcome. It durably accepts each webhook delivery and commits its canonical report and completion
+together in SQLite.
+
+Linked-issue and automation-actor resolvers are not connected yet. Credential-free development and
+CI deliberately use local configuration and stubbed external facts. The shell supports `disabled`,
+`observe`, and `dry-run`; it rejects `active`, and no running code changes a repository.
 
 > [!NOTE]
-> This boundary is intentional. The first active capability will return only with a real GitHub
-> adapter, explicit permissions, durable restart behavior, and honest handling of uncertain writes.
+> This boundary is intentional. Active mode will be enabled only with a narrow GitHub write
+> operation, explicit permissions, durable restart behavior, and honest handling of uncertain writes.
 
 ## See the configuration
 
@@ -90,7 +156,8 @@ mappings:
 
 The [quickstart](docs/quickstart.md) explains the shape of the configuration, and every file in
 [`docs/examples/`](docs/examples/README.md) is parsed by the test suite. These documents describe the
-current contract; they are not hosted-service installation instructions yet.
+current contract; they are not hosted-service installation instructions yet. The capability names
+used today are disposable boundary probes, not promised product scope.
 
 ## Run the workspace
 
