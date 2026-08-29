@@ -41,8 +41,8 @@
 </table>
 
 <p align="center">
-  <strong>Early development · non-writing modes only</strong><br>
-  <sub>The App is not installable yet. Active GitHub writes remain disabled until one real effect has durable recovery.</sub>
+  <strong>Read-only foundation · live GitHub evidence · no repository writes</strong><br>
+  <sub>The sandbox App reads default-branch configuration, installation permissions, and issue and pull-request timelines. It is not a hosted service yet.</sub>
 </p>
 
 ---
@@ -122,14 +122,18 @@ reconciles uncertainty instead of retrying blindly.
 ## The supported path today
 
 ```text
-GitHub webhook  →  verify  →  persist  →  decide  →  persist report  →  complete
-                       exact bytes       pure logic      SQLite transaction
+signed webhook  →  verify  →  persist  →  read policy and evidence  →  decide  →  store report
 ```
 
-The runnable application verifies and stores webhook deliveries, evaluates `disabled`, `observe`, or
-`dry-run` configuration, and persists a canonical report. App credentials select the repository's
-default-branch file; credential-free development and CI use an operator-maintained local copy.
-Unsupported active configuration is rejected before a decision can claim that GitHub was changed.
+The runnable sandbox now authenticates as a GitHub App. With credentials, it reads `automations.yml`
+from the repository's default branch, obtains the installation's real permission grants, and uses
+issue and pull-request timelines to determine whether a newer human change should block a proposed
+outcome. It durably accepts each webhook delivery and commits its canonical report and completion
+together in SQLite.
+
+Linked-issue and automation-actor resolvers are not connected yet. Credential-free development and
+CI deliberately use local configuration and stubbed external facts. The shell supports `disabled`,
+`observe`, and `dry-run`; it rejects `active`, and no running code changes a repository.
 
 > [!NOTE]
 > This boundary is intentional. Active mode will be enabled only with a narrow GitHub write
@@ -152,7 +156,8 @@ mappings:
 
 The [quickstart](docs/quickstart.md) explains the shape of the configuration, and every file in
 [`docs/examples/`](docs/examples/README.md) is parsed by the test suite. These documents describe the
-current contract; they are not hosted-service installation instructions yet.
+current contract; they are not hosted-service installation instructions yet. The capability names
+used today are disposable boundary probes, not promised product scope.
 
 ## Run the workspace
 
