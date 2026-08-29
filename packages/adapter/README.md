@@ -18,10 +18,12 @@ flowchart LR
     TOK --> HTTP["http.ts\nETags, retry, classify,\norigin pin"]
     HTTP --> CFG["config.ts\nConfigSource"]
     HTTP --> EXT["externals.ts\nordering evidence"]
+    HTTP --> RES["resolvers.ts\nlinked issues, bot identity"]
     TOK -->|"grants ride\nthe mint response"| EXT
-    UNT["untrusted.ts\nfield / jsonRecordOf"] -.->|"every body parse"| MINT & CFG & EXT
+    UNT["untrusted.ts\nfield / jsonRecordOf"] -.->|"every body parse"| MINT & CFG & EXT & RES
     CFG --> SHELL["the shell's seams\n(composed in main.ts only)"]
     EXT --> SHELL
+    RES --> SHELL
 ```
 
 | File | The question it answers |
@@ -31,11 +33,12 @@ flowchart LR
 | `http.ts` | How does every operation make one bounded, classified GitHub call? |
 | `config.ts` | Which configuration is on the repository's default branch? |
 | `externals.ts` | Which of core's external facts does GitHub answer, live? |
+| `resolvers.ts` | How are the two catalogued resolver questions answered? |
 | `mint.ts` | How is a token minted when no token exists yet? |
 | `untrusted.ts` | How are GitHub's bytes read without trusting them? |
 
 Every outside dependency — fetch, the clock, the mint call — is injected, so no test reaches the
-network. The client exposes only the GET reads this stage has proved, pins credentials to GitHub's
+network. The client exposes only the REST and GraphQL reads this stage has proved, pins credentials to GitHub's
 HTTPS API origin, and refuses to follow redirects. Each file's header carries its own detail; read
 them in the table's order.
 
@@ -77,9 +80,7 @@ operator reports. **Owner:** unassigned, the same unfilled row as its sibling in
 
 ## Still to arrive
 
-The remaining operations — one per confirmed matrix row, each adding only its URL and its parse
-on top of `http.ts` — and the resolver seam still stubbed in the shell.
-`design/guides/adapter.md` holds the order and what each one is blocked on.
+The zero-stub live rehearsal remains. `design/guides/adapter.md` holds its proof obligations.
 
 ## What keeps it honest
 

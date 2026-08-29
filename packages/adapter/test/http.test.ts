@@ -16,6 +16,7 @@ import {
     DEFAULT_REQUEST_TIMEOUT_MS,
     GITHUB_API_ORIGIN,
     GITHUB_API_VERSION,
+    GITHUB_GRAPHQL_URL,
     type FetchLike,
     type GitHubRequest,
 } from "../src/http.js";
@@ -30,6 +31,15 @@ import {
     TEST_NOW as NOW,
     TEST_URL as URL,
 } from "./harness.js";
+
+const GRAPHQL_BODY = JSON.stringify({
+    operationName: "LinkedIssues",
+    query: 'query LinkedIssues { repository(owner: "o", name: "r") { id } }',
+});
+const GRAPHQL_TOKEN = {
+    ...token("graphql-token"),
+    grants: ["issues:read", "pull_requests:read"],
+} as const;
 
 describe("request shaping", () => {
     it("owns authentication, API version, defaults, and the timeout signal", async () => {
@@ -76,6 +86,100 @@ describe("request shaping", () => {
         expect((await client.request(request())).ok).toBe(true);
         expect(signals).toHaveLength(2);
         expect(signals[0]).not.toBe(signals[1]);
+    });
+
+    it("posts GraphQL through the shared call path without caching its body", async () => {
+        const { client, scripted } = harness(
+            [
+                success('{"data":{}}', { etag: '"graphql-result"' }),
+                success('{"data":{}}', { etag: '"graphql-result"' }),
+            ],
+            { outcomes: [{ ok: true, token: GRAPHQL_TOKEN }] },
+        );
+
+        for (let call = 0; call < 2; call += 1) {
+            expect(
+                await client.request({
+                    url: GITHUB_GRAPHQL_URL,
+                    method: "POST",
+                    body: GRAPHQL_BODY,
+                }),
+            ).toMatchObject({ ok: true, fromCache: false });
+        }
+
+        expect(scripted.calls).toHaveLength(2);
+        for (const call of scripted.calls) {
+            const headers = new Headers(call.init.headers);
+            expect(call.url).toBe(GITHUB_GRAPHQL_URL);
+            expect(call.init.method).toBe("POST");
+            expect(call.init.body).toBe(GRAPHQL_BODY);
+            expect(headers.get("content-type")).toBe("application/json");
+            expect(headers.get("if-none-match")).toBeNull();
+            expect(headers.get("authorization")).toBe("Bearer graphql-token");
+        }
+    });
+
+    it("retries a read-only GraphQL query with the same body", async () => {
+        const { client, scripted } = harness([new Error("socket closed"), success()], {
+            outcomes: [{ ok: true, token: GRAPHQL_TOKEN }],
+        });
+
+        expect(
+            await client.request({
+                url: GITHUB_GRAPHQL_URL,
+                method: "POST",
+                body: GRAPHQL_BODY,
+            }),
+        ).toMatchObject({ ok: true });
+        expect(scripted.calls.map((call) => call.init.body)).toEqual([GRAPHQL_BODY, GRAPHQL_BODY]);
+    });
+
+    it("checks refreshed-token grants before a GraphQL retry", async () => {
+        const reduced = { ...token("reduced-token"), grants: ["issues:read"] } as const;
+        const { client, scripted, tokens } = harness([new Error("socket closed"), success()], {
+            outcomes: [
+                { ok: true, token: GRAPHQL_TOKEN },
+                { ok: true, token: reduced },
+            ],
+        });
+
+        expect(
+            await client.request({
+                url: GITHUB_GRAPHQL_URL,
+                method: "POST",
+                body: GRAPHQL_BODY,
+            }),
+        ).toEqual({
+            ok: false,
+            failure: {
+                kind: "permissionMissing",
+                acceptedPermissions: "pull_requests:read",
+            },
+        });
+        expect(tokens.calls()).toBe(2);
+        expect(scripted.calls).toHaveLength(1);
+    });
+
+    it("checks GraphQL permissions before fetch", async () => {
+        const denied = { ...token("denied-token"), grants: [] } as const;
+        const { client, scripted } = harness([success()], {
+            outcomes: [{ ok: true, token: denied }],
+        });
+
+        expect(
+            await client.request({
+                url: GITHUB_GRAPHQL_URL,
+                method: "POST",
+                body: GRAPHQL_BODY,
+            }),
+        ).toEqual({
+            ok: false,
+            failure: {
+                kind: "permissionMissing",
+                acceptedPermissions: "issues:read, pull_requests:read",
+            },
+        });
+        expect(scripted.calls).toHaveLength(0);
     });
 
     it("turns an observed timeout abort into one bounded transport retry", async () => {
@@ -312,6 +416,39 @@ describe("request shaping", () => {
             ok: false,
             failure: { kind: "notSent", reason: "disallowedMethod" },
         });
+        expect(tokens.calls()).toBe(0);
+        expect(scripted.calls).toHaveLength(0);
+    });
+
+    it("rejects POST outside GraphQL, malformed bodies, and mutations", async () => {
+        const { client, scripted, tokens } = harness([success()]);
+        const restPost = { url: URL, method: "POST", body: "{}" } as GitHubRequest;
+        const invalidBodies: readonly unknown[] = [
+            null,
+            "{",
+            JSON.stringify({ query: "query LinkedIssues { viewer { login } }" }),
+            JSON.stringify({ operationName: "LinkedIssues", query: 42 }),
+            JSON.stringify({
+                operationName: "LinkedIssues",
+                query: "prefix query LinkedIssues { viewer { login } }",
+            }),
+            JSON.stringify({
+                operationName: "LinkedIssues",
+                query: "mutation LinkedIssues { deleteIssue(input: {}) { clientMutationId } }",
+            }),
+        ];
+
+        expect(await client.request(restPost)).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "disallowedMethod" },
+        });
+        for (const body of invalidBodies) {
+            const request = { url: GITHUB_GRAPHQL_URL, method: "POST", body } as GitHubRequest;
+            expect(await client.request(request)).toEqual({
+                ok: false,
+                failure: { kind: "notSent", reason: "invalidBody" },
+            });
+        }
         expect(tokens.calls()).toBe(0);
         expect(scripted.calls).toHaveLength(0);
     });

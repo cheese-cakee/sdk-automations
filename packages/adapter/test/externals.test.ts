@@ -457,6 +457,9 @@ describe("live externals for one delivery", () => {
         expect(outcome.ok).toBe(true);
         if (outcome.ok) {
             expect(outcome.facts.installationGrants).toEqual(["issues:write"]);
+            expect(
+                await outcome.facts.resolve("isAutomationActor", { login: "automation[bot]" }),
+            ).toEqual({ ok: true, value: true });
             // The only timeline entry is the causing event: excluded.
             expect(await outcome.facts.latestHumanChangeAt(ITEM)).toBeNull();
         }

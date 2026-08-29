@@ -1,8 +1,8 @@
 # Shared read-only resolvers
 
-> **Not built — build guide.** The resolvers that exist are listed in
-> [`../contracts/catalogue.md`](../contracts/catalogue.md); this document covers the rules they follow
-> and the candidates that are not in it. No resolver has an implementation — the adapter does not exist.
+> **Partly built — guide and status.** The two resolvers in
+> [`../contracts/catalogue.md`](../contracts/catalogue.md) are implemented by the adapter. This document
+> covers their rules and the candidates that remain outside the catalogue.
 
 ## 1. Resolver rules
 
@@ -19,6 +19,7 @@
 - A resolver answers a question more than one capability must ask the same way.
 - Read-only is what stops the answer differing by who asked.
 - Two are catalogued; every candidate in §2 needs a catalogue review first (D115).
+- `isAutomationActor` recognizes GitHub App logins by their case-insensitive `[bot]` suffix, without I/O.
 
 ## 2. Candidates the catalogue does not have
 
@@ -42,7 +43,9 @@
 - The audited automation answers the issue-to-pull-request question in more than one way.
 - Body text and GitHub closing references can disagree.
 - A selected capability uses one configured resolver and never a private parser.
-- Closing references are the default hypothesis: they match close-on-merge behavior.
+- `linkedIssues` uses same-repository closing references with manual links excluded (D123).
+- It reads 100 references per page, stops after 10 pages, and answers `unavailable` rather than
+  returning a partial list when GitHub still has another page.
 - Sandbox cases: several linked issues · several PRs for one issue · missing keywords.
 - Sandbox cases: reopened items · forks · inaccessible repositories.
 
