@@ -9,7 +9,7 @@ Three eras (D87, D88):
 
 1. **Feasibility (July 2026, closed — reopened once)** — protocols 6.1–6.7 below, run by the
    throwaway `harness/`. Frozen as methods; their conclusions are in the register. **6.8 reopens it**:
-   D115 found `readLinkedIssues` carrying no matrix row, and a measurement is the only thing that
+   D123 records the `readLinkedIssues` measurement that supplied its missing matrix row and
    closes that. An era closes when its gate closes, not when its questions run out.
 2. **Capture (first run complete; extend with new observation kinds)** — protocol 7.1: scrubbed webhook
    payloads for the `events.ts` normalizer.
@@ -95,12 +95,12 @@ pnpm --filter @hiero-hackers/automation-lab capture
 | [`protocols/6.5-recovery-storage.md`](protocols/6.5-recovery-storage.md) | 6.5 | D1, D13, D24, D27, Q15 |
 | [`protocols/6.6-forks.md`](protocols/6.6-forks.md) | 6.6 | permission matrix, Q11 |
 | [`protocols/6.7-read-after-write.md`](protocols/6.7-read-after-write.md) | 6.7 | D46, read-back freshness rule |
-| [`protocols/6.8-linked-issues.md`](protocols/6.8-linked-issues.md) | 6.8 | D115, Q16 — gates the `linkedIssues` resolver |
+| [`protocols/6.8-linked-issues.md`](protocols/6.8-linked-issues.md) | 6.8 | D123, Q16 — gates the `linkedIssues` resolver |
 
 Run order: 6.1 and 6.2 first (the substrate), then 6.3 (reuses the
 `core/` validator), 6.4, then 6.5 with the largest time budget — it
 produces a *decision*, not just measurements — then 6.6 and 6.7. Protocol 6.8 is the later reopening
-triggered by D115.
+recorded by D123.
 
 ## Exit-gate artifacts
 
