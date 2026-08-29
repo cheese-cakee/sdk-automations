@@ -87,12 +87,10 @@ flowchart TD
 | `githubConfigSource()` | `GET …/contents/{path}` | `ConfigSource` | confirmed |
 | `fetchInstallationGrants()` | token mint response | `installationGrants` | confirmed |
 | `readIssueTimeline(n)` | `GET …/issues/{n}/timeline` | `latestHumanChangeAt` | confirmed |
-| `readLinkedIssues(pr)` | GraphQL `closingIssuesReferences` | `resolve: linkedIssues` | semantics measured; App-auth shapes open |
+| `readLinkedIssues(pr)` | GraphQL `closingIssuesReferences` | `resolve: linkedIssues` | confirmed, same-repository only |
 
-- **The untested read gets a lab protocol before it gets trust.**
-- No matrix row, no citation — and a row without a citation is a guess.
-- Manual links, cross-repository references and quota cost go to `packages/dev/lab/protocols/`.
-- The answers become matrix rows in [`../findings/`](../findings/); only then does the resolver ship.
+- The linked-issue protocol now supplies the matrix evidence and safe first scope.
+- Manual links remain excluded; cross-repository support remains deferred.
 - **GitHub ids exceed 2^53**, so every id stays a string.
 - **404 means "not found *or* not installed"** — it maps to `notFoundOrNotInstalled`, never to a
   confident absence.
@@ -111,6 +109,10 @@ flowchart TD
 - Timeline answers memoize within a delivery, never across one (the 6.8 freshness rule).
 - That is the moment dry-run stops overstating. `killSwitchActive` stays operator environment.
 - **`linkedIssuesResolver`** — an empty answer and a failed answer are different values.
+- It checks live `issues: read` and `pull_requests: read` grants before querying. Missing Issues
+  permission otherwise looks like a successful empty answer.
+- It supports same-repository references only. A cross-repository target hidden by token or
+  installation scope also looks successfully empty, so that wider scope cannot fail honestly yet.
 - Wiring: with the three credential variables present, `main.ts` composes live implementations.
 - Without them it composes stubs. One conditional — the sandbox runs live, CI stays credential-free.
 
@@ -119,11 +121,11 @@ flowchart TD
 ```mermaid
 flowchart LR
     R["read(pr)<br/>processor asks"] --> Q["one GraphQL query<br/>closing references"]
-    Q -->|200| OK["present / absent<br/>a confident answer"]
-    Q -->|"everything else"| UNK["unknown + reason<br/>any failure at all"]
+    Q -->|"both grants, valid shape"| OK["present / absent<br/>a confident answer"]
+    Q -->|"missing grant or failure"| UNK["unknown + reason"]
 ```
 
-- Rate limit, 403, timeout, malformed response — all become `unknown` with a reason.
+- Missing grant, GraphQL error, rate limit, timeout, or malformed response becomes `unknown`.
 - The decision layer refuses to act on unknown, so a failed read can never fake a fact.
 
 ## How the work divides
@@ -149,7 +151,7 @@ Four properties make each piece mergeable alone — consequences of the seams, n
 
 - Credentials present composes live implementations; absent composes stubs.
 - CI never holds a credential, and the runnable sandbox keeps working.
-- `readLinkedIssues` semantics are measured ([`../findings/linked-issues.md`](../findings/linked-issues.md)): closing keywords only, a mention is not a link, and the answer may not be cached across a delivery. Cross-repository and App-auth failure shapes remain open (6.8 cases 3 and 7).
+- `readLinkedIssues` is measured under App auth ([`../findings/linked-issues.md`](../findings/linked-issues.md)): closing keywords only, same-repository scope, both grants required, and no memoization across a delivery.
 - Zero stubs is the done-when below, not a step toward it.
 
 ## Verification
