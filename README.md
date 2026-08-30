@@ -131,8 +131,8 @@ issue and pull-request timelines to determine whether a newer human change shoul
 outcome. It durably accepts each webhook delivery and commits its canonical report and completion
 together in SQLite.
 
-Linked-issue and automation-actor resolvers are not connected yet. Credential-free development and
-CI deliberately use local configuration and stubbed external facts. The shell supports `disabled`,
+The live path also supplies linked-issue and automation-actor resolvers. Credential-free development
+and CI deliberately use local configuration and stubbed external facts. The shell supports `disabled`,
 `observe`, and `dry-run`; it rejects `active`, and no running code changes a repository.
 
 > [!NOTE]

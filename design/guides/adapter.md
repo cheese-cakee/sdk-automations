@@ -1,12 +1,12 @@
 # The read-only adapter
 
-> **Partly built — build guide and status.** Auth, the shared HTTP client, live config, grants,
+> **Built and rehearsed.** Auth, the shared HTTP client, live config, grants,
 > timeline evidence, and the two catalogued resolvers exist. Each part lands behind an existing seam; `main.ts`
 > only chooses between live and credential-free implementations.
 
 ```mermaid
 flowchart TD
-    SH["shell processor — unchanged"]
+    SH["shell processor"]
     SEAMS["seams: ConfigSource · externals · resolve"]
     SH -->|"calls, never throws across"| SEAMS
     SEAMS -->|"implemented by"| A
@@ -30,7 +30,7 @@ flowchart TD
 | Fail closed on identity | Config fetches pin the default branch |
 
 - The package is `packages/adapter`, importing `core` alone; `shell → adapter` exists only in `main.ts`.
-- The final shell diff across the whole sequence is one composition-root conditional.
+- Shell production changes stay within composition and seam-contract adaptation.
 - Typed failures are why one bad delivery can never wedge the queue.
 - The contents API serves fork-authored content at a PR head sha (observed, 6.6).
 
@@ -97,7 +97,8 @@ flowchart TD
 
 ## The seams
 
-- **`githubConfigSource`** — fetches at the default branch; `revision` is the blob sha. Built.
+- **`githubConfigSource`** fetches from the default branch. `revision` is the decoded content revision;
+  the blob SHA is retained only for permanent decoding defects. Built.
 - A 404 maps to the absent-file default, matching `fileConfigSource`'s semantics exactly — one shared `sha256:absent` sentinel, never a re-spelling.
 - **`liveExternals`** — the real grant list, and `latestHumanChangeAt` from the timeline. Built.
 - The grant list costs zero calls: it is a field of the mint response, cached and refreshed with the token.
@@ -136,7 +137,7 @@ flowchart LR
     B --> C["config seam<br/>live ConfigSource"]
     B --> E["resolvers<br/>linked issues, timeline"]
     D["lab protocol<br/>evidence only"] -.-> E
-    C --> F["rehearsal<br/>stubs removed"]
+    C --> F["rehearsal<br/>live path, no stubs"]
     E --> F
 ```
 
@@ -144,10 +145,10 @@ Four properties make each piece mergeable alone — consequences of the seams, n
 
 | Property | Consequence |
 |---|---|
-| Each piece lands behind an existing seam | The shell never changes |
+| Each piece lands behind an existing seam | GitHub logic stays in the adapter |
 | The composition root is environment-gated | An unfinished adapter cannot break CI |
 | The measurement is its own piece, no code | Evidence merges as protocol and matrix rows |
-| Removing the stubs is the last piece | Zero stubs closes the work |
+| Selecting the live path is the last piece | Zero stubs closes the work |
 
 - Credentials present composes live implementations; absent composes stubs.
 - CI never holds a credential, and the runnable sandbox keeps working.
@@ -161,12 +162,12 @@ Four properties make each piece mergeable alone — consequences of the seams, n
 | Unit and fixture tests | CI, no credentials | Auth edges, ETags, all catalogue rows classify |
 | Mutation gate | CI | The adapter's Stryker range, pinned to end-of-file |
 | Lab conformance | Sandbox, manual | Linked-issue semantics; D40's prose-snapshot re-probe |
-| Sandbox rehearsal | Sandbox, live | Zero stubs; dry-run reports stop overstating |
+| Sandbox rehearsal | Sandbox, live | Zero stubs produced `newerHumanChange` for a later human label |
 
-## Done when
+## Completion evidence
 
-- The sandbox rehearsal runs with **zero stubs** — live config, grants, timeline, linked-issue reads.
-- Dry-run reports stop overstating, recorded in a register row.
-- CI never needed a credential; the lab never tracked one.
-- The shell diff across the whole sequence is the composition root only.
-- Every GitHub assumption carries a citation — an existing matrix row, or a new one this work produced.
+- A locally signed sandbox delivery ran with live config, grants, timeline, and linked-issue reads.
+- The live dry-run stopped overstating and D93 records the result.
+- CI needed no credential and the lab tracked none.
+- Shell production changes are limited to composition and seam-contract adaptation.
+- Every GitHub assumption has an existing documentation, matrix, or protocol citation.

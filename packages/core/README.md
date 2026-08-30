@@ -186,8 +186,8 @@ inputs, the rules compose the way the design says they should. They do not
 prove the safety property itself. Two debts remain for any future write path:
 
 - **External observations can still be wrong.** `DerivedWorld` makes precondition claims unforgeable inside
-  core, but the shell still supplies live installation grants and newer-human ordering. Until the adapter
-  replaces today's stubs, dry-run can overstate what would apply. D51 requires the adapter to distinguish
+  core. With App credentials, the shell supplies live installation grants and newer-human ordering. The
+  credential-free path uses stubs and can overstate what would apply. D51 requires the adapter to distinguish
   “no human change” from “could not establish ordering”; reporting `null` for a failed lookup silently
   restores unsafe behavior.
 - **Verdicts are advisory until the write lands.** A future write path must

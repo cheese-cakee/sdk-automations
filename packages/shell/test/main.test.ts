@@ -1,7 +1,7 @@
 /**
  * The composition root run as the real process: `node --import tsx
- * src/main.ts`, an environment, a socket and a SQLite file, with nothing
- * stubbed. Everything main.ts owns is observable from outside it — the
+ * src/main.ts`, an environment, a socket and a SQLite file. Everything
+ * main.ts owns is observable from outside it. The
  * refusal to boot without its three variables, the line naming the port
  * and both file paths, and a signed delivery coming back as a persisted
  * report under exactly the store path that line announced.
@@ -50,6 +50,7 @@ const UNREADABLE_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6a";
 const FIXTURE = capture("issues.opened.json").bytes();
 const PULL_REQUEST_FIXTURE = capture("pull_request.opened.json").bytes();
 const PULL_REQUEST_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6b";
+const READ_ONLY_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6c";
 
 const MISSING_VARIABLES =
     "WEBHOOK_SECRET, REPO_OWNER and REPO_NAME are required (the sandbox App's secret and the repository this endpoint serves).";
@@ -423,7 +424,13 @@ async function withPaths<T>(
 }
 
 /** A child-only fetch double: it proves live composition without network access. */
-function writeFetchPreload(path: string, logPath: string, mintStatus = 201, config = CONFIG): void {
+function writeFetchPreload(
+    path: string,
+    logPath: string,
+    mintStatus = 201,
+    config = CONFIG,
+    issuesPermission = "write",
+): void {
     const configBody = JSON.stringify({
         type: "file",
         encoding: "base64",
@@ -446,7 +453,7 @@ globalThis.fetch = async (input, init = {}) => {
         return new Response(JSON.stringify({
             token: "shell-test-installation-token",
             expires_at: "2099-01-01T00:00:00Z",
-            permissions: { issues: "write", pull_requests: "read" },
+            permissions: { issues: ${JSON.stringify(issuesPermission)}, pull_requests: "read" },
         }), { status: 201 });
     }
     if (String(input).includes("/contents/automations.yml")) {
@@ -460,7 +467,11 @@ globalThis.fetch = async (input, init = {}) => {
             } },
         } } }), { status: 200 });
     }
-    return new Response("[]", { status: 200 });
+    return new Response(JSON.stringify([{
+        event: "labeled",
+        actor: { type: "User", login: "human" },
+        created_at: "2026-08-06T23:10:51Z",
+    }]), { status: 200 });
 };
 `,
     );
@@ -553,13 +564,26 @@ describe("the sandbox entry point, as a process", () => {
 
     it.each([
         {
-            title: "composes live config, externals and resolvers",
+            title: "composes live config, externals and the linked-issue resolver",
             mintStatus: 201,
             failureText: null,
             config: PULL_REQUEST_CONFIG,
             fixture: PULL_REQUEST_FIXTURE,
             deliveryId: PULL_REQUEST_GUID,
             event: "pull_request",
+            issuesPermission: "write",
+            expectedCodes: ["newerHumanChange"],
+        },
+        {
+            title: "uses live grants instead of the credential-free grant",
+            mintStatus: 201,
+            failureText: null,
+            config: PULL_REQUEST_CONFIG,
+            fixture: PULL_REQUEST_FIXTURE,
+            deliveryId: READ_ONLY_GUID,
+            event: "pull_request",
+            issuesPermission: "read",
+            expectedCodes: ["permissionMissing"],
         },
         {
             title: "does not fall back to stubs when mint fails",
@@ -569,10 +593,21 @@ describe("the sandbox entry point, as a process", () => {
             fixture: FIXTURE,
             deliveryId: GUID,
             event: "issues",
+            issuesPermission: "write",
+            expectedCodes: [],
         },
     ])(
         "$title",
-        async ({ mintStatus, failureText, config, fixture, deliveryId, event }) => {
+        async ({
+            mintStatus,
+            failureText,
+            config,
+            fixture,
+            deliveryId,
+            event,
+            issuesPermission,
+            expectedCodes,
+        }) => {
             await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
                 writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
                 const { privateKey } = generateKeyPairSync("rsa", {
@@ -583,7 +618,7 @@ describe("the sandbox entry point, as a process", () => {
                 writeFileSync(privateKeyFile, privateKey);
                 const fetchLog = `${privateKeyFile}.fetch.log`;
                 const preload = `${privateKeyFile}.fetch.mjs`;
-                writeFetchPreload(preload, fetchLog, mintStatus, config);
+                writeFetchPreload(preload, fetchLog, mintStatus, config, issuesPermission);
                 const port = await freePort();
                 await withShell(
                     {
@@ -605,6 +640,7 @@ describe("the sandbox entry point, as a process", () => {
                         if (failureText === null) {
                             const decided = await persisted(storeFile, deliveryId);
                             expect(decided.report?.mode).toBe("dry-run");
+                            expect(codes(decided)).toEqual(expectedCodes);
                             const requests = readFileSync(fetchLog, "utf8")
                                 .trim()
                                 .split("\n")

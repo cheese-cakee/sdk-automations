@@ -1,8 +1,8 @@
 # Threat Model for the Hosted GitHub App
 
 > **Draft, partly implemented.** Webhook verification, durable delivery acceptance/deduplication, strict
-> configuration parsing, SQLite storage, safety refusals, and CI supply-chain controls exist. The live
-> adapter, effect executor, production hosting/operator, retention, and every off-GitHub integration remain
+> configuration parsing, SQLite storage, read-only GitHub adapter, safety refusals, and CI supply-chain
+> controls exist. The effect executor, production hosting/operator, retention, and every off-GitHub integration remain
 > open, so required controls below are not claims that all of them run today.
 
 ## 1. Trust boundaries

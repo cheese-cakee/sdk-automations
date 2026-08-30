@@ -7,7 +7,6 @@
 
 import type { DecideExternals } from "@hiero-hackers/automation-core";
 
-/** Per-decision `now` is the processor's job; the rest stands between deliveries. */
 export type ShellExternals = Omit<DecideExternals, "now">;
 
 /**
@@ -25,8 +24,6 @@ export type ExternalsForDelivery = (delivery: {
 export function stubbedExternals(overrides: Partial<ShellExternals> = {}): ShellExternals {
     return {
         killSwitchActive: false,
-        // Mirrors the sandbox App's actual grant; the live path answers
-        // with the installation's real grant list instead.
         installationGrants: ["issues:write"],
         /**
          * `null` (no ordering evidence), NOT `"unknown"`: `"unknown"` is a

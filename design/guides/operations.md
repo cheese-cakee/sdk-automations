@@ -2,7 +2,7 @@
 
 > **Partly built, not production-ready.** The shell already verifies and durably accepts deliveries,
 > persists one canonical report, and exposes process/repository/capability/item stop controls. A production
-> operator, live adapter, alerting, backups, retention, reconciliation, and runbooks remain unbuilt. Measured
+> operator, alerting, backups, retention, reconciliation, and runbooks remain unbuilt. Measured
 > answers live in [`../findings/`](../findings/); sequencing lives in
 > [`../build-plan.md`](../build-plan.md).
 

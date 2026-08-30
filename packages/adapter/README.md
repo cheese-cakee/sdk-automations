@@ -67,6 +67,8 @@ changing — so they are here for coverage, not for the quarterly pass.
 | Mint answers 201 with `token`, `expires_at`, `permissions` | `mint.ts` | experiment 6.1, matrix row | 2026-07-23 | the response shape changes | unreadable token/expiry is transient; missing permissions grant nothing |
 | Contents API wraps a file as `{type, encoding, content, sha}` — base64 inline, `encoding: "none"` past 1 MB | `config.ts` decode | GitHub's contents docs | documented | the envelope or the 1 MB behavior changes | **quiet-ish**: healthy configs read as defective (fail-closed records) or unrecognized (retries) |
 | Timeline entries name `event`, a typed `actor`, second-precision `created_at`; pages ascend | `externals.ts` six-kind filter | GitHub's timeline docs, matrix row | documented + 2026-07-23 | the shape or the kinds change | missing actor/date on a counted event is unknown; **quiet**: new kinds remain uncounted |
+| `closingIssuesReferences(excludeUserLinked: true)` returns same-repository closing references without manual links; both grants must be present before trusting an empty result | `resolvers.ts` linked issues | D123, protocol 6.8, matrix row, [GitHub's GraphQL reference](https://docs.github.com/en/graphql/reference/pulls) | documented + 2026-08-29 | the field, grant behavior, or hidden-target behavior changes | GraphQL errors, malformed data, or missing grants answer unknown; cross-repository support stays closed |
+| Installation identities use App bot logins such as `name[bot]` | `resolvers.ts` automation actor | [GitHub's App identity guide](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps) | documented | the login convention changes | App actors are mistaken for people or people for App actors |
 
 **The quiet rows are the ones that matter.** A wrong JWT bound fails loudly within minutes; a TTL
 that shrank, a grant level silently dropped, or a timeline shape that drifted keeps every test
@@ -78,9 +80,11 @@ day that stops being true.
 **Cadence:** quarterly for the dated rows, plus ad-hoc whenever a first-symptom column shows up in
 operator reports. **Owner:** unassigned, the same unfilled row as its sibling in `core/`.
 
-## Still to arrive
+## Live rehearsal
 
-The zero-stub live rehearsal remains. `design/guides/adapter.md` holds its proof obligations.
+On 2026-08-30, a locally signed reconstruction of sandbox pull request #2 ran through live config,
+installation grants, timeline evidence, and linked-issue reads. The canonical dry-run report recorded
+`newerHumanChange`; D93 records the proof and its limits.
 
 ## What keeps it honest
 

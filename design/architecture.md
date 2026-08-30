@@ -12,21 +12,23 @@
 flowchart LR
     subgraph GitHub
         WH["Webhook deliveries"]
-        REST["REST API"]
+        REST["REST and GraphQL APIs"]
         CFG["automations.yml on the default branch — intended source"]
     end
     subgraph App["The App — one process, one disk"]
         SH["shell"]
+        AD["read-only adapter"]
         DB[("SQLite, single file")]
     end
     M["Maintainers"] -->|review and merge config| CFG
     WH -->|HTTP POST| SH
-    CFG -->|credentialed default-branch read| SH
+    CFG -->|credentialed default-branch read| AD
+    AD --> SH
     SH <--> DB
-    SH -.->|"future adapter; no repository writes exist (P5, D46)"| REST
+    AD -->|"live reads; no repository writes exist (P5, D46)"| REST
 ```
 
-*Sources: `packages/shell/src/receiver.ts`, `config.ts`, `main.ts` · [`decisions.md`](decisions.md)
+*Sources: `packages/shell/src/receiver.ts`, `config.ts`, `main.ts`, `packages/adapter/src/` · [`decisions.md`](decisions.md)
 P5, D46, D93, D110. Credential-free development and CI retain the local `CONFIG_FILE` source.*
 
 ### 2. Packages — runtime and development edges
@@ -35,8 +37,10 @@ P5, D46, D93, D110. Credential-free development and CI retain the local `CONFIG_
 flowchart TD
     subgraph runtime ["runnable path"]
         shell["shell — transport"] --> core["core — pure logic"]
+        shell --> adapter["adapter: GitHub reads"]
         shell --> store["store — SQLite"]
         shell --> probes["probes — disposable capability stubs"]
+        adapter --> core
         store --> core
         probes --> core
     end

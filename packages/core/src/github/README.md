@@ -105,19 +105,20 @@ on a clock.
 **Its own reason to distrust green tests**, set out at the top of this file.
 That warning applies here and nowhere else in `core/`.
 
-**Real consumers outside `core/`, now three.** `store/` and `shell/` take the
-branded delivery ids; `shell/` and `lab/` both verify signatures. That is the
-first clause of the graduation test, met.
+**Real consumers outside `core/`, now four.** `store/` and `shell/` take the
+branded delivery ids, `shell/` and `lab/` verify signatures, and `adapter/`
+uses the failure and permission vocabulary. That is the first clause of the
+graduation test, met.
 
 ### The case against splitting *today*
 
 **It is no longer uncoupled, and that is the decisive change.** An earlier
 version of this section argued the split from *zero* internal coupling — that
 nothing in `core/` imported this directory, so it was already a package in
-everything but name. That is no longer true. Five files across three
-directories import it: `capability/declaration.ts` and `capability/catalogue.ts`
-for `PermissionGrant`, `safety/types.ts` and `safety/rules.ts` for the same
-type and `missingPermissions`, and `engine/decide.ts`. The permission
+everything but name. That is no longer true. Four files across three
+directories import it: `capability/catalogue.ts` for `PermissionGrant`,
+`safety/types.ts` and `safety/rules.ts` for the same type and
+`missingPermissions`, and `engine/decide.ts`. The permission
 vocabulary in particular has become load-bearing for the safety engine.
 Splitting now would not extract a leaf; it would put a package boundary in the
 middle of core's own dependency graph.
@@ -128,9 +129,9 @@ and this one — and every arrow still points one way. A boundary in the wrong
 place is worse than no boundary; an acyclic graph with a root in the right
 place costs nothing to leave alone.
 
-**The consumers it has are thin.** Three packages, but between them they pull
-a branded type, its constructor, and the signature verifier. Roughly 410 lines
-of source for that is overhead, not architecture.
+**The consumers it has are thin.** Four packages pull a small surface from the
+directory. That use does not justify placing a package boundary inside core's
+dependency graph.
 
 **It would move register citations again.** Rows cite paths in this directory,
 and those paths had already moved once during the reorganisation. Churning
@@ -149,28 +150,16 @@ boundary is the part that has become expensive.
 
 ### The trigger
 
-**Split it when the adapter is built** — stage five.
+The adapter condition has fired. The coupling condition has not. While
+`capability/`, `safety/` and `engine/` import this directory, splitting it
+would hand `core/` its first internal workspace dependency without reducing
+coupling. D124 keeps the directory in core until that coupling falls or the
+cost is accepted explicitly.
 
-The adapter is *entirely* GitHub-observed knowledge, so it is the first
-consumer that makes an enforced boundary pay for itself — unlike the three
-thin ones this directory has today. It will want every file in the list above:
-`endpoints.ts` from the permission matrix, the ratified permission ceiling to
-sit beside the `scope:level` form already here, `subscriptions.ts` for the
-subscription list, and the read-after-write freshness rule. That rule is not
-implemented by the runnable application and belongs with the eventual GitHub
-write path.
-
-**The trigger is now two conditions, not one.** The adapter is the first. The
-second is what the coupling section measures: while `capability/`, `safety/`
-and `engine/` all import this directory, splitting it hands `core/` its first
-internal workspace dependency — today its only dependency is `yaml`. Either
-that coupling comes down first, or the split accepts that cost with its eyes
-open and says so in the register row.
-
-**A measurable secondary signal**, if the adapter is delayed: when this
-directory holds more files than any other directory in `core/`, it has stopped
+**A measurable secondary signal:** when this directory holds more files than
+any other directory in `core/`, it has stopped
 being a corner of core and should leave regardless. Standing at six, one
-behind `config/` and `workflow/`.
+behind `workflow/` and two behind `config/`.
 
 ### What would change the answer sooner
 

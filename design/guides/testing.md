@@ -2,7 +2,7 @@
 
 > **Partly built.** Pure logic, configuration parsing, capability isolation, durable intake/store
 > concurrency, the HTTP-to-report slice, repository invariants, line coverage, and mutation gates run in CI.
-> Adapter contracts, effect execution/recovery, real capabilities, rollout, and production operations do not
+> Effect execution/recovery, real capabilities, rollout, and production operations do not
 > exist yet and therefore cannot honestly be marked covered.
 
 ## 1. Current layers and gaps
@@ -14,10 +14,11 @@
 | Capability boundary | compile/runtime restriction tests and every-subset P3 engine matrix | no generic declaration-derived conformance kit; required meanings and settings schemas are missing |
 | GitHub normalization | scrubbed real webhook fixtures exported by the testkit | more event kinds plus response fixtures for the adapter |
 | Store | schema migrations, property/model tests, worker-thread races, crash interruption, atomic delivery/report completion | production retention, backups, lease-overlap contract, effect consumer |
-| Shell | real HTTP, signature verify, durable accept before 202, config parse, core decision, atomic canonical report | default-branch config fetch, live grants/timeline/resolvers, scheduler, multi-repository routing, active writes |
+| Shell | real HTTP, signature verify, durable accept before 202, live config and evidence, core decision, atomic canonical report | scheduler, multi-repository routing, active writes |
 | Repository | documentation vocabularies, links/citations, dependency graph, workflow security, package/test placement | add a focused invariant whenever a new closed claim appears |
-| Adapter and effects | measured lab findings and build guides only | implementation, contract fixtures, postcondition verification, recovery, and rollback |
-| Sandbox/pilot | feasibility protocols and one capture run | end-to-end adapter/effect rehearsal, clean soak, migration, rollback rehearsal |
+| Adapter | App auth, bounded HTTP, default-branch config, live grants, timeline evidence, both resolvers with contract tests, and a zero-stub rehearsal | scheduled conformance probes |
+| Effects | design contracts only | implementation, postcondition verification, recovery, and rollback |
+| Sandbox/pilot | feasibility protocols, one capture run, and a zero-stub adapter rehearsal | clean soak, migration, rollback rehearsal |
 
 The boundary rule is one GitHub model: capabilities consume normalized project-owned interfaces. They do not
 carry private Octokit response fakes. Recorded external shapes belong in the testkit/adapter boundary, and
@@ -36,9 +37,9 @@ Built and covered:
 - whole-file fail-closed behavior and a durable `configRejected` shell record;
 - the tracked user examples parsing through the shell's core entry point.
 
-Not covered because the implementation does not do it: pull-request config checks, default-branch fetching,
-capability-specific settings validation, required-meaning validation, mapped-label existence, live permission
-readiness, schema migration, rollback, and inheritance.
+Not covered because the implementation does not do it: pull-request config checks,
+capability-specific settings validation, required-meaning validation, mapped-label existence,
+schema migration, rollback, and inheritance.
 
 ## 3. Capability and composition proof
 
@@ -64,7 +65,7 @@ repository, database-id, node-id, email, description, and commit-SHA identifiers
 After a human reads the scrubbed file, it is promoted directly into
 `packages/dev/testkit/fixtures/` with provenance.
 
-The future adapter contract suite must cover:
+The adapter contract suite covers:
 
 - pagination, missing/null fields, redirects, and conditional reads;
 - primary and secondary rate-limit signals and responses with no retry hint;
