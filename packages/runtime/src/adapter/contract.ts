@@ -1,19 +1,6 @@
 /**
  * The shapes and spellings every GitHub exchange in this package speaks.
- *
- * Nothing here judges a request or sends one. This file owns the vocabulary
- * its neighbours share: the constants a call is built from, the request and
- * outcome types, the failures the adapter constructs itself, and the handful
- * of spellings that must be identical everywhere a call is made — a
- * repository's API path, a lower-cased header record, the page a `link` names.
- *
- * Core owns the vocabulary for GitHub's own responses; the two results core
- * cannot have are added here, on `GitHubHttpFailureClass`. Whether a request
- * may be sent is `admission.ts`. How an admitted one travels and comes back
- * classified is `http.ts`. Which token it carries is `token.ts`.
- *
- * In order below: the shared constants, the request vocabulary, the
- * spellings, the failures.
+ * Nothing here judges a request or sends one.
  */
 
 import type { FailureClass } from "@hiero-hackers/automation-core";
@@ -38,7 +25,6 @@ export const USER_AGENT = "hiero-hackers-sdk-automations";
 
 // ─── The request vocabulary ──────────────────────────────────────────
 
-/** The operation-specific part of a GitHub request. */
 interface GitHubGetRequest {
     readonly url: string;
     readonly method: "GET";
@@ -52,22 +38,10 @@ export interface GitHubGraphqlRequest {
     readonly headers?: Readonly<Record<string, string>>;
 }
 
-/**
- * Whether sending this write twice could change the world twice.
- *
- * The CALLER declares it. Nothing in a method or a URL says it: a POST that
- * adds a label already present is a no-op, and a POST that creates a comment
- * is not, and the two are the same verb at neighbouring paths.
- */
+/** The CALLER declares it; nothing in a method or a URL says it. */
 export type WriteIdempotency = "idempotent" | "nonIdempotent";
 
-/**
- * A REST write at one of the endpoints `admission.ts` admits.
- *
- * `idempotency` is what marks a request as a write at all — the other two arms
- * do not declare it — so a DELETE or PATCH that forgets it is refused as a
- * disallowed method rather than sent unexamined.
- */
+/** `idempotency` is what marks a request as a write at all. */
 export interface GitHubWriteRequest {
     readonly url: string;
     readonly method: "POST" | "DELETE" | "PATCH";
@@ -106,24 +80,11 @@ export type NotSentReason =
     | "invalidBody"
     | "brokenSeam";
 
-/**
- * The injected seam a `brokenSeam` refusal names as the one that failed.
- *
- * A seam failure is rare and hard to reproduce, so the one report an
- * operator gets must say which piece of wiring broke.
- */
+/** The injected seam a `brokenSeam` refusal names as the one that failed. */
 export type BrokenSeam =
     "tokenSource" | "clock" | "timeoutSignal" | "tokenValue" | "invalidate" | "response" | "sleep";
 
-/**
- * Core owns the response classes; the adapter adds the two it cannot have.
- *
- * `notSent` is a request refused before it left the process.
- * `responseTooLarge` is the opposite end: a response that arrived and was
- * abandoned at the client's `MAX_RESPONSE_BODY_BYTES`. Neither is ever
- * retried — the refusal is deterministic, and a re-read returns the same
- * bytes.
- */
+/** Core owns the response classes; the adapter adds the two it cannot have. */
 export type GitHubHttpFailureClass =
     | FailureClass
     | { readonly kind: "responseTooLarge"; readonly limitBytes: number }
@@ -143,13 +104,7 @@ export interface RateLimitSnapshot {
 /** The shape of `fetch`, named so tests can script it. */
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-/**
- * Seams the composition root supplies; only the token source is required.
- *
- * `sleep` is injected for the same reason `clock` is: a suite that waited the
- * advised delays would take minutes and prove nothing the recorded pauses do
- * not prove instantly.
- */
+/** Seams the composition root supplies; only the token source is required. */
 export interface GitHubHttpClientOptions {
     readonly tokenSource: TokenSource;
     readonly fetch?: FetchLike;
@@ -160,7 +115,7 @@ export interface GitHubHttpClientOptions {
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
 }
 
-/** What every operation calls; see the file header for what it owns. */
+/** What every operation calls. */
 export interface GitHubHttpClient {
     request(request: GitHubRequest): Promise<GitHubOutcome>;
     /** The last actual response, including a response that was retried. */
@@ -169,8 +124,7 @@ export interface GitHubHttpClient {
 
 // ─── The spellings ───────────────────────────────────────────────────
 
-/** The one spelling of a repository's API path — owner and repo encoded
- * once, identically, for every operation that names one. */
+/** The one spelling of a repository's API path: owner and repo encoded identically. */
 export function repoPath(repository: { readonly owner: string; readonly repo: string }): string {
     return (
         `${GITHUB_API_ORIGIN}/repos/${encodeURIComponent(repository.owner)}` +
@@ -187,16 +141,17 @@ export function headersToRecord(headers: Headers): Record<string, string> {
     return record;
 }
 
-/**
- * The page `rel="last"` names in a `link` header, or `null` when absent.
- * That does NOT imply a complete response. Pagination is this client's vocabulary —
- * the cache retains `link` on stored representations for exactly this read.
- */
+/** The page `rel="last"` names, or `null` when absent. Not a completeness claim. */
 export function lastPageFromLink(link: string | undefined): number | null {
     // Stryker disable next-line ConditionalExpression: exec stringifies undefined and misses; the guard is for readers.
     if (link === undefined) return null;
     const match = /[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(link);
     return match === null ? null : Number(match[1]);
+}
+
+/** A cursor-paginated list carries `rel="next"` and no `rel="last"`; ask this, not the above. */
+export function advertisesNextPage(link: string | undefined): boolean {
+    return link !== undefined && link.includes('rel="next"');
 }
 
 /** Does this request declare itself a write? Only the write arm may. */
@@ -227,13 +182,7 @@ export function brokenSeamFailure(seam: BrokenSeam): GitHubFailure {
     return { ok: false, failure: { kind: "notSent", reason: "brokenSeam", seam } };
 }
 
-/**
- * One line naming a failure, with the detail the adapter's own classes carry.
- *
- * Every seam this package fills answers in core's vocabulary, and none of
- * those vocabularies has room for a `brokenSeam` name or a byte limit. The
- * kind alone tells an operator a request failed; this tells them what to fix.
- */
+/** One line naming a failure, with the detail the adapter's own classes carry. */
 export function describeFailure(failure: GitHubHttpFailureClass): string {
     if (failure.kind === "responseTooLarge") {
         return `responseTooLarge (over ${String(failure.limitBytes)} bytes)`;

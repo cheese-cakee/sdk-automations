@@ -1,39 +1,16 @@
-/**
- * How GitHub signs a webhook delivery: HMAC-SHA256 of the raw body, hex,
- * `sha256=` prefixed, in the header below.
- *
- * DOCUMENTED knowledge, not perishable. The scheme is GitHub's published
- * contract, so it carries no `probedAt` — unlike `failures.ts`, whose facts
- * GitHub never promised. It goes stale only if the signing scheme changes,
- * and it fails loudly when it does: every delivery rejected at the door.
- * It is shared rather than held privately by each
- * verifier because two copies of a signature scheme is how one of them
- * quietly stops rejecting (D89, P9).
- *
- * Pure computation. `node:crypto` is deterministic bytes-to-bytes work, the
- * same standing the `yaml` dependency has (D82): no I/O, no clock, no
- * environment.
- */
+/** How GitHub signs a webhook delivery: HMAC-SHA256 of the raw body, hex, `sha256=` prefixed. */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-/** The header GitHub sends the signature in, lowercase as Node presents it. */
 export const SIGNATURE_HEADER = "x-hub-signature-256";
 
-/** Sign a raw body the way GitHub does — for tests and simulated deliveries. */
 export function signBody(secret: string, body: Uint8Array | string): string {
     return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
 /**
- * Verify a delivery's signature header against the raw body.
- *
- * Total: absent or malformed headers are `false`, never a throw — a webhook
- * endpoint is the single most attacker-reachable line of the system, and a
- * verifier that can be crashed is a verifier that can be bypassed.
- * Comparison is constant-time via `timingSafeEqual`; the length guard exists
- * because `timingSafeEqual` THROWS on unequal lengths rather than returning
- * false.
+ * Verify a delivery's signature header against the raw body. Never throws.
+ * The length guard is required: `timingSafeEqual` throws on unequal lengths.
  */
 export function verifyBody(
     secret: string,

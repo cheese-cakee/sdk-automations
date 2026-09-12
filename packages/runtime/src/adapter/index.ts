@@ -1,13 +1,7 @@
 /**
  * The adapter: the only place in the platform that talks to GitHub.
- *
- * See [README.md](README.md) for what it owns, the seams it fills, and why
- * its knowledge goes stale differently from everything else.
- *
- * Named exports, deliberately: the surface is what a composition root
- * composes — the factories, the seam contracts, and the outcome vocabulary.
- * Bounds, windows, and judgement helpers stay inside; a test that needs one
- * imports its module directly.
+ * Named exports, deliberately — the surface is what a composition root composes.
+ * See [README.md](README.md) for what it owns and the seams it fills.
  */
 
 export { signAppAssertion, type AppCredentials } from "./jwt.js";

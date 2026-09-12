@@ -18,6 +18,7 @@ import { normalizeRepoPath, repoRoot, repositoryFiles, workspacePackages } from 
 interface StrykerConfig {
     readonly mutate: readonly string[];
     readonly reporters?: readonly string[];
+    readonly incrementalFile?: string;
     readonly jsonReporter?: { readonly fileName?: string };
     readonly thresholds: { readonly break: unknown };
 }
@@ -186,10 +187,12 @@ describe("mutation policy stays complete across packages and CI", () => {
     it("keeps the store score at 96 in the runtime matrix row", () => {
         const runtime = configuredPackages.find(({ name }) => name === "runtime");
         expect(runtime?.config.reporters).toContain("json");
-        expect(runtime?.config.jsonReporter?.fileName).toBe("reports/stryker-incremental.json");
+        expect(runtime?.config.incrementalFile).toBe("reports/stryker-incremental.json");
+        expect(runtime?.config.jsonReporter?.fileName).toBe("reports/stryker-report.json");
+        expect(runtime?.config.jsonReporter?.fileName).not.toBe(runtime?.config.incrementalFile);
         expect(mutation.steps).toContainEqual({
             if: "matrix.package == 'runtime'",
-            run: "node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-incremental.json src/store/ 96",
+            run: "node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-report.json src/store/ 96",
         });
     });
 

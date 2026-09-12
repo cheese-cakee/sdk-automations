@@ -19,7 +19,7 @@ const DOC = join(repoRoot, "design", "contracts", "contract.md");
 const DECLARATION_FIELDS: Record<keyof CapabilityDeclaration, true> = {
     name: true,
     triggers: true,
-    configKeys: true,
+    settings: true,
     requiredMappings: true,
     facts: true,
     needs: true,

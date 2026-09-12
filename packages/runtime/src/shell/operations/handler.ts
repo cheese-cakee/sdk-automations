@@ -1,16 +1,4 @@
-/**
- * One write operation's handler: the five things every operation's module
- * answers, down to the seams one send reaches GitHub through.
- *
- * `design/guides/write-operations.md` §3 is the contract; this file is that
- * contract in TypeScript. It sits above every module in this directory, so it
- * names no operation and imports none.
- *
- * The seams restate shapes the adapter already has. That is deliberate and
- * enforced: `.dependency-cruiser.cjs` admits the adapter at `main.ts` and
- * nowhere else, so the shell names what it needs and the composition root
- * passes the adapter's own objects, which satisfy it structurally.
- */
+/** One write operation's handler, in TypeScript: write-operations.md §3 is the contract. */
 
 import type {
     Effect,
@@ -52,11 +40,12 @@ export interface CommentSeen {
     readonly authoredByApp: boolean;
 }
 
-/** The item's own facts, as the apply-time re-gate rebuilds a projection from. */
+/** The facts the apply-time re-gate rebuilds a projection from, `draft` included. */
 export interface ItemSeen {
     readonly labels: readonly string[];
     readonly closed: boolean;
     readonly merged: boolean;
+    readonly draft: boolean;
 }
 
 /** What GitHub says is there now. Presence answers on sight; absence obeys D46. */
@@ -64,6 +53,12 @@ export interface EffectReader {
     comments(item: ItemRef): Promise<ReadAnswer<readonly CommentSeen[]>>;
     labels(item: ItemRef): Promise<ReadAnswer<readonly string[]>>;
     item(item: ItemRef): Promise<ReadAnswer<ItemSeen>>;
+    /** The other native mode, which is its own call: the reviews list, folded. */
+    changesRequested(item: ItemRef): Promise<ReadAnswer<boolean>>;
+    pullRequestActivity(
+        item: ItemRef,
+        working: string | undefined,
+    ): Promise<ReadAnswer<Date | null>>;
     commentPresence(item: ItemRef, matches: (comment: CommentSeen) => boolean): Promise<SeenState>;
     labelPresence(item: ItemRef, label: string): Promise<SeenState>;
 }
@@ -77,12 +72,7 @@ export const held = (seen: SeenState, holds: SeenState): Confirmation =>
 
 /**
  * Which call verbs each operation owns.
- *
- * The split is spelled here rather than derived from the modules' `verbs`
- * arrays, because this file cannot see them. It is checked rather than
- * trusted: `CallOf` indexes this type by `IntentOperation`, so an operation
- * with no line fails to compile there, and a verb `Call` does not hold extracts
- * to `never` at the handler that claims it.
+ * Checked, not trusted: `CallOf` indexes this by `IntentOperation`, so a missing line fails to compile there and a verb `Call` lacks extracts to `never`.
  */
 interface OperationVerbs {
     readonly postManagedComment: "postComment";
@@ -103,32 +93,13 @@ export interface SendContext {
     readonly item: ItemRef;
     readonly writer: EffectWriter;
     readonly reader: EffectReader;
-    /**
-     * Is a comment the one THIS CALL would be? Authorship and marker, both
-     * required (D125).
-     *
-     * The argument is the call's rendered body, because that is where the
-     * identity is published and it is the whole of what a journal row carries
-     * (D145). The applier owns the judgement; a handler only says which body
-     * it is asking about.
-     */
+    /** Is a comment the one THIS CALL would be? Authorship and marker, both required (D125). */
     isMine(body: string): (comment: CommentSeen) => boolean;
 }
 
 /**
- * One act's calls: the act itself, and — where the act carries grace — the
- * notice that says what the App did (grace.md §3).
- *
- * Two calls rather than one, in that order, because the applier's plan runs in
- * order and stops at the first refusal: a notice can therefore never claim an
- * act that did not land. The notice goes out under the ACT's managed identity
- * with kind `notice`, minted at approval alongside the act — so the comment a
- * resend recognises is found by the same name the act is journalled under.
- *
- * Written here rather than in each destructive handler because it is the same
- * two calls for every one of them, and this file is where the shape of a plan
- * already lives. A handler with no grace to honour gets its own call back
- * unchanged, so both destructive handlers call this unconditionally.
+ * One act's calls: the act, and where it carries grace the notice that says what the
+ * App did (grace.md §3). Two calls in that order, because the plan stops at the first refusal — so a notice can never claim an act that did not land.
  */
 export function planWithNotice(effect: Effect, act: Call): Plan {
     const grace = effect.intent.grace;
@@ -158,7 +129,7 @@ export interface OperationHandler<K extends IntentOperation> {
     readonly verbs: readonly Call["verb"][];
     /** The calls one approved effect takes, in send order, or the reason it takes none. */
     plan(effect: Effect & { intent: Intent<K> }, config: RepositoryConfig): Plan;
-    /** The row fields after the head — `verb` first, then the call's own fields, in row order. */
+    /** The row fields after the head — `verb` first, then the call's own, in row order. */
     serialize(call: CallOf<K>): Record<string, unknown>;
     /** The call a row's bytes hold, or `null`; total over `unknown`. */
     parse(row: unknown): CallOf<K> | null;

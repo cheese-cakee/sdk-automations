@@ -1,0 +1,1131 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json",
+    "title": "Hiero SDK automations configuration",
+    "description": "Every key the Hiero SDK automations App reads, with the sentence each capability's own settings spec carries. Shape and spelling only: that label, command, skill and alert mappings are injective and share one namespace, that a settings value naming a meaning or a principal names one this same file maps, that a `duration` is inside the platform's century ceiling and sits the required distance above the one it is measured against, and that a capability is only enabled once the meanings it requires are mapped — none of those are questions JSON Schema can ask. The App's parser is the authority; this schema catches shape and spelling.",
+    "oneOf": [
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "schemaVersion": {
+                    "const": 1,
+                    "default": 1,
+                    "description": "The configuration format's version. Absent means 1; the flattened capability shape is version 2."
+                },
+                "mode": {
+                    "enum": [
+                        "disabled",
+                        "observe",
+                        "dry-run",
+                        "active"
+                    ],
+                    "description": "How far the App may go. Each step does what the one before it does, and more.",
+                    "default": "observe"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "intake": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "announce": {
+                                            "type": "boolean",
+                                            "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                            "default": false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "prQuality": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run prQuality. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "checks": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "linkedIssues": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": true,
+                                                                    "description": "Run this block."
+                                                                },
+                                                                "guide": {
+                                                                    "type": "string",
+                                                                    "description": "A page explaining how to link an issue, shown to the contributor when this check fails."
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "enabled"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": false,
+                                                                    "description": "Leave this block parked and unread.",
+                                                                    "default": false
+                                                                }
+                                                            }
+                                                        }
+                                                    ],
+                                                    "description": "Say so when a pull request references no issue."
+                                                }
+                                            },
+                                            "description": "The quality checks this repository runs — each one off until it is enabled."
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "inactivity": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run inactivity. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "exemptBlocked": {
+                                            "type": "boolean",
+                                            "description": "Leave anything carrying the blocked meaning alone — no reminder, no release.",
+                                            "default": true
+                                        },
+                                        "remindAfter": {
+                                            "type": "string",
+                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                            "description": "Silence before a reminder, for every ladder and reason that sets none of its own. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
+                                            "default": "14d"
+                                        },
+                                        "reap": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "after": {
+                                                    "type": "string",
+                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                    "description": "Silence before release — an issue is unassigned, a pull request closed. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
+                                                    "default": "21d"
+                                                }
+                                            },
+                                            "description": "The release clock every ladder and reason inherits — consent is each acting level's own."
+                                        },
+                                        "issues": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        },
+                                                        "remindAfter": {
+                                                            "type": "string",
+                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                            "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                        },
+                                                        "reap": {
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "additionalProperties": false,
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": true,
+                                                                            "description": "Run this block."
+                                                                        },
+                                                                        "after": {
+                                                                            "type": "string",
+                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                            "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "enabled"
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": false,
+                                                                            "description": "Leave this block parked and unread.",
+                                                                            "default": false
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Run the ladder on assigned issues that have no open pull request."
+                                        },
+                                        "pullRequests": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        },
+                                                        "remindAfter": {
+                                                            "type": "string",
+                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                            "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                        },
+                                                        "reap": {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "after": {
+                                                                    "type": "string",
+                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                    "description": "The release clock this ladder's reasons inherit, taken from the capability default when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                }
+                                                            },
+                                                            "description": "The release clock every reason below inherits — consent is each reason's own."
+                                                        },
+                                                        "reapWhen": {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "draft": {
+                                                                    "oneOf": [
+                                                                        {
+                                                                            "type": "object",
+                                                                            "additionalProperties": false,
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": true,
+                                                                                    "description": "Run this block."
+                                                                                },
+                                                                                "remindAfter": {
+                                                                                    "type": "string",
+                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                    "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                },
+                                                                                "reap": {
+                                                                                    "oneOf": [
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "additionalProperties": false,
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": true,
+                                                                                                    "description": "Run this block."
+                                                                                                },
+                                                                                                "after": {
+                                                                                                    "type": "string",
+                                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                                    "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                                }
+                                                                                            },
+                                                                                            "required": [
+                                                                                                "enabled"
+                                                                                            ]
+                                                                                        },
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": false,
+                                                                                                    "description": "Leave this block parked and unread.",
+                                                                                                    "default": false
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    ],
+                                                                                    "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                                }
+                                                                            },
+                                                                            "required": [
+                                                                                "enabled"
+                                                                            ]
+                                                                        },
+                                                                        {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": false,
+                                                                                    "description": "Leave this block parked and unread.",
+                                                                                    "default": false
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    ],
+                                                                    "description": "Pull requests GitHub is holding as drafts — no mapping needed."
+                                                                },
+                                                                "changesRequested": {
+                                                                    "oneOf": [
+                                                                        {
+                                                                            "type": "object",
+                                                                            "additionalProperties": false,
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": true,
+                                                                                    "description": "Run this block."
+                                                                                },
+                                                                                "remindAfter": {
+                                                                                    "type": "string",
+                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                    "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                },
+                                                                                "reap": {
+                                                                                    "oneOf": [
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "additionalProperties": false,
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": true,
+                                                                                                    "description": "Run this block."
+                                                                                                },
+                                                                                                "after": {
+                                                                                                    "type": "string",
+                                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                                    "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                                }
+                                                                                            },
+                                                                                            "required": [
+                                                                                                "enabled"
+                                                                                            ]
+                                                                                        },
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": false,
+                                                                                                    "description": "Leave this block parked and unread.",
+                                                                                                    "default": false
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    ],
+                                                                                    "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                                }
+                                                                            },
+                                                                            "required": [
+                                                                                "enabled"
+                                                                            ]
+                                                                        },
+                                                                        {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": false,
+                                                                                    "description": "Leave this block parked and unread.",
+                                                                                    "default": false
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    ],
+                                                                    "description": "Pull requests a reviewer has asked for changes on — no mapping needed."
+                                                                },
+                                                                "needsRevision": {
+                                                                    "oneOf": [
+                                                                        {
+                                                                            "type": "object",
+                                                                            "additionalProperties": false,
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": true,
+                                                                                    "description": "Run this block."
+                                                                                },
+                                                                                "remindAfter": {
+                                                                                    "type": "string",
+                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                    "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                },
+                                                                                "reap": {
+                                                                                    "oneOf": [
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "additionalProperties": false,
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": true,
+                                                                                                    "description": "Run this block."
+                                                                                                },
+                                                                                                "after": {
+                                                                                                    "type": "string",
+                                                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                                    "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                                }
+                                                                                            },
+                                                                                            "required": [
+                                                                                                "enabled"
+                                                                                            ]
+                                                                                        },
+                                                                                        {
+                                                                                            "type": "object",
+                                                                                            "properties": {
+                                                                                                "enabled": {
+                                                                                                    "const": false,
+                                                                                                    "description": "Leave this block parked and unread.",
+                                                                                                    "default": false
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    ],
+                                                                                    "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                                }
+                                                                            },
+                                                                            "required": [
+                                                                                "enabled"
+                                                                            ]
+                                                                        },
+                                                                        {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": false,
+                                                                                    "description": "Leave this block parked and unread.",
+                                                                                    "default": false
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    ],
+                                                                    "description": "Pull requests carrying your needsRevision label, where a quality failure moves fast."
+                                                                }
+                                                            },
+                                                            "description": "The pull-request states the ladder applies in — one outside them is left alone."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Run the ladder on pull requests, linked to an issue or not."
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "configReport": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run configReport. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {}
+                                }
+                            }
+                        }
+                    }
+                },
+                "mappings": {
+                    "type": "object",
+                    "description": "The words this repository spells each meaning with.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "labels": {
+                            "type": "object",
+                            "description": "The App names the position; you supply the label it is spelled with.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "awaitingTriage": {
+                                    "type": "string"
+                                },
+                                "ready": {
+                                    "type": "string"
+                                },
+                                "inProgress": {
+                                    "type": "string"
+                                },
+                                "needsReview": {
+                                    "type": "string"
+                                },
+                                "needsRevision": {
+                                    "type": "string"
+                                },
+                                "readyToMerge": {
+                                    "type": "string"
+                                },
+                                "blocked": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "commands": {
+                            "type": "object",
+                            "description": "The words a contributor types in a comment. Each must start with a slash.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "assign": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                },
+                                "unassign": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                },
+                                "working": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                }
+                            }
+                        },
+                        "skills": {
+                            "type": "object",
+                            "description": "The difficulty ladder, as labels. The order is the App's, not this file's.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "goodFirstIssue": {
+                                    "type": "string"
+                                },
+                                "beginner": {
+                                    "type": "string"
+                                },
+                                "intermediate": {
+                                    "type": "string"
+                                },
+                                "advanced": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "alerts": {
+                            "type": "object",
+                            "description": "Alerts are yours to name, each carried by a label. A capability's settings may name one.",
+                            "additionalProperties": false,
+                            "patternProperties": {
+                                "^[a-z][a-zA-Z0-9]*$": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "principals": {
+                    "type": "object",
+                    "description": "The names a capability may address, one handle or team slug each.",
+                    "propertyNames": {
+                        "pattern": "^[a-z][a-zA-Z0-9]*$"
+                    },
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "schemaVersion": {
+                    "const": 2,
+                    "description": "The configuration format's version. Absent means 1; the flattened capability shape is version 2."
+                },
+                "mode": {
+                    "enum": [
+                        "disabled",
+                        "observe",
+                        "dry-run",
+                        "active"
+                    ],
+                    "description": "How far the App may go. Each step does what the one before it does, and more.",
+                    "default": "observe"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "intake": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "announce": {
+                                    "type": "boolean",
+                                    "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                    "default": false
+                                }
+                            }
+                        },
+                        "prQuality": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run prQuality. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "checks": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "linkedIssues": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        },
+                                                        "guide": {
+                                                            "type": "string",
+                                                            "description": "A page explaining how to link an issue, shown to the contributor when this check fails."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Say so when a pull request references no issue."
+                                        }
+                                    },
+                                    "description": "The quality checks this repository runs — each one off until it is enabled."
+                                }
+                            }
+                        },
+                        "inactivity": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run inactivity. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                },
+                                "exemptBlocked": {
+                                    "type": "boolean",
+                                    "description": "Leave anything carrying the blocked meaning alone — no reminder, no release.",
+                                    "default": true
+                                },
+                                "remindAfter": {
+                                    "type": "string",
+                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                    "description": "Silence before a reminder, for every ladder and reason that sets none of its own. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
+                                    "default": "14d"
+                                },
+                                "reap": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "after": {
+                                            "type": "string",
+                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                            "description": "Silence before release — an issue is unassigned, a pull request closed. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
+                                            "default": "21d"
+                                        }
+                                    },
+                                    "description": "The release clock every ladder and reason inherits — consent is each acting level's own."
+                                },
+                                "issues": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": true,
+                                                    "description": "Run this block."
+                                                },
+                                                "remindAfter": {
+                                                    "type": "string",
+                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                    "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                },
+                                                "reap": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": true,
+                                                                    "description": "Run this block."
+                                                                },
+                                                                "after": {
+                                                                    "type": "string",
+                                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                    "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "enabled"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": false,
+                                                                    "description": "Leave this block parked and unread.",
+                                                                    "default": false
+                                                                }
+                                                            }
+                                                        }
+                                                    ],
+                                                    "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                }
+                                            },
+                                            "required": [
+                                                "enabled"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": false,
+                                                    "description": "Leave this block parked and unread.",
+                                                    "default": false
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "description": "Run the ladder on assigned issues that have no open pull request."
+                                },
+                                "pullRequests": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": true,
+                                                    "description": "Run this block."
+                                                },
+                                                "remindAfter": {
+                                                    "type": "string",
+                                                    "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                    "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                },
+                                                "reap": {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "after": {
+                                                            "type": "string",
+                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                            "description": "The release clock this ladder's reasons inherit, taken from the capability default when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                        }
+                                                    },
+                                                    "description": "The release clock every reason below inherits — consent is each reason's own."
+                                                },
+                                                "reapWhen": {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "draft": {
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "additionalProperties": false,
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": true,
+                                                                            "description": "Run this block."
+                                                                        },
+                                                                        "remindAfter": {
+                                                                            "type": "string",
+                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                            "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                        },
+                                                                        "reap": {
+                                                                            "oneOf": [
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "additionalProperties": false,
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": true,
+                                                                                            "description": "Run this block."
+                                                                                        },
+                                                                                        "after": {
+                                                                                            "type": "string",
+                                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                            "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                        }
+                                                                                    },
+                                                                                    "required": [
+                                                                                        "enabled"
+                                                                                    ]
+                                                                                },
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": false,
+                                                                                            "description": "Leave this block parked and unread.",
+                                                                                            "default": false
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            ],
+                                                                            "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "enabled"
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": false,
+                                                                            "description": "Leave this block parked and unread.",
+                                                                            "default": false
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "description": "Pull requests GitHub is holding as drafts — no mapping needed."
+                                                        },
+                                                        "changesRequested": {
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "additionalProperties": false,
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": true,
+                                                                            "description": "Run this block."
+                                                                        },
+                                                                        "remindAfter": {
+                                                                            "type": "string",
+                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                            "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                        },
+                                                                        "reap": {
+                                                                            "oneOf": [
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "additionalProperties": false,
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": true,
+                                                                                            "description": "Run this block."
+                                                                                        },
+                                                                                        "after": {
+                                                                                            "type": "string",
+                                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                            "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                        }
+                                                                                    },
+                                                                                    "required": [
+                                                                                        "enabled"
+                                                                                    ]
+                                                                                },
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": false,
+                                                                                            "description": "Leave this block parked and unread.",
+                                                                                            "default": false
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            ],
+                                                                            "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "enabled"
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": false,
+                                                                            "description": "Leave this block parked and unread.",
+                                                                            "default": false
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "description": "Pull requests a reviewer has asked for changes on — no mapping needed."
+                                                        },
+                                                        "needsRevision": {
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "additionalProperties": false,
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": true,
+                                                                            "description": "Run this block."
+                                                                        },
+                                                                        "remindAfter": {
+                                                                            "type": "string",
+                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                            "description": "Silence before this level's reminder, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                        },
+                                                                        "reap": {
+                                                                            "oneOf": [
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "additionalProperties": false,
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": true,
+                                                                                            "description": "Run this block."
+                                                                                        },
+                                                                                        "after": {
+                                                                                            "type": "string",
+                                                                                            "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
+                                                                                            "description": "Silence before this level's release, taken from the level above when unset. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units."
+                                                                                        }
+                                                                                    },
+                                                                                    "required": [
+                                                                                        "enabled"
+                                                                                    ]
+                                                                                },
+                                                                                {
+                                                                                    "type": "object",
+                                                                                    "properties": {
+                                                                                        "enabled": {
+                                                                                            "const": false,
+                                                                                            "description": "Leave this block parked and unread.",
+                                                                                            "default": false
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            ],
+                                                                            "description": "Release what this level reminded about — absent or off means remind and never act."
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "enabled"
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": false,
+                                                                            "description": "Leave this block parked and unread.",
+                                                                            "default": false
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "description": "Pull requests carrying your needsRevision label, where a quality failure moves fast."
+                                                        }
+                                                    },
+                                                    "description": "The pull-request states the ladder applies in — one outside them is left alone."
+                                                }
+                                            },
+                                            "required": [
+                                                "enabled"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": false,
+                                                    "description": "Leave this block parked and unread.",
+                                                    "default": false
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "description": "Run the ladder on pull requests, linked to an issue or not."
+                                }
+                            }
+                        },
+                        "configReport": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Run configReport. Consent is literally true; absent leaves it off.",
+                                    "default": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "mappings": {
+                    "type": "object",
+                    "description": "The words this repository spells each meaning with.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "labels": {
+                            "type": "object",
+                            "description": "The App names the position; you supply the label it is spelled with.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "awaitingTriage": {
+                                    "type": "string"
+                                },
+                                "ready": {
+                                    "type": "string"
+                                },
+                                "inProgress": {
+                                    "type": "string"
+                                },
+                                "needsReview": {
+                                    "type": "string"
+                                },
+                                "needsRevision": {
+                                    "type": "string"
+                                },
+                                "readyToMerge": {
+                                    "type": "string"
+                                },
+                                "blocked": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "commands": {
+                            "type": "object",
+                            "description": "The words a contributor types in a comment. Each must start with a slash.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "assign": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                },
+                                "unassign": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                },
+                                "working": {
+                                    "type": "string",
+                                    "pattern": "^/"
+                                }
+                            }
+                        },
+                        "skills": {
+                            "type": "object",
+                            "description": "The difficulty ladder, as labels. The order is the App's, not this file's.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "goodFirstIssue": {
+                                    "type": "string"
+                                },
+                                "beginner": {
+                                    "type": "string"
+                                },
+                                "intermediate": {
+                                    "type": "string"
+                                },
+                                "advanced": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "alerts": {
+                            "type": "object",
+                            "description": "Alerts are yours to name, each carried by a label. A capability's settings may name one.",
+                            "additionalProperties": false,
+                            "patternProperties": {
+                                "^[a-z][a-zA-Z0-9]*$": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "principals": {
+                    "type": "object",
+                    "description": "The names a capability may address, one handle or team slug each.",
+                    "propertyNames": {
+                        "pattern": "^[a-z][a-zA-Z0-9]*$"
+                    },
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "schemaVersion"
+            ]
+        }
+    ]
+}

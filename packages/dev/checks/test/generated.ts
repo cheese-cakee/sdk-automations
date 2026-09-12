@@ -1,8 +1,11 @@
 /**
- * The contract tables of `design/contracts/catalogue.md`,
- * `design/contracts/facts.md` and `design/contracts/safety.md`, and the
- * capability table of `docs/capabilities.md`, rendered from the registries
- * that own them.
+ * Everything `pnpm contracts` writes, and the worklist it walks: the contract
+ * tables of `design/contracts/catalogue.md`, `design/contracts/facts.md` and
+ * `design/contracts/safety.md`, the capability table and settings trees of
+ * `docs/capabilities.md`, the constructor table of
+ * `design/guides/capability-kits.md` §3, and — whole rather than in blocks —
+ * the editor schema `editor-schema.ts` renders and the committed value each
+ * shipped example parses to (`examples.ts`).
  *
  * The locks used to compare COLUMNS — a row list here, a permission there —
  * which left every cell no assertion reached free to drift, and left a red
@@ -21,7 +24,14 @@
  *
  * A table whose rows are all data keeps no sentence at all — the prose that
  * used to sit in a `Carries` column moved under the table, where review owns
- * it and no generator has to reproduce it.
+ * it and no generator has to reproduce it. The constructor table did the same:
+ * its `Rule it carries` column is a list below the block now.
+ *
+ * The settings surfaces are the same idea one layer down. A spec describes
+ * itself, so the tree a maintainer reads, the sentence beside each key and the
+ * schema their editor checks against are all walks of `describeSpec` — and the
+ * sentence lives with the field rather than in three documents nothing
+ * compares.
  *
  * NOT generated: everything outside the markers. The prose around each table
  * is hand-written and stays that way, which is why the rewriter replaces
@@ -29,26 +39,47 @@
  */
 
 import {
+    block,
+    blocks,
     carriesFactGroup,
+    closed,
+    commands,
+    count,
+    duration,
+    describeSpec,
     FACT_GROUPS,
     FACT_KINDS,
+    flag,
     INTENT_OPERATIONS,
     MAPPABLE_MEANINGS,
+    meanings,
     MEANING_FACTS,
+    oneOf,
+    principal,
     PRODUCER_NAMES,
     producerReads,
     producesKind,
     RESOLVER_NAMES,
+    section,
+    sections,
+    skills,
+    text,
+    texts,
     type DeclaredTrigger,
+    type Field,
+    type FieldDescription,
     type IntentOperation,
     type MappableMeaning,
     type MeaningFlow,
     type RecordOnlyCode,
     type RequiredMappings,
+    type Spec,
     type ResolverName,
     type SafetyRefusalCode,
 } from "@hiero-hackers/automation-core";
 import { shippedCapabilities } from "./capabilities.js";
+import { renderEditorSchema, SCHEMA_PATH } from "./editor-schema.js";
+import { exampleSnapshots } from "./examples.js";
 
 // ─── One block of generated markdown ─────────────────────────────────
 
@@ -149,6 +180,7 @@ const RESOLVER_SIGNATURES: { readonly [Q in ResolverName]: { input: string; outp
     mergeability: { input: "item", output: "boolean" },
     assigneesOf: { input: "item", output: "string[]" },
     openAssignments: { input: "login", output: "{ item, meanings }[]" },
+    configAtHead: { input: "item", output: "ConfigAtHead" },
 };
 
 /** The desired-outcome fields of each operation — `IntentCatalogue`'s keys. */
@@ -360,7 +392,7 @@ const REFUSAL_CODES: { readonly [C in SafetyRefusalCode]: CodeFacts } = {
     },
     graceBelowFloor: {
         raisedBy: "`destructive.ts`",
-        meaning: "The grace period is below `MIN_GRACE_DAYS`.",
+        meaning: "The grace period is below `MIN_GRACE_HOURS`.",
     },
     graceRunning: {
         raisedBy: "`destructive.ts`",
@@ -462,6 +494,11 @@ export function renderCapabilityTable(): readonly GeneratedBlock[] {
                 return WRITES[intent];
             })
             .join("; ");
+    // The spec IS the settings schema, so its keys are the legal names (C1).
+    const settingsKeys = (settings: Spec): string => {
+        const names = Object.keys(settings);
+        return names.length === 0 ? "none" : codeList(names);
+    };
     return [
         {
             name: "capabilities",
@@ -480,7 +517,7 @@ export function renderCapabilityTable(): readonly GeneratedBlock[] {
                     capability.purpose,
                     capability.triggers.map(wakes).join(", "),
                     mapped(capability.requiredMappings),
-                    capability.configKeys.length === 0 ? "none" : codeList(capability.configKeys),
+                    settingsKeys(capability.settings),
                     writes(capability.intents),
                     `[design page](../${capability.folder}/design.md)`,
                 ]),
@@ -489,12 +526,341 @@ export function renderCapabilityTable(): readonly GeneratedBlock[] {
     ];
 }
 
+// ─── Every setting, as a maintainer writes it ────────────────────────
+
+/**
+ * What an absent key reads as, in the words a tree's comment uses.
+ *
+ * The mapped type is the same bargain as everywhere else here: a seventh
+ * absence rule fails to compile until a maintainer can be told about it.
+ */
+const ABSENT_NOTES: { readonly [A in FieldDescription["absent"]]: string } = {
+    default: "default",
+    inherited: "inherited from the level above",
+    null: "unset",
+    empty: "none",
+    parked: "off until enabled",
+    problem: "required",
+};
+
+/** Every field of one level of a described spec. */
+type Described = Readonly<Record<string, FieldDescription>>;
+
+/** Two spaces a level, the indentation every example in `docs/` uses. */
+function pad(depth: number): string {
+    return "  ".repeat(depth);
+}
+
+/**
+ * What a `duration` field that states no default of its own is worth: the
+ * nearest enclosing level that declares a default for the field it inherits
+ * from.
+ *
+ * The same walk `duration`'s reader makes with nothing written down (§3.1),
+ * and it is here so every line of the tree carries a value. A key shown bare
+ * would read as `null` the moment a maintainer copied the block, which is the
+ * one mistake a page of defaults must not teach.
+ */
+function inherited(field: FieldDescription, outer: readonly Described[]): unknown {
+    if (field.inherits === undefined) return undefined;
+    const path = field.inherits.split(".");
+    for (const level of outer) {
+        const stated = declaredAt(level, path);
+        if (stated !== undefined) return stated;
+    }
+    return undefined;
+}
+
+/**
+ * The default one described level declares at a dotted path, if any — the same
+ * descent `duration`'s own reader makes for an `inherits` like `reap.after`.
+ */
+function declaredAt(level: Described, path: readonly string[]): unknown {
+    const [head, ...rest] = path;
+    const field = head === undefined ? undefined : level[head];
+    if (field === undefined) return undefined;
+    if (rest.length === 0) return field.default;
+    return field.fields === undefined ? undefined : declaredAt(field.fields, rest);
+}
+
+/** The comment beside one key: what leaving it out means, then what it is for. */
+function keyComment(field: FieldDescription): string {
+    const choices = field.values === undefined ? "" : `, one of ${field.values.join(" | ")}`;
+    const keyed =
+        field.keys === undefined ? "" : `, each key one you mapped under mappings.${field.keys}`;
+    const note = `${ABSENT_NOTES[field.absent]}${choices}${keyed}`;
+    return field.doc === null ? note : `${note} — ${field.doc}`;
+}
+
+/**
+ * What a key the file MUST state is shown as: a placeholder naming what it
+ * takes, never a bare key.
+ *
+ * The mirror of `commented` below, and the opposite answer for the opposite
+ * reason. A key that may be left out is offered commented out, because a
+ * placeholder that PARSED would be printed at a contributor. A key the file
+ * has to state has no such reading: leaving it out is already a rejected file,
+ * so a placeholder copied unchanged is refused at that key's own path — which
+ * is the one place a maintainer can act on it — while a bare key teaches the
+ * one mistake this tree exists to prevent.
+ *
+ * A closed choice names its first value instead. There the vocabulary IS the
+ * placeholder, and a maintainer who copies it has written a legal file.
+ */
+function placeholder(field: FieldDescription): string {
+    if (field.values === undefined) return ` <${field.kind}>`;
+    return ` ${JSON.stringify(field.values[0] ?? "")}`;
+}
+
+/**
+ * What follows the colon: the value the App resolves, a placeholder the file
+ * must replace, an empty list, or nothing.
+ *
+ * `absent: "empty"` with no `fields` is what a LEAF that reads as no entries
+ * looks like — the three mapped lists and `texts`. The two open mappings carry
+ * the same absence and their entries below, so the `fields` half is what tells
+ * them apart.
+ */
+function written(field: FieldDescription, outer: readonly Described[]): string {
+    const value = field.default ?? inherited(field, outer);
+    // A duration goes in bare. Its written form is a plain YAML scalar that
+    // cannot be read as a number, so the quotes would be a shape a maintainer
+    // copied out of a reference and never needed.
+    if (field.kind === "duration" && typeof value === "string") return ` ${value}`;
+    if (value !== undefined) return ` ${JSON.stringify(value)}`;
+    if (field.absent === "problem") return placeholder(field);
+    return field.absent === "empty" && field.fields === undefined ? " []" : "";
+}
+
+/**
+ * A line the file must not state as written — the key commented out, with what
+ * stating it would take.
+ *
+ * Every field whose absence reads as `null` is one: an optional `text` or
+ * `principal`, and a `closed` group. A key shown bare is the one mistake a
+ * page of defaults must not teach, and this is the second half of the rule
+ * `inherited` carries. `guide:` copied from here is YAML null, which the
+ * reader refuses with the whole file; a placeholder value would PARSE, and the
+ * App would print `<unset>` at a contributor instead.
+ */
+function commented(line: string): string {
+    return line.replace(/^(\s*)/, "$1# ");
+}
+
+/**
+ * The levels under one key. A block shows the consent that runs it; the two
+ * open mappings show one entry under a placeholder name, because their keys
+ * are the repository's own and no generator can guess one.
+ */
+function childLines(field: FieldDescription, depth: number, outer: readonly Described[]): string[] {
+    const fields = field.fields;
+    if (fields === undefined) return [];
+    switch (field.kind) {
+        case "block":
+            return [`${pad(depth)}enabled: true`, ...treeLines(fields, depth, outer)];
+        case "blocks":
+            return [
+                `${pad(depth)}<name>:`,
+                `${pad(depth + 1)}enabled: true`,
+                ...treeLines(fields, depth + 1, outer),
+            ];
+        case "sections":
+            return [`${pad(depth)}<name>:`, ...treeLines(fields, depth + 1, outer)];
+        default:
+            return treeLines(fields, depth, outer);
+    }
+}
+
+/**
+ * One level of a described spec, each key on its own line with its sentence.
+ * `outer` is the enclosing levels, nearest first — what the cascade walks.
+ *
+ * A key the file may leave out is written as a comment rather than as a line
+ * with nothing after its colon, and its levels are commented with it: half a
+ * copied block is not a shape a maintainer can be left holding.
+ */
+function treeLines(fields: Described, depth: number, outer: readonly Described[]): string[] {
+    return Object.entries(fields).flatMap(([key, field]) => {
+        const levels = childLines(field, depth + 1, [fields, ...outer]);
+        if (field.absent !== "null") {
+            return [
+                `${pad(depth)}${key}:${written(field, outer)} # ${keyComment(field)}`,
+                ...levels,
+            ];
+        }
+        const purpose = field.doc === null ? "" : `; ${field.doc}`;
+        const value = field.fields === undefined ? ` "…"` : "";
+        return [
+            commented(`${pad(depth)}${key}:${value} — optional${purpose}`),
+            ...levels.map(commented),
+        ];
+    });
+}
+
+/**
+ * One capability's block, or the sentence that it has no settings. The document
+ * is flat, so the block is `enabled` and the spec's keys beside it — rendered
+ * at the same depth, which is how a maintainer writes them.
+ *
+ * Exported for the spec no capability ships: `docs.test.ts` renders a spec of
+ * its own to hold the tree to a rule the shipped four cannot exercise.
+ */
+export function settingsTree(name: string, settings: Spec): string {
+    const described = describeSpec(settings);
+    const heading = `### \`${name}\``;
+    if (Object.keys(described).length === 0) {
+        return `${heading}\n\nNo settings. \`${name}\` declares no keys, so its block holds \`enabled\` and nothing else.`;
+    }
+    return [heading, "", "```yaml", "enabled: true", ...treeLines(described, 0, []), "```"].join(
+        "\n",
+    );
+}
+
+/**
+ * The settings trees of `docs/capabilities.md`, from the shipped specs.
+ *
+ * Every line is the spec's: the key, what it reads as unwritten, and the
+ * sentence its constructor was given. The values shown are the DEFAULTS, which
+ * is what makes this a reference rather than a recommendation —
+ * `docs/examples/full.yml` is where the overrides are shown.
+ */
+export function renderSettingsTrees(): readonly GeneratedBlock[] {
+    return [
+        {
+            name: "settings",
+            markdown: shippedCapabilities()
+                .map(({ name, settings }) => settingsTree(name, settings))
+                .join("\n\n"),
+        },
+    ];
+}
+
+// ─── The settings vocabulary itself ──────────────────────────────────
+
+/**
+ * One constructor: what it reads, and each form a spec writes it in.
+ *
+ * `reads` is the one cell no generator can derive — the same bargain the
+ * tables above make (D76). The absence rule is NOT a sentence here: it is
+ * `describe().absent` off a real instance, so a constructor whose reader
+ * changes moves the table with it. A form per absence rule, because three
+ * constructors answer differently depending on what they were given, and one
+ * row averaging them would be true of neither.
+ */
+interface ConstructorFacts {
+    readonly reads: string;
+    readonly forms: readonly (readonly [written: string, field: Field<unknown>])[];
+}
+
+/** The fifteen, keyed by the kind each one describes itself as. */
+const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts } = {
+    flag: { reads: "a boolean", forms: [["flag({ default })", flag({ default: false })]] },
+    duration: {
+        reads: "a length of time, written 4h or 14d",
+        forms: [
+            ["duration({ default })", duration({ default: "0h" })],
+            ["duration({ inherits })", duration({ inherits: "remindAfter" })],
+        ],
+    },
+    count: {
+        reads: "a whole number, zero or more",
+        forms: [["count({ default })", count({ default: 0 })]],
+    },
+    text: {
+        reads: "a string",
+        forms: [
+            ["text({ optional: true })", text({ optional: true })],
+            ["text({ optional: false })", text({ optional: false })],
+        ],
+    },
+    texts: { reads: "a list of free display text", forms: [["texts()", texts()]] },
+    oneOf: { reads: "a closed choice", forms: [["oneOf(values)", oneOf(["a", "b"])]] },
+    meanings: { reads: "a list of mapped label meanings", forms: [["meanings()", meanings()]] },
+    commands: { reads: "a list of mapped commands", forms: [["commands()", commands()]] },
+    skills: { reads: "a list of mapped skill tiers", forms: [["skills()", skills()]] },
+    principal: {
+        reads: "a principal the document declares, by name",
+        forms: [
+            ["principal({ optional: true })", principal({ optional: true })],
+            ["principal({ optional: false })", principal({ optional: false })],
+        ],
+    },
+    section: {
+        reads: "a plain group of fields with no consent of its own",
+        forms: [["section(fields)", section({})]],
+    },
+    sections: {
+        reads: "a mapping of same-shaped groups",
+        forms: [["sections(fields, { keys? })", sections({})]],
+    },
+    block: { reads: "an enabled-block", forms: [["block(fields)", block({})]] },
+    blocks: {
+        reads: "a mapping of same-shaped enabled-blocks",
+        forms: [["blocks(fields)", blocks({})]],
+    },
+    closed: {
+        reads: "a group of OPTIONAL members drawn from a closed vocabulary",
+        forms: [["closed(fields)", closed({})]],
+    },
+};
+
+/**
+ * The constructor table of `design/guides/capability-kits.md` §3.
+ *
+ * Two derived columns and one reviewed one. The rule each constructor carries
+ * beyond its absence — a guard naming a meaning demands its mapping, a tier's
+ * order is `SKILL_TIERS` rather than the file's — is prose no `describe()`
+ * reports, so it is a list under the block.
+ */
+export function renderConstructorTable(): readonly GeneratedBlock[] {
+    const rows = keysOf(CONSTRUCTORS).flatMap((kind) =>
+        CONSTRUCTORS[kind].forms.map(([written, field]) => [
+            code(written),
+            CONSTRUCTORS[kind].reads,
+            code(field.describe().absent),
+        ]),
+    );
+    return [
+        {
+            name: "constructors",
+            markdown: table(["Constructor", "Reads", "Absent reads as"], rows),
+        },
+    ];
+}
+
+// ─── The runner's worklists ──────────────────────────────────────────
+
 /** Every document with generated blocks — the runner's whole worklist. */
 export function generatedDocuments(): readonly GeneratedDocument[] {
     return [
         { path: "design/contracts/catalogue.md", blocks: renderCatalogueTables() },
         { path: "design/contracts/facts.md", blocks: renderProducerTable() },
         { path: "design/contracts/safety.md", blocks: renderSafetyCodeTables() },
-        { path: "docs/capabilities.md", blocks: renderCapabilityTable() },
+        { path: "design/guides/capability-kits.md", blocks: renderConstructorTable() },
+        {
+            path: "docs/capabilities.md",
+            blocks: [...renderCapabilityTable(), ...renderSettingsTrees()],
+        },
     ];
+}
+
+/** One file generated whole: no markers, because nothing in it is hand-written. */
+export interface GeneratedFile {
+    readonly path: string;
+    readonly text: string;
+}
+
+/**
+ * The files written whole rather than block by block. JSON carries no comment
+ * syntax, so a marker pair has nowhere to live — and neither the schema nor a
+ * committed example value has prose around it to preserve, which is why
+ * writing the file is the whole job.
+ *
+ * The example snapshots are here so that `pnpm contracts` is the ONE repair
+ * for every generated artifact. They were the one artifact whose repair was
+ * `vitest -u` inside this package, which is written down nowhere — and a
+ * capability that moves an example moves them.
+ */
+export function generatedFiles(): readonly GeneratedFile[] {
+    return [{ path: SCHEMA_PATH, text: renderEditorSchema() }, ...exampleSnapshots()];
 }

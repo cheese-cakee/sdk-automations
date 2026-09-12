@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    flag,
+    spec,
     validateCapabilityDeclarations,
     type CapabilityDeclaration,
 } from "../../src/capability/index.js";
@@ -7,7 +9,7 @@ import {
 const declaration: CapabilityDeclaration = {
     name: "prQuality",
     triggers: [{ kind: "event", event: "pull_request" }],
-    configKeys: ["checks"],
+    settings: spec({ checks: flag({ default: false }) }),
     requiredMappings: { labels: ["needsReview"] },
     facts: ["pullRequest"],
     /**
@@ -43,7 +45,6 @@ describe("validateCapabilityDeclarations", () => {
                 ...declaration,
                 name: "PR-Quality",
                 triggers: [],
-                configKeys: ["checks", "checks"],
                 requiredMappings: { labels: ["almostReady", "almostReady"] },
                 facts: ["unknownKind", "unknownKind"],
                 needs: ["unknownGroup", "unknownGroup"],
@@ -84,7 +85,6 @@ describe("validateCapabilityDeclarations", () => {
         expect(errors.join("\n")).not.toContain(
             'capability "PR-Quality": declares a schedule trigger',
         );
-        expect(errors.join("\n")).toContain('duplicate configKeys entry "checks"');
         expect(errors.join("\n")).toContain(
             'duplicate requiredMappings.labels entry "almostReady"',
         );
@@ -107,6 +107,23 @@ describe("validateCapabilityDeclarations", () => {
         expect(errors.join("\n")).toContain('resolver "unknownResolver"');
         expect(errors.join("\n")).toContain('intent "unknownOperation"');
         expect(errors.join("\n")).toContain("operationalNeeds.schedule is false");
+    });
+
+    /**
+     * A capability block is flat, so `enabled` is consent at the top of it and
+     * a spec declaring it as a setting owns a key the parser never hands it.
+     * Refused at boot; the second case is the control, since the check must
+     * read the spec's own keys and not the block's.
+     */
+    it("refuses a spec that declares the reserved key", () => {
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, settings: spec({ enabled: flag({ default: false }) }) },
+            ]),
+        ).toEqual([
+            'capability "prQuality": settings may not declare "enabled" — it is consent on the capability\'s own block, whose other keys are the settings',
+        ]);
+        expect(validateCapabilityDeclarations([declaration])).toEqual([]);
     });
 
     /**
@@ -177,7 +194,6 @@ describe("validateCapabilityDeclarations", () => {
     it("keeps operation facts out of the declaration shape", () => {
         expect(declaration.intents).toEqual(["postManagedComment", "applyMappedLabel"]);
         expect(Object.keys(declaration).sort()).toEqual([
-            "configKeys",
             "facts",
             "intents",
             "name",
@@ -185,6 +201,7 @@ describe("validateCapabilityDeclarations", () => {
             "operationalNeeds",
             "requiredMappings",
             "resolvers",
+            "settings",
             "triggers",
         ]);
     });

@@ -1,15 +1,14 @@
 capabilities:
   intake:
     enabled: true
-    settings:
-      onOpen:
-        label: true # applies the awaitingTriage mapping
-        welcome: true
-        lock: true # locked until approval
-      approval:
-        when: [ready] # a human applying any of these meanings releases the issue
-        unlock: true
-        confirm: true
+    onOpen:
+      label: true # applies the awaitingTriage mapping
+      welcome: true
+      lock: true # locked until approval
+    approval:
+      when: [ready] # a human applying any of these meanings releases the issue
+      unlock: true
+      confirm: true
 
 mappings:
   labels:

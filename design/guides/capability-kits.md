@@ -3,29 +3,28 @@
 > **The two kits every capability is written with.** Two small pieces of ordinary TypeScript that
 > live in core beside the capability boundary. The first makes every `evaluate()` read as ordered
 > guards the design doc's flowchart maps onto one-to-one; the second makes every `settings` file a
-> declarative spec the same reader walks. Neither is a DSL and neither has an interpreter: the kits
-> remove freedom of SHAPE, not steppability — a reader steps through the guards top to bottom, and
-> each one is an `if` they can read where it stands. Anything that would need an interpreter is
-> refused here.
+> declarative spec, which the PARSER walks once per file rather than the capability once per
+> delivery. Neither is a DSL and neither has an interpreter: the kits remove freedom of SHAPE, not
+> steppability — a reader steps through the guards top to bottom, and each one is an `if` they can
+> read where it stands. Anything that would need an interpreter is refused here.
 
 ## 1. The shape every capability takes
 
 ```ts
 async evaluate(facts, view, platform) {
-    const settings = readSettings(INACTIVITY_SETTINGS, view);            // §3
-    if (!settings.ok) return unusable(settings.problems, platform, "inactivity"); // reported, never ignored
-
     /** Why this guard exists, travelling with the guard. */
     if (isPausedByProjection(facts.position)) return [];                // §2, in the flowchart's order
     if (facts.position.kind === "conflict") return [];
-    if (!settings.value.issues.enabled) return [];
-    return actOn(facts, settings.value, make);                          // the capability's own work
+    if (!view.settings.issues.enabled) return [];                       // §3, arriving typed
+    return actOn(facts, view.settings, make);                           // the capability's own work
 }
 ```
 
-Three captions, always in this order: read the settings, pass the guards, act. The guards are the
-flowchart's diamonds in evaluation order; the act is its final box. A capability with no settings
-still reads an empty spec, so the shape does not vary. There is no loop: one record is one item
+Two captions, always in this order: pass the guards, act. The guards are the flowchart's diamonds in
+evaluation order; the act is its final box. There is no settings caption, because there is nothing
+left to read: `view.settings` is what this repository's block RESOLVED to against the capability's own
+spec, defaults applied, every value already judged with the rest of the file (§3.2). A capability with
+no settings reads an empty object, so the shape does not vary. There is no loop: one record is one item
 (`design/contracts/facts.md` §4), so a guard returns rather than continues.
 
 Everything the guards do is ordinary control flow, which is the point: an early return NARROWS. A
@@ -62,8 +61,7 @@ export function skipped<D extends TypedDeclaration>(
 ```
 
 It returns `[]`, typed `readonly never[]` so `return skipped(…)` is assignable wherever an
-`evaluate` returns its own intent union. `unusable` (§3.2) is the settings caption's own stop and
-is written through it.
+`evaluate` returns its own intent union.
 
 Rules the kit fixes:
 
@@ -84,27 +82,99 @@ Rules the kit fixes:
 ## 3. The settings toolkit — `capability/settings`
 
 A settings file is a spec: a plain object whose values are field readers, built from a closed
-vocabulary of constructors. `readSettings` walks it against the capability's view and returns the
-typed settings or the list of problems. The vocabulary is what the six designs' config sections
-need and nothing more:
+vocabulary of constructors. The capability hands it to `declareCapability` as `settings`, and
+`readSettings` walks it once per file — at parse time, from `config/sections.ts` — returning the typed
+settings or the list of problems. Every constructor but `spec` also takes a `doc` — one sentence
+saying what the key is — which `describe()` reports beside the field's kind, its default and what an
+absent key reads as, so `describeSpec(spec)` is the whole of what a generated page, `full.yml` or an
+editor schema is written from; a shipped key left without that sentence fails the repository checks.
+The vocabulary is what the six designs' config sections need and
+nothing more:
 
-| Constructor | Reads | Rule it carries |
+<!-- generated: constructors -->
+| Constructor | Reads | Absent reads as |
 |---|---|---|
-| `flag({ default })` | a boolean | absent → default; a non-boolean is a problem |
-| `days({ default? , inherits? })` | a non-negative integer of days | absent → the default, or the field it inherits from (the cascade, §3.1) |
-| `count({ default })` | a non-negative integer | `0` may mean "uncapped" — the capability says so in prose, the reader does not |
-| `text({ optional })` | a string | for guide links and references; never parsed |
-| `meanings()` | a list of mapped label meanings | each entry must be one of `view.mapped.labels`; an unmapped meaning is a problem (a guard naming a meaning demands its mapping) |
-| `commands()` | a list of mapped commands | the same rule against `view.mapped.commands` |
-| `skills()` | a list of mapped skill tiers | the same rule against `view.mapped.skills`; the ladder ORDER is `SKILL_TIERS`, not the order a repository listed them |
-| `texts()` | a list of free display text | checked for shape and nothing else — its entries are rendered into a sentence and never compared with a label, a command or a meaning |
-| `principal({ optional })` | a principal name | must be one the document declares; absent when optional renders without the ping. Overloaded on `optional`, so a required principal reads `string` rather than `string \| null` |
-| `section(fields)` | a plain group of fields with no consent of its own | absent → every field at its default; the station the group configures is switched by its own flags (`onOpen`, `approval`, a skill tier, a pillar) |
-| `sections(fields, { keys? })` | a mapping of same-shaped groups | the open-keyed form (`subscriptions`, `roles`, `pillars`); keys are the repository's own, and `keys` names an OPEN mapping family every key must be found in (`subscriptions` are keyed by alert) |
-| `closed(fields)` | a group of OPTIONAL members drawn from a closed vocabulary | `pillars`: a member the file did not state reads `null` rather than at its defaults, because "no `mergedPRs` pillar" and "a `mergedPRs` pillar of zero" are different requirements |
-| `block(fields)` | an enabled-block | consent is `enabled: true` and nothing else; a block absent or `enabled: false` reads as `{ enabled: false }` and its other fields are NOT read — parked, not running |
-| `blocks(fields)` | a mapping of same-shaped enabled-blocks | the per-item pattern (`checks`, `reapWhen`, `roles`); keys are the repository's own |
-| `oneOf(values)` | a closed choice | `noticeOn: latestActivity \| trackingIssue`. No optional form, and inside `closed` it needs none: a member the file never stated is read by nobody |
+| `flag({ default })` | a boolean | `default` |
+| `duration({ default })` | a length of time, written 4h or 14d | `default` |
+| `duration({ inherits })` | a length of time, written 4h or 14d | `inherited` |
+| `count({ default })` | a whole number, zero or more | `default` |
+| `text({ optional: true })` | a string | `null` |
+| `text({ optional: false })` | a string | `problem` |
+| `texts()` | a list of free display text | `empty` |
+| `oneOf(values)` | a closed choice | `problem` |
+| `meanings()` | a list of mapped label meanings | `empty` |
+| `commands()` | a list of mapped commands | `empty` |
+| `skills()` | a list of mapped skill tiers | `empty` |
+| `principal({ optional: true })` | a principal the document declares, by name | `null` |
+| `principal({ optional: false })` | a principal the document declares, by name | `problem` |
+| `section(fields)` | a plain group of fields with no consent of its own | `default` |
+| `sections(fields, { keys? })` | a mapping of same-shaped groups | `empty` |
+| `block(fields)` | an enabled-block | `parked` |
+| `blocks(fields)` | a mapping of same-shaped enabled-blocks | `empty` |
+| `closed(fields)` | a group of OPTIONAL members drawn from a closed vocabulary | `null` |
+<!-- /generated -->
+
+`Absent reads as` is `describe().absent` off a real instance, in its own six words: `default` the
+stated default, `inherited` the nearest enclosing level's value, `null` nothing, `empty` no entries,
+`parked` a block read as `{ enabled: false }`, `problem` a value the file has to state. A value of the
+wrong TYPE is a problem in every row, so no row says so.
+
+**`problem` is a demand on DOCUMENTS, not only on this spec.** A required key is one every document
+that enables the capability has to state, `docs/examples/full.yml` included, and a `principal` is
+required twice over: the document must also declare the name it points at under `principals:`, or
+the key it states is itself a problem. So a key made required is a documentation edit per example
+that enables the capability, and the estimate is owed before the key is added rather than after the
+first example goes red.
+
+The rule each constructor carries beyond that is prose no `describe()` reports, and it is here:
+
+- **`duration`** — a length of time, WRITTEN as a whole number with a unit and HELD as a whole
+  number of hours. One spelling and no others: `4h`, `2d`, `14d`; `1d` is `24h`. No minutes, no
+  weeks, no mixed units, no fractions, and a bare number is refused with the two strings it could
+  have been (`write "14d" for days or "14h" for hours`). `default` is the written form and is
+  parsed once, at construction — a spec that misspells its own default is a programming error, and
+  this is the one constructor in the vocabulary that may throw. The cascade resolves reason →
+  ladder → capability default, and the two floors and the ceiling ride on top of it (§3.1). The
+  value is bounded above by `MAX_CLOCK_HOURS`, a century, because a clock becomes a date: a
+  capability that renders the day it promises throws on a gap no `Date` can hold, and a bound is
+  the only reading that catches that at the maintainer's own path. `count` has no ceiling and
+  should not borrow this one — a count is never added to an instant.
+- **`count`** — `0` may mean "uncapped"; the capability says so in prose, the reader does not.
+- **`text`** — for guide links and references. Never parsed, never followed. It is repository-written
+  text, so a capability that prints one puts it through `inert()` first
+  (`packages/core/src/capability/facts.ts`): a plain `https://host/path` survives that unchanged and
+  GitHub still links it, while `_`, `(`, `)`, `#`, `&`, `~` and `!` come back backslash-escaped and
+  the address stops being a link. A configured address is never rendered as a markdown link with the
+  title as its text — the brackets and parentheses would be escaped with the rest — so a design
+  writes "the Signing Guide (configured link)" and the comment prints title and address as text.
+- **`meanings`, `commands`, `skills`** — each entry must be one this repository mapped in that
+  family, and an unmapped one is a problem: a guard naming a meaning demands its mapping. The tier
+  ladder's ORDER is `SKILL_TIERS`, not the order a repository listed them in.
+- **`texts`** — checked for shape and nothing else. Its entries are display text, rendered into a
+  sentence and never compared with a label, a command or a meaning.
+- **`principal`** — must be one the document declares.
+- **`section`** — the station the group configures is switched by its own flags (`onOpen`,
+  `approval`, a skill tier, a pillar), never by a consent key it does not have.
+- **`sections`** — the open-keyed form (`subscriptions`, `roles`, `pillars`); keys are the
+  repository's own, and `keys` names an OPEN mapping family every key must be found in
+  (`subscriptions` are keyed by alert). The entries keep the ORDER the file wrote them in, which is
+  what a design promising "each is one line of the comment, in this order" rests on.
+- **`closed`** — `pillars`: a member the file did not state reads `null` rather than at its
+  defaults, because "no `mergedPRs` pillar" and "a `mergedPRs` pillar of zero" are different
+  requirements.
+- **`block`** — consent is `enabled: true` and nothing else. A block that is absent or says anything
+  else is parked, and its other fields are NOT read.
+- **`blocks`** — the per-item pattern (`roles`); keys are the repository's own and every entry is
+  the same shape. A CLOSED list of named members is not this, and one whose members differ in shape
+  is not this twice over: that is `section({ … block(…) … })`, a member per name, each stating its
+  own fields — which is what inactivity's shipped `reapWhen` is.
+- **`oneOf`** — `noticeOn: latestActivity | trackingIssue`. No optional form, and inside `closed` it
+  needs none: a member the file never stated is read by nobody.
+
+**`text` and `principal` are overloaded on `optional`**, and they are the only two whose TYPE an
+option changes: the required form reads `string`, not `string | null`, because a value the file has
+to state is one the parser already made `null` impossible for. Nothing else in the vocabulary
+narrows this way — a required `duration` is still a `number`, and there is no required list.
 
 **Every group constructor sweeps its own keys** (D4). `section`, `block`, and the two mappings of
 them each report a key the spec does not name, at that key's own dotted path. D84's sweep reaches
@@ -115,27 +185,55 @@ not a field; a parked block sweeps nothing, having read nothing.
 
 ### 3.1 Cascades and relations
 
-- **Most-specific-first.** `days({ inherits: "reapAfterDays" })` inside a block resolves reason →
+- **Most-specific-first.** `duration({ inherits: "remindAfter" })` inside a block resolves reason →
   ladder → capability default: the reader looks at the field's own value, then the enclosing
   block's, then the capability's root field of that name. The spec names the chain by naming the
   field; the reader does the walking.
-- **`MIN_GRACE_DAYS` relations.** `above(target, by)` is a relation a `days` field may declare:
-  `reapAfterDays: days({ default: 21, above: ["remindAfterDays", MIN_GRACE_DAYS] })`. It is checked
-  at every level where both resolve, after the cascade — the floor from `safety/destructive` is the
-  one constant, imported, never restated.
-- **Structural dependencies are structure.** `assignedIssues` nests inside `linkedIssues`; a nested
-  block is unreadable when its parent is off, and anywhere else it is `unknownKey` at parse time
-  already (D84).
+- **A dotted `inherits` where the clock lives inside a group.** `duration({ inherits: "reap.after" })`
+  is inactivity's release clock, which each level states inside its own `reap` block. Every
+  enclosing level is read at the WHOLE path, so a level that writes `reap:` with no `after` in it is
+  walked past rather than read as a clock nothing resolves — and the defaults walk descends the spec
+  by the same path, so the document and the spec cannot disagree about which level answers. Only
+  `section` and `block` may sit on such a path: the two open mappings are keyed by names the
+  repository chose, and no spec may name a path through one.
+- **The two floors, both from `safety/destructive`, both on the level that consents.**
+  `above(target, by)` is a relation a `duration` field may declare, in HOURS:
+  `after: duration({ inherits: "reap.after", above: ["remindAfter", MIN_GRACE_HOURS] })`. It is
+  checked at every level where both resolve, after the cascade, and `MIN_GRACE_HOURS` — one hour —
+  is the floor under whatever gap the spec states. The TARGET is resolved by `durationNamed`
+  (`packages/core/src/capability/settings.ts`), which walks OUTWARD from the field's own scope the
+  way the cascade does — so a field inside a block may name one on the capability's root, and
+  `after` inside an `escalate:` block is compared against the `remindAfter` beside the block rather
+  than against a sibling it has none of. A target that resolves nowhere is simply not compared. `atLeast` is the second floor, over the value
+  itself: `MIN_REAP_HOURS` — two hours — is the smallest reap of any kind, and a destructive clock
+  declares it (`after: duration({ …, atLeast: MIN_REAP_HOURS })`). Both constants are imported,
+  never restated, and both are judged after the ceiling so a maintainer hears about the number they
+  wrote rather than about a gap it made. Declare them ON THE LEVEL THAT CONSENTS and nowhere else: a
+  level that only passes a clock down — inactivity's root `reap`, and its `pullRequests` ladder,
+  whose reasons are what act — declares neither, because a default nobody acts on has nothing to
+  refuse and the clock it hands on is judged where it lands, against the reminder of the level that
+  will act on it.
+- **Structural dependencies are structure.** `reapWhen` nests inside inactivity's `pullRequests`
+  block, so the reasons are unreadable when the ladder is off; anywhere else `reapWhen` is
+  `unknownKey` at parse time already (D84). A design stating "only when" says it by nesting.
 
-### 3.2 Reported as unusable
+### 3.2 Judged with the file, once
 
-`readSettings` returns `{ ok: true, value }` or `{ ok: false, problems }`, each problem a dotted
-path under `capabilities.<name>.settings` and one sentence. `unusable(problems, platform, name)`
-turns that into one `explain` — "Skipped: settings unusable — <path>: <message>" — and no
-intent. This is the honest floor for R4: an unusable block is REPORTED on every delivery that meets
-it and never silently ignored. The same spec, being data plus pure readers, is what the pull-request
-configuration check runs at parse time when that build lands (config-schema §7); nothing here
-presumes it.
+`readSettings(spec, names, block)` returns `{ ok: true, value }` or `{ ok: false, problems }`, each
+problem a dotted path relative to the block, a sentence, and a CODE: `unknownKey` for a key the spec
+does not name at any depth (D84), `settingInvalid` for everything else. The parser prefixes each path
+with `capabilities.<name>` — the block is flat, so there is no `settings` segment between them — and
+rejects the whole file. D38's rule, extended from key names to values, with D84's reasoning about
+the typo that waits for the day someone flips `enabled`. So a
+settings block is judged ONCE, with the rest of the document, and a capability is only ever handed a
+block that was readable.
+
+Nothing is reported per delivery any more. The per-delivery `unusable` path is retired: a capability
+cannot meet a block it cannot read, because such a file produces no configuration at all. The one
+settings rule the toolkit cannot state — a setting that DEMANDS a mapping, which is a cross-field rule
+§3.3 refuses — stays a guard in the capability that needs it, spoken through `skipped` under the same
+dotted path so a maintainer meets one wording either way. The same spec is what the pull-request
+configuration check will render its annotations from (config-schema §7).
 
 ### 3.3 What a spec is not
 
@@ -151,7 +249,7 @@ constructor in this file with its rule stated — never by a hook in a capabilit
 
 ## 4. Declined, with triggers
 
-- **A schema library** (zod and kin): declined — the vocabulary is nine constructors with rules the
+- **A schema library** (zod and kin): declined — the vocabulary is fifteen constructors with rules the
   designs state in prose, and a library's error shape would replace `ConfigError`'s. Reopen never.
 - **A `Verdict` ladder with a `climb` combinator**: BUILT (D138) and removed (D143). It was the one
   shape whose cost the first promotion could measure, and the measurement was against it: a verdict

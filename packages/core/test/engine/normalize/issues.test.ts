@@ -166,7 +166,7 @@ describe("shapes derived from the real ones", () => {
  * share GitHub's label namespace and the parser refuses the overlap.
  */
 describe("the actor and the alerts a delivery carries", () => {
-    const alerting = configWith({ alerts: { triage: { label: "status: triage" } } });
+    const alerting = configWith({ alerts: { triage: "status: triage" } });
 
     const withPayload = (over: Record<string, unknown>): unknown => ({
         ...(fixture("issues.labeled.json") as Record<string, unknown>),
@@ -197,7 +197,7 @@ describe("the actor and the alerts a delivery carries", () => {
             "issues",
             withPayload({ label: { name: "Security" } }),
             configWith({
-                alerts: { triage: { label: "status: triage" }, security: { label: "Security" } },
+                alerts: { triage: "status: triage", security: "Security" },
             }),
         );
         expect(o.kind).toBe("facts");

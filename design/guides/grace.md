@@ -14,8 +14,8 @@ not (the screen refuses both mistakes):
 
 ```ts
 readonly grace: {
-    /** The full grace, in days; at least MIN_GRACE_DAYS. The platform announces warnedAt + days. */
-    readonly days: number;
+    /** The full grace, in hours; at least MIN_GRACE_HOURS. The platform announces warnedAt + hours. */
+    readonly hours: number;
     /** The comment identity's discriminator for the warning and the notice; "" by default (D145). */
     readonly topic?: string;
     /**
@@ -53,7 +53,7 @@ For each destructive-class intent that passes the screens:
    body `grace.warning.body`, effect id the act's with the suffix `warning` and comment identity
    (capability, item, `warning`, the act's `topic`),
    and what the applier must record the moment the comment lands — the act's effect id, its
-   request snapshot, the grace days, `cancelledBy` and `reversesWith`. The act itself is not approved. In a record-only mode, the report says what
+   request snapshot, the grace hours, `cancelledBy` and `reversesWith`. The act itself is not approved. In a record-only mode, the report says what
    would be warned.
 3. **A warning:** `evaluateDestructive({ request, warning, qualifyingActivitySinceWarning: activityAt > warnedAt }, config, context, now)`.
    `graceRunning` is an `info` finding, not a problem — waiting is the design working. Any other
@@ -68,7 +68,7 @@ on an issue and the reap reason on a pull request. An act that leaves `topic` at
 warning comment per item, rewritten in place by whichever act warns next (D145).
 
 - A warning effect is one call: `postComment`. When it lands, the applier writes the warning
-  record — `warnedAt = now`, `gracePeriodDays`, `earliestActionAt = warnedAt + days`,
+  record — `warnedAt = now`, `gracePeriodHours`, `earliestActionAt = warnedAt + hours`,
   `cancelledBy`, `reversesWith`, and the request snapshot — keyed by the ACT's effect id. A warning
   that never posted authorizes nothing, because nothing records it.
 - An act effect is two calls: the act, then a `postComment` of kind `notice` with
@@ -79,7 +79,7 @@ warning comment per item, rewritten in place by whichever act warns next (D145).
 ## 4. Store
 
 Schema v6 adds one table, `destructive_warning`: `effect_id` (primary key), `warned_at`,
-`grace_days`, `earliest_action_at`, `cancelled_by`, `reverses_with`, and the six snapshot columns
+`grace_hours`, `earliest_action_at`, `cancelled_by`, `reverses_with`, and the six snapshot columns
 (`action_class`, `capability`, `cause_observed_at`, `cause`, `item`, `change`). Retention prunes rows
 older than the longest grace any capability declares plus the standing retention window. Journal
 rows are unchanged.

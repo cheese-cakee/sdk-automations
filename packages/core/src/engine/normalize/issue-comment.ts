@@ -1,36 +1,9 @@
 /**
  * The issue-comment family: what an `issue_comment` delivery becomes once the
- * shared preamble has read it.
- *
- * One family, one module, one registry entry — `../events.ts` names this one
- * under `issue_comment` and hands it `DeliveryFacts`. It is the only family
- * that reads a SIBLING of the item: the command a contributor typed sits on
- * `comment`, while the item it is about sits on `issue`.
- *
- * The record it produces is an ORDINARY ISSUE record. A command is not an item
- * — it has no number, no position and no world to derive — so it is a fact
- * GROUP about the issue the comment sits on, projected through
- * `mappings.commands` exactly as labels are projected through
- * `mappings.labels`. A capability therefore reads `assign`, never `/assign`.
- *
- * Two readings this family makes and no other does.
- *
- * A COMMENT ON A PULL REQUEST IS CONSUMED AND UNREADABLE, not `ignored`.
- * GitHub delivers pull-request conversation as `issue_comment` with
- * `issue.pull_request` present, and the payload carries no `merged` — so no
- * honest `PullRequestFacts` can be built from it, because closure is exactly
- * what `merged` decides (D47). `ignored` would be the wrong word: `ignored` is
- * the system working on traffic that is not workflow traffic, and this IS
- * workflow traffic on an event we consume, arriving in a shape we cannot read.
- *
- * ONLY `created` CARRIES A COMMAND. An edited comment is a delivery we DID
- * read, which found no command issued — so `command` is `null`, a read group
- * with nothing in it, not `UNREAD`. That is what makes "an edit adds /assign
- * to an old comment" a fact rather than an absence of evidence.
- *
- * Every other group is `UNREAD`, and the `satisfies` below is that promise as
- * a constraint: the `issue_comment` row of `PRODUCERS` names `command` and
- * nothing else, so filling any other group here does not compile.
+ * shared preamble has read it — an ordinary issue record whose command is a
+ * fact group projected through `mappings.commands`, so a capability reads
+ * `assign`, never `/assign`. Only a `created` action carries a command; an
+ * edit reads `command: null`, not `UNREAD`.
  */
 
 import { UNREAD, type CommandFacts, type ProducedFacts } from "../../capability/index.js";
@@ -57,13 +30,7 @@ function commentOf(
     return { body: comment["body"], by: user["login"], at };
 }
 
-/**
- * The command this delivery issued, or `null` for a delivery that issued none.
- *
- * Takes the comment already read rather than reading it again: the refusal for
- * an unreadable one is the family's, made once, and a second reading here could
- * only ever disagree with it.
- */
+/** The command this delivery issued, or `null` for a delivery that issued none. */
 function commandIssued(
     facts: DeliveryFacts,
     comment: { readonly body: string; readonly by: string; readonly at: Date },

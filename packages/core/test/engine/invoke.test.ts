@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { declareCapability, type ResolverName } from "../../src/index.js";
+import { declareCapability, RESOLVER_NAMES, spec, type ResolverName } from "../../src/index.js";
 import { EngineHandle } from "../../src/engine/invoke.js";
 
 const declaration = declareCapability({
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],
@@ -16,6 +16,7 @@ const declaration = declareCapability({
         "mergeability",
         "assigneesOf",
         "openAssignments",
+        "configAtHead",
     ],
     intents: [],
     operationalNeeds: {
@@ -42,15 +43,60 @@ const assignment = {
     meanings: ["ready"],
 };
 
+/** The shape `configAtHead` answers with when the pull request changed the file. */
+const proposed = {
+    touched: true,
+    revision: "sha256:abc",
+    result: { ok: true, config: { mode: "observe" } },
+};
+
+const rejected = {
+    touched: true,
+    revision: "sha256:abc",
+    result: {
+        ok: false,
+        errors: [{ code: "modeInvalid", message: "no", path: "mode", line: 2 }],
+    },
+};
+
+/** One well-formed answer per reader — every arm of `answerValue`'s switch. */
+const VALID = [
+    ["isAutomationActor", true],
+    ["mergeability", false],
+    ["assigneesOf", ["alice"]],
+    ["linkedIssues", [{ kind: "issue", number: 1 }]],
+    ["commitAttestations", [commit]],
+    ["openAssignments", [assignment]],
+    ["configAtHead", { touched: false }],
+    ["configAtHead", proposed],
+    ["configAtHead", rejected],
+    // A path the parser could not place, and an error with no path at all.
+    [
+        "configAtHead",
+        {
+            touched: true,
+            revision: "sha256:abc",
+            result: {
+                ok: false,
+                errors: [{ code: "documentUnparseable", message: "no", path: null }],
+            },
+        },
+    ],
+] as const satisfies readonly (readonly [ResolverName, unknown])[];
+
 describe("resolver answers", () => {
-    it.each([
-        ["isAutomationActor", true],
-        ["mergeability", false],
-        ["assigneesOf", ["alice"]],
-        ["linkedIssues", [{ kind: "issue", number: 1 }]],
-        ["commitAttestations", [commit]],
-        ["openAssignments", [assignment]],
-    ] as const)("accepts a valid %s answer", async (query, value) => {
+    /**
+     * The runtime half of the switch's exhaustiveness. `answerValue` fails to
+     * compile if a catalogue name has no arm; this fails if a name has an arm
+     * no test ever exercises, which is the same gap seen from the other side.
+     */
+    it("has a well-formed answer here for every resolver in the catalogue", () => {
+        expect([...new Set(VALID.map(([query]) => query))].sort()).toEqual(
+            [...RESOLVER_NAMES].sort(),
+        );
+    });
+
+    it.each(VALID)("accepts a valid %s answer", async (query, value) => {
         await expect(resolve(query, { ok: true, value })).resolves.toEqual({ ok: true, value });
     });
 
@@ -74,7 +120,50 @@ describe("resolver answers", () => {
         ["openAssignments", [assignment, { ...assignment, meanings: ["unknown"] }]],
         ["openAssignments", [{ ...assignment, meanings: ["ready", "unknown"] }]],
         ["openAssignments", [{ ...assignment, meanings: ["ready", 1] }]],
+        // Each list reader guards its own list-ness now that each is its own
+        // arm, so an answer that is not a list is a case per reader.
         ["assigneesOf", "alice"],
+        ["linkedIssues", "one"],
+        ["commitAttestations", {}],
+        ["openAssignments", 3],
+        ["configAtHead", { touched: "yes" }],
+        ["configAtHead", { ...proposed, revision: "" }],
+        ["configAtHead", { ...proposed, revision: 1 }],
+        ["configAtHead", { touched: true, revision: "sha256:abc", result: { ok: "yes" } }],
+        ["configAtHead", { ...proposed, result: { ok: true, config: null } }],
+        ["configAtHead", { ...rejected, result: { ok: false, errors: "none" } }],
+        ["configAtHead", { ...rejected, result: { ok: false, errors: [{ message: "no" }] } }],
+        [
+            "configAtHead",
+            { ...rejected, result: { ok: false, errors: [{ code: "x", message: 1 }] } },
+        ],
+        [
+            "configAtHead",
+            {
+                ...rejected,
+                result: { ok: false, errors: [{ code: "x", message: "no", path: 1 }] },
+            },
+        ],
+        [
+            "configAtHead",
+            {
+                ...rejected,
+                result: {
+                    ok: false,
+                    errors: [{ code: "x", message: "no", path: null, line: 1.5 }],
+                },
+            },
+        ],
+        [
+            "configAtHead",
+            {
+                ...rejected,
+                result: {
+                    ok: false,
+                    errors: [{ code: "x", message: "no", path: null, line: "2" }],
+                },
+            },
+        ],
     ] as const)("rejects a malformed %s answer", async (query, value) => {
         await expect(resolve(query, { ok: true, value })).resolves.toMatchObject({
             ok: false,

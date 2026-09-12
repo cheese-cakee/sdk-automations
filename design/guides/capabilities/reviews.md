@@ -1,16 +1,25 @@
-# reviews — when a pull request has waited on its reviewers, say so to the reviewers
+# reviews — when a pull request has waited on its reviewers, say so
 
-Reminds the people whose turn it is, after a pull request has sat ready for review with no review
-activity for a configured number of days, and escalates once to a second principal after longer.
-Acts on maintainer staleness only: a pull request awaiting review — the `needsReview` meaning, or
-ready-for-review mode without `needsRevision` — is the reviewers' wait, and this is the mirror of
-`inactivity`, which acts on the contributor's.
-Never closes, never labels, never reminds the author. Never touches a draft, a paused item, or a
-pull request with changes requested — that clock is `inactivity`'s.
-A review by a bot is not a review here: an automated reviewer's approval, request for changes or
-comment neither resets the clock nor ends a cycle, so a pull request only bots have looked at is
-still waiting.
-One reminder and one escalation per review cycle; a review landing starts a fresh cycle.
+Not built: phases 1, 2, 3, 4, 5.
+
+## What the output looks like
+
+Both are addressed by the platform, which prefixes the principal's handle
+(`capability/managed.ts` → `addressManagedComment`), so neither body names anybody itself.
+
+The reminder:
+
+> @reviewers-team — 👀 This pull request has been waiting for review for 7 days with no reviewer
+> motion. A first pass would unblock @alice. If it should wait, saying why here stops these
+> reminders.
+
+The escalation:
+
+> @maintainers-team — ⏰ This pull request has now waited 21 days for a review. A decision either
+> way — review, reassign, or close with a reason — would help @alice plan.
+
+Each comment prints its own THRESHOLD rather than a running total. A managed comment is rewritten in
+place, so a running total would edit the same comment every day and notify nobody about any of it.
 
 ## What the config looks like
 
@@ -18,121 +27,129 @@ One reminder and one escalation per review cycle; a review landing starts a fres
 capabilities:
   reviews:
     enabled: true
-    settings:
-      remindAfterDays: 7 # no review activity for this long, counted from entering review
-      escalateAfterDays: 21 # optional — a second, stronger ping; must exceed remindAfterDays by MIN_GRACE_DAYS
-      notify: reviewersTeam # who the reminder addresses when the pull request names no reviewers
-      escalateTo: maintainerTeam # optional — the escalation's addressee
-      exemptWhen: [blocked] # meanings that pause the clock
+    remindAfter: 7d # no review for this long, counted from entering review
+    notify: reviewersTeam # who the reminder addresses
+    exemptWhen: [readyToMerge] # meanings that pause the clock — each must be mapped below
+    escalate: # the second, stronger ping — off unless enabled
+      enabled: true
+      after: 21d # must exceed remindAfter by MIN_GRACE_HOURS
+      to: maintainerTeam
 
 mappings:
   labels:
-    needsReview: "status: needs review"
     needsRevision: "status: changes requested"
-    blocked: "status: blocked"
+    readyToMerge: "status: approved"
 
 principals:
   reviewersTeam: "hiero-ledger/hiero-sdk-python-reviewers"
   maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers"
 ```
 
-If the pull request names requested reviewers, the reminder addresses them by login and the team is
-not pinged; with none, it addresses `notify`. `escalateAfterDays` without `escalateTo` is reported as
-unusable. Days resolve as everywhere: a stated value, else the default; `escalateAfterDays` must
-exceed `remindAfterDays` by the platform's minimum grace.
+`notify` is required: a reminder with nobody to address is a comment nobody reads. Being required
+means every document that enables this capability states it and declares the principal it names,
+`docs/examples/full.yml` included (`design/guides/capability-kits.md` §3). The escalation is an
+enabled-block rather than two optional keys, because "a clock without an addressee" is a cross-field
+rule the settings toolkit refuses to state and a parked block cannot express (§3.3). Clocks are
+durations — a whole number with a unit, `4h` or `14d` — and resolve as everywhere: a stated value,
+else the default. `escalate.after` must exceed `remindAfter` by the platform's minimum grace, and
+its target is resolved by walking outward from the block, so `after` inside `escalate:` is compared
+against the `remindAfter` beside the block (§3.1).
+
+Two things about `exemptWhen` the block above does not show. A meaning named there must be one this
+repository has mapped, or the whole file is rejected — that is the settings toolkit's rule for every
+meaning list, not this capability's choice. And `blocked` is the one meaning it never needs to name:
+`blocked` is the platform's pause, so a pull request carrying it stops every clock whatever
+`exemptWhen` says. The key earns its keep on the meanings the platform does NOT pause on, which is
+why the example teaches it with `readyToMerge`: a pull request that has been reviewed and waits on a
+merge is not the reviewers' wait this capability is about.
 
 ## How it works
 
+Reminds the people whose turn it is, after a pull request has sat waiting for review for a
+configured length of time, and escalates once to a second principal after longer.
+Acts on maintainer staleness only: a pull request awaiting review — ready for review, with no
+changes requested and no `needsRevision` — is the reviewers' wait, and this is the mirror of
+`inactivity`, which acts on the contributor's.
+
+Never closes, never labels, never addresses the author. Never touches a draft, a paused item, or a
+pull request with changes requested — that clock is `inactivity`'s. One reminder and one escalation
+per item: a managed comment's identity is per item and topic, so each is posted once and rewritten
+in place afterwards.
+
 ```mermaid
 flowchart LR
-    S["schedule → pull-request facts"] --> X{"open, not draft, not paused, not needsRevision, no changes requested?"}
+    S["schedule → pull-request facts"] --> X{"open, not conflicted, not draft, not paused, not exempt, not needsRevision, no changes requested?"}
     X -->|no| N["nothing"]
-    X -->|yes| C{"days since entering review with no review activity"}
-    C -->|"< remindAfterDays"| N
-    C -->|"≥ remindAfterDays, no reminder this cycle"| R["postManagedComment — reminder, topic review"]
-    C -->|"≥ escalateAfterDays, reminder standing, no escalation this cycle"| E["postManagedComment — escalation, topic escalation"]
+    X -->|yes| C{"time since entering review"}
+    C -->|"< remindAfter"| N
+    C -->|"≥ remindAfter"| R["postManagedComment — reminder, topic review"]
+    C -->|"≥ escalate.after, escalate enabled"| E["postManagedComment — escalation, topic escalation"]
 ```
 
 | Clock | Starts | Resets | Read from |
 |---|---|---|---|
-| waiting for review | the pull request entered review — marked ready, or the `needsReview` meaning arrived, or the last human review was dismissed | a review submitted, or a review comment left, by a HUMAN — anyone `isAutomationActor` answers false for; a bot's review or comment is ignored, whatever its verdict | the `review` group: `awaitingReviewSince`, and the review activity as `{ login, at }` entries, so the capability can ask the actor resolver about each |
+| waiting for review | the pull request entered its current mode — marked ready for review, a review was requested, or it was opened | nothing this capability can see | `review.reapableSince` |
 
-A pull request with one or more human approvals that GitHub still reports as `REVIEW_REQUIRED` is
-**partially approved**: the wait is the same, but the reminder addresses only the requested
-reviewers who have not reviewed, names the approvals it has, and says one more pass is what stands
-between it and the queue. The count protection requires is stated only when the branch rules can be
-read; the boolean is enough to say "more required".
+The clock is `review.reapableSince`, which the sweep computes as the newest of the pull request's
+mode events (`ready_for_review`, `review_requested`, `convert_to_draft`), its newest
+changes-requested review, and the moment it was opened. For a pull request that reaches this
+capability at all — not draft, no changes requested — that date is the moment it entered review,
+which is the clock the design wants.
 
-Human reviewer comments reset the clock; the author's own comments and commits do not — a push while
-waiting is still waiting — and neither do a bot's reviews or comments, however many. An undetermined
-actor (the resolver could not answer) is treated as a bot: unknown never counts as a human review. Reminders are cycle-scoped: a review landing ends the cycle, and the next
-wait, if any, earns a fresh reminder.
+What it is NOT is a clock a review resets. The `review` group carries no review activity
+(`packages/core/src/capability/catalogue.ts`), so a human approval or review comment leaves this
+capability's clock exactly where it was, and the reminder keeps standing until the pull request
+leaves the waiting state. Everything the wait-resetting story needs is in Phase 2 below. An
+approval that does not change the pull request's mode is therefore invisible here; the comment is
+updated in place rather than repeated, so the cost of the gap is a stale sentence, never a second
+ping.
 
-The reminder, addressed to the requested reviewers:
-
-> 👀 @bob @carol — this pull request has been ready for review for 7 days with no review activity.
-> When you have a moment, a first pass would unblock @alice. If it should wait, a comment saying why
-> stops these reminders.
-
-The reminder, with no reviewers named:
-
-> 👀 @reviewers-team — this pull request has been ready for review for 7 days with no review
-> activity and names no reviewer yet. Could someone pick it up, or assign a reviewer?
-
-The reminder, partially approved (approved by @bob, @carol still requested):
-
-> 👀 @carol — @bob has approved this pull request and branch protection asks for one more review
-> before it can merge. It has waited 7 days since that approval; a second pass would let @alice
-> merge.
-
-The escalation:
-
-> ⏰ @maintainers-team — this pull request has now waited 21 days for a review. It was reminded on
-> **2026-09-17**. A decision either way — review, reassign, or close with a reason — would help
-> @alice plan.
-
-## Phases
+The author is named in the body and is never the addressee: the reminder is the reviewers' to act
+on, and the author is who the wait is costing.
 
 | Phase | Ships | Needs first |
 |---|---|---|
-| 1 | the reminder and the escalation | the sweep's `review` group carrying `awaitingReviewSince`, the review activity as `{ login, at }` entries (reviews and review comments, so bots can be filtered by the actor resolver rather than by the sweep guessing), and the requested reviewers' logins — two reads (`GET /pulls/{n}/reviews`, `GET /pulls/{n}/requested_reviewers`) and the GraphQL `reviewDecision` field, none yet in the endpoint matrix; the required-approvals COUNT needs the branch rules read, optional and permission-gated · `mention` accepting several logins as well as a principal |
-| 2 (candidate) | a weekly digest to the team of everything waiting | a cross-item read the platform does not have |
+| 1 | the reminder and the escalation, on `review.reapableSince`, addressed to a principal | nothing — the `review` group's three reads are rows in `design/findings/endpoint-permission-matrix.md`, so the sweep fills the group. What is missing is the capability itself |
+| 2 | the clock a human review resets, and the bot filter | review activity as `{ login, at }` entries on the `review` group — a fact-shape change: the field on both interfaces, every producer's row and every fixture. The endpoint is not the gap: `GET /pulls/{n}/reviews` is a confirmed row and the sweep already sends it |
+| 3 | the reminder addressed to the requested reviewers by login | `mention` accepting several logins as well as a principal (`IntentCatalogue`), and `GET /pulls/{n}/requested_reviewers` in the matrix |
+| 4 | partial approval — "one more pass" | GraphQL `reviewDecision` on the `review` group, and the branch rules read for the required-approval COUNT, permission-gated |
+| 5 (candidate) | a weekly digest to the team of everything waiting | a cross-item read the platform does not have |
 
-## Declaration
-
-| Field | Value |
+| Declaration | Value |
 |---|---|
-| `triggers` | `schedule` |
-| `facts` / `needs` | `pullRequest`, needing `review` and `readiness` |
-| `resolvers` | `isAutomationActor` (exists) |
+| `triggers` | `schedule` — no webhook carries the timeline this clock is read from |
+| `facts` / `needs` | `pullRequest`, needing `review` (the clock and the changes-requested state) and `readiness` (draft). A producer that read less — a webhook — is a `factsUnread` skip |
+| `resolvers` | none. `isAutomationActor` is Phase 2's, and it has no input until the record carries review activity |
 | `intents` | `postManagedComment` (`notice`; topics `review` and `escalation`) |
-| `requiredMappings` | `labels.needsReview` when the meaning is the entry signal; `blocked` only if named in `exemptWhen` |
-| Permissions | repository: `pull_requests:read`, `issues:write` · organization: none |
-| `operationalNeeds` | schedule: true · durableState: none — cycle scoping is the review's own timestamps · crossItemCoordination: false · externalDelivery: false |
+| `requiredMappings` | none. `needsRevision` is a guard over what this repository happens to have mapped: unmapped means never observed, never a refused file. `exemptWhen` is the other way round — a meaning listed there and not mapped is `settingInvalid` and the file is rejected, which is the meaning list's own rule (`design/guides/capability-kits.md` §3) rather than a declaration demand |
+| Permissions | repository: `pull_requests:read` (the sweep's own reads) and `issues:write` (the comment, `capability/operations/postManagedComment.ts`) · organization: none |
+| `operationalNeeds` | schedule: true · durableState: none — one comment per topic per item is the platform's own identity · crossItemCoordination: false · externalDelivery: false |
+
+`sweep` reads `assignees`, `links`, `review` and `readiness` on a pull request, so both needed
+groups are on the schedule's row and the declaration boots. `pull_request` reads `readiness` alone,
+which is why no webhook trigger is declared.
 
 ## Verified by
 
 | Scenario | Proves |
 |---|---|
-| Ready for review, 7 days, no activity, two requested reviewers | one reminder addressing both by login; the team is not pinged |
-| Ready for review, 7 days, no reviewers named | the reminder addresses `notify` |
-| Human reviewer leaves a comment on day 5 | the clock resets; no reminder |
-| A bot review (approval or changes requested) on day 3, nothing else | no reset — the reminder posts on day 7 as if no review had happened |
-| Every review on the pull request is a bot's | the pull request is still unreviewed; reminder and escalation both proceed |
-| One human approval, `reviewDecision` still `REVIEW_REQUIRED`, one reviewer outstanding | the reminder addresses the outstanding reviewer only, names the approval, asks for one more |
-| One human approval, no reviewers outstanding, still `REVIEW_REQUIRED` | the reminder addresses `notify` and says another reviewer must be assigned |
-| Approvals satisfy protection (`reviewDecision` `APPROVED`) | nothing — the wait is now the merge, not the review |
-| Branch rules unreadable | the reminder says "more required" without a number |
-| The actor resolver cannot say whether a reviewer is a bot | treated as a bot — unknown never counts as a human review |
-| Author pushes a commit on day 5 | no reset — the wait is the reviewers' |
-| Review submitted after the reminder | the cycle ends; a later wait earns a fresh reminder |
-| 21 days, reminder standing | one escalation to `escalateTo`, naming the reminder's date |
-| 21 days, no reminder was ever posted (a first sweep after a gap) | the reminder posts first; the escalation waits its own grace from that reminder |
+| Waiting for review, 7 days | one reminder, addressed to `notify` |
+| Waiting for review, 6 days | nothing — the clock has not run out |
+| Waiting 14 days, escalation enabled with `after: 21d` | the reminder alone — the wait between the two clocks is the reminder standing, not a second comment |
+| Waiting 21 days, escalation enabled | the reminder and the escalation, two topics, one item |
+| Waiting 21 days, escalation not enabled | the reminder alone |
 | Draft pull request, however old | nothing |
 | Changes requested | nothing — that clock is `inactivity`'s |
-| Pull request gains `blocked`, `exemptWhen: [blocked]` | the clock pauses |
-| Requested reviewer is a bot | addressed to the humans only; if none, to `notify` |
+| Carrying `needsRevision` | nothing — that clock is `inactivity`'s |
+| Pull request gains `readyToMerge`, `exemptWhen: [readyToMerge]` | nothing — the setting pauses a clock the platform would have kept running |
+| Pull request gains `blocked`, `exemptWhen: [blocked]` | the clock pauses — but on the platform's own pause, not on the setting |
+| Pull request gains `blocked`, `exemptWhen` empty | the clock pauses anyway, which is what proves the row above tests the platform rather than the key |
+| Merged pull request, however old | nothing |
+| Conflicted projection | nothing — there is no position to judge |
+| A review lands and the pull request keeps waiting | the reminder still stands: no fact records the review (Phase 2) |
 | Redelivered sweep, restart | one reminder, one escalation — identity per item and topic |
-| `escalateAfterDays` without `escalateTo` | reported as unusable |
-| `remindAfterDays: 7, escalateAfterDays: 7` | reported as unusable — the grace floor |
-| `mode: dry-run` | the reminder named as `wouldApply`; nothing posted |
+| `escalate.after` equal to `remindAfter` | rejected with the file — the grace floor |
+| `escalate` enabled with no `to` | rejected with the file |
+| `notify` naming a principal the file does not declare | rejected with the file |
+| `mode: dry-run`, reminder alone | `modeRecordsOnly` and one `wouldApply` naming the reminder; nothing posted |
+| `mode: dry-run`, both clocks run out | two intents, so `wouldApply` TWICE — one per topic, each after its own verdict; nothing posted |

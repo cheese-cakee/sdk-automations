@@ -129,3 +129,47 @@ describe("readMeaningFamily", () => {
         ]);
     });
 });
+
+/**
+ * The same family, opened: `meanings: null` is a repository naming the meanings
+ * as well, and the only question left about a key is its shape. Synthetic for
+ * the reason `SIGNALS` is — a test written against `alerts` cannot tell whether
+ * the reader consulted the spec or the one open family the platform ships.
+ */
+const OPEN_SIGNALS: MeaningFamily<string> = { ...SIGNALS, meanings: null };
+
+describe("readMeaningFamily, opened", () => {
+    const readOpen = (raw: Record<string, unknown>) => readMeaningFamily(OPEN_SIGNALS, raw);
+
+    it("admits any name shaped like a key the parser takes", () => {
+        expect(readOpen({ p0: "Hi", whateverTheyCallIt9: "Bye" })).toEqual({
+            ok: true,
+            value: { p0: "Hi", whateverTheyCallIt9: "Bye" },
+        });
+    });
+
+    it("rejects a name that is not one, with the spec's code and path", () => {
+        // `__proto__` and a dotted path are the two that matter: one is the
+        // hostile key, the other is unaddressable once it becomes an error path.
+        for (const bad of ["a.b", "__proto__", "Upper", "with space", ""]) {
+            const result = readOpen({ [bad]: "Hi" });
+            expect(result.ok, bad).toBe(false);
+            if (result.ok) continue;
+            expect(result.errors).toEqual([
+                {
+                    code: "unknownKey",
+                    message: `mappings.signals: ${JSON.stringify(bad)} is not a valid name (camelCase)`,
+                    path: `mappings.signals.${bad}`,
+                },
+            ]);
+        }
+    });
+
+    it("judges its spellings by the same fold as the closed family", () => {
+        const result = readOpen({ p0: "Hi There", urgent: "HiThere" });
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.errors[0]?.code).toBe("modeInvalid");
+        expect(result.errors[0]?.path).toBe("mappings.signals.urgent");
+    });
+});

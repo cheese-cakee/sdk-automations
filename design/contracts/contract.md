@@ -15,7 +15,7 @@ Neither page promises rollback or a generic conformance kit; those do not exist 
 interface CapabilityDeclaration {
   readonly name: string;
   readonly triggers: readonly DeclaredTrigger[];
-  readonly configKeys: readonly string[];
+  readonly settings: Spec;                       // the settings toolkit's spec; its keys are the legal names
   readonly requiredMappings: DeclaredMappings;
   readonly facts: readonly string[];
   readonly needs: readonly string[];
@@ -44,11 +44,13 @@ interface OperationalNeeds {
 
 - `validateCapabilityDeclarations` validates the complete directly admitted set: name syntax, at least one
   trigger, schedule consistency, duplicates, catalogue membership, and duplicate capability names.
-- `configKeys` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first says
-  which `settings` names are legal, the second which meanings must be mapped, by family, before the
-  capability may be enabled. Both are empty rather than absent for a capability that wants neither, and a
-  required meaning outside its family's closed catalogue is a boot error (D84). A family the object omits
-  demands nothing.
+- `settings` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first is the
+  spec every capability block is read against — its keys are the legal names a block may carry beside
+  `enabled`, and its fields judge the values, at parse time, with the rest of the file — and the
+  second says which meanings must be mapped, by
+  family, before the capability may be enabled. Both are empty rather than absent for a capability that
+  wants neither, and a required meaning outside its family's closed catalogue is a boot error (D84). A
+  family the object omits demands nothing.
 - `facts` and `needs` are the two the ENGINE reads ([`facts.md`](facts.md) §3): which item kinds this
   capability is handed a record for, and which groups of that record it reads. A need no declared kind
   carries — `review` on an issue-only declaration — is a boot error.
@@ -76,16 +78,14 @@ interface Capability<D extends TypedDeclaration> {
 }
 
 interface CapabilityView<D extends TypedDeclaration> {
-  readonly settings: {
-    readonly [K in D["configKeys"][number]]?: unknown;
-  };
+  /** Resolved against the declaration's own spec by `parseConfig`; defaults applied. */
+  readonly settings: SettingsOf<D["settings"]>;
   readonly mapped: {
     readonly labels: readonly MappableMeaning[];
     readonly commands: readonly Command[];
     readonly skills: readonly Skill[];
-    /** The OPEN families: the repository names these meanings too, so they are strings. */
+    /** The OPEN family: the repository names these meanings too, so they are strings. */
     readonly alerts: readonly string[];
-    readonly types: readonly string[];
   };
   readonly principals: readonly string[];
 }
@@ -102,8 +102,12 @@ interface PlatformHandle<D extends TypedDeclaration> {
 `FactsFor<D>` is the declared kinds with every declared group's `| Unread` removed and every undeclared
 group typed `Unread` — the type is the guarantee, not a promise the engine keeps.
 
-The platform supplies normalized facts, the capability's own declared settings, the **names** of mapped
-meanings in each family and of declared principals, and only its declared resolvers. The boundary exposes no
+`CapabilityView.settings` keeps that name in the code; the DOCUMENT has no such key. A maintainer
+writes a capability's keys beside its `enabled`, on one flat block, and `settings` is only what the
+platform calls them once they are resolved.
+
+The platform supplies normalized facts, the capability's own settings as its spec RESOLVED them, the
+**names** of mapped meanings in each family and of declared principals, and only its declared resolvers. The boundary exposes no
 Octokit client, HTTP, raw webhook body, repository label string, command word, team string behind a
 principal, mode, enabled flag, installation grant, or sibling capability.
 

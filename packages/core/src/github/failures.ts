@@ -1,23 +1,10 @@
 /**
  * A failed GitHub call, from response to next action.
  *
- * The body regexes are DATED SNAPSHOTS, not contract: each `BODY_PATTERNS`
- * entry stamps the experiment that probed it and the date it was probed.
- * Goes stale when GitHub rewords its error bodies; the first symptom is a
- * rise in `forbiddenUnrecognized` classifications. It degrades rather than
- * failing loudly — when a match fails the response becomes
- * `forbiddenUnrecognized` rather than being confidently misdiagnosed, the
- * tests keep passing against the recorded fixtures, and only the re-probe
- * closes the gap. Green tests here mean the fixtures still agree with
- * themselves (`FINDING(failures-prose-snapshot)`, D40 — the directory's
- * `index.ts` carries the re-probe obligation).
- *
- * The retry bounds in the last section are chosen, not observed, which by
- * this directory's inclusion test argues for a different home. They stay
- * because the advice is welded to the observation: the one-minute floor
- * exists only because the 403 secondary limit carries no wait signal at all
- * (`FINDING(secondary-limit-no-wait-signal)`). Splitting them would put the
- * measurement and the number it forced in separate files.
+ * `BODY_PATTERNS` holds dated snapshots of GitHub's prose, not contract. An
+ * unmatched 403 becomes `forbiddenUnrecognized` rather than a confident
+ * misdiagnosis, so green tests here mean only that the fixtures still agree
+ * with themselves (`FINDING(failures-prose-snapshot)`, D40).
  */
 
 import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS, parseSecondsHeader } from "./rate-limits.js";
@@ -25,13 +12,8 @@ import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS, parseSecondsHeader } from "./rat
 // ─── The vocabulary: what arrived, what it turned out to be ─────────
 
 /**
- * The inputs classification needs — transport-agnostic.
- *
- * `tokenPastExpiry` is whether the caller's token was already past its
- * minted `expires_at` when the request was sent. It is required for correct
- * 401 classification. An expired installation token returns the same body as
- * a wrong key (`"Bad credentials"`, observed 2026-07-23, citation
- * `…T21-52-06-572Z#1`), so only this local fact tells them apart.
+ * The inputs classification needs. `tokenPastExpiry` tells an expired token
+ * from a wrong key: both return `"Bad credentials"` (`…T21-52-06-572Z#1`).
  */
 export interface FailureObservation {
     readonly status: number;
@@ -85,18 +67,8 @@ export type FailureClass =
 // ─── The perishable surface ──────────────────────────────────────────
 
 /**
- * Every place this module reads GitHub's prose.
- *
- * D40's quarterly re-probe is entirely about these two patterns. The rest of
- * the file is logic over status codes and headers, which do not reword
- * themselves. They sit here rather than inside `classifyFailure` because the
- * re-probe is a specific editing task — find the pattern, compare it against
- * what GitHub says now, change it. It should not require reading a classifier
- * at nesting depth five.
- *
- * `observed` is the text each pattern was written against, and it is not
- * decoration. `failures.test.ts` asserts every pattern still matches its own
- * sample, so editing one without the other fails rather than drifting.
+ * Every place this module reads GitHub's prose — the whole of D40's re-probe.
+ * `observed` is each pattern's sample; `failures.test.ts` asserts they match.
  */
 export const BODY_PATTERNS = {
     secondaryRateLimit: {
@@ -119,8 +91,7 @@ export const BODY_PATTERNS = {
 /** Read one failed response into exactly one class. */
 export function classifyFailure(observation: FailureObservation): FailureClass {
     const body = observation.body;
-    // 304 is a conditional-read result, not a redirect. A transport with no
-    // matching cached representation treats it as transient below.
+    // 304 is a conditional-read result, not a redirect; it falls through to transient.
     if (observation.status >= 300 && observation.status < 400 && observation.status !== 304) {
         const location = observation.headers.location;
         return {
@@ -131,17 +102,13 @@ export function classifyFailure(observation: FailureObservation): FailureClass {
         };
     }
     if (observation.status === 401) {
-        // The 6.1 probe falsified body-based detection: an expired
-        // token and a wrong key both return "Bad credentials". Local
-        // token age is the only distinguisher.
         return observation.tokenPastExpiry === true
             ? { kind: "tokenExpired" }
             : { kind: "badCredentials" };
     }
     if (observation.status === 403 || observation.status === 429) {
-        // Both primary and secondary exhaustion can arrive as 403 or
-        // 429. GitHub's documented primary signal therefore takes
-        // precedence over status alone.
+        // Both exhaustions arrive as 403 or 429, so the documented primary
+        // signal takes precedence over status alone.
         if (observation.headers["x-ratelimit-remaining"] === "0") {
             return { kind: "primaryExhausted", resetAt: observation.headers["x-ratelimit-reset"] };
         }
@@ -196,19 +163,15 @@ export type RetryAdvice =
     | { readonly action: "refreshTokenAndRetry" }
     | { readonly action: "doNotRetry"; readonly surfaceTo: "maintainer" | "operator" };
 
-/**
- * A limit that survives this many full waits is a pacing-design
- * problem for an operator, not a wait problem (6.4).
- */
+/** A limit that survives this many full waits is a pacing problem for an operator (6.4). */
 export const MAX_RATE_LIMIT_ATTEMPTS = 3;
 
 /** Token minting is an authentication concern, not a pacing concern. */
 export const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
 
 /**
- * Bounded retry advice. The caller supplies the attempt count because retry
- * bounds must survive a restart — a counter that resets with the process is
- * not a bound (D42, D24).
+ * The caller supplies the attempt count because a counter that resets with
+ * the process is not a bound (D42, D24).
  */
 /** Transient backoff, doubling-ish; the list's length IS the attempt bound. */
 const BACKOFF_MS = [500, 2_000, 8_000] as const;

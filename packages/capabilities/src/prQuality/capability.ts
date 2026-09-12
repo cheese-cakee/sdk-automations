@@ -1,13 +1,8 @@
 /**
  * prQuality — the seed, promoted in place against `design.md`.
  *
- * The narrowest shape in the triad: reads a pull request, asks one
- * resolver, writes at most one managed comment, needs no durable state,
- * no mapped meanings and — since D125 took the marker off it — no
- * settings either. It exists to prove the boundary works for a
- * capability that touches almost nothing, so it takes no view at all.
- *
- * Not a scope decision. See `capabilities/README.md`.
+ * Reads a pull request, asks one resolver, writes at most one managed
+ * comment. One of the design's five checks is built. Scope: `README.md`.
  */
 
 import {
@@ -17,11 +12,12 @@ import {
     skipped,
     type Capability,
 } from "@hiero-hackers/automation-core";
+import { PR_QUALITY_SETTINGS } from "./settings.js";
 
 export const prQualityDeclaration = declareCapability({
     name: "prQuality",
     triggers: [{ kind: "event", event: "pull_request" }],
-    configKeys: [],
+    settings: PR_QUALITY_SETTINGS,
     requiredMappings: {},
     facts: ["pullRequest"],
     needs: [],
@@ -37,35 +33,35 @@ export const prQualityDeclaration = declareCapability({
 
 export type PrQualityDeclaration = typeof prQualityDeclaration;
 
+/** The linked-issue check's row of the dashboard, when the check fails. */
+const NO_LINKED_ISSUE =
+    "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.";
+
+/**
+ * The guide sentence a failing check ends with, or nothing. The maintainer's
+ * own text, so it is not put through `inert`.
+ */
+function guideSentence(guide: string | null): string {
+    return guide === null ? "" : ` See the guide: ${guide}`;
+}
+
 export const prQuality: Capability<PrQualityDeclaration> = {
     declaration: prQualityDeclaration,
 
-    async evaluate(facts, _config, platform) {
-        /**
-         * Closure is carried on BOTH projection branches (D59), and reading it
-         * only from the position branch would have asked for a comment on a
-         * merged pull request whose labels happened to conflict.
-         *
-         * A conflict is not a guard here, because this capability reads no
-         * position. It does not follow that a conflicted pull request gets a
-         * comment: `deriveWorld` establishes no precondition from a conflicted
-         * projection, so the engine refuses every intent on one with
-         * `preconditionStale`.
-         */
+    async evaluate(facts, config, platform) {
+        /** Closure is carried on both projection branches (D59). */
         if (!isOpen(facts)) return [];
 
         /**
-         * The resolver question, and the catalogue's "unknown is not an answer"
-         * (`design/contracts/catalogue.md`) as behaviour rather than a promise:
-         * an undetermined answer is NOT "no linked issue". Without the
-         * `ResolverAnswer` union this capability would have read a rate-limit
-         * failure as a quality problem and told a contributor to link an issue
-         * they had already linked.
-         *
-         * The answer is not carried past this guard, so the resolver is asked
-         * once and nothing has to be stashed for the act: reaching the comment
-         * already MEANS the list came back empty, and the comment says nothing
-         * about what was in it.
+         * A check runs only where a repository wrote `enabled: true` under it.
+         * Above the resolver, so a check that is off asks nothing.
+         */
+        const linkedIssues = config.settings.checks.linkedIssues;
+        if (!linkedIssues.enabled) return [];
+
+        /**
+         * "Unknown is not an answer" as behaviour: an undetermined answer is
+         * not "no linked issue" (D51).
          */
         const linked = await platform.resolve("linkedIssues", { item: facts.item });
         if (!linked.ok) {
@@ -89,7 +85,7 @@ export const prQuality: Capability<PrQualityDeclaration> = {
                 operation: "postManagedComment",
                 desired: {
                     kind: "summary",
-                    body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",
+                    body: `${NO_LINKED_ISSUE}${guideSentence(linkedIssues.guide)}`,
                 },
                 cause: "pullRequestWithoutLinkedIssue",
                 claims: { closed: false },

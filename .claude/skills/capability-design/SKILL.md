@@ -7,48 +7,60 @@ description: Author or revise a capability design doc in design/guides/capabilit
 
 Read the nearest exemplar first: the design docs beside their code in `packages/capabilities/src/`.
 A new design starts in `design/guides/capabilities/` and moves into its capability's folder the day
-that folder exists.
+that folder exists. Start from what exists — the C++ and Python SDK bots and `design/audit/services.md`
+— and make a difference between two SDKs two example configs of one schema, not two features.
 
-**Evidence before design:** start from what exists — the C++ and Python SDK bots and this repo's
-audit (`design/audit/services.md`) — importing their guards and their scars, dropping their plumbing,
-and making a difference between two SDKs two example configs of one schema rather than two features.
+## The page
 
-## The four sections
+`# name — the one-sentence job` (lowercase, matching the config key). Then, only while phases are
+outstanding, one line: `Not built: phases 2–3`. Nothing else above the first section, and no
+banners. Then exactly four sections, in this order.
 
-1. **What it does** — `# name — the one-sentence job` (lowercase, matching the config key), then 2–6
-   bare lines: what it does, the acts-on / never-acts-on split, the one or two rules a reader must
-   not miss. No history, no audit citations, no rationale prose.
+1. **What the output looks like** — every comment the capability posts, rendered, in blockquotes.
+   The only place in the page rendered examples appear. Fail and unknown states included.
+   **Every value a rendered comment interpolates must be traceable to a field on `CapabilityView`
+   or on the facts.** The view carries mapped NAMES and no spellings (contract.md §2), so a comment
+   may say "this repository's `working` command" and may not print `/working`; a mention the
+   platform prepends cannot be placed mid-sentence; repository text arrives through `inert()`, so a
+   configured address prints as text rather than as a link. Voice: greet by name, name the reason,
+   the fix and the date; never scold. No markdown links with placeholder targets — write "the
+   Signing Guide (configured link)".
 2. **What the config looks like** — full `automations.yml` blocks, valid YAML, one per genuinely
-   different policy. Rules prose only for what the examples cannot show.
-3. **How it works** — one mermaid flowchart with the guards in evaluation order, a table where the
-   behavior is tabular (per-check semantics, ladders), and real rendered examples of every comment
-   the capability posts, in blockquotes. Voice: the coaching register — greet by name, name the
-   reason, the fix and the date; never scold. Show fail and unknown states. No markdown links with
-   placeholder targets (the link checker rejects them — write "the Signing Guide (configured link)").
+   different policy. Prose only for what the examples cannot show. Read every key against the
+   constructor table in `design/guides/capability-kits.md` §3: a shape with no constructor is the
+   design's to move (§3.3), and moving it after the code is written costs the code.
+3. **How it works** — what it acts on and never acts on; one mermaid flowchart with the guards in
+   evaluation order; a table where the behavior is tabular (per-check semantics, ladders); and the
+   declaration and the phases as two short tables, or dropped where the code says it. No rendered
+   examples. Name every platform piece a scenario needs and does not have — catalogue entries,
+   resolvers, sweep drivers, mapping families — where it is needed. Name a gap by its COST: a
+   registry row, a fact-shape change (a field or group on both interfaces, every producer, every
+   fixture), or a read with no confirmed endpoint.
 4. **Verified by** — `Scenario | Proves`. This table IS the spec of the edge cases: counting rules,
-   races, dedup, dry-run, kill switch, human sovereignty, and it is the test agenda by convention.
-   When prose gets trimmed, its semantics must survive here.
-
-Name every platform piece a scenario needs and does not have — catalogue entries, resolvers, sweep
-drivers, mapping families — where it is needed; vocabulary the catalogue lacks is never silently
-assumed.
+   races, dedup, dry-run, kill switch, human sovereignty, and it is the test agenda.
 
 ## Config conventions
 
+- **One block shape at every level**: a block is `enabled: true` and its own keys beside it, the
+  capability's own block included — there is no `settings:` wrapper under a capability name.
 - **Explicit consent**: everything is opt-in; blocks carry `enabled: true`; "truthy is not consent".
-  Never hang children off a scalar (`issues: true` + children is invalid YAML).
+  `enabled` is reserved at every level, so no spec may declare a key of that name. Never hang
+  children off a scalar (`issues: true` + children is invalid YAML).
 - **Meaning-sets and numbers**: guards are lists of mapped meanings (`claimableOnlyWhen`,
-  `capIgnores`, `exemptWhen`) or numbers — never raw label strings. Check whether an existing meaning
-  already expresses the rule before inventing config.
-- **Cascade**: numbers resolve most-specific-first (reason → ladder → capability default), and each
-  act threshold must exceed its remind threshold by `MIN_GRACE_DAYS` where warn-then-act applies.
+  `capIgnores`, `exemptWhen`) or numbers — never raw label strings. Check whether an existing
+  meaning already expresses the rule before inventing config.
+- **Clocks are durations**: a whole number with a unit — `4h`, `2d`, `14d` — never a bare number,
+  never minutes, weeks or mixed units. They resolve most-specific-first (reason → ladder →
+  capability default), each act threshold must exceed its remind threshold by `MIN_GRACE_HOURS`
+  where warn-then-act applies, and **a destructive clock declares `atLeast: MIN_REAP_HOURS`**. Both
+  rules go **on the level that consents**: a level that only passes a clock down declares neither.
 - **Per-item blocks** when items may grow options — a second option kind is the trigger to convert
   booleans to blocks.
 - **Mapping families**: label spellings under `mappings.labels`, command spellings under
   `mappings.commands`, skill tiers under `mappings.skills` — shared vocabulary never moves into a
   capability's settings. A guard naming a meaning demands its mapping (unmapped = invisible).
-- Inline comments state constraints on the keys they constrain; deny wins when meaning-sets conflict;
-  misconfiguration is "reported as unusable, not silently ignored".
+- Inline comments state constraints on the keys they constrain; deny wins when meaning-sets
+  conflict; misconfiguration is "rejected with the file, not silently ignored".
 
 ## Design rules that recur
 
@@ -60,8 +72,8 @@ assumed.
   member's bypass.
 - Commit text and titles are attacker-controlled: escaped, mentions broken.
 - Repo-local counting; org-wide reads are the parked ceiling question (D57).
-- Managed comments: one per identity, updated in place; refusals cycle-scoped so repeats don't
-  amplify.
+- Managed comments: one per identity, updated in place; refusals cycle-scoped.
 
-**Finishing:** run `pnpm test` in `packages/dev/checks` — citations, links and doc drift gate the
-docs — and give a direction change a register row.
+**Finishing:** run `pnpm contracts` FIRST — it rewrites every generated artifact, and a check
+comparing one you did not regenerate is red about a file you never edited. Then `pnpm test` in
+`packages/dev/checks`, and give a direction change a register row.

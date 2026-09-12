@@ -1,42 +1,108 @@
 /**
- * The settings inactivity reads from its `settings:` block in `automations.yml`
- * — `design.md`'s config section as a spec.
+ * The settings inactivity reads beside its `enabled` — `design.md`'s config
+ * section as a spec: two ladders over one reminder and one reap.
  *
- * Two ladders over one pair of clocks. `issues` and `pullRequests` are blocks
- * because each is opt-in; `reapWhen` is a section of three named reasons rather
- * than an open mapping, because the reasons are the platform's vocabulary and a
- * repository cannot invent a fourth.
- *
- * Every `days` inside a ladder inherits by NAME, so the spec states the chain by
- * naming the field and the reader walks it: reason → ladder → capability
- * default (`design/guides/capability-kits.md` §3.1). `above` rides on every
- * `reapAfterDays` so the design's "at every level" sentence is checked at every
- * level, and `MIN_GRACE_DAYS` is imported rather than restated.
+ * A level that acts is an enabled-block; one that only states a clock is a
+ * section. Clocks inherit by name (`design/guides/capability-kits.md` §3.1).
  */
 
-import { block, days, flag, MIN_GRACE_DAYS, section, spec } from "@hiero-hackers/automation-core";
+import {
+    block,
+    duration,
+    flag,
+    MIN_GRACE_HOURS,
+    MIN_REAP_HOURS,
+    section,
+    spec,
+} from "@hiero-hackers/automation-core";
 
-/** One ladder's two clocks, spelled once and used at both levels that have them. */
+/** The reminder every level below the root inherits. */
+const remindAfter = duration({
+    inherits: "remindAfter",
+    doc: "Silence before this level's reminder, taken from the level above when unset",
+});
+
+/** One acting level's two clocks, spelled once and used at the four that act. */
 const ladder = {
-    remindAfterDays: days({ inherits: "remindAfterDays" }),
-    reapAfterDays: days({
-        inherits: "reapAfterDays",
-        above: ["remindAfterDays", MIN_GRACE_DAYS],
-    }),
+    remindAfter,
+    reap: block(
+        {
+            after: duration({
+                inherits: "reap.after",
+                above: ["remindAfter", MIN_GRACE_HOURS],
+                atLeast: MIN_REAP_HOURS,
+                doc: "Silence before this level's release, taken from the level above when unset",
+            }),
+        },
+        {
+            doc: "Release what this level reminded about — absent or off means remind and never act",
+        },
+    ),
 };
 
 /** The five keys a repository may state, and what each is worth unstated. */
 export const INACTIVITY_SETTINGS = spec({
-    exemptBlocked: flag({ default: true }),
-    remindAfterDays: days({ default: 14 }),
-    reapAfterDays: days({ default: 21, above: ["remindAfterDays", MIN_GRACE_DAYS] }),
-    issues: block({ ...ladder }),
-    pullRequests: block({
-        ...ladder,
-        reapWhen: section({
-            draft: block({ ...ladder }),
-            changesRequested: block({ ...ladder }),
-            needsRevision: block({ ...ladder }),
-        }),
+    exemptBlocked: flag({
+        default: true,
+        doc: "Leave anything carrying the blocked meaning alone — no reminder, no release",
     }),
+    remindAfter: duration({
+        default: "14d",
+        doc: "Silence before a reminder, for every ladder and reason that sets none of its own",
+    }),
+    reap: section(
+        {
+            after: duration({
+                default: "21d",
+                doc: "Silence before release — an issue is unassigned, a pull request closed",
+            }),
+        },
+        {
+            doc: "The release clock every ladder and reason inherits — consent is each acting level's own",
+        },
+    ),
+    issues: block(
+        { ...ladder },
+        { doc: "Run the ladder on assigned issues that have no open pull request" },
+    ),
+    pullRequests: block(
+        {
+            remindAfter,
+            reap: section(
+                {
+                    after: duration({
+                        inherits: "reap.after",
+                        doc: "The release clock this ladder's reasons inherit, taken from the capability default when unset",
+                    }),
+                },
+                {
+                    doc: "The release clock every reason below inherits — consent is each reason's own",
+                },
+            ),
+            reapWhen: section(
+                {
+                    draft: block(
+                        { ...ladder },
+                        { doc: "Pull requests GitHub is holding as drafts — no mapping needed" },
+                    ),
+                    changesRequested: block(
+                        { ...ladder },
+                        {
+                            doc: "Pull requests a reviewer has asked for changes on — no mapping needed",
+                        },
+                    ),
+                    needsRevision: block(
+                        { ...ladder },
+                        {
+                            doc: "Pull requests carrying your needsRevision label, where a quality failure moves fast",
+                        },
+                    ),
+                },
+                {
+                    doc: "The pull-request states the ladder applies in — one outside them is left alone",
+                },
+            ),
+        },
+        { doc: "Run the ladder on pull requests, linked to an issue or not" },
+    ),
 });

@@ -91,6 +91,9 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       dependency-cruiser:
         specifier: ^18.2.0
         version: 18.2.0

@@ -1,10 +1,6 @@
 /**
- * What a ladder is handed.
- *
- * The ladders in `issues.ts` and `pull-requests.ts` close over nothing: every
- * fact they need arrives on this context or on the record itself, and the
- * context is built once per record in `capability.ts`. It sits below them so
- * that `capability.ts` can import them without a cycle.
+ * What a ladder is handed. The ladders close over nothing: every fact they
+ * need arrives on this context or on the record itself.
  */
 
 import {
@@ -28,13 +24,11 @@ export interface LadderContext {
     readonly settings: InactivitySettings;
     /** When the record was read. Not always the occasion an intent is dated at. */
     readonly observedAt: Date;
-    /** Carried for core's `people`, the one question either ladder asks. */
     readonly platform: PlatformHandle<InactivityDeclaration>;
     /** Bind one item and one occasion; an act dates itself, not the sweep. */
     make(item: ItemRef, occasion: Date): MakeIntent;
 }
 
-/** The context one record's ladder runs on. */
 export function ladderContext(
     settings: InactivitySettings,
     facts: { readonly repository: RepositoryRef; readonly observedAt: Date },

@@ -1,13 +1,24 @@
 /**
- * The settings prQuality reads from its `settings:` block in `automations.yml`.
- *
- * The empty spec is the written answer, not a forgotten file: prQuality
- * declares no config keys at all (D125), so a repository has nothing to supply
- * and `evaluate` has nothing to read. `design.md`'s `checks` block belongs to
- * the seed's own build.
+ * The settings prQuality reads beside its `enabled`: `design.md`'s `checks`
+ * block, at the size the shipped code can honestly read.
  */
 
-import { spec } from "@hiero-hackers/automation-core";
+import { block, section, spec, text } from "@hiero-hackers/automation-core";
 
-/** No keys. An empty spec cannot be unusable, so nothing reads it. */
-export const PR_QUALITY_SETTINGS = spec({});
+/** The checks a repository may switch on, and where each failure sends a reader. */
+export const PR_QUALITY_SETTINGS = spec({
+    checks: section(
+        {
+            linkedIssues: block(
+                {
+                    guide: text({
+                        optional: true,
+                        doc: "A page explaining how to link an issue, shown to the contributor when this check fails",
+                    }),
+                },
+                { doc: "Say so when a pull request references no issue" },
+            ),
+        },
+        { doc: "The quality checks this repository runs — each one off until it is enabled" },
+    ),
+});

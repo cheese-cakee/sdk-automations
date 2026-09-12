@@ -7,14 +7,13 @@
 # The label strings are this repository's own words. A capability never sees
 # them; it asks for `awaitingTriage` and the adapter looks up the string.
 
-schemaVersion: 1
+schemaVersion: 2
 mode: observe
 
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: false
+    announce: false
 
 mappings:
   labels:

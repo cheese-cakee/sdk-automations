@@ -29,6 +29,7 @@ const ERROR_CODES: { readonly [K in ConfigErrorCode]: true } = {
     capabilityNameInvalid: true,
     capabilityEnabledNotBoolean: true,
     capabilityUnknown: true,
+    settingInvalid: true,
     meaningNotMappable: true,
     meaningRequired: true,
     labelInvalid: true,
@@ -41,8 +42,7 @@ const ERROR_CODES: { readonly [K in ConfigErrorCode]: true } = {
     skillNotInjective: true,
     alertInvalid: true,
     alertNotInjective: true,
-    typeInvalid: true,
-    typeNotInjective: true,
+    principalNameInvalid: true,
     principalNotAString: true,
 };
 

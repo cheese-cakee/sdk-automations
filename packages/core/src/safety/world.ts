@@ -1,58 +1,46 @@
 /**
- * The derived world — D92 phase 4, the payoff.
- *
- * D77 ruled "the shell supplies observations; core computes conclusions",
- * and `WriteContext` went on asking callers for two conclusions —
- * `observedMeanings` and `preconditionHolds` — that follow from the
- * projection. Phases 1–3 made the engine derive them; this phase makes the
- * derivation the ONLY way they can exist: `DerivedWorld` is branded with a
- * symbol this module does not export through the barrel, and core's
- * `exports` map blocks deep imports from outside the package. A shell that
- * wants to assert a stale precondition has no type to assert it with —
- * the lie is unrepresentable, not discouraged. Same pattern as D60's
- * branded warning, applied to the world itself.
+ * The derived world: the safety facts a rule may read, and the only way to
+ * make them. Derivation is the sole constructor (D92).
  */
 
 import { MAPPABLE_MEANINGS, type MappableMeaning } from "../config/index.js";
 import { closureOf, type ClosureReason, type Projection } from "../workflow/index.js";
 
+/** A pull request's native mode — GitHub's own state, never a label. */
+export const PULL_REQUEST_MODES = ["draft", "changesRequested"] as const;
+
+export type PullRequestMode = (typeof PULL_REQUEST_MODES)[number];
+
 /**
- * What a capability claims about the world — contracts/safety.md's language.
- * `Intent.claims` is typed with it directly; it is defined here so the
- * derivation and the claim share one shape without the safety module
- * depending on the capability layer.
+ * Which native modes an observation READ. An absent mode was not read — never
+ * "the item is not in it" — and a claim on it is refused (D51).
  */
+export type ObservedModes = { readonly [M in PullRequestMode]?: boolean };
+
+/** What a capability claims about the world (`design/contracts/safety.md`). */
 export interface ClaimedFacts {
     readonly meaningsPresent: readonly MappableMeaning[];
     readonly meaningsAbsent: readonly MappableMeaning[];
     /** `null` when the capability makes no open/closed claim. */
     readonly closed: boolean | null;
+    /** The native mode the decision saw, or absent for no claim. */
+    readonly pullRequestMode?: PullRequestMode;
 }
 
 /** Not exported from the barrel — constructing a DerivedWorld goes through `deriveWorld`. */
 export const DERIVED: unique symbol = Symbol("derived-by-engine");
 
-/**
- * The safety facts a rule may read, derivable only. External packages cannot
- * reach `DERIVED` (the barrel omits it and the package `exports` map blocks
- * deep imports), so this interface has no constructible literal outside core.
- *
- * `closure` is here for the same reason `observedMeanings` is: the
- * `itemClosed` rule must read the platform's own reading of the observation,
- * not a capability's `claims.closed` claim, which defaults to no claim.
- */
+/** The safety facts a rule may read, derivable only (D92). */
 export interface DerivedWorld {
     readonly observedMeanings: readonly MappableMeaning[];
     readonly preconditionHolds: boolean;
     /** Why the observed item is closed, or `null` if it is open. */
     readonly closure: ClosureReason | null;
+    readonly modes: ObservedModes;
     readonly [DERIVED]: true;
 }
 
-/**
- * Every mapped meaning the observation actually carried, reconstructed from
- * the projection — both branches, in `MAPPABLE_MEANINGS` order.
- */
+/** Every mapped meaning the observation carried, in `MAPPABLE_MEANINGS` order. */
 export function observedMeaningsOf<M extends MappableMeaning>(
     projection: Projection<M>,
 ): readonly MappableMeaning[] {
@@ -68,14 +56,11 @@ export function observedMeaningsOf<M extends MappableMeaning>(
     return MAPPABLE_MEANINGS.filter((m) => present.has(m));
 }
 
-/**
- * Does the claimed world match the observed one? Three clauses against the
- * projection, closure read via `closureOf` — both branches, the asymmetry
- * trap that function exists for.
- */
+/** Does the claimed world match the observed one? */
 export function expectedHolds<M extends MappableMeaning>(
     claims: ClaimedFacts,
     projection: Projection<M>,
+    modes: ObservedModes = {},
 ): boolean {
     const observed = new Set(observedMeaningsOf(projection));
     for (const meaning of claims.meaningsPresent) {
@@ -88,44 +73,39 @@ export function expectedHolds<M extends MappableMeaning>(
         const isClosed = closureOf(projection) !== null;
         if (claims.closed !== isClosed) return false;
     }
+    if (claims.pullRequestMode !== undefined && modes[claims.pullRequestMode] !== true) {
+        return false;
+    }
     return true;
 }
 
 /**
- * The one constructor. Missing or conflicted projection data cannot establish
- * an authoritative precondition. A clean position projection compares the
- * requested preconditions with observed facts.
- *
- * Closure is read from BOTH projection branches, and `null` without a
- * projection says "nothing observed says closed" rather than "open". No rule
- * reads it in that state: `preconditionHolds` is already false there, so the
- * shared preflight refuses `preconditionStale` before the rules run.
+ * The one constructor: missing or conflicted projection data cannot establish
+ * an authoritative precondition.
  */
 export function deriveWorld<M extends MappableMeaning>(
     projection: Projection<M> | null,
     claims: ClaimedFacts,
+    modes: ObservedModes = {},
 ): DerivedWorld {
     return {
         observedMeanings: projection === null ? [] : observedMeaningsOf(projection),
         preconditionHolds:
             projection !== null &&
             projection.kind === "position" &&
-            expectedHolds(claims, projection),
+            expectedHolds(claims, projection, modes),
         closure: projection === null ? null : closureOf(projection),
+        modes,
         [DERIVED]: true,
     };
 }
 
-/**
- * FOR CORE'S OWN RULE TESTS ONLY — deliberately absent from the barrel, so
- * external packages cannot reach it. The rule suite needs arbitrary
- * world-fact combinations to pin precedence; production code needs exactly
- * one way to make a world, and this is not it.
- */
+/** FOR CORE'S OWN RULE TESTS ONLY — must stay absent from the barrel. */
 export function assertedWorld(
     observedMeanings: readonly MappableMeaning[],
     preconditionHolds: boolean,
     closure: ClosureReason | null = null,
+    modes: ObservedModes = {},
 ): DerivedWorld {
-    return { observedMeanings, preconditionHolds, closure, [DERIVED]: true };
+    return { observedMeanings, preconditionHolds, closure, modes, [DERIVED]: true };
 }

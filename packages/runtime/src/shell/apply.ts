@@ -1,37 +1,9 @@
 /**
- * How one approved effect becomes a landed GitHub change, exactly once.
- *
- * Stage C. `effects.ts` says what an effect's calls ARE and `operations/`
- * says what each one plans, spells and sends; this file is the choreography
- * around them — the lease, the journal, the send, the read-back that proves
- * it — and it owns every seam the choreography needs. Nothing here knows a
- * verb; the two dispatches below hand each call to its own handler.
- *
- * The dispatch is the storage decision's recovery loop, verbatim: the journal
- * says WHAT to check, GitHub says HOW IT ENDED, and the call's idempotency
- * decides how a retry may be performed. Four journal states, four answers.
- *
- * ```
- * complete     → nothing sent; the effect already landed
- * midSequence  → resume at the next call
- * sentUnknown  → read GitHub back BEFORE anything, then close or resend
- * neverStarted → re-gate against a LIVE read, then journal → send → verify
- * ```
- *
- * Two rules run through all of it. Nothing is sent that was not journalled
- * first, so a crash between the two is a row a later pass resolves rather than
- * a change nobody recorded. And nothing is closed that was not read back, so
- * "done" always means a read said so.
- *
- * The seams a send uses now live in `operations/handler.ts`, where the
- * handlers that call them are, and are re-exported here because that is where
- * the package's public surface has always named them. They restate shapes the
- * adapter already has, which is deliberate and enforced:
- * `.dependency-cruiser.cjs` admits the adapter at `main.ts` and nowhere else,
- * so the shell names what it needs and the composition root passes the
- * adapter's own objects, which satisfy it structurally. Same idiom as
- * `ExternalsForDelivery`, and `main.ts` is where the two shapes are checked
- * against each other.
+ * How one approved effect becomes a landed GitHub change, exactly once — stage C.
+ * `effects.ts` says what an effect's calls ARE and `operations/` what each one plans
+ * and sends; this file is the choreography around them, and it knows no verb. Two
+ * rules run through all of it: nothing is sent that was not journalled first, and
+ * nothing is closed that was not read back.
  */
 
 import {
@@ -52,6 +24,7 @@ import {
     type IntentOperation,
     type ItemRef,
     type MappableMeaning,
+    type ObservedModes,
     type Projection,
     type RepositoryConfig,
     type WarningToRecord,
@@ -79,14 +52,7 @@ import {
     serializeCall,
 } from "./operations/index.js";
 
-/**
- * The seam vocabulary, re-exported from its new home.
- *
- * These names are the package's write-path surface — `main.ts` checks the
- * adapter against two of them — and they were exported from this file before
- * the handlers moved out of it. The re-export keeps the barrel's name set
- * exactly what it was.
- */
+/** The seam vocabulary, re-exported from its new home to keep the barrel's name set. */
 export type {
     CommentSeen,
     EffectReader,
@@ -101,21 +67,13 @@ export type {
 
 /**
  * How long an effect lease is honoured before a later worker may take it over.
- *
- * Ten minutes exceeds the write client's local request budget and reduces
- * ordinary recovery overlap. It is not a proof that GitHub stopped processing
- * a timed-out request, so live takeover remains open under D41.
+ * Not a proof GitHub stopped processing a timed-out request; live takeover stays open (D41).
  */
 export const EFFECT_LEASE_STALE_MINUTES = 10;
 
 /**
  * How many times one call may be declared before recovery gives up on it.
- *
- * The journal's `attempt` column counts durably, across restarts, so this is a
- * bound on the effect rather than on a process (D42). A call that has been
- * sent five times and never confirmed is not one more send away from working;
- * it is a thing an operator has to look at, which is what `effectAbandoned`
- * is for.
+ * The journal's `attempt` column counts durably, so this bounds the effect, not a process (D42).
  */
 export const EFFECT_ATTEMPT_CAP = 5;
 
@@ -123,12 +81,7 @@ export const EFFECT_ATTEMPT_CAP = 5;
 
 /**
  * A FRESH externals set, built per apply pass.
- *
- * Never the delivery's own: that one memoises each item's ordering evidence
- * for the length of one decision, which is right for a decision and wrong
- * here. Between deciding and applying, a human can change the item — and a
- * memo would answer the apply-time gate with the instant the DECISION read,
- * which is the one thing a re-gate exists to stop believing.
+ * Never the delivery's own: its memo would answer the apply-time gate with the instant the DECISION read, which is the one thing a re-gate must not believe.
  */
 export type EffectExternalsSource = () => ShellExternals | Promise<ShellExternals>;
 
@@ -163,16 +116,7 @@ interface Pass {
     readonly capability: string;
     readonly item: ItemRef;
     readonly config: RepositoryConfig;
-    /**
-     * The warning this pass's comment records when it lands, or `null` for
-     * every other effect — and for every RECOVERY pass, which resends from a
-     * row and has no approval to carry one.
-     *
-     * A warning resent by recovery therefore records nothing, and that is
-     * self-healing rather than lost: with no record standing, the next
-     * decision approves the warning effect again, the comment read-back
-     * answers `already`, and the record is written from the approval that time.
-     */
+    /** The warning this comment records when it lands; `null` for every recovery pass. */
     readonly records: WarningToRecord | null;
 }
 
@@ -204,12 +148,7 @@ const refuse = (code: EffectOutcomeCode, detail: string): GateVerdict => ({
 
 /**
  * The live item as a projection.
- *
- * A closed item's reason is read as far as this endpoint can tell it: a merged
- * pull request is `merged`, and everything else closed is `closedByHuman`. The
- * third reason — an issue completed by a linked merge — is not distinguishable
- * from an item read, and does not need to be: every closure refuses the write
- * with the same rule, so the choice cannot change a verdict.
+ * A merged pull request is `merged` and everything else closed is `closedByHuman`; every closure refuses the write by the same rule, so the choice cannot change a verdict.
  */
 function projectionFrom(
     seen: ItemSeen,
@@ -228,22 +167,8 @@ function projectionFrom(
 }
 
 /**
- * Is this comment the one the call about to be sent would BE? Authorship and
- * identity, both required (D125).
- *
- * The identity comes from the call's own rendered body, which is where the
- * platform published it, rather than from anything the pass carries. That is
- * what a resend has: the journal row holds the rendered body and never the
- * identity, and a subject digest cannot be reversed — so a recovery pass and a
- * fresh one ask exactly the same question, and the answer is per item and
- * purpose rather than per occasion (D145).
- *
- * A body publishing no readable identity matches nothing, which is the honest
- * answer rather than a lenient one: identity is what the marker says, and a
- * marker this reader cannot read says nothing to it. Today's plan always
- * renders one it can, so that is a row from an older schema or a corrupt one —
- * and such a call can never be confirmed either, which is what leaves it to the
- * attempt cap rather than to a guess.
+ * Is this comment the one the call about to be sent would BE? Authorship and identity (D125).
+ * The identity comes from the call's own rendered body, which is all a resend has, so a recovery pass and a fresh one ask exactly the same question (D145).
  */
 const isMine = (body: string): ((comment: CommentSeen) => boolean) => {
     const published = parseManagedMarker(body);
@@ -261,24 +186,20 @@ export function createApplier(options: ApplierOptions): Applier {
 
     /**
      * The recorded warning, read from the SAME store the applier journals in.
-     *
-     * Not through `externals`: a warning is the platform's own record rather
-     * than a fact about GitHub, so every composition that owns a store can
-     * answer it, and the credential-free path is not thereby left unable to
-     * gate its own destructive acts (grace.md §2).
+     * Not through `externals`: a warning is the platform's own record, so the credential-free path can still gate its own destructive acts (grace.md §2).
      */
     const warningFor = recordedWarningsIn(store);
 
     /**
      * Did the affected person act after they were warned?
-     *
-     * The instant is the DECISION's reading, which is the honest limit of what
-     * a re-gate can know here: the applier reads no timeline. It is not the
-     * only guard — the ordering evidence below refuses a write over a newer
-     * human change on its own — so this narrows rather than carries the claim.
+     * The instant is the DECISION's reading; this narrows rather than carries the claim.
      */
-    const activityCancels = (intent: AnyIntent): boolean => {
-        const at = intent.grace?.activityAt ?? null;
+    const activityCancels = (intent: AnyIntent, live: Date | null): boolean => {
+        const decided = intent.grace?.activityAt ?? null;
+        const at =
+            decided === null || (live !== null && live.getTime() > decided.getTime())
+                ? live
+                : decided;
         const warning = warningFor(intent.idempotencyKey);
         return at !== null && warning !== null && at.getTime() > warning.warnedAtMs;
     };
@@ -304,9 +225,8 @@ export function createApplier(options: ApplierOptions): Applier {
     };
 
     /**
-     * The ordering evidence for one item, CONTAINED the way `decide()`
-     * contains it: a lookup that threw established nothing, and D51 rules an
-     * unestablished ordering a conflict — which the rules already refuse.
+     * Contained the way `decide()` contains it: a lookup that threw established nothing,
+     * and D51 rules an unestablished ordering a conflict, which the rules already refuse.
      */
     const orderingFor = async (
         facts: ShellExternals,
@@ -320,26 +240,8 @@ export function createApplier(options: ApplierOptions): Applier {
     };
 
     /**
-     * The brakes an operator can still pull between deciding and applying:
-     * the kill switch, the repository's mode, whether the capability is
-     * enabled, and whether the installation still grants the permission.
-     *
-     * Core's own rules, run by core (`evaluateStandingRules`) — not a copy.
-     * The five checks were written out here once, and a shell that restates a
-     * safety ladder is a second ladder waiting to disagree with the first
-     * about whether a repository still says yes. What the shell decides is
-     * WHICH rules to run; how each one answers, in what order, and under which
-     * code stays core's.
-     *
-     * The subset is the item-independent half, and it is the whole gate a
-     * RESUME passes. The full ladder is not re-run on a resume, and the reason
-     * is add-then-remove: a half-done label swap leaves the item holding two
-     * position labels, which projects as a conflict, which `deriveWorld`
-     * reports as no authoritative precondition — so `evaluateWrite` could only
-     * ever answer `preconditionStale` there. The conflict is this platform's
-     * own intermediate, and the remaining call is exactly what clears it;
-     * refusing would leave the item conflicted for good, which is worse for a
-     * human than finishing the move they can then re-edit.
+     * The brakes an operator can still pull between deciding and applying, run by core
+     * (`evaluateStandingRules`) and not copied. The shell decides WHICH rules to run. This item-independent subset is the whole gate a RESUME passes: add-then-remove leaves two position labels, so the full ladder could only answer `preconditionStale`.
      */
     const brakes = (pass: Pass, operation: IntentOperation, facts: ShellExternals): GateVerdict => {
         const operationFacts = INTENT_OPERATIONS[operation];
@@ -374,14 +276,23 @@ export function createApplier(options: ApplierOptions): Applier {
     };
 
     /**
+     * The live answer to the mode this intent claimed, and to no other.
+     * `draft` rides on the item read already made; the reviews list is a second call, spent only where a claim turns on it.
+     */
+    const modesClaimed = async (
+        intent: AnyIntent,
+        seen: ItemSeen,
+    ): Promise<ReadAnswer<ObservedModes>> => {
+        const claimed = intent.claims.pullRequestMode;
+        if (claimed === undefined) return { ok: true, value: {} };
+        if (claimed === "draft") return { ok: true, value: { draft: seen.draft } };
+        const read = await reader.changesRequested(intent.item);
+        return read.ok ? { ok: true, value: { changesRequested: read.value } } : read;
+    };
+
+    /**
      * The whole ladder again, against a LIVE read of the item.
-     *
-     * This is what makes an approval a permission to act NOW rather than a
-     * permission banked at decision time. The item is re-read, the projection
-     * rebuilt from its current labels, and the ordering evidence taken from a
-     * source built for this pass — so a human change made in the gap between
-     * deciding and applying refuses the write, which a memo carried over from
-     * the decision could not do.
+     * This is what makes an approval a permission to act NOW rather than one banked at decision time. A mode that moved refuses under `preconditionStale`, as a meaning does.
      */
     const freshGate = async (pass: Pass, intent: AnyIntent): Promise<GateVerdict> => {
         const seen = await reader.item(intent.item);
@@ -392,6 +303,17 @@ export function createApplier(options: ApplierOptions): Applier {
                     outcome: "retryLater",
                     code: "itemUnreadable",
                     detail: `the item could not be read at apply time: ${seen.detail}`,
+                },
+            };
+        }
+        const modes = await modesClaimed(intent, seen.value);
+        if (!modes.ok) {
+            return {
+                ok: false,
+                result: {
+                    outcome: "retryLater",
+                    code: "itemUnreadable",
+                    detail: `the pull request's mode could not be read at apply time: ${modes.detail}`,
                 },
             };
         }
@@ -407,6 +329,23 @@ export function createApplier(options: ApplierOptions): Applier {
             };
         }
         const request = writeRequestFor(intent);
+        const activity =
+            intent.grace !== null && intent.operation === "closePullRequest"
+                ? await reader.pullRequestActivity(
+                      intent.item,
+                      pass.config.mappings.commands.working,
+                  )
+                : { ok: true as const, value: null };
+        if (!activity.ok) {
+            return {
+                ok: false,
+                result: {
+                    outcome: "retryLater",
+                    code: "itemUnreadable",
+                    detail: `the pull request's activity could not be read at apply time: ${activity.detail}`,
+                },
+            };
+        }
         const context = {
             killSwitchActive: facts.value.killSwitchActive,
             installationGrants: facts.value.installationGrants,
@@ -414,13 +353,12 @@ export function createApplier(options: ApplierOptions): Applier {
             world: deriveWorld(
                 projectionFrom(seen.value, intent.item.kind, pass.config),
                 intent.claims,
+                modes.value,
             ),
         };
-        // The same two doors the decision used (grace.md §2), for the same
-        // reason the world is re-derived: an approval is permission to act NOW.
-        // A grace that ran out at decision time is still the promise that
-        // binds, but the record is re-read here — a warning pruned, or a
-        // repository that has since been re-warned, changes the answer.
+        // The same two doors the decision used (grace.md §2): the record is re-read
+        // here, so a pruned warning or a re-warned repository changes the answer.
+
         const verdict =
             intent.grace === null
                 ? evaluateWrite(request, pass.config, context)
@@ -428,7 +366,7 @@ export function createApplier(options: ApplierOptions): Applier {
                       {
                           request,
                           warning: warningFor(intent.idempotencyKey),
-                          qualifyingActivitySinceWarning: activityCancels(intent),
+                          qualifyingActivitySinceWarning: activityCancels(intent, activity.value),
                       },
                       pass.config,
                       context,
@@ -441,10 +379,7 @@ export function createApplier(options: ApplierOptions): Applier {
 
     /**
      * What one send of this pass's effect may know.
-     *
-     * `isMine` is handed in rather than left to the handler, for the reason it
-     * always was: recognising the App's own comment is the choreography's
-     * business and not an operation's (D125).
+     * `isMine` is handed in: recognising the App's own comment is the choreography's business and not an operation's (D125).
      */
     const contextFor = (pass: Pass): SendContext => ({
         item: pass.item,
@@ -461,19 +396,11 @@ export function createApplier(options: ApplierOptions): Applier {
     const confirm = async (pass: Pass, call: Call): Promise<Confirmation> =>
         await confirmCall(call, contextFor(pass));
 
-    const DAY_MS = 24 * 60 * 60 * 1000;
+    const HOUR_MS = 60 * 60 * 1000;
 
     /**
      * The warning this landed comment promises, written down (grace.md §3).
-     *
-     * `warnedAt` is NOW, not the decision's instant, because the promise is
-     * made when the comment appears; `earliestActionAt` follows from it, so
-     * the date the record holds is the date the grace actually starts from.
-     * Keyed by the ACT's effect id: the warning comment is how the promise got
-     * published, and the act is what it authorizes.
-     *
-     * Called only after a call is proved done, which is what makes "a warning
-     * that never posted authorizes nothing" true — nothing records it.
+     * `warnedAt` is NOW, because the promise is made when the comment appears. Keyed by the ACT's effect id, and called only after a call is proved done.
      */
     const record = (pass: Pass, call: Call): void => {
         if (pass.records === null || call.verb !== "postComment") return;
@@ -482,9 +409,9 @@ export function createApplier(options: ApplierOptions): Applier {
         store.recordWarning({
             effectId: pass.records.effectId,
             warnedAt: warnedAt.toISOString(),
-            gracePeriodDays: pass.records.gracePeriodDays,
+            gracePeriodHours: pass.records.gracePeriodHours,
             earliestActionAt: new Date(
-                warnedAt.getTime() + pass.records.gracePeriodDays * DAY_MS,
+                warnedAt.getTime() + pass.records.gracePeriodHours * HOUR_MS,
             ).toISOString(),
             cancelledBy: pass.records.cancelledBy,
             reversesWith: pass.records.reversesWith,
@@ -499,13 +426,7 @@ export function createApplier(options: ApplierOptions): Applier {
 
     /**
      * Journal, send, prove — in that order, always.
-     *
-     * `store.intent` is the row that survives a crash between here and
-     * GitHub; re-declaring an open call increments its durable attempt
-     * counter, which is what a resend does and what the cap counts. A definite
-     * refusal — conflict or forbidden — CLOSES the row: nothing landed and
-     * nothing will, so leaving it open would ask the sweep to re-decide a
-     * question GitHub has already answered.
+     * A definite refusal — conflict or forbidden — CLOSES the row: nothing landed and nothing will, so leaving it open would ask the sweep to re-decide a settled question.
      */
     const journalAndSend = async (pass: Pass, seq: number, call: Call): Promise<CallResult> => {
         store.intent(
@@ -549,13 +470,7 @@ export function createApplier(options: ApplierOptions): Applier {
 
     /**
      * One open `sent` row, resolved — the whole of `SENT-UNKNOWN`.
-     *
-     * GitHub is asked BEFORE anything else, because the row says only that a
-     * call was declared. A confirmed postcondition closes the row without a
-     * second send. A confirmed absence earns a resend, and only that branch
-     * meets a gate: by then nothing has landed, so a world that now says no
-     * makes the row final rather than pending. An unknown read leaves the row
-     * exactly as it was, for a later pass with a luckier read.
+     * GitHub is asked BEFORE anything else. Only the resend branch meets a gate, because by then nothing has landed, so a world that now says no makes the row final.
      */
     const resolveOpen = async (
         pass: Pass,
@@ -618,10 +533,11 @@ export function createApplier(options: ApplierOptions): Applier {
         revision: string,
         calls: readonly Call[],
     ): Promise<PassResult> => {
+        // Nothing can be resent from bytes nobody can read, and leaving the row open
+        // would hand the sweep the same dead end forever.
+
         const journaled = parseJournaledCall(row);
         if (journaled === null) {
-            // Nothing can be resent from bytes nobody can read, and leaving
-            // the row open would hand the sweep the same dead end forever.
             store.done(pass.effectId, seq, now());
             return {
                 outcome: "refused",
@@ -701,8 +617,6 @@ export function createApplier(options: ApplierOptions): Applier {
             return outcomeOf({ outcome: "refused", code: plan.code, detail: plan.detail });
         }
         if (!claim(pass.effectId)) {
-            // Not a failure: the holder is working on it, or will be told it
-            // lost the lease. Either way this pass has nothing safe to add.
             return outcomeOf({
                 outcome: "unknown",
                 code: "leaseHeld",
@@ -725,11 +639,7 @@ export function createApplier(options: ApplierOptions): Applier {
 
         /**
          * One open row the sweep found, resolved and reported.
-         *
-         * Log-only: a recovery pass has no delivery record to write into, so
-         * the operator log is the whole account of it. A row still open at the
-         * end says nothing — the sweep meets it again next tick, and a line
-         * every minute would bury the ones that matter.
+         * Log-only, and a row still open at the end says nothing: the sweep meets it again.
          */
         async recover(open, config) {
             const journaled = parseJournaledCall(open.intent);

@@ -83,7 +83,6 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                                     commands: {},
                                                     skills: {},
                                                     alerts: {},
-                                                    types: {},
                                                 },
                                                 principals: {},
                                             };

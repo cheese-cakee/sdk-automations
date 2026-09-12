@@ -100,11 +100,13 @@ pnpm --filter @hiero-hackers/automation-lab capture
 | [`protocols/6.6-forks.md`](protocols/6.6-forks.md) | 6.6 | permission matrix, Q11 |
 | [`protocols/6.7-read-after-write.md`](protocols/6.7-read-after-write.md) | 6.7 | D46, read-back freshness rule |
 | [`protocols/6.8-linked-issues.md`](protocols/6.8-linked-issues.md) | 6.8 | D123, Q16 — gates the `linkedIssues` resolver |
+| [`protocols/6.9-sweep-and-check-reads.md`](protocols/6.9-sweep-and-check-reads.md) | 6.9 | permission matrix, Q16 — gates the `review` fact group, pr-quality's DCO/GPG/assignment checks, and onboarding |
 
 Run order: 6.1 and 6.2 first (the substrate), then 6.3 (reuses the
 `core/` validator), 6.4, then 6.5 with the largest time budget — it
 produces a *decision*, not just measurements — then 6.6 and 6.7. Protocol 6.8 is the later reopening
-recorded by D123.
+recorded by D123, and 6.9 the second: six implemented-but-uncited reads, and a choice of endpoint
+for a seventh.
 
 ## Exit-gate artifacts
 

@@ -13,7 +13,9 @@
  *    both pollutes the prototype and loses the entry).
  */
 import { describe, it, expect } from "vitest";
+import { addressManagedComment, flag, spec } from "../../src/capability/index.js";
 import { parseConfig } from "../../src/config/index.js";
+import { admitting } from "./builders.js";
 
 describe("hostile keys survive as data, never as prototype", () => {
     /**
@@ -27,7 +29,7 @@ describe("hostile keys survive as data, never as prototype", () => {
                 schemaVersion: 1,
                 capabilities: { constructor: { enabled: false } },
             },
-            { revision: "rev-test", knownCapabilities: ["constructor"] },
+            { revision: "rev-test", knownCapabilities: admitting(["constructor"]) },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -41,20 +43,33 @@ describe("hostile keys survive as data, never as prototype", () => {
     });
 
     /**
-     * Principal names are not pattern-checked, so `__proto__` is ACCEPTED
-     * here — which makes this the one place the assignment hole is reachable
-     * on a success path. It must land as an own property and leave the
-     * prototype alone: never pollution, never loss.
+     * Principal names are pattern-checked now, so `__proto__` is REFUSED here
+     * as it is under `capabilities` and `mappings.alerts` — the hole is closed
+     * at the name rather than survived at the assignment.
+     *
+     * The second half is what keeps `cleanRecord` load-bearing under a name
+     * the pattern DOES admit: the record has no prototype, so a lookup nobody
+     * set reads `undefined` rather than an inherited member.
      */
-    it("a __proto__ principal survives as an own property", () => {
+    it("a __proto__ principal is refused, and a legal one lands on a bare record", () => {
         const raw = JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"team-x"}}');
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(
-                Object.prototype.hasOwnProperty.call(result.config.principals, "__proto__"),
-            ).toBe(true);
-            expect(Object.entries(result.config.principals)).toEqual([["__proto__", "team-x"]]);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.map((e) => [e.code, e.path])).toEqual([
+                ["principalNameInvalid", "principals.__proto__"],
+            ]);
+        }
+
+        const legal = parseConfig(
+            { schemaVersion: 1, principals: { maintainerTeam: "team-x" } },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
+        expect(legal.ok).toBe(true);
+        if (legal.ok) {
+            expect(Object.entries(legal.config.principals)).toEqual([["maintainerTeam", "team-x"]]);
+            expect(Object.getPrototypeOf(legal.config.principals)).toBeNull();
+            expect(legal.config.principals.toString).toBeUndefined();
         }
     });
 
@@ -68,7 +83,7 @@ describe("hostile keys survive as data, never as prototype", () => {
         for (const name of ["constructor", "toString", "hasOwnProperty"]) {
             const result = parseConfig(
                 { schemaVersion: 1, capabilities: { [name]: { enabled: false } } },
-                { revision: "rev-test", knownCapabilities: ["intake"] },
+                { revision: "rev-test", knownCapabilities: admitting(["intake"]) },
             );
             expect(result.ok).toBe(false);
             if (!result.ok) {
@@ -86,20 +101,22 @@ describe("hostile keys survive as data, never as prototype", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
-                capabilities: { intake: { enabled: false, settings: { toString: 1 } } },
+                capabilities: { intake: { enabled: false, toString: 1 } },
             },
             {
                 revision: "rev-test",
                 knownCapabilities: [
-                    { name: "intake", configKeys: ["announce"], requiredMappings: {} },
+                    {
+                        name: "intake",
+                        settings: spec({ announce: flag({ default: false }) }),
+                        requiredMappings: {},
+                    },
                 ],
             },
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.map((e) => e.path)).toEqual([
-                "capabilities.intake.settings.toString",
-            ]);
+            expect(result.errors.map((e) => e.path)).toEqual(["capabilities.intake.toString"]);
         }
     });
 
@@ -117,7 +134,7 @@ describe("hostile keys survive as data, never as prototype", () => {
                 knownCapabilities: [
                     {
                         name: "intake",
-                        configKeys: [],
+                        settings: spec({}),
                         requiredMappings: { labels: ["awaitingTriage"] },
                     },
                 ],
@@ -134,7 +151,7 @@ describe("hostile keys survive as data, never as prototype", () => {
                 capabilities: { prQuality: { enabled: true } },
                 principals: { maintainerTeam: "t" },
             },
-            { revision: "rev-test", knownCapabilities: ["prQuality"] },
+            { revision: "rev-test", knownCapabilities: admitting(["prQuality"]) },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -167,11 +184,11 @@ describe("never throws, for any already-parsed shape", () => {
         { schemaVersion: 1, mappings: { labels: { ready: null } } },
         { schemaVersion: 1, principals: "team" },
         { schemaVersion: 1, principals: { a: { nested: true } } },
-        // Deep nesting in the opaque settings blob stays opaque.
+        // Deep nesting in an undeclared setting stays opaque.
         {
             schemaVersion: 1,
             capabilities: {
-                a: { enabled: false, settings: { deep: { deeper: { deepest: [[[{}]]] } } } },
+                a: { enabled: false, deep: { deeper: { deepest: [[[{}]]] } } },
             },
         },
         // Many keys — no quadratic surprise, no throw.
@@ -198,6 +215,89 @@ describe("never throws, for any already-parsed shape", () => {
         },
     );
 
+    /**
+     * A principal is a handle or a team slug, and the parser judges neither:
+     * it takes any non-empty name and hands it on exactly as written. The one
+     * place a name becomes a mention (`addressManagedComment`) writes an `@`
+     * in front of it and nothing else, so a bare login and an `org/team` slug
+     * are the same question to the platform and the repository's own to get
+     * right.
+     */
+    it.each([
+        ["a bare login", "alice"],
+        ["an org/team slug", "hiero-hackers/maintainers"],
+        ["a name the platform has no opinion about", "Maintainers (EU)"],
+    ])("a principal that is %s is kept exactly as written", (_why, handle) => {
+        const result = parseConfig(
+            { schemaVersion: 1, principals: { maintainerTeam: handle } },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.config.principals.maintainerTeam).toBe(handle);
+            expect(addressManagedComment("body", "maintainerTeam", result.config.principals)).toBe(
+                `@${handle} — body`,
+            );
+        }
+    });
+
+    /**
+     * A label is whatever GitHub would accept and the parser does not ask: the
+     * only rules are non-empty and injective under the fold. So these parse —
+     * and the one place a spelling reaches a comment body renders it through
+     * `inert()`, which is `configReport`'s own suite's claim, not this one's.
+     */
+    it.each([
+        ["a label of 256 characters", "a".repeat(256)],
+        ["a label with a newline in it", "line one\nline two"],
+        ["a label that is a wildcard", "*"],
+        ["a label that reads as a mention", "@everyone"],
+        ["a label shaped like the App's own marker", "<!-- hiero-automation:v2 -->"],
+    ])("%s is the repository's business, and is kept as written", (_why, spelling) => {
+        const result = parseConfig(
+            { schemaVersion: 1, mappings: { labels: { ready: spelling } } },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.mappings.labels.ready).toBe(spelling);
+    });
+
+    /**
+     * One label namespace, and a command is not in it. The injectivity rules
+     * span `labels`, `skills` and `alerts` because those three are all real
+     * GitHub labels; a command is text a contributor types in a comment, so
+     * the same word under both is two different things with one spelling and
+     * nothing to read back wrongly.
+     */
+    it("the same word may be a label and a command", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: { labels: { ready: "/assign" }, commands: { assign: "/assign" } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.config.mappings.labels.ready).toBe("/assign");
+            expect(result.config.mappings.commands.assign).toBe("/assign");
+        }
+    });
+
+    /**
+     * A bare slash is a command: the rule is a leading `/`, and a spelling
+     * that is only that is odd rather than wrong. It is also typeable, which
+     * is the whole test a command spelling has to pass.
+     */
+    it("a command that is only a slash is accepted", () => {
+        const result = parseConfig(
+            { schemaVersion: 1, mappings: { commands: { assign: "/" } } },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.mappings.commands.assign).toBe("/");
+    });
+
     it("accepted entries are exactly the validated entries — nothing vanishes, nothing appears", () => {
         const result = parseConfig(
             {
@@ -208,7 +308,7 @@ describe("never throws, for any already-parsed shape", () => {
                 },
                 principals: { a: "x", b: "y" },
             },
-            { revision: "rev-test", knownCapabilities: ["prQuality", "assignment"] },
+            { revision: "rev-test", knownCapabilities: admitting(["prQuality", "assignment"]) },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {

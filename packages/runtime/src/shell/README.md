@@ -86,7 +86,7 @@ HOST=127.0.0.1              # optional; omit to use Node's default bind host
 CONFIG_FILE=…               # credential-free fallback; default <state home>/automations.yml
 STORE_PATH=…                # optional; default <state home>/shell.sqlite
 SWEEP_INTERVAL_SECONDS=60   # optional; requeue stale claims and drain on this clock
-SWEEP_CADENCE_HOURS=24      # optional; arms the fact sweep and sets how often a repository is read
+SWEEP_CADENCE_HOURS=1       # optional; arms the fact sweep and sets how often a repository is read
 KILL_SWITCH=1               # optional; refuse everything, loudly — including armed writes
 XDG_STATE_HOME=…            # optional; where the state home lives
 ```
@@ -146,9 +146,9 @@ points `STORE_PATH` back at it is still writing raw payloads and real repository
   record per open item, and each record goes through the processor's own mode gate, applier and
   record shape. `SWEEP_CADENCE_HOURS` is what arms it, and it needs the App credentials for the same
   reason `APP_SLUG` does — a cadence with nothing to read GitHub with is half a configuration. What
-  is still out: more than the one configured repository, and the three reads
-  `design/guides/sweep.md` §1 marks unconfirmed, which keep the pull-request `review` group `unread`
-  and the pull-request ladder silent until a sandbox protocol run cites them.
+  is still out: more than the one configured repository. The three reads `design/guides/sweep.md` §1
+  once marked unconfirmed are cited (6.9, 2026-09-12), so the pull-request `review` group is read
+  and the ladder decides.
 - **Config schema migration** — live and local reads intentionally share today's schema; migrations
   remain separate work.
 - **Active mode by default** — with no `APP_SLUG` in the environment, `main.ts` wires no applier and

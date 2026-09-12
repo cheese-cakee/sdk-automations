@@ -1,11 +1,6 @@
 /**
- * What prQuality decides, and what it refuses to decide when the platform
- * could not answer it: an undetermined resolver answer is never read as "no
- * linked issue". Every silence is paired with the input that does produce a
- * comment, so a probe that had simply stopped working would fail here.
- *
- * One module's own branches. `boundary.test.ts` holds the conformance claims
- * and `engine-matrix.test.ts` the composition of all three capabilities.
+ * What prQuality decides, and what it refuses to decide: an undetermined
+ * resolver answer is never read as "no linked issue".
  */
 
 import { describe, expect, it } from "vitest";
@@ -31,6 +26,12 @@ const view = (settings: Readonly<Record<string, unknown>>) =>
         prQuality.declaration,
         configEnabling(["prQuality"], ["prQuality"], { prQuality: settings }),
     );
+
+/**
+ * The one check the App runs today, switched on. `view({})` is the parked
+ * case, because an absent block is parked.
+ */
+const running = view({ checks: { linkedIssues: { enabled: true } } });
 
 const pullRequest = (state: Partial<WorkItemState<PrMeaning>>) =>
     asDeclared<FactsFor<PrQualityDeclaration>>(
@@ -74,7 +75,7 @@ describe("prQuality", () => {
         }));
         const open = pullRequest({});
 
-        expect(await prQuality.evaluate(open, view({}), failed.platform)).toEqual([]);
+        expect(await prQuality.evaluate(open, running, failed.platform)).toEqual([]);
         // The reason is the report's whole account of the silence, so it is stated in full.
         expect(failed.explained).toEqual([
             {
@@ -88,13 +89,13 @@ describe("prQuality", () => {
         ]);
 
         // The same pull request, answered: the silence above was the failure.
-        expect(await prQuality.evaluate(open, view({}), noneFound.platform)).toHaveLength(1);
+        expect(await prQuality.evaluate(open, running, noneFound.platform)).toHaveLength(1);
         expect(noneFound.explained).toEqual([]);
     });
 
     it("says nothing about a pull request that already links an issue", async () => {
         const linked = watch(async () => ({ ok: true, value: [{ kind: "issue", number: 11 }] }));
-        expect(await prQuality.evaluate(pullRequest({}), view({}), linked.platform)).toEqual([]);
+        expect(await prQuality.evaluate(pullRequest({}), running, linked.platform)).toEqual([]);
     });
 
     it("says nothing about a merged pull request, and never asks", async () => {
@@ -104,7 +105,7 @@ describe("prQuality", () => {
         expect(
             await prQuality.evaluate(
                 pullRequest({ closedBy: "merged" }),
-                view({}),
+                running,
                 unreachable.platform,
             ),
         ).toEqual([]);
@@ -117,19 +118,14 @@ describe("prQuality", () => {
             return { ok: true, value: [] };
         });
 
-        await prQuality.evaluate(pullRequest({}), view({}), recording.platform);
+        await prQuality.evaluate(pullRequest({}), running, recording.platform);
 
         expect(asked).toEqual([{ query: "linkedIssues", input: { item: ITEM } }]);
     });
 
-    /**
-     * The whole request, pinned: everything an adapter would act on, plus the
-     * claim the engine checks before it may. `claims.closed` is the one
-     * field that must be `false` rather than absent — an omitted claim is
-     * vacuous, and this comment must not land on a closed pull request.
-     */
+    /** `claims.closed` is `false` rather than absent: an omitted claim is vacuous. */
     it("asks for one managed comment on the observed pull request, claiming it is open", async () => {
-        expect(await prQuality.evaluate(pullRequest({}), view({}), noneFound.platform)).toEqual([
+        expect(await prQuality.evaluate(pullRequest({}), running, noneFound.platform)).toEqual([
             {
                 capability: "prQuality",
                 repository: REPO,
@@ -152,37 +148,95 @@ describe("prQuality", () => {
         ]);
     });
 
-    /**
-     * D125 removed the marker from the configuration surface, and the D84
-     * machinery is what makes that removal load-bearing rather than polite: a
-     * file still setting one is refused before the shell ever constructs the
-     * capability. The `enabled: false` block is deliberate — an unknown key is
-     * a document defect, so it is refused whether or not anyone runs it.
-     */
+    /** D125: an unknown key is a document defect, refused whether or not it runs. */
     it("refuses a configuration that still supplies a marker", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
-                capabilities: { prQuality: { enabled: false, settings: { marker: "<!-- x -->" } } },
+                schemaVersion: 2,
+                capabilities: { prQuality: { enabled: false, marker: "<!-- x -->" } },
             },
-            {
-                revision: "rev-marker",
-                knownCapabilities: [
-                    {
-                        name: prQuality.declaration.name,
-                        configKeys: prQuality.declaration.configKeys,
-                        requiredMappings: prQuality.declaration.requiredMappings,
-                    },
-                ],
-            },
+            { revision: "rev-marker", knownCapabilities: [prQuality.declaration] },
         );
         expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
-            "unknownKey @ capabilities.prQuality.settings.marker",
+            "unknownKey @ capabilities.prQuality.marker",
         ]);
     });
 
-    /** The negative control: the declaration admits nothing at all now. */
-    it("declares no settings keys for a repository to supply", () => {
-        expect(prQuality.declaration.configKeys).toEqual([]);
+    /** The spec IS the schema, so the names a maintainer writes are pinned. */
+    it("declares the checks a repository may switch on", () => {
+        expect(Object.keys(prQuality.declaration.settings)).toEqual(["checks"]);
+        expect(view({}).settings).toEqual({ checks: { linkedIssues: { enabled: false } } });
+    });
+
+    /**
+     * A check runs only where a repository wrote `enabled: true`. The throwing
+     * resolver proves an unasked question rather than a discarded answer.
+     */
+    it("runs no check for a repository that enables none, and never asks", async () => {
+        const unreachable = watch(async () => {
+            throw new Error("a parked check asks nothing");
+        });
+        expect(await prQuality.evaluate(pullRequest({}), view({}), unreachable.platform)).toEqual(
+            [],
+        );
+        expect(
+            await prQuality.evaluate(
+                pullRequest({}),
+                view({ checks: { linkedIssues: { enabled: false } } }),
+                unreachable.platform,
+            ),
+        ).toEqual([]);
+        expect(unreachable.explained).toEqual([]);
+    });
+
+    /** The guide is where the design puts it: on the failure, and nowhere else. */
+    it("ends the failing check with the guide the repository configured", async () => {
+        const withGuide = view({
+            checks: { linkedIssues: { enabled: true, guide: "https://example.test/linking" } },
+        });
+        const [intent] = await prQuality.evaluate(pullRequest({}), withGuide, noneFound.platform);
+
+        expect(intent?.desired).toEqual({
+            kind: "summary",
+            body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step. See the guide: https://example.test/linking",
+        });
+    });
+
+    /** A maintainer copying the design page's whole block gets a rejected file. */
+    it("refuses a check the App does not run", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 2,
+                capabilities: {
+                    prQuality: { enabled: true, checks: { dcoSignoff: { enabled: true } } },
+                },
+            },
+            { revision: "rev-checks", knownCapabilities: [prQuality.declaration] },
+        );
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
+            "unknownKey @ capabilities.prQuality.checks.dcoSignoff",
+        ]);
+    });
+
+    /** The nesting is the dependency: a sub-check is a block inside its parent's. */
+    it("refuses a sub-check written beside its parent rather than inside it", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 2,
+                capabilities: {
+                    prQuality: {
+                        enabled: true,
+                        checks: {
+                            linkedIssues: { enabled: true },
+                            assignedIssues: { enabled: true },
+                        },
+                    },
+                },
+            },
+            { revision: "rev-nesting", knownCapabilities: [prQuality.declaration] },
+        );
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
+            "unknownKey @ capabilities.prQuality.checks.assignedIssues",
+        ]);
     });
 });

@@ -1,21 +1,9 @@
 /**
  * The sandbox-era entry point: environment in, listening shell out.
- *
- * The capability list comes from the capabilities package's registry, so
- * this file names no capability: adding one is a folder and a line there,
- * not an edit here. Everything else is env-driven, with the user's
- * state home (`paths.ts`) as the default home for the store and the config
- * copy.
- *
- * The refusals below are the one thing here that is NOT structured: a
- * misconfigured boot has no delivery to correlate, no process to correlate
- * it with, and one reader — the person who just typed the variable wrong.
- * A JSON object about their typo would be a worse answer to it, so the
- * fail-closed writes stay human sentences and every line after the process
- * is alive goes through the log.
- *
- * Run:
- *   WEBHOOK_SECRET=… REPO_OWNER=… REPO_NAME=… pnpm --filter @hiero-hackers/automation-runtime start
+ * The capability list comes from the capabilities package's registry, so this file
+ * names no capability. The refusals below are the one thing here that is not
+ * structured: a misconfigured boot has one reader, the person who typed it wrong.
+ * Run: WEBHOOK_SECRET=… REPO_OWNER=… REPO_NAME=… pnpm --filter @hiero-hackers/automation-runtime start
  */
 
 import { randomUUID } from "node:crypto";
@@ -57,23 +45,12 @@ import type { SweepFacts, SweepFactsSource } from "./sweep.js";
 /** The port this endpoint takes when PORT says nothing. */
 const DEFAULT_PORT = 8790;
 
-/**
- * The name this process holds both kinds of claim under — a delivery's, and
- * an effect's lease. One name because one process holds both, and an operator
- * reading a stuck row should not have to learn two.
- */
+/** The name this process holds both kinds of claim under — a delivery's and a lease's. */
 const WORKER = `shell-${randomUUID()}`;
 
 /**
  * The applier's seams, held against the adapter objects that fill them.
- *
- * This is the ONLY file allowed to see both the shell's seam and the adapter's
- * surface (`.dependency-cruiser.cjs`), so it is the only place a drift between
- * them can be caught. Erased at runtime; the wiring below is what uses it.
- *
- * A CONSTRAINT rather than a conditional: `Given extends Contract` in the
- * parameter list is what makes a mismatch an error, where
- * `A extends B ? true : never` would quietly evaluate to `never` and compile.
+ * The ONLY file allowed to see both, so the only place a drift can be caught. A CONSTRAINT rather than a conditional, which would evaluate to `never` and compile.
  */
 type Satisfies<Contract, Given extends Contract> = Given;
 type _WriterSeamIsTheAdapterSurface = Satisfies<EffectWriter, WriteVerbs>;
@@ -92,6 +69,7 @@ if (!secret || !owner || !repo) {
 }
 
 // D93: no credentials selects CI stubs; partial credentials are an error.
+
 const appId = env["APP_ID"];
 const installationId = env["INSTALLATION_ID"];
 const privateKeyPath = env["PRIVATE_KEY_PATH"];
@@ -104,28 +82,8 @@ if (credentialCount !== 0 && credentialCount !== 3) {
 }
 
 /**
- * The App's URL slug — the name in its install URL — and the whole of what
- * arms the write path.
- *
- * It is NOT a fourth credential, and requiring it alongside the triad would
- * break every read-only deployment running today. The triad buys READS: the
- * default-branch configuration, the installation's grants, timeline evidence,
- * linked-issue answers. Writing needs one thing more, and the reason is
- * `AppIdentity`: a read-back that cannot tell this App's own comment from a
- * person's cannot recognise what it wrote, which is the check that stops a
- * duplicate comment and stops this platform editing someone else's writing.
- * The mint response carries no identity and `GET /app` cannot be reached with
- * an installation token, so the identity has to be told to us.
- *
- * So the rule is two gates, not one: credentials without a slug boot exactly
- * as they do today — observe and dry-run unaffected, `active` still recorded
- * as `modeUnsupported`, which is the truth, because no applier can exist
- * without an identity to verify authorship with.
- *
- * The reverse is refused. A slug with no credentials has nothing to write
- * with and no read-back to verify, so it can only be a half-typed live
- * configuration — the same defect the triad's own count refuses, and the same
- * answer.
+ * The App's URL slug, and the whole of what arms the write path.
+ * NOT a fourth credential: the triad buys reads, and writing needs an `AppIdentity` the mint response does not carry. Credentials without a slug boot as they do today; a slug without credentials is refused as a half-typed live configuration.
  */
 const appSlug = env["APP_SLUG"];
 if (
@@ -150,20 +108,18 @@ const configFile = env["CONFIG_FILE"] ?? join(dataDir, "automations.yml");
 const storeFile = env["STORE_PATH"] ?? join(dataDir, "shell.sqlite");
 
 const stranded = strandedStore({ env, storePath: storeFile });
-// Validated rather than coerced, like the interval below: `Number("nope")`
-// is NaN, which node reads as "any free port" — so a typo would bind a
-// port nobody can find and announce it as `:NaN`.
+// Validated rather than coerced: `Number("nope")` is NaN, which node reads as
+// "any free port" — so a typo would bind a port nobody can find.
+
 const port = env["PORT"] === undefined ? DEFAULT_PORT : Number(env["PORT"]);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error("PORT must be a whole number between 1 and 65535.");
     process.exit(1);
 }
 
-// Unnamed by default, which is what binds the unspecified address —
-// dual-stack on an IPv6-capable host, where "0.0.0.0" would be IPv4 only.
-// A test or a sandbox names the loopback. An EMPTY name is the one value
-// that means neither: it is a typo for absent, and node answers it by
-// resolving the empty host rather than by refusing.
+// Unnamed by default, which binds the unspecified address — dual-stack, where
+// "0.0.0.0" would be IPv4 only. An EMPTY name is a typo for absent.
+
 const host = env["HOST"];
 if (host !== undefined && host.trim() === "") {
     console.error("HOST must be a host name or address, or unset to bind every interface.");
@@ -171,8 +127,8 @@ if (host !== undefined && host.trim() === "") {
 }
 
 // How often stale claims are requeued and the queue re-drained. Validated
-// rather than coerced: a mistyped interval that silently became a 0ms tick
-// or a NaN one would take out the recovery this exists to provide.
+// rather than coerced: a 0ms or NaN tick would take out the recovery.
+
 const sweepSeconds =
     env["SWEEP_INTERVAL_SECONDS"] === undefined
         ? DEFAULT_SWEEP_INTERVAL_MS / 1000
@@ -183,18 +139,8 @@ if (!Number.isInteger(sweepSeconds) || sweepSeconds < 1) {
 }
 
 /**
- * How often a repository is READ rather than waited on — the fact sweep's
- * cadence (`design/guides/sweep.md` §2), and the whole of what arms it.
- *
- * Absent is today's behaviour exactly: no sweep, and a clock-driven capability
- * is configured and never woken. Present with no credentials is refused, for
- * the reason `APP_SLUG` with no credentials is: a cadence is an instruction to
- * read GitHub, and a composition with nothing to read GitHub with can only be a
- * half-typed live configuration.
- *
- * Validated rather than coerced, like `PORT` and the reconciliation interval: a
- * mistyped cadence that silently became NaN would arm a sweep whose next firing
- * is never due, which looks exactly like a sweep that is working.
+ * How often a repository is READ rather than waited on (sweep.md §2), and what arms it.
+ * Absent is today's behaviour exactly. Present with no credentials is refused, as `APP_SLUG` is: a cadence is an instruction to read GitHub.
  */
 const cadence = env["SWEEP_CADENCE_HOURS"];
 const cadenceHours = cadence === undefined ? null : Number(cadence);
@@ -215,6 +161,12 @@ const repository = { owner, repo };
 const log = createLogger();
 /** One clock for the whole composition — the applier's leases and the sweep's. */
 const clock = (): Date => new Date();
+
+/**
+ * The shipped declarations, as the adapter's reads want them.
+ * Handed down from here because the adapter may not import the capabilities package.
+ */
+const knownCapabilities = CAPABILITIES.map(({ declaration }) => declaration);
 
 /** The three seams `createApplier` cannot build for itself. */
 interface WritePath {
@@ -257,20 +209,8 @@ function liveGitHub({
     const http = createGitHubHttpClient({ tokenSource });
 
     /**
-     * The applier's externals, built FRESH on every call — never the
-     * delivery's, whose per-item memo is right for one decision and wrong for
-     * a gate that exists to distrust it (`EffectExternalsSource`).
-     *
-     * No cause fingerprint is excluded here, and that is a known
-     * over-refusal rather than an oversight: the seam takes no argument, so
-     * this cannot know which human action occasioned the effect it is about
-     * to gate. An apply-time re-gate that counts the causing change as a
-     * conflicting one refuses a write it could have made; the opposite
-     * mistake makes a write over a human's edit. The applier's outcome names
-     * it `newerHumanChange`, which is the honest word for what it saw.
-     *
-     * Nothing is reported through `onUnknownOrdering`: a recovery pass has no
-     * delivery to name, and every line of that event carries one.
+     * The applier's externals, built FRESH on every call (`EffectExternalsSource`).
+     * No cause fingerprint is excluded — a known over-refusal, since the seam takes no argument: refusing a write it could have made beats writing over a human's edit.
      */
     const effectExternals = async (): Promise<ShellExternals> => {
         const grants = await installationGrants(tokenSource);
@@ -285,10 +225,11 @@ function liveGitHub({
     };
 
     return {
-        facts: (config) => createFactsReader({ http, repository, config, clock }),
+        facts: (config) =>
+            createFactsReader({ http, repository, config, clock, knownCapabilities }),
         configSource: githubConfigSource({ client: http, repository }),
-        // One call per delivery, so the seam below is bound to exactly the
-        // delivery whose evidence it is explaining.
+        // One call per delivery, so the seam below is bound to that delivery.
+
         externals: async ({ payload, deliveryId, config }) => {
             const outcome = await liveExternalsForDelivery(
                 {
@@ -296,21 +237,17 @@ function liveGitHub({
                     http,
                     repository,
                     config,
+                    knownCapabilities,
                     onUnknownOrdering: (detail) => {
                         log({ event: "orderingUnknown", deliveryId, detail });
                     },
                 },
                 payload,
             );
-            // Real, and not provokable from a test: one token source feeds
-            // both this and the config source above, the config read always
-            // runs first, and a token minted in the last minute is served
-            // whatever its expiry says (the adapter's mint floor). So every
-            // way of breaking the token reaches the operator as
-            // "configuration unavailable" long before it reaches here — the
-            // production case this guards is a token that dies BETWEEN the
-            // two reads, which is hours of running, not a suite.
             // Stryker disable next-line all: see above — no arrangement of the composition lets a test reach this branch; the config read fails on the same token first.
+            // The config read always runs first on the same token source, so every way of
+            // breaking the token surfaces there; this guards a token dying between reads.
+
             if (!outcome.ok) {
                 // Stryker disable next-line all: as above.
                 throw new Error(`live externals unavailable: ${outcome.failure.kind}`);
@@ -325,13 +262,12 @@ function liveGitHub({
                       reader: createReadBack({
                           http,
                           repository,
-                          // Both halves of the one App registration this
-                          // process already holds (`AppIdentity`).
+                          // Both halves of the one App registration this process already holds.
+
                           identity: { appId, botLogin: `${appSlug}[bot]` },
                           clock,
-                          // The read-back's absence rule is a real second
-                          // apart, so production waits it; only a suite
-                          // scripts that pause away.
+                          // The read-back's absence rule is a real second apart, so production waits it.
+
                           sleep: wait,
                       }),
                       externals: effectExternals,
@@ -339,9 +275,9 @@ function liveGitHub({
     };
 }
 
-// The count above already refused every partial set, so by here the three
-// are present together or absent together and no combination of these
-// operators can disagree; they are what narrows the three types.
+// The count above already refused every partial set, so the three are present
+// together or absent together; these operators only narrow the types.
+
 const live =
     // Stryker disable next-line ConditionalExpression,LogicalOperator: see above — all three are present or none is, so every rearrangement of the conjunction answers the same.
     appId && installationId && privateKeyPath
@@ -351,12 +287,10 @@ const configSource = live?.configSource ?? fileConfigSource(configFile);
 const externals = live?.externals ?? (() => stubbedExternals({ killSwitchActive }));
 const writePath = live?.writePath ?? null;
 
-// The judgement is `strandedStore`, unit-tested in paths.test.ts against an
-// injected `exists`. This branch is not: it runs only where the superseded
-// default really holds a store, and that file is the operator's own sandbox
-// state — untracked, absent in CI, and not something a test may conjure to
-// watch a line get written.
 // Stryker disable next-line all: reachable only by creating the operator's real store at the superseded default; the judgement behind it is covered in paths.test.ts.
+// The judgement is `strandedStore`, unit-tested against an injected `exists`.
+// This branch runs only where the superseded default really holds a store.
+
 if (stranded !== null) {
     // Stryker disable next-line all: as above — unreachable without writing packages/runtime/data/shell.sqlite.
     log({ event: "legacyStoreFound", legacyPath: stranded, storePath: storeFile });
@@ -364,13 +298,8 @@ if (stranded !== null) {
 const store = new Store(storeFile);
 
 /**
- * The write path, wired or absent — the one branch that decides whether
- * `mode: active` is a composition this process can honour.
- *
- * With no applier the processor still records `modeUnsupported` before
- * `decide()` runs, and the sweep's effect recovery has nothing to recover
- * with. That is not a stub: it is the truthful answer for a composition that
- * holds no identity to verify its own writes as its own.
+ * The write path, wired or absent — whether `mode: active` is honourable here.
+ * With no applier the processor records `modeUnsupported` before `decide()` runs.
  */
 const applier: Applier | undefined =
     writePath === null
@@ -378,11 +307,8 @@ const applier: Applier | undefined =
         : createApplier({ store, ...writePath, worker: WORKER, clock, log });
 
 /**
- * The fact sweep, armed or absent — the other branch that decides what this
- * process does when nobody is talking to it.
- *
- * The cadence is refused above without credentials, so `live` is non-null
- * wherever `cadenceHours` is: the two are one configuration.
+ * The fact sweep, armed or absent — what this process does when nobody is talking.
+ * The cadence is refused above without credentials, so the two are one configuration.
  */
 const sweep =
     cadenceHours === null || live === null
@@ -405,10 +331,12 @@ const shell = createShell({
 });
 
 // Start recovering anything a previous run left pending before listening.
+
 void shell.drain().catch((error: unknown) => {
     log({ event: "drainFailed", phase: "startup", detail: detailOf(error) });
 });
 // An undefined host is the unnamed case: node reads it as no host at all.
+
 shell.server.listen(port, host, () => {
     log({
         event: "startup",
@@ -416,17 +344,15 @@ shell.server.listen(port, host, () => {
         host: host ?? null,
         repository: `${owner}/${repo}`,
         configSource: live === null ? "local" : "live",
-        // Which file, either way: the local copy's path, or the path read
-        // from the default branch of the repository named above.
+        // Which file, either way: the local copy, or the path on the default branch.
+
         configPath: live === null ? configFile : CONFIG_PATH,
         storePath: storeFile,
-        // Which composition is running. `modeUnsupported` in the records and
-        // "absent" here are the same fact, and an operator wondering why
-        // active mode did nothing should be able to read it before a
-        // delivery arrives rather than after one.
+        // Which composition is running; `modeUnsupported` and "absent" are one fact.
+
         writes: applier === undefined ? "absent" : "armed",
-        // The same fact for the other lane: whether this process reads the
-        // repository on a clock, or only when GitHub speaks first.
+        // The same fact for the other lane.
+
         sweep: sweep === undefined ? "absent" : "armed",
     });
 });

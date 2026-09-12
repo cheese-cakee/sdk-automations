@@ -1,9 +1,6 @@
 # pr-quality — one dashboard comment that tells a contributor what stops their pull request from being ready to review
 
-A comment containing a dashboard reporting on basic quality checks that a maintainer specifies as essential.
-
-Updates in-place as the PR changes — and when `main` moves, once phase 3 lands. Advisory only: it
-explains, it never closes (closing stale work belongs to the inactivity capability).
+Not built: phases 2, 3, and four of phase 1's five checks.
 
 ## What the output looks like
 
@@ -37,23 +34,22 @@ mode: dry-run # disabled | observe | dry-run | active — rehearse, then arm
 capabilities:
   prQuality:
     enabled: true # explicit true only; anything else is off
-    settings:
-      checks: # a check runs only with an explicit enabled: true
-        dcoSignoff:
+    checks: # a check runs only with an explicit enabled: true
+      dcoSignoff:
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide" # optional; shown on failure
+      gpgSignature:
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide"
+      mergeConflicts:
+        enabled: true
+      linkedIssues:
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Linked-Issues"
+        assignedIssues: # sub-check — the dependency is the structure
           enabled: true
-          guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide" # optional; shown on failure
-        gpgSignature:
-          enabled: true
-          guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide"
-        mergeConflicts:
-          enabled: true
-        linkedIssues:
-          enabled: true
-          guide: "https://github.com/<org>/<repo>/wiki/Linked-Issues"
-          assignedIssues: # sub-check — the dependency is the structure
-            enabled: true
-            guide: "https://github.com/<org>/<repo>/wiki/Assignment"
-      applyLabels: true # requires mappings.labels below
+          guide: "https://github.com/<org>/<repo>/wiki/Assignment"
+    applyLabels: true # requires mappings.labels below
 
 mappings:
   labels: # read only in label mode
@@ -73,16 +69,20 @@ mode: active
 capabilities:
   prQuality:
     enabled: true
-    settings:
-      checks:
-        dcoSignoff:
-          enabled: true
-        mergeConflicts:
-          enabled: true
+    checks:
+      dcoSignoff:
+        enabled: true
+      mergeConflicts:
+        enabled: true
 
 principals:
   maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers"
 ```
+
+Only `linkedIssues` is in the shipped spec. A check the App cannot evaluate is not declared and
+then ignored — it is absent, so the block above is the page's target and not today's schema, and a
+file naming one of the other four is refused as `unknownKey` at that check's own path.
+`docs/capabilities.md` is generated from the spec and is always the shipped list.
 
 Rules: a check runs only when its `enabled` is explicitly `true` — the platform's own consent rule,
 one level down; omitted or `false` means off, and a kept block with `enabled: false` is a check
@@ -92,6 +92,11 @@ label reflects the enabled checks only. A missing guide or maintainer principal 
 link or the ping.
 
 ## How it works
+
+A comment containing a dashboard reporting on basic quality checks that a maintainer specifies as
+essential. Updates in-place as the PR changes — and when `main` moves, once phase 3 lands.
+Advisory only: it explains, it never closes (closing stale work belongs to the inactivity
+capability).
 
 ```mermaid
 flowchart LR
@@ -111,24 +116,20 @@ flowchart LR
 | Issue link | ≥1 linked issue | none found | resolver failed |
 | Assignment | author assigned to every linked issue | unassigned issues listed | resolver failed |
 
-## Phases
-
-| Phase | Ships | Needs first |
-|---|---|---|
-| 1 | the dashboard comment — DCO · GPG · merge conflict · linked issue(s) · assigned to all linked issues | PR author on the observation · `commitAttestations` + `mergeability` resolvers · linked-issue assignees |
-| 2 | labels, opt-in — `needsRevision` if any check fails · `needsReview` when all pass and the PR is marked ready for review | draft/ready state on the observation · mappings + the `applyLabels` setting |
-| 3 | sibling-conflict recheck after merges | cross-item fan-out (platform design) |
-
-## Declaration
-
-| Field | Value |
+| Declaration | Value |
 |---|---|
 | `triggers` | `pull_request` (opened, edited, synchronize, reopened, ready_for_review) |
-| `facts` / `needs` | `pullRequest`, needing no group — needs adding: PR author (phase 1), the `review` group for draft/ready state (phase 2) |
-| `resolvers` | `linkedIssues` (exists) · `commitAttestations` (new) · `mergeability` (new) · linked-issue assignees (new) |
+| `facts` / `needs` | `pullRequest`, needing no group. Phase 2's draft/ready state is the `readiness` group, which the `pull_request` producer already reads — the declaration needs it, the platform does not |
+| `resolvers` | `linkedIssues` (declared; read confirmed) · `mergeability` (in the catalogue, read CONFIRMED — undeclared here, and the merge-conflict check is unwritten) · `commitAttestations` and `assigneesOf` (in the catalogue, reads confirmed by protocol 6.9 — undeclared here, and their three checks are unwritten). `assigneesOf` answers an ISSUE number: the cited row is `GET /issues/{n}`, which is what the linked-issue assignment check asks about |
 | `intents` | `postManagedComment` (`summary`) · `applyMappedLabel` (`needsReview`/`needsRevision`, phase 2) |
 | Permissions | repository: `pull_requests:read`, `issues:read`, `issues:write` · organization: none |
 | `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: candidate (sibling recheck, deferred) · externalDelivery: false |
+
+| Phase | Ships | Needs first |
+|---|---|---|
+| 1 | the dashboard comment — DCO · GPG · merge conflict · linked issue(s) · assigned to all linked issues. The linked-issue row ships, with its `checks` block and its guide | four checks WRITTEN, and nothing else. The reads behind `commitAttestations` and `assigneesOf` are matrix rows and both resolvers answer; `mergeability` is in the catalogue and its read is confirmed, so the cost is code |
+| 2 | labels, opt-in — `needsRevision` if any check fails · `needsReview` when all pass and the PR is marked ready for review | the `readiness` group on this declaration — a registry row, since the `pull_request` producer already reads it · mappings + the `applyLabels` setting |
+| 3 | sibling-conflict recheck after merges | cross-item fan-out, which the platform does not have |
 
 ## Verified by
 
@@ -143,5 +144,8 @@ flowchart LR
 | Newer human label change | `conflict`; the human change survives |
 | Draft PR | dashboard posts; `needsReview` is never written |
 | A disabled check | its section is absent — not shown as pass |
+| A repository that enables no check | the capability is silent, and asks no resolver |
+| A configured guide | it renders on that check's failure and nowhere else |
+| A check the App does not run | the file is refused at that check's own path, not ignored |
 | Failing check later fixed | dashboard updates; label swaps `needsRevision` → `needsReview` |
 | `assignedIssues` outside `linkedIssues` | unknown key, reported — the nesting is the dependency |

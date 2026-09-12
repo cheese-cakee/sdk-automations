@@ -1,10 +1,4 @@
-/**
- * The mapped-label operation's transport: the two label endpoints, and the two
- * verbs that reach them.
- *
- * Realising a position adds one label and removes the one the item previously
- * held, so both endpoints belong to this operation and both are idempotent.
- */
+/** The mapped-label operation's transport: the two label endpoints and the two verbs. */
 
 import {
     isEncodedSegment,
@@ -27,11 +21,7 @@ const ADD_LABEL: EndpointShape = {
 
 /**
  * `DELETE …/issues/{n}/labels/{name}` — one named label, removed.
- *
- * D4 is enforced by this shape rather than by a check: the only removal
- * admitted names one label. GitHub's remove-every-label endpoint (the same
- * path without `{name}`) matches nothing here, so "remove by prefix" cannot be
- * expressed through this client.
+ * D4 is enforced by this shape: the only removal admitted names one label.
  */
 const REMOVE_LABEL: EndpointShape = {
     endpoint: "removeLabel",
@@ -44,7 +34,6 @@ const REMOVE_LABEL: EndpointShape = {
     invalidates: (url) => itemStaledBy(url, "labels"),
 };
 
-/** The mapped-label operation's endpoints and verbs. */
 export const APPLY_MAPPED_LABEL = {
     endpoints: [ADD_LABEL, REMOVE_LABEL],
     verbs: (context: VerbContext): Pick<WriteVerbs, "addLabel" | "removeLabel"> => ({

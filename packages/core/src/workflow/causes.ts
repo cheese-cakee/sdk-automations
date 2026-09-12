@@ -1,11 +1,7 @@
 /**
- * Why an item moves. Owned here — `config` has no notion of causes, because a
- * repository maps labels to positions and never configures transitions.
- *
- * Scoped per entity so a pull-request cause on an issue is a COMPILE error
- * rather than a runtime rejection — the same make-misuse-unrepresentable rule
- * `ids.ts` applies to delivery ids. The split costs nothing: no cause is legal
- * in both flows except `humanClosed` (D50).
+ * Why an item moves. Owned here: a repository maps labels to positions and
+ * never configures transitions. Scoped per entity, so a pull-request cause on
+ * an issue is a COMPILE error rather than a runtime rejection (D50).
  */
 
 /** Issue-flow causes — taxonomy.md §4. */
@@ -36,11 +32,7 @@ export type PrCause = (typeof PR_CAUSES)[number];
 /** Either flow's causes. `humanClosed` is the only member of both. */
 export type TransitionCause = IssueCause | PrCause;
 
-/**
- * Cause narrowing, same shape as the meaning predicates (D90). `.some` rather
- * than `.includes` because the latter demands the wider type up front —
- * comparison narrows for free.
- */
+/** Cause narrowing, same shape as the meaning predicates (D90). */
 export function isIssueCause(c: TransitionCause): c is IssueCause {
     return ISSUE_CAUSES.some((x) => x === c);
 }
@@ -48,12 +40,6 @@ export function isPrCause(c: TransitionCause): c is PrCause {
     return PR_CAUSES.some((x) => x === c);
 }
 
-/**
- * The causes that may reach `to: null`. Every one maps to exactly one
- * `ClosureReason` — see `closureReasonFor` in `state.ts` — which lets
- * `applyTransition` record WHY an item closed without knowing which entity it
- * holds. Tests pin the converse: no edge to `null` uses a cause outside this
- * set.
- */
+/** The causes that may reach `to: null`; each maps to exactly one `ClosureReason`. */
 export const CLOSURE_CAUSES = ["humanClosed", "linkedMergeClosed", "merged"] as const;
 export type ClosureCause = (typeof CLOSURE_CAUSES)[number];

@@ -10,6 +10,7 @@ the other one (D131).
 | `intake` | `packages/capabilities/src/intake/design.md` |
 | `prQuality` | `packages/capabilities/src/prQuality/design.md` |
 | `inactivity` | `packages/capabilities/src/inactivity/design.md` |
+| `configReport` | `packages/capabilities/src/configReport/design.md` |
 | `advancement` | [`advancement.md`](advancement.md) — no folder yet |
 | `assignment` | [`assignment.md`](assignment.md) — no folder yet |
 | `notifications` | [`notifications.md`](notifications.md) — no folder yet |

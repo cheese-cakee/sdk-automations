@@ -1,16 +1,6 @@
 # assignment — let a contributor claim work, and release it again
 
-`/assign` claims an issue for the commenter; `/unassign` releases their own claim. Optional skill
-gates make the ladder self-service: a tier's issues can be claimed only after completing enough of
-the tier below.
-
-Every refusal is explained; a person using GitHub's native assignment controls is never fought —
-they have team permissions. Commands gate everyone alike, whatever their role: a team member with
-triage or higher never needs `/assign`, because GitHub's own assignee control is their ungated
-path — the command exists for contributors GitHub will not let assign themselves.
-
-Every guard is a meaning-set or a number, so different repositories express different policies
-with the same schema. An unknown answer refuses politely — never assigns, never releases.
+Not built: phases 1, 2, 3, 4.
 
 ## What the output looks like
 
@@ -50,16 +40,15 @@ A config enabling auto-assign and unassign with some guards but no skill progres
 capabilities:
   assignment:
     enabled: true
-    settings:
-      autoAssign: # the /assign command
-        enabled: true
-        maxOpen: 2 # default cap; 0 = uncapped
-        maxPerDay: 1 # claims per person per day
-        minAccountAgeDays: 7 # refuses brand-new accounts
-      unassign: # the self /unassign command
-        enabled: true
-      skillGates:
-        enabled: false
+    autoAssign: # the /assign command
+      enabled: true
+      maxOpen: 2 # default cap; 0 = uncapped
+      maxPerDay: 1 # claims per person per day
+      minAccountAge: 7d # refuses brand-new accounts
+    unassign: # the self /unassign command
+      enabled: true
+    skillGates:
+      enabled: false
 
 mappings:
   commands:
@@ -73,28 +62,27 @@ A config enabling auto-assignment only to issues marked as `status: ready for de
 capabilities:
   assignment:
     enabled: true
-    settings:
-      autoAssign: # the /assign command
-        enabled: true
-        claimableOnlyWhen: [ready] # empty = any open issue
-        notClaimableWhen: [blocked, awaitingTriage, inProgress]
-        maxOpen: 2 # default cap; 0 = uncapped
-        capIgnores: [needsReview, blocked] # assignments in these states do not count — review waits and blocks are not the contributor's fault
-        maxPerDay: 1 # claims per person per day
-        minAccountAgeDays: 7 # refuses brand-new accounts
-      unassign: # the self /unassign command
-        enabled: true
-      skillGates:
-        enabled: true
-        goodFirstIssue:
-          maxCompletions: 2 # after this many, GFIs are for newer contributors
-          supportTeam: gfiSupportTeam # cc'd on every claim at this tier — the mentor ping
-        beginner:
-          requiresPrevious: 1 # completed goodFirstIssue issues
-        intermediate:
-          requiresPrevious: 3
-        advanced:
-          requiresPrevious: 10
+    autoAssign: # the /assign command
+      enabled: true
+      claimableOnlyWhen: [ready] # empty = any open issue
+      notClaimableWhen: [blocked, awaitingTriage, inProgress]
+      maxOpen: 2 # default cap; 0 = uncapped
+      capIgnores: [needsReview, blocked] # assignments in these states do not count — review waits and blocks are not the contributor's fault
+      maxPerDay: 1 # claims per person per day
+      minAccountAge: 7d # refuses brand-new accounts
+    unassign: # the self /unassign command
+      enabled: true
+    skillGates:
+      enabled: true
+      goodFirstIssue:
+        maxCompletions: 2 # after this many, GFIs are for newer contributors
+        supportTeam: gfiSupportTeam # cc'd on every claim at this tier — the mentor ping
+      beginner:
+        requiresPrevious: 1 # completed goodFirstIssue issues
+      intermediate:
+        requiresPrevious: 3
+      advanced:
+        requiresPrevious: 10
 
 principals:
   gfiSupportTeam: "hiero-ledger/hiero-sdk-good-first-issue-support"
@@ -122,25 +110,24 @@ A config where any open issue is claimable, guarding by progression:
 capabilities:
   assignment:
     enabled: true
-    settings:
-      autoAssign:
-        enabled: true
-        claimableOnlyWhen: [] # any open issue
-        notClaimableWhen: [blocked]
-        maxOpen: 3
-      unassign:
-        enabled: true
-      skillGates:
-        enabled: true
-        goodFirstIssue:
-          maxOpen: 1 # tier override of the cap
-          maxCompletions: 2
-        beginner:
-          requiresPrevious: 1
-        intermediate:
-          requiresPrevious: 5
-        advanced:
-          requiresPrevious: 10
+    autoAssign:
+      enabled: true
+      claimableOnlyWhen: [] # any open issue
+      notClaimableWhen: [blocked]
+      maxOpen: 3
+    unassign:
+      enabled: true
+    skillGates:
+      enabled: true
+      goodFirstIssue:
+        maxOpen: 1 # tier override of the cap
+        maxCompletions: 2
+      beginner:
+        requiresPrevious: 1
+      intermediate:
+        requiresPrevious: 5
+      advanced:
+        requiresPrevious: 10
 ```
 
 Completions are counted in this repository: closed issues carrying the tier's skill label that the
@@ -148,6 +135,18 @@ contributor was assigned to. An issue with no skill label is gated only by the c
 two skill labels resolves to the higher tier.
 
 ## How it works
+
+`/assign` claims an issue for the commenter; `/unassign` releases their own claim. Optional skill
+gates make the ladder self-service: a tier's issues can be claimed only after completing enough of
+the tier below.
+
+Every refusal is explained; a person using GitHub's native assignment controls is never fought —
+they have team permissions. Commands gate everyone alike, whatever their role: a team member with
+triage or higher never needs `/assign`, because GitHub's own assignee control is their ungated
+path — the command exists for contributors GitHub will not let assign themselves.
+
+Every guard is a meaning-set or a number, so different repositories express different policies
+with the same schema. An unknown answer refuses politely — never assigns, never releases.
 
 ```mermaid
 flowchart LR
@@ -164,29 +163,29 @@ flowchart LR
     R -->|yes| W2["unassign the commenter"]
 ```
 
-Native GitHub assignment is a valid manual
-decision: the capability observes it and never counter-writes — a maintainer assigning someone
-bypasses every gate on purpose. 
-
-## Phases
+Native GitHub assignment is a valid manual decision: the capability observes it and never
+counter-writes — a maintainer assigning someone bypasses every gate on purpose.
 
 | Phase | Ships | Needs first |
 |---|---|---|
-| 1 | `/assign` + `/unassign`, claimability meanings, the caps | the command observation + actor model (vocabulary PR) · the assignee write family (shared with inactivity) · an open-assignments count resolver that carries each assignment's meanings (for `capIgnores` and per-tier caps) |
-| 2 | skill gates · `maxPerDay` · `minAccountAgeDays` · `reclaimCooldownDays` | the `skills` mapping family (the config meaning-family reader) · a completed-count-by-skill resolver, repo-local · recent-claim times and App-release events (timeline reads, or the durable-state candidate) · account age on the actor |
+| 1 | `/assign` + `/unassign`, claimability meanings, the caps | nothing new: the `command` group (read by `issue_comment`) and the `actor` field ship · `assign` and `unassign` are write operations (`core/src/capability/operations/`) · `openAssignments` answers `{ item, meanings }[]` and its read is in `CONFIRMED_RESOLVER_READS`. What remains is the capability, and the trigger question the Declaration table names |
+| 2 | skill gates · `maxPerDay` · `minAccountAge` · `reclaimCooldown` | the `skills` mapping family (the config meaning-family reader) · a completed-count-by-skill resolver, repo-local · recent-claim times and App-release events (timeline reads, or the durable-state candidate) · account age on the actor |
 | 3 | position pairing — claim writes `inProgress`, release writes `ready`, when those meanings are mapped | the two-write recovery record (§operational needs); the `ready`-ownership conversation with intake |
 | 4 | next-issue recommendation on merge — designed as its own capability, `merged.md` | demand evidence first; unranked. Role-readiness recognition is `advancement.md`'s job |
 
-## Declaration
-
-| Field | Value |
+| Declaration | Value |
 |---|---|
 | `triggers` | `issue_comment` (created — an edited comment is never executed) · `issues` (assigned, unassigned; observe-only, for later position sync) |
-| `facts` / `needs` | a `command` fact kind (new — the commands vocabulary PR) |
+| `facts` / `needs` | `issue`, needing `command` — a fact GROUP rather than a fact kind, and it ships: the `issue_comment` producer reads it. The `issues` trigger reads no group, so the two triggers cannot share one `needs` |
 | `resolvers` | `isAutomationActor` (exists) · open-assignments with meanings (new) · completed-count by skill (new, phase 2) · recent-claim times, account age, and App-release events for one item (new, phase 2) |
 | `intents` | `postManagedComment` · `assign` (new — the assignee write family) · `unassign` (same family) · `applyMappedLabel` (phase 3) |
 | Permissions | repository: `issues:read`, `pull_requests:read` (the `capIgnores` look at linked PRs), `issues:write` · organization: none — counting stays in this repository |
 | `operationalNeeds` | schedule: false · durableState: candidate — `maxPerDay` if the timeline read proves too costly, and phase 3's assignee+label pair (two GitHub calls; a crash between them needs a record, never a guess from the label-and-assignee shape) · crossItemCoordination: true — the caps count across issues · externalDelivery: false |
+
+Needs are checked PER TRIGGER: `issue_comment` reads `command` on an issue record while `issues`
+reads no group at all, so a declaration naming both triggers and needing `command` is a boot error
+about the `issues` one. The observe-only assignment sync is a second declaration or a second
+capability, not a second trigger on this one.
 
 ## Verified by
 
@@ -206,8 +205,8 @@ bypasses every gate on purpose.
 | Two contributors race `/assign` | one wins; the loser gets the already-claimed comment — apply-time re-check |
 | `/assign` by a bot | nothing — `isAutomationActor` |
 | `/assign` in a PR comment | nothing — claims are issue claims |
-| `/assign` from a 2-day-old account, `minAccountAgeDays: 7` | refused, naming the age rule |
-| Reaped for inactivity, `/assign` the same issue next day | refused for `reclaimCooldownDays` — a different issue claims fine |
+| `/assign` from a 2-day-old account, `minAccountAge: 7d` | refused, naming the age rule |
+| Reaped for inactivity, `/assign` the same issue next day | refused for `reclaimCooldown` — a different issue claims fine |
 | Count resolver fails or paginates incompletely | polite refusal, never an assignment (unknown ≠ under the cap) |
 | Skill-unlabelled issue | caps apply, the gate does not |
 | Claim at a tier with `supportTeam` | the welcome cc's the team — one comment, no roster, no rotation; other tiers stay quiet |

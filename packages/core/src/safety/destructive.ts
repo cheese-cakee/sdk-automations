@@ -1,23 +1,12 @@
 /**
- * Clock-triggered destructive actions — `design/guides/grace.md`.
- *
- * Separate from `write.ts` because it answers a different question. The
- * general rules ask "may this write happen"; this asks "has the warning,
- * the grace period and the cancellation window been honoured" — and D52
- * made `evaluateWrite` REFUSE a destructive request outright, so the two
- * entry points are not interchangeable and should not read as if they were.
+ * Clock-triggered destructive actions — has the warning, the grace period and
+ * the cancellation window been honoured (`design/guides/grace.md`)?
  */
 
 import type { RepositoryConfig } from "../config/index.js";
 import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
 import type { ActionClass, SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
-// ─── Clock-triggered destructive actions (grace.md) ──────────────────
-
-/**
- * A recorded warning, the precondition of every destructive action:
- * "a clock-triggered action never occurs on its first stale observation."
- */
 const DESTRUCTIVE_WARNING_BRAND: unique symbol = Symbol("DestructiveWarning");
 
 interface DestructiveRequestSnapshot {
@@ -33,48 +22,37 @@ interface DestructiveRequestSnapshot {
 export interface DestructiveWarningInput {
     readonly request: WriteRequest;
     readonly warnedAt: Date;
-    readonly gracePeriodDays: number;
+    readonly gracePeriodHours: number;
     readonly earliestActionAt: Date;
     readonly cancelledBy: string;
     readonly reversesWith: string;
 }
 
 /**
- * A minted warning: authority for ONE request, not a reusable timestamp.
- *
- * The immutable request snapshot is what stops a warning being reused across
- * capabilities, items, changes or causal observations (D60). Only
- * `createDestructiveWarning` can construct one.
+ * Authority for ONE request: the snapshot is what stops a warning being reused
+ * across capabilities, items, changes or causal observations (D60).
  */
 export interface DestructiveWarning {
     readonly [DESTRUCTIVE_WARNING_BRAND]: true;
     /** Copied primitives, never a reference to the caller's request. */
     readonly requestSnapshot: DestructiveRequestSnapshot;
     readonly warnedAtMs: number;
-    readonly gracePeriodDays: number;
+    readonly gracePeriodHours: number;
     /** Stated in the warning; may be later than the configured grace floor. */
     readonly earliestActionAtMs: number;
-    /** What cancels the plan, stated in the warning (grace.md). */
     readonly cancelledBy: string;
-    /** How a maintainer reverses the action after it occurs. */
     readonly reversesWith: string;
 }
 
 /**
- * A warning that has been AUTHORED but not yet posted — everything a minted
- * warning needs except the two instants only the applier can supply.
- *
- * The engine approves the warning comment; the applier learns `warnedAt` when
- * GitHub says the comment landed, and derives `earliestActionAt` from it
- * (grace.md §3). So this is exactly `DestructiveWarningInput` minus those two,
- * and it is written that way rather than restated, so a field added to the
- * input arrives here without a second edit.
+ * A warning AUTHORED but not yet posted: only the applier can supply the two
+ * instants, from the moment GitHub says the comment landed (grace.md §3).
  */
 export type PendingWarning = Omit<DestructiveWarningInput, "warnedAt" | "earliestActionAt">;
 
 /**
- * Capture authority at warning time. Numeric timestamps and copied strings
- * avoid aliases to mutable request targets and mutable Date internal state.
+ * Capture authority at warning time: numeric timestamps and copied strings,
+ * never an alias to a mutable request target or `Date`.
  */
 export function createDestructiveWarning(input: DestructiveWarningInput): DestructiveWarning {
     const requestSnapshot: DestructiveRequestSnapshot = Object.freeze({
@@ -89,7 +67,7 @@ export function createDestructiveWarning(input: DestructiveWarningInput): Destru
         [DESTRUCTIVE_WARNING_BRAND]: true as const,
         requestSnapshot,
         warnedAtMs: input.warnedAt.getTime(),
-        gracePeriodDays: input.gracePeriodDays,
+        gracePeriodHours: input.gracePeriodHours,
         earliestActionAtMs: input.earliestActionAt.getTime(),
         cancelledBy: input.cancelledBy,
         reversesWith: input.reversesWith,
@@ -105,15 +83,18 @@ export interface DestructivePlan {
 }
 
 /**
- * FINDING(safety-grace-floor): `design/guides/grace.md` requires the schema
- * to "set safe minimums and prevent a zero-day or negative grace period" but names no
- * floor. This module enforces `>= MIN_GRACE_DAYS`; the exact number is a
- * register decision — 1 is the weakest defensible reading, encoded here so
- * the question cannot be silently skipped.
+ * FINDING(safety-grace-floor): grace.md names no floor; the number is a
+ * register decision (D154) and every plan is checked `>= MIN_GRACE_HOURS`.
  */
-export const MIN_GRACE_DAYS = 1;
+export const MIN_GRACE_HOURS = 1;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * The shortest a clock may run before the item it names is acted on
+ * destructively; a destructive clock declares `atLeast: MIN_REAP_HOURS` (D154).
+ */
+export const MIN_REAP_HOURS = 2;
+
+const HOUR_MS = 60 * 60 * 1000;
 
 function warningMatchesRequest(
     warned: DestructiveRequestSnapshot,
@@ -136,9 +117,7 @@ export function evaluateDestructive(
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
-    // Kill switch first, before any destructive gate. The outcome is a refusal
-    // either way, but D39 makes the verdict CODE contract: an operator who
-    // pulled the brake must be told so, not "no recorded warning" (D52).
+    // Kill switch first: the verdict CODE is contract, so the brake must be named (D39).
     const preflight = evaluatePreflight(context);
     if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {
@@ -163,7 +142,7 @@ export function evaluateDestructive(
         };
     }
     if (
-        !Number.isFinite(plan.warning.gracePeriodDays) ||
+        !Number.isFinite(plan.warning.gracePeriodHours) ||
         !Number.isFinite(plan.warning.warnedAtMs) ||
         !Number.isFinite(plan.warning.earliestActionAtMs) ||
         !Number.isFinite(plan.warning.requestSnapshot.causeObservedAtMs) ||
@@ -177,14 +156,14 @@ export function evaluateDestructive(
             reason: "the destructive plan contains a non-finite grace period or invalid timestamp",
         };
     }
-    if (plan.warning.gracePeriodDays < MIN_GRACE_DAYS) {
+    if (plan.warning.gracePeriodHours < MIN_GRACE_HOURS) {
         return {
             outcome: "refuse",
             code: "graceBelowFloor",
-            reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (grace.md)`,
+            reason: `grace period ${plan.warning.gracePeriodHours}h is below the ${MIN_GRACE_HOURS}h floor (grace.md)`,
         };
     }
-    const minimumActionAt = plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
+    const minimumActionAt = plan.warning.warnedAtMs + plan.warning.gracePeriodHours * HOUR_MS;
     if (
         plan.warning.warnedAtMs < plan.warning.requestSnapshot.causeObservedAtMs ||
         plan.warning.earliestActionAtMs < minimumActionAt
@@ -209,8 +188,6 @@ export function evaluateDestructive(
             reason: "the affected person provided qualifying activity during the grace period (grace.md)",
         };
     }
-    // All destructive-specific gates passed; the general write rules
-    // decide. Calls the shared internal path, not the public
-    // `evaluateWrite`, which now refuses this action class outright (D52).
+    // The shared internal path, not `evaluateWrite`, which refuses this class (D52).
     return evaluateGeneralRulesAfterPreflight(plan.request, config, context);
 }

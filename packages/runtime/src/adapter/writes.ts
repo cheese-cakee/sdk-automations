@@ -1,23 +1,7 @@
 /**
  * What GitHub's answer to a write MEANS, and the seam every verb sends through.
- *
- * `http.ts` decides whether a write may be SENT — the origin pin, the
- * per-endpoint allowlist, the grant, the retry budget. This file decides what
- * came back, in the endpoint matrix's vocabulary: `applied`, `already`,
- * `conflict`, `forbidden`, `retryLater`, `unknown`. A capability acts on the
- * word and never on a status code.
- *
- * One rule shapes every ambiguous mapping. `unknown` means "sent, and nothing
- * here can tell whether it landed", and the matrix forbids a caller from
- * retrying it. So a class becomes `unknown` only when the write may genuinely
- * have applied, and becomes `retryLater` whenever re-sending is provably
- * harmless — which for an idempotent verb includes the ambiguous classes,
- * because applying a no-op twice is applying it once.
- *
- * The URLs are built in `operations/`, each beside the shape the gate matches
- * it with. They stay two spellings — a gate that trusted a builder would not
- * be a gate (D129) — and the review that keeps them honest is now one screen
- * rather than two files.
+ * `unknown` means sent and unknowable, and may not be retried; `retryLater` means
+ * re-sending is provably harmless.
  */
 
 import type { RepositoryRef } from "@hiero-hackers/automation-core";
@@ -31,15 +15,7 @@ import {
 import { writeVerbsOf } from "./operations/index.js";
 import type { NotFoundMeaning, WriteResult, WriteVerbs } from "./operations/transport.js";
 
-// ─── Reading GitHub's answer ─────────────────────────────────────────
-
-/**
- * The one place this file reads GitHub's prose, and it is DOCUMENTED rather
- * than probed: no run in the endpoint matrix removed an absent label, so this
- * pattern has no dated citation and no `probedAt`. It degrades the way core's
- * `BODY_PATTERNS` do — a reworded message stops matching and the result falls
- * back to `forbidden`, which is wrong in the harmless direction.
- */
+/** GitHub's prose, documented rather than probed: a reword falls back to `forbidden`. */
 export const LABEL_ABSENT = {
     pattern: /label does not exist/i,
     documented: "Label does not exist",
@@ -49,33 +25,14 @@ const conflict = (detail: string): WriteResult => ({ outcome: "conflict", detail
 const forbidden = (detail: string): WriteResult => ({ outcome: "forbidden", detail });
 const retryLater = (detail: string): WriteResult => ({ outcome: "retryLater", detail });
 
-/**
- * A failure that may or may not have landed, answered by idempotency.
- *
- * A timeout and a dropped socket both arrive as `transient`, and both can mean
- * GitHub applied the change and lost the answer on the way back. Re-sending an
- * idempotent write in that state costs nothing, so it is `retryLater`. For the
- * comment create it is `unknown`, and the caller reconciles instead.
- */
+/** A failure that may or may not have landed, answered by idempotency. */
 function ambiguous(idempotency: WriteIdempotency, detail: string): WriteResult {
     return idempotency === "idempotent"
         ? retryLater(`${detail}; re-sending this write cannot apply it twice`)
         : { outcome: "unknown", detail: `${detail}; the write may already have landed` };
 }
 
-/**
- * One failed write as one word, per class and per endpoint.
- *
- * The rate classes are `retryLater` with GitHub's own wait signal in the
- * detail, the same shape the read path gives an operator. `tokenExpired` joins
- * them because a 401 provably applied nothing and the client has already
- * dropped the token, so the next call mints a fresh one. `validationError`,
- * `clientError` and `redirected` are `conflict`: a 4xx never mutates, and each
- * says the world is not the shape the plan named. Everything else that denies
- * or refuses is `forbidden`, including a local refusal — nothing was sent, so
- * calling it `unknown` would send the caller reconciling a change that does
- * not exist.
- */
+/** One failed write as one word, per class and per endpoint. */
 function resultOfFailure(
     failure: GitHubHttpFailureClass,
     idempotency: WriteIdempotency,
@@ -133,17 +90,12 @@ function resultOfFailure(
     }
 }
 
-// ─── The verbs ───────────────────────────────────────────────────────
-
 export interface WriteVerbsOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
 }
 
-/**
- * The write surface one repository's capabilities share: every operation's
- * verbs, over the one send-and-classify mechanism.
- */
+/** The write surface one repository's capabilities share. */
 export function createWriteVerbs({ http, repository }: WriteVerbsOptions): WriteVerbs {
     /** Send one write and name its answer; every verb ends here. */
     const apply = async (
@@ -152,8 +104,9 @@ export function createWriteVerbs({ http, repository }: WriteVerbsOptions): Write
     ): Promise<WriteResult> => {
         const outcome = await http.request(request);
         if (outcome.ok) return { outcome: "applied" };
-        // A failure carries no body when no response arrived, and an absent
-        // body cannot name a label — the empty string reads the same way.
+        // A failure carries no body when no response arrived, and an absent body
+        // cannot name a label — the empty string reads the same way.
+
         return resultOfFailure(outcome.failure, request.idempotency, notFound, outcome.body ?? "");
     };
 

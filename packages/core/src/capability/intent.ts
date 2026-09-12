@@ -1,12 +1,15 @@
 /**
- * What a capability asks for, and the screens every request passes.
- *
- * An intent describes a desired OUTCOME, not an API call. Translation into
- * GitHub calls is deliberately outside `core/` and is not implemented yet.
+ * What a capability asks for, and the screens every request passes. An intent
+ * describes a desired OUTCOME, not an API call.
  */
 
 import { MAPPABLE_MEANINGS, type MappableMeaning } from "../config/index.js";
-import { MIN_GRACE_DAYS, type ClaimedFacts } from "../safety/index.js";
+import {
+    MIN_GRACE_HOURS,
+    PULL_REQUEST_MODES,
+    type ClaimedFacts,
+    type PullRequestMode,
+} from "../safety/index.js";
 import {
     canTransitionIssue,
     canTransitionPr,
@@ -33,31 +36,12 @@ import type { TypedDeclaration } from "./declaration.js";
 
 /**
  * What a capability says ONCE about a clock-triggered destructive act
- * (`design/guides/grace.md` §1), and the whole of what it says.
- *
- * The platform owns WHEN — it posts the warning on first sight, records it,
- * refuses the act until the grace has run with no qualifying activity, and
- * posts the notice after the act lands. The capability owns WHAT: the two
- * bodies are its own voice with the date already rendered, because a
- * platform-authored sentence would flatten six designs into one template
- * (grace.md §5).
- *
- * `activityAt` is a FACT the capability read, not a judgement: the engine
- * compares it against the recorded warning, so a capability cannot decide for
- * itself that activity cancelled its own plan.
+ * (`design/guides/grace.md` §1): the platform owns WHEN, the capability WHAT.
  */
 export interface DestructiveGrace {
-    /** The full grace, in days; at least `MIN_GRACE_DAYS`. */
-    readonly days: number;
-    /**
-     * The discriminator the warning and the notice stand under, `""` by
-     * default (D145).
-     *
-     * An act is one grace is one warning (grace.md §3), and an item can carry
-     * more than one act of the same kind at once — an issue with two stale
-     * assignees earns two releases. Their warnings are two comments only if
-     * their topics differ, so a per-person act names the person here.
-     */
+    /** The full grace, in hours; at least `MIN_GRACE_HOURS`. */
+    readonly hours: number;
+    /** The discriminator the warning and the notice stand under, `""` by default (D145). */
     readonly topic?: string;
     /** The words posted on first sight — the date already rendered. */
     readonly warning: { readonly body: string };
@@ -72,13 +56,8 @@ export interface DestructiveGrace {
 }
 
 /**
- * One request from a capability: what outcome it wants, for which item, and
- * the requested preconditions that authoritative projection data must verify.
- *
- * `idempotencyKey` is the effect's stable identity across redelivery, retry
- * and restart. It becomes the journal's `effect_id`, so two intents sharing a
- * key ARE one effect to the store
- * (`FINDING(runtime-idempotency-key-underived)`, D65).
+ * One request from a capability. `idempotencyKey` becomes the journal's
+ * `effect_id`, so two intents sharing a key ARE one effect to the store (D65).
  */
 export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly capability: string;
@@ -91,11 +70,7 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly evaluatedAt?: Date;
     readonly explanation: StructuredExplanation;
     readonly idempotencyKey: string;
-    /**
-     * The grace terms, for a clock-triggered destructive operation and for no
-     * other (grace.md §1). `null` is the only value every other class may
-     * carry, and the screen refuses both mistakes.
-     */
+    /** The grace terms, for a clock-triggered destructive operation and no other. */
     readonly grace: DestructiveGrace | null;
 }
 
@@ -103,13 +78,8 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
 export type AnyIntent = { [K in IntentOperation]: Intent<K> }[IntentOperation];
 
 /**
- * The one derivation. Capability, item, and operation identify WHAT; the
- * cause's timestamp identifies WHICH OCCASION, so a redelivery of the same
- * event yields the same key (the cause is a property of the event, not of
- * the delivery) while a genuinely new occasion yields a new one. The
- * desired payload is deliberately NOT included: a capability that
- * recomputes a slightly different comment body for the same occasion must
- * not thereby create a second comment.
+ * The one derivation. The cause's timestamp identifies WHICH OCCASION; the
+ * desired payload is deliberately NOT included.
  */
 export function deriveIdempotencyKey(intent: {
     readonly capability: string;
@@ -118,9 +88,7 @@ export function deriveIdempotencyKey(intent: {
     readonly operation: IntentOperation;
     readonly cause: DatedCause;
 }): string {
-    // JSON, not a delimiter join: `cause` is free text, so no separator is
-    // guaranteed absent, and a space-join collides "a b"+"c" with "a"+"b c"
-    // — silently one effect. JSON encodes the boundaries (D65, D74).
+    // JSON, not a join: a join collides "a b"+"c" with "a"+"b c" (D65, D74).
     return JSON.stringify([
         intent.capability,
         intent.repository.owner,
@@ -151,7 +119,6 @@ export const INTENT_SCREEN_REFUSAL_CODES = [
     "graceBelowFloor",
 ] as const;
 
-/** One of `INTENT_SCREEN_REFUSAL_CODES`. */
 export type IntentScreenRefusalCode = (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
 
 /** A screen's verdict: passed, or refused with a code and a sentence. */
@@ -215,7 +182,7 @@ function desiredOf(
 
 function graceOf(value: unknown): DestructiveGrace | null | undefined {
     if (value === null || value === undefined) return null;
-    const days = own(value, "days");
+    const hours = own(value, "hours");
     const topic = own(value, "topic");
     const warning = own(value, "warning");
     const notice = own(value, "notice");
@@ -225,8 +192,8 @@ function graceOf(value: unknown): DestructiveGrace | null | undefined {
     const warningBody = own(warning, "body");
     const noticeBody = own(notice, "body");
     if (
-        typeof days !== "number" ||
-        !Number.isFinite(days) ||
+        typeof hours !== "number" ||
+        !Number.isFinite(hours) ||
         (topic !== undefined && typeof topic !== "string") ||
         typeof warningBody !== "string" ||
         typeof noticeBody !== "string" ||
@@ -240,7 +207,7 @@ function graceOf(value: unknown): DestructiveGrace | null | undefined {
         return undefined;
     }
     return {
-        days,
+        hours,
         ...(topic === undefined ? {} : { topic }),
         warning: { body: warningBody },
         notice: { body: noticeBody },
@@ -264,6 +231,10 @@ export function readIntent(value: unknown): AnyIntent | null {
         const present = stringList(own(claims, "meaningsPresent"));
         const absent = stringList(own(claims, "meaningsAbsent"));
         const closed = own(claims, "closed");
+        // Absent is no claim, which is what every value written before the
+        // mode was claimable carries — so an old record parses as claiming
+        // nothing rather than as malformed.
+        const mode = own(claims, "pullRequestMode");
         const cause = own(value, "cause");
         const causeName = own(cause, "cause");
         const observedAt = own(cause, "observedAt");
@@ -289,6 +260,7 @@ export function readIntent(value: unknown): AnyIntent | null {
             !present.every((entry) => MAPPABLE_MEANINGS.includes(entry as never)) ||
             !absent.every((entry) => MAPPABLE_MEANINGS.includes(entry as never)) ||
             (closed !== null && typeof closed !== "boolean") ||
+            (mode !== undefined && !PULL_REQUEST_MODES.includes(mode as never)) ||
             typeof causeName !== "string" ||
             !(observedAt instanceof Date) ||
             typeof explanationCapability !== "string" ||
@@ -310,6 +282,7 @@ export function readIntent(value: unknown): AnyIntent | null {
                 meaningsPresent: present as readonly MappableMeaning[],
                 meaningsAbsent: absent as readonly MappableMeaning[],
                 closed,
+                ...(mode === undefined ? {} : { pullRequestMode: mode as PullRequestMode }),
             },
             desired,
             cause: { cause: causeName, observedAt: new Date(observedAt.getTime()) },
@@ -338,9 +311,7 @@ function screenTransition(
         };
     }
 
-    // `blocked` is a pause flag, not a position (D28); only a human may set
-    // it — a capability that could would hold a veto over every other
-    // capability (D79), and a freeze-by-label would bypass D54's gate.
+    // `blocked` is a pause flag, not a position, and only a human may set it (D28, D79).
     if (intent.desired.meaning === "blocked") {
         return {
             ok: false,
@@ -389,26 +360,13 @@ function screenTransition(
 }
 
 /**
- * Does the intent carry the grace terms its ACTION CLASS demands, and no
- * others (grace.md §1)?
- *
- * The class comes from `INTENT_OPERATIONS`, never from the intent, so a
- * capability cannot exempt itself by mislabelling what it is asking for. Both
- * mistakes are refused: a clock-triggered destructive act without terms would
- * reach the destructive door with nothing to warn in, and terms on any other
- * class would be words the platform promised to post and never will.
- *
- * The floor is named here as well as at the door. `graceBelowFloor` is the
- * destructive gate's own code and is reused rather than twinned: a maintainer
- * who reads it in a report should not have to learn which of two identical
- * refusals they are looking at.
+ * Does the intent carry the grace terms its ACTION CLASS demands, and no others
+ * (grace.md §1)? The class comes from the catalogue, never from the intent.
  */
 function screenGrace(intent: AnyIntent): IntentScreen {
     const destructive =
         INTENT_OPERATIONS[intent.operation].actionClassFloor === "clockTriggeredDestructive";
-    // An absent field reads as `null`, the value the type spells for "no
-    // terms": an intent built from `unknown` may simply not have the property,
-    // and the safe reading of a missing promise is that none was made.
+    // An absent field reads as `null`: a missing promise is safely read as none made.
     const grace = intent.grace ?? null;
     if (destructive && grace === null) {
         return {
@@ -424,22 +382,19 @@ function screenGrace(intent: AnyIntent): IntentScreen {
             reason: `"${intent.operation}" is not clock-triggered destructive, so the grace terms it carries name a warning and a notice the platform would never post (grace.md §1)`,
         };
     }
-    if (grace !== null && !(grace.days >= MIN_GRACE_DAYS)) {
+    if (grace !== null && !(grace.hours >= MIN_GRACE_HOURS)) {
         return {
             ok: false,
             code: "graceBelowFloor",
-            reason: `grace period ${String(grace.days)}d is below the ${String(MIN_GRACE_DAYS)}d floor (grace.md)`,
+            reason: `grace period ${String(grace.hours)}h is below the ${String(MIN_GRACE_HOURS)}h floor (grace.md)`,
         };
     }
     return { ok: true };
 }
 
 /**
- * The per-intent screen, run on everything `evaluate` returns. The typed
- * handle already makes an undeclared intent a compile error; this repeats
- * the check at runtime because a capability is ordinary code that can be
- * built from `unknown`, and the boundary must not depend on the far side
- * having been compiled honestly.
+ * The per-intent screen, run on everything `evaluate` returns; it repeats at
+ * runtime what the typed handle already checks when compiled.
  */
 export function screenIntent(
     value: unknown,
@@ -475,13 +430,8 @@ export function screenIntent(
             reason: "the intent's cause carries an invalid timestamp",
         };
     }
-    // The key is the store's `effect_id` (D65), so a capability free to name
-    // it could merge two effects into one or split a redelivery into two. It
-    // is checked by RE-DERIVING it: the platform owns the identity, and the
-    // factory's copy is an ergonomic, not an authority.
-    //
-    // AFTER the cause check, and only there: the derivation calls
-    // `observedAt.toISOString()`, which throws on an invalid date.
+    // The key is the store's `effect_id` (D65), so it is checked by RE-DERIVING it.
+    // AFTER the cause check: the derivation throws on an invalid date.
     if (intent.idempotencyKey !== deriveIdempotencyKey(intent)) {
         return {
             ok: false,

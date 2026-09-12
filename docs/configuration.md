@@ -13,21 +13,20 @@ New here? Start with the [Quickstart](quickstart.md). Want a file to copy?
 
 ## The file at a glance
 
-5 top-level keys and three shared wrapper levels. The tree below is the entire shared shape; content
-inside `settings` is deliberately capability-owned and may be deeper:
+5 top-level keys and two shared wrapper levels. The tree below is the entire shared shape; what a
+capability writes inside its own block is deliberately capability-owned and may be deeper:
 
 ```yaml
-schemaVersion: 1              # ── top level. Required — the only required key
+schemaVersion: 2              # ── top level. Required for the flat capability shape
 mode: dry-run                 # ── top level. Optional, default: observe
 
 capabilities:                 # ── top level. Optional, default: nothing enabled
   intake:                     #    └─ one block per capability, keyed by its name
     enabled: true             #       └─ boolean, default: false
-    settings:                 #       └─ that capability's own options
-      announce: true          #          └─ keys defined by the capability, not this schema
+    announce: true            #       └─ that capability's own options, keys defined by it
 
 mappings:                     # ── top level. Optional, default: no meanings available
-  labels:                     #    └─ one of five families that may appear under mappings
+  labels:                     #    └─ one of four families that may appear under mappings
     awaitingTriage: "status: triage"    # └─ one line per meaning: your label name
     ready: "status: ready for dev"
   commands:                   #    └─ the words contributors type
@@ -35,9 +34,7 @@ mappings:                     # ── top level. Optional, default: no meanings
   skills:                     #    └─ the difficulty ladder, as labels
     goodFirstIssue: "good first issue"
   alerts:                     #    └─ YOUR alert names, each carried by a label
-    p0: { label: "P0-🔥" }
-  types:                      #    └─ YOUR kinds of work, each carried by a label
-    bug: { label: "Bug" }
+    p0: "P0-🔥"
 
 principals:                   # ── top level. Optional, default: none
   maintainerTeam: "hiero-sdk-js-maintainers"    # └─ one line per role: a single name
@@ -47,11 +44,11 @@ Two things that prevent most mistakes:
 
 - In headings below, dots mean **nesting**, not key names: `capabilities.<name>.enabled` is the
   `enabled` line inside one capability's block, three levels deep.
-- Any shared key not on this tree is an error. Inside `settings` the names are checked against the
-  capability's own declaration; the values are not, and stay the capability's business.
+- Any shared key not on this tree is an error. Inside a capability's block the names beside
+  `enabled` and their values are checked against the capability's own declaration.
 
-Nothing is required except `schemaVersion`. Every default is non-writing—an empty file is valid and
-produces an `observe` decision rather than an active effect.
+Nothing is required. Every default is non-writing—an empty file is valid and produces an `observe`
+decision rather than an active effect.
 
 ## Key definitions
 
@@ -60,11 +57,13 @@ produces an `observe` decision rather than an active effect.
 | | |
 |---|---|
 | Type | integer |
-| Required | **yes**, unless the file is completely empty |
-| Allowed | `1` |
+| Required | no |
+| Default | `1` |
+| Allowed | `1`, `2` |
 
-Must be the unquoted number `1`. `"1"` is a string and is rejected. There is no version 2 yet, and the
-migration/deprecation policy for any future version remains deliberately undecided.
+Leave it out and the file is version 1. Version 1 keeps capability options inside `settings:`.
+Version 2 puts those options beside `enabled` and must state `schemaVersion: 2`. Quoted numbers and
+an empty `schemaVersion:` are rejected.
 
 ### `mode`
 
@@ -104,7 +103,7 @@ shipped default. See [Troubleshooting](troubleshooting.md#it-never-got-as-far-as
 
 | | |
 |---|---|
-| Type | mapping of capability name → settings |
+| Type | mapping of capability name → that capability's block |
 | Required | no |
 | Default | `{}` — nothing enabled |
 
@@ -123,37 +122,61 @@ names fail closed instead of being retained as compatibility entries.
 Must be a real boolean. `"true"` in quotes, `yes`, and `1` are all errors — being switched on is
 consent, and consent is not inferred from anything that merely looks true.
 
-### `capabilities.<name>.settings`
+### `capabilities.<name>.<key>`
 
 | | |
 |---|---|
-| Type | mapping |
+| Type | whatever that setting declares — a boolean, a number, a list, or a block of its own |
 | Required | no |
-| Default | `{}` |
+| Default | the capability's documented value for that key |
 
-The capability's own options. Every capability declares which setting names it reads, and a name outside
+A version 2 capability's options sit beside its `enabled`, on the same level. Version 1 keeps the
+same options inside `settings:`. Every capability declares which setting names it reads, and a name outside
 that list is an `unknownKey` error naming the exact path — so `annouce:` fails instead of configuring
-nothing. Disabled blocks are checked too: a typo that waits for the day you flip `enabled` is the
-surprise this rule exists to end.
+nothing. Using one version's shape with the other version is also rejected. Disabled blocks are checked
+too: a typo that waits for the day you flip `enabled` is the surprise this rule exists to end.
 
-Names here; values there. This schema checks the names, and the capability checks the values with its
-own spec the moment it runs: a number where a boolean belongs, or a clock that reaps before it reminds,
-is reported on every delivery as `Skipped: settings unusable — capabilities.<name>.settings.<path>: <why>`
-and the capability does nothing until the file is fixed. The keys each capability reads are listed on
+Names AND values, in one pass. The same declaration says what each setting may hold, so a number where a
+boolean belongs, or a clock that reaps before it reminds, is a `settingInvalid` error naming the exact
+path — checked with the rest of the file, before anything runs. A value you leave out takes the
+capability's documented default. The keys each capability reads are listed on
 [capabilities](capabilities.md).
 
-Each capability only ever sees its own block. It cannot read another capability's settings.
+Each capability only ever sees its own block — the keys beside its own `enabled`, and nothing
+another capability was given.
+
+**A clock is a duration, written as a whole number with a unit.** `4h` and `14d` are clocks; `14`
+is not, and neither are `2w`, `90m` or `1d4h` — the App refuses a bare number with the spelling it
+should have had. One day is twenty-four hours, the shortest wait before anything is released or
+closed is two hours, and the longest clock of any kind is `36500d`, a century.
+
+**What `0` means is per key, and the key's own sentence says it.** There is no global rule: for one
+setting `0h` is "immediately" (`remindAfter: 0h` warns on the first sweep that sees the item), for
+another `0` is "uncapped", and for another it is "nobody". The sentence beside each key on
+[capabilities](capabilities.md) is where that is written, and where a key's sentence says nothing
+about zero, zero is simply the number.
+
+### Making two capabilities work together
+
+**The label vocabulary is the only channel there is.** Capabilities cannot read each other's blocks,
+call each other, or run in an order you choose — that isolation is deliberate, and it is what lets
+you enable one without reasoning about the rest. What one capability *writes* another can *read*,
+because both speak the same meanings: `prQuality` applies your `needsRevision` label to a pull
+request that is failing its checks, and `inactivity`'s `reapWhen.needsRevision` is a clock that runs
+on pull requests carrying it. Wire that up by mapping the meaning once under `mappings.labels` and
+naming it in both blocks. Everything else — settings, timing, comments — stays isolated by design,
+so if you are looking for a way to make one capability wait for another, there is not one.
 
 ### `mappings`
 
 | | |
 |---|---|
-| Type | mapping with up to five keys: `labels`, `commands`, `skills`, `alerts`, `types` |
+| Type | mapping with up to four keys: `labels`, `commands`, `skills`, `alerts` |
 | Required | no |
 | Default | `{}` — no meanings available |
 
 See [Label mappings](#label-mappings) below, then [Command mappings](#command-mappings),
-[Skill mappings](#skill-mappings) and [Alerts and types](#alerts-and-types).
+[Skill mappings](#skill-mappings) and [Alerts](#alerts).
 
 ### `principals`
 
@@ -163,8 +186,11 @@ See [Label mappings](#label-mappings) below, then [Command mappings](#command-ma
 | Required | no |
 | Default | `{}` |
 
-Named people or teams a capability can refer to without hard-coding them. Values must be strings — a
-list is an error.
+Named people or teams a capability can refer to without hard-coding them. Each value is a single
+non-empty string — a list is an error, and so is an empty name: a capability that addresses a
+principal writes `@` in front of whatever you put here, so a blank one would ping nobody and say
+nothing about it. A bare login and an `org/team` slug are both fine; the App does not check which
+you wrote.
 
 ## Label mappings
 
@@ -247,33 +273,29 @@ case and surrounding spaces. One rule more: **a label cannot be both a tier and 
 meanings are both real GitHub labels, so `status: ready` cannot appear under both `labels` and
 `skills`; the App would have no way to read it back.
 
-## Alerts and types
+## Alerts
 
-The three families above are **closed**: the App names the meanings and you choose the words. These
-two are **open** — you name the meanings as well, because neither has any meaning to the App beyond
+The three families above are **closed**: the App names the meanings and you choose the words. This
+one is **open** — you name the meanings as well, because an alert has no meaning to the App beyond
 "a capability's settings may refer to it".
 
 ```yaml
 mappings:
   alerts:                     # you invent these names
-    p0: { label: "P0-🔥" }
-    security: { label: "Security" }
-  types:
-    bug: { label: "Bug" }
-    docs: { label: "Documentation" }
+    p0: "P0-🔥"
+    security: "Security"
 ```
 
 Three things worth knowing:
 
-- **Each entry is a mapping naming a `label`, not a bare label string.** The extra line buys room for
-  a second way of carrying an alert later: `notifications` also wants to read a project field
-  (`{ field: Priority, value: Critical }`), which is not built — write it and you are told which
-  phase you are waiting on, rather than watching an alert never fire.
+- **An entry is a label, written exactly as the three closed families write theirs.** Alert names are
+  camelCase like every other key, and the same rules apply to the label: a non-empty string, no two
+  alerts sharing one, duplicates judged ignoring case and surrounding spaces.
 - **The names are yours, so nothing can require one.** A capability may say "notify this principal
   about `p0`", and if you never mapped `p0` that setting is reported as an error naming the alert.
-- **The one label namespace still holds.** An alert label cannot also be a position, a tier, or a
-  type: the App would have no way to read it back. These two families are read last, so the label
-  you are told to change is the one in `alerts` or `types`.
+- **The one label namespace still holds.** An alert label cannot also be a position or a tier: the
+  App would have no way to read it back. This family is read last, so the label you are told to
+  change is the one under `alerts`.
 
 ## Rules that may surprise you
 
@@ -281,7 +303,7 @@ Three things worth knowing:
   delivery, and never evaluates capabilities with a partial or no-config fallback. Every error is reported
   at once, not one per push.
 - **Unknown keys are errors, not ignored.** A typo like `capabilties:` fails loudly, and so does a
-  `settings` key the capability never declared. Setting *values* remain the capability's own business.
+  setting the capability never declared. Setting *values* remain the capability's own business.
 - **An empty file, or no file, means `observe`.** Never `active`.
 - **Duplicate keys are errors.** YAML would otherwise keep the last value silently — the one case
   where a typo could change your mode while the file still looks right.
@@ -295,12 +317,13 @@ The exact codes the App reports, and what to fix.
 | `documentUnparseable` | The YAML itself is broken; the message names the line and column |
 | `duplicateKey` | The same key appears twice; delete one |
 | `notAMapping` | Something is a list or a bare value where `key: value` pairs belong |
-| `unknownKey` | A key the schema does not have — usually a typo. Includes a `settings` name the capability never declared |
-| `schemaVersionUnsupported` | `schemaVersion` must be the number `1`, present and unquoted |
+| `unknownKey` | A key the schema does not have — usually a typo. Includes a setting name the capability never declared |
+| `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `1` or `2` — omit the key and it is `1` |
 | `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prQuality` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |
 | `capabilityUnknown` | The capability is not available in this application; remove its block or run an application that ships it |
+| `settingInvalid` | A value in a capability's block is not what that setting takes — the message names the path and what it must be |
 | `meaningNotMappable` | A key under `mappings.labels` is not in the meanings table above |
 | `meaningRequired` | An enabled capability needs a mapping you have not made; the message names the line to add |
 | `labelInvalid` | A label that is empty, only spaces, or not a string |
@@ -311,8 +334,7 @@ The exact codes the App reports, and what to fix.
 | `skillNotMappable` | A key under `mappings.skills` is not one of the four tiers |
 | `skillInvalid` | A tier label that is empty, only spaces, or not a string |
 | `skillNotInjective` | Two tiers share a label, or a tier uses a label `mappings.labels` already claims |
-| `alertInvalid` | An alert is not a mapping naming a `label` — the `{ field, value }` form is not built yet |
+| `alertInvalid` | An alert name that is not camelCase, or a label that is empty, only spaces, or not a string |
 | `alertNotInjective` | Two alerts share a label, or an alert uses a label another family already claims |
-| `typeInvalid` | A type is not a mapping naming a `label` |
-| `typeNotInjective` | Two types share a label, or a type uses a label another family already claims |
-| `principalNotAString` | A principal must be a single name, as a string |
+| `principalNameInvalid` | A principal name is not camelCase, like `maintainerTeam` |
+| `principalNotAString` | A principal must be a single non-empty name, as a string |

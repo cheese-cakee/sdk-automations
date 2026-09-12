@@ -1,21 +1,16 @@
 /**
- * decide() — the one verb (D92). A delivery or a fact record goes in; a
- * report and the approved intents come out; nothing else escapes.
- *
- * This file OWNS the composition: normalize → evaluate → screen → derive
- * the world → gate → report. `events.ts` is the first of those steps and
- * `invoke.ts` holds the erased capability shape this walks over.
- *
- * Externals are only the facts core cannot know — clock, kill switch,
- * grants, human ordering, resolver answers — as data and lookups, never
- * I/O. Everything derivable is derived, so a caller cannot assert a world
- * that contradicts the one it delivered.
+ * decide() — the one verb (D92). A delivery or a fact record goes in; a report
+ * and the approved intents come out; nothing else escapes. It owns the
+ * composition: normalize → evaluate → screen → derive the world → gate →
+ * report. Externals are only the facts core cannot know, as data and lookups,
+ * never I/O; everything derivable is derived.
  */
 
 import {
     addressManagedComment,
     factGroupUnread,
     managedCommentOf,
+    modesOf,
     projectCapabilityView,
     readIntent,
     screenIntent,
@@ -65,28 +60,13 @@ import { wouldApplyFinding, writeRequestFor } from "./change.js";
 export interface Externals {
     readonly killSwitchActive: boolean;
     readonly installationGrants: readonly PermissionGrant[];
-    /**
-     * Ordering evidence per item; `"unknown"` is a safe conflict
-     * (`design/contracts/safety.md` §3). The engine awaits either shape, so a synchronous
-     * stub and a timeline-reading live implementation satisfy the same seam —
-     * a lookup that returns a promise is still a lookup, not I/O in core.
-     */
+    /** Ordering evidence per item; `"unknown"` is a safe conflict (safety.md §3). */
     readonly latestHumanChangeAt: (
         item: ItemRef,
     ) => HumanChangeOrdering | Promise<HumanChangeOrdering>;
     /** Resolver answers, when the shell has them. Absent means unavailable. */
     readonly resolve?: ResolverSource;
-    /**
-     * The warning already recorded for one effect, or `null` for none
-     * (grace.md §2). Absent is "none recorded", the way an absent `resolve`
-     * is "unavailable": a composition with no store has warned nobody, and
-     * the destructive door refuses an act on that answer rather than acting.
-     *
-     * The shell reads the row and re-mints it through
-     * `createDestructiveWarning`, which is the only constructor — so a
-     * warning reaching this seam was authored by the platform even though the
-     * bytes it was rebuilt from crossed a durability boundary.
-     */
+    /** The warning recorded for one effect, or `null`; absent is "none" (grace.md §2). */
     readonly warningFor?: (
         effectId: string,
     ) => DestructiveWarning | null | Promise<DestructiveWarning | null>;
@@ -94,13 +74,7 @@ export interface Externals {
 
 /**
  * One thing to decide about: a raw delivery, or a fact record the caller
- * already holds. The raw branch carries the shell's routing knowledge
- * separately, because a report must name its repository even when the
- * payload turns out to be unreadable.
- *
- * One record, one item (contracts/facts.md §4). A sweep hands the engine a
- * record per item rather than a list, so a decision is about one item and the
- * batching the engine used to unpick is gone.
+ * already holds. One record is one item (contracts/facts.md §4).
  */
 export type DecideInput =
     | {
@@ -112,21 +86,8 @@ export type DecideInput =
     | { readonly kind: "facts"; readonly facts: Facts };
 
 /**
- * An intent that may act, carrying the identity only the platform can mint.
- *
- * `managedComment` is `null` for every operation that posts none. Identity
- * attaches HERE rather than in the factory (D125): an effect's identity is the
- * name under which a write will be found again, and an intent that will never
- * be written has none to name. The factory would also be handing it back to the
- * capability that must not own it, which is the arrangement D125 removed.
- */
-/**
  * A warning authored but not yet posted, and the act it will authorize.
- *
- * `effectId` is the ACT's, not the warning comment's: the record is keyed by
- * the effect the destructive door will later ask about, and the warning is
- * only how it got written. Everything else is what the applier needs to mint
- * one once GitHub says the comment landed (grace.md §3).
+ * `effectId` is the ACT's, not the warning comment's (grace.md §3).
  */
 export interface WarningToRecord extends PendingWarning {
     readonly effectId: string;
@@ -135,16 +96,7 @@ export interface WarningToRecord extends PendingWarning {
 export interface Effect {
     readonly intent: AnyIntent;
     readonly managedComment: ManagedComment | null;
-    /**
-     * The warning this effect's comment RECORDS when it lands, or `null` for
-     * every effect that records none (grace.md §3).
-     *
-     * Only a platform-authored warning effect carries one, and it carries the
-     * ACT's authority: the snapshot the destructive door will later match the
-     * act against, plus the terms the record must keep. The applier supplies
-     * the two instants — a warning that never posted authorizes nothing,
-     * because nothing records it.
-     */
+    /** The warning this comment records when it lands, or `null` (grace.md §3). */
     readonly records: WarningToRecord | null;
 }
 
@@ -158,14 +110,8 @@ export interface Decision {
 // ─── The gates one intent passes ─────────────────────────────────────
 
 /**
- * The refusal for an intent that names somebody else's item.
- *
- * One record is one item (facts.md §4), so the record's projection describes
- * THAT item and nothing else. An intent naming a different one would be judged
- * — closed, blocked, preconditions and all — against the wrong item's world,
- * which is unsound: a capability could act on a neighbour by asserting nothing
- * about it. So it is refused, in the same shape the old per-item lookup
- * produced when a sweep did not carry the item.
+ * The refusal for an intent that names somebody else's item: one record is one
+ * item (facts.md §4), so no other item's world is here to judge it against.
  */
 const NOT_THIS_RECORD: SafetyVerdict = {
     outcome: "refuse",
@@ -184,12 +130,8 @@ function namesTheRecord(intent: AnyIntent, facts: Facts): boolean {
 }
 
 /**
- * The ordering evidence for one item, with the lookup CONTAINED.
- *
- * A seam that threw established nothing, and D51 rules an unestablished
- * ordering a conflict — so the contained value is `"unknown"`, which the rules
- * already refuse fail-closed. The detail rides alongside because "checked and
- * could not tell" and "the lookup broke" need different fixes.
+ * The ordering evidence for one item, with the lookup CONTAINED: a seam that
+ * threw yields `"unknown"`, which the rules refuse fail-closed (D51).
  */
 async function orderingFor(
     item: ItemRef,
@@ -203,31 +145,8 @@ async function orderingFor(
 }
 
 /**
- * The managed-comment identity for an intent that has one, minted from the
- * intent's OWN fields — the capability it is attributed to, the item it names,
- * the purpose it asked for, and the topic that tells two of that purpose apart.
- *
- * The occasion is NOT among them (D145). A new event about the same item is
- * the same comment, rewritten; the occasion's name is the journal's effect id,
- * and it is the intent's idempotency key, which stays exactly what it was.
- *
- * TWO intents have one. A `postManagedComment` posts the comment it names,
- * and a GRACED act posts one AFTER it lands: the outcome notice grace.md §3
- * requires, under the act's own topic, so the notice and the warning that
- * preceded it stand on the same person's clock. This is the one place a
- * non-comment operation is handed an identity, and it is here for the same
- * reason the other is: identity attaches where a write will be found again,
- * and a graced act will be (D125).
- */
-/**
- * The intent as the platform will act on it: a comment that names a principal
- * has that name resolved into the handle behind it before anything else sees
- * the body.
- *
- * Here rather than inside `gateIntent` because everything downstream must read
- * the SAME bytes — the verdict, the `wouldApply` a dry-run reports, the managed
- * body the applier journals. A capability supplies content and a name; the
- * platform composes the comment (`managed.ts`).
+ * The intent as the platform will act on it, with a comment's principal name
+ * resolved into its handle. Here, so everything downstream reads the same bytes.
  */
 function addressed(intent: AnyIntent, config: RepositoryConfig): AnyIntent {
     if (intent.operation !== "postManagedComment") return intent;
@@ -261,20 +180,8 @@ function managedCommentFor(intent: AnyIntent): ManagedComment | null {
 }
 
 /**
- * The warning comment the platform posts on an act's first sight — authored
- * HERE, from the act, because no capability may request one (grace.md §2).
- *
- * Everything but the words is the act's: the capability it is attributed to,
- * the item, the occasion, the topic, and the story the report already tells
- * about why this is happening. The effect id is the act's with a `warning`
- * suffix, so the warning and the act are two effects the journal can tell
- * apart while a reader can still see they are one plan. The COMMENT identity
- * is the act's topic under kind `warning`, so an issue with two stale
- * assignees earns two warnings and each names one clock (grace.md §3, D145).
- *
- * `claims: { closed: false }` is the only claim it makes, and it is the
- * right one: a warning about an act on a closed item is a promise the
- * destructive door would refuse to keep.
+ * The warning comment the platform posts on an act's first sight, authored here
+ * because no capability may request one (grace.md §2).
  */
 function warningEffectFor(act: AnyIntent, grace: DestructiveGrace): Intent<"postManagedComment"> {
     return {
@@ -293,13 +200,8 @@ function warningEffectFor(act: AnyIntent, grace: DestructiveGrace): Intent<"post
 }
 
 /**
- * The recorded warning for one effect, with the lookup CONTAINED.
- *
- * A seam that threw established nothing, and "nothing" must not read as "no
- * warning": that answer would post a second warning and re-date the promise
- * the person was given. So the defect rides alongside and the caller declines
- * to act at all, which is the only answer that neither warns twice nor acts
- * unwarned.
+ * The recorded warning for one effect, with the lookup CONTAINED. A seam that
+ * threw must not read as "no warning", so the caller declines to act at all.
  */
 async function recordedWarning(
     effectId: string,
@@ -313,13 +215,8 @@ async function recordedWarning(
 }
 
 /**
- * What one verdict on one intent is worth saying, and whether it may act.
- *
- * Both routes below end here, which is what keeps the report the same shape
- * whether the platform is warning or acting: an acting intent tells its story,
- * a refusal keeps its reason alone (D92 3d), and dry-run adds the rehearsal
- * line naming what THIS intent would have done — "warn", where the platform
- * has substituted its own warning for the act it is holding back.
+ * What one verdict on one intent is worth saying, and whether it may act. An
+ * acting intent tells its story, a refusal keeps its reason alone (D92 3d).
  */
 function outcomeOf(
     intent: AnyIntent,
@@ -339,8 +236,7 @@ function outcomeOf(
         findings.push(explanationFinding(intent.explanation, subject));
     }
     findings.push(verdictFinding(verdict, effectSubject));
-    // After the verdict, because it elaborates on it: the verdict says the
-    // mode recorded rather than applied, and this says what it recorded.
+    // After the verdict, which it elaborates: this says what the mode recorded.
     if (
         config.mode === "dry-run" &&
         verdict.outcome === "record-only" &&
@@ -358,19 +254,8 @@ function outcomeOf(
 }
 
 /**
- * One intent through every gate — screen, own item, derived world, verdict —
- * returning its findings and, if it may act, the effect itself. Async for two
- * facts: the ordering evidence and, for a graced act, the recorded warning,
- * both awaited after the screen so a screened-out intent costs no lookup.
- *
- * TWO DOORS (grace.md §2). An ordinary intent meets `evaluateWrite`. A graced
- * act — which the screen has already proved is the clock-triggered destructive
- * class, and the only class carrying grace — meets one of two things instead:
- * with no warning recorded, the platform's OWN warning comment is what gets
- * gated and approved in its place, carrying the act's authority for the
- * applier to record; with one recorded, `evaluateDestructive` judges the act
- * against it. The act is never approved on its first sight, because on its
- * first sight there is nothing to have warned in.
+ * One intent through every gate — screen, own item, derived world, verdict. A
+ * graced act is never approved on its first sight (grace.md §2).
  */
 async function gateIntent(
     value: unknown,
@@ -408,8 +293,7 @@ async function gateIntent(
     if (!screen.ok) {
         return { findings: [screenFinding(screen, subject)], approved: null };
     }
-    // Before the world is derived, because there is no world to derive: the
-    // only projection here belongs to another item.
+    // No world to derive: the only projection here belongs to another item.
     if (!namesTheRecord(intent, facts)) {
         return {
             findings: [
@@ -441,7 +325,8 @@ async function gateIntent(
         killSwitchActive: externals.killSwitchActive,
         installationGrants: externals.installationGrants,
         latestHumanChangeAt: ordering.value,
-        world: deriveWorld(facts.position, request.claims),
+        // A mode claim is judged against the native modes this record read.
+        world: deriveWorld(facts.position, request.claims, modesOf(facts)),
     });
     const said = (
         result: ReturnType<typeof outcomeOf>,
@@ -450,9 +335,8 @@ async function gateIntent(
         approved: result.approved,
     });
 
-    // `?? null` for the reason the screen reads it that way: the field may
-    // simply be absent on an intent built from `unknown`, and no terms is what
-    // the screen has already proved is right for this operation's class.
+    // `?? null` as the screen reads it: the field may be absent on an intent
+    // built from `unknown`.
     const grace = intent.grace ?? null;
     if (grace === null) {
         const verdict = evaluateWrite(writeRequestFor(intent), config, contextFor(intent));
@@ -481,7 +365,7 @@ async function gateIntent(
             outcomeOf(warning, verdict, config, subject, {
                 effectId: intent.idempotencyKey,
                 request: writeRequestFor(intent),
-                gracePeriodDays: grace.days,
+                gracePeriodHours: grace.hours,
                 cancelledBy: grace.cancelledBy,
                 reversesWith: grace.reversesWith,
             }),
@@ -491,8 +375,7 @@ async function gateIntent(
         {
             request: writeRequestFor(intent),
             warning: recorded.value,
-            // The capability reports the activity; the platform decides what
-            // it means, by comparing it against the promise IT recorded.
+            // The platform decides what the capability's reported activity means.
             qualifyingActivitySinceWarning:
                 grace.activityAt !== null && grace.activityAt.getTime() > recorded.value.warnedAtMs,
         },
@@ -504,13 +387,8 @@ async function gateIntent(
 }
 
 /**
- * One capability's intents, with the CALL contained.
- *
- * A capability is ordinary code and may throw. The engine is total, so a
- * throw becomes a recorded defect and that capability simply contributes
- * nothing — the same bargain `EngineHandle` already makes for an undeclared
- * resolver. Whatever the capability explained before it broke is kept: the
- * handle holds it, and it is the only account of what it was doing.
+ * One capability's intents, with the CALL contained: a throw becomes a recorded
+ * defect and that capability contributes nothing. What it explained is kept.
  */
 async function intentsFrom(
     capability: EngineCapability,
@@ -519,8 +397,7 @@ async function intentsFrom(
     handle: EngineHandle,
 ): Promise<{ readonly intents: readonly unknown[]; readonly defect: string | null }> {
     try {
-        // The `never`s are `toEngine`'s erasure showing through; its
-        // docstring owns the soundness argument, once, for all three.
+        // The `never`s are `toEngine`'s erasure showing through.
         const intents: unknown = await capability.evaluate(
             facts as never,
             view as never,
@@ -538,11 +415,7 @@ async function intentsFrom(
 
 /**
  * What this input is about: the record to decide on, the repository the report
- * must name, and whatever reading a raw delivery had to say.
- *
- * The repository is carried separately from the record because a report names
- * its repository even when the payload turns out to be unreadable — the shell
- * routed for one, and an operator has to be told which.
+ * must name even for an unreadable payload, and a raw delivery's reading.
  */
 function readInput(
     input: DecideInput,
@@ -574,12 +447,7 @@ function readInput(
 
 /**
  * The front door: a delivery becomes a report, plus the intents that may act.
- *
- * Total: every fallible seam is contained, so a report always comes back. An
- * unreadable payload, a capability that asks for an undeclared resolver or
- * throws, a resolver source or ordering lookup that rejects, and a refused
- * write are all findings. A shell that cannot get a report back cannot record
- * one, and in a reclaiming shell that loses the delivery for good.
+ * Total — every fallible seam is contained, so a report always comes back.
  */
 export async function decide(
     input: DecideInput,
@@ -654,9 +522,7 @@ export async function decide(
             }
 
             for (const intent of evaluated.intents) {
-                // The record IS one item, so its own projection is the world
-                // every intent of this decision is judged against — and an
-                // intent naming another item has none (facts.md §4).
+                // The record IS one item: its projection is the only world (facts.md §4).
                 const gated = await gateIntent(intent, declaration, facts, config, externals);
                 findings.push(...gated.findings);
                 if (gated.approved !== null) approved.push(gated.approved);

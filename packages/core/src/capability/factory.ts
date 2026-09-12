@@ -1,17 +1,8 @@
 /**
  * Building an intent — capability-authoring ergonomics, owned (D92 3d).
  *
- * The factory binds the occasion once — capability, repository, item,
- * observedAt — so each intent states only what it WANTS. Two contracts the
- * shape enforces rather than requests:
- *
- * - **Every intent explains itself.** `explain.summary` is required: the
- *   report's story for applied and recorded effects comes from here, and a
- *   capability that cannot say why it acts should not act (contracts/safety.md).
- * - **The claimed world defaults to no claim.** An omitted `claims` is
- *   vacuous (`closed: null`), never an accidental assertion. Claims are
- *   CHECKED under the engine's derived preconditions, so the default must be
- *   the one that cannot be wrong.
+ * The factory binds the occasion once, so each intent states only what it
+ * WANTS. An omitted `claims` is vacuous (`closed: null`), never an assertion.
  */
 
 import type { TypedDeclaration } from "./declaration.js";
@@ -36,12 +27,7 @@ export interface IntentSpec<K extends IntentOperation> {
     /** Omitted fields claim nothing; `closed` defaults to no-claim, not open. */
     readonly claims?: Partial<ClaimedFacts>;
     readonly explain: { readonly summary: string; readonly detail?: readonly string[] };
-    /**
-     * The grace terms, stated once by a clock-triggered destructive act and by
-     * nothing else (grace.md §1). Omitted is `null`, which is what every other
-     * class must carry — the screen refuses both mistakes, so the default here
-     * is the one that cannot be wrong for the operations that are not graced.
-     */
+    /** Stated by a clock-triggered destructive act and by nothing else (grace.md §1). */
     readonly grace?: DestructiveGrace;
 }
 
@@ -60,6 +46,11 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
                 meaningsPresent: spec.claims?.meaningsPresent ?? [],
                 meaningsAbsent: spec.claims?.meaningsAbsent ?? [],
                 closed: spec.claims?.closed ?? null,
+                // Written in only when claimed: a key spelled `undefined` would
+                // not match the same intent built from bytes.
+                ...(spec.claims?.pullRequestMode === undefined
+                    ? {}
+                    : { pullRequestMode: spec.claims.pullRequestMode }),
             },
             desired: spec.desired,
             cause: { cause: spec.cause, observedAt: occasion.observedAt },
@@ -77,13 +68,7 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
     };
 }
 
-/**
- * The declaration-aware factory — the one capabilities should use. It
- * constrains `K` to the operations the DECLARATION carries, so its output is
- * assignable to `IntentFor<D>` with no cast, and an undeclared operation
- * fails at the call site, at compile time, in the capability's own file. The
- * screens still re-check at runtime; this is ergonomics, they are enforcement.
- */
+/** The declaration-aware factory — the one capabilities should use. */
 export function intentFactoryFor<const D extends TypedDeclaration>(
     declaration: D,
     occasion: IntentOccasion,

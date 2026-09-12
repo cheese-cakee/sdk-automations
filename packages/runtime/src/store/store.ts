@@ -1,26 +1,9 @@
 /**
- * The owned operational store — `design/findings/storage-decision.md`
- * made real, with the exact crash semantics protocol 6.5 demonstrated.
- * **Ratification pending** under the stage-four review.
- *
- * This file owns the state transitions. `instants.ts` owns the timestamp
- * contract every one of them validates. `schema.ts` owns recognition and
- * migration. `deliveries.ts`, `effects.ts` and `schedules.ts` own the
- * vocabulary being moved between states; the only shapes declared here are
- * the store's own options and the private rows its queries return.
- *
- * Six sections, in this order: durable webhook intake, the effect
- * journal, effect claims, destructive warnings, schedules, retention.
- *
- * Design rules carried over from the evidence:
- *
- * - Delivery acceptance and report completion use explicit synchronous
- *   transactions, so returned outcomes describe committed rows.
- * - Tables have no foreign keys. Report completion deliberately changes
- *   the delivery and its report together under one write lock.
- * - The journal alone cannot disambiguate a sent-but-unconfirmed write
- *   (`sentUnknown`). The caller must resolve it against GitHub state
- *   before retrying, per the recovery loop in the storage decision.
+ * The owned operational store — `design/findings/storage-decision.md` made real,
+ * with the exact crash semantics protocol 6.5 demonstrated. Ratification pending.
+ * This file owns the state transitions. Tables have no foreign keys, and delivery
+ * acceptance and report completion use explicit synchronous transactions, so a
+ * returned outcome always describes committed rows.
  */
 
 import { createHash } from "node:crypto";
@@ -109,7 +92,7 @@ function payloadDigest(payload: Uint8Array): string {
 interface StoredWarningRow {
     readonly effect_id: string;
     readonly warned_at: string;
-    readonly grace_days: number;
+    readonly grace_hours: number;
     readonly earliest_action_at: string;
     readonly cancelled_by: string;
     readonly reverses_with: string;
@@ -181,11 +164,10 @@ export class Store {
         try {
             const schemaVersion = readStorageSchemaVersion(this.db);
             assertSupportedStorageSchemaVersion(schemaVersion);
-            // These two pragmas ARE the crash model — set explicitly,
-            // not inherited as defaults. DELETE-mode journal +
-            // synchronous FULL is what makes "everything before the
-            // last returned call survives kill -9 and power loss" true.
-            // The config test pins both so this cannot change silently.
+            // These two pragmas ARE the crash model, set explicitly rather than
+            // inherited: DELETE-mode journal plus synchronous FULL is what makes
+            // "everything before the last returned call survives kill -9" true.
+
             this.db.exec(`
                 PRAGMA busy_timeout = 2000;
                 PRAGMA journal_mode = DELETE;
@@ -193,10 +175,7 @@ export class Store {
             `);
             migrateStorageSchema(this.db, this.injectFault);
         } catch (error) {
-            // Stryker disable next-line BlockStatement,CallExpression: an
-            // unclosed handle on the failure path leaks a file descriptor,
-            // which no black-box assertion can observe from outside the
-            // class — the close is resource hygiene, not visible behavior.
+            // Stryker disable next-line BlockStatement,CallExpression: an unclosed handle on the failure path leaks a file descriptor, which no black-box assertion can observe from outside the class — the close is resource hygiene, not visible behavior.
             try {
                 this.db.close();
             } catch {
@@ -209,12 +188,8 @@ export class Store {
     // ── Durable webhook intake ─────────────────────────────────────
 
     /**
-     * Atomically persist a verified delivery's identity and exact
-     * bytes before an HTTP receiver acknowledges it. The transaction
-     * keeps duplicate classification and the row it describes under
-     * the same write lock, so a successful result always refers to a
-     * durable row. Neither duplicates nor conflicts mutate the first
-     * accepted delivery.
+     * Atomically persist a verified delivery's identity and exact bytes before a
+     * receiver acknowledges it. Neither a duplicate nor a conflict mutates the first.
      */
     acceptDelivery(input: AcceptDeliveryInput): AcceptDeliveryResult {
         assertDeliveryGuid(input.deliveryId);
@@ -286,16 +261,8 @@ export class Store {
     }
 
     /**
-     * Claim the oldest ELIGIBLE delivery, or atomically take over one
-     * stale processing claim. Selection is stable by receipt time then
-     * GUID. The generated 256-bit token, not the worker name, proves
-     * ownership to completion and release calls.
-     *
-     * Eligibility skips two kinds of row: one waiting out a backoff
-     * (`retry_not_before` after `now`) and one dead-lettered. A poison
-     * delivery therefore stops holding up everything received after it,
-     * and the skip happens inside the claiming statement — there is no
-     * select-then-update window for a second worker to slip through.
+     * Claim the oldest ELIGIBLE delivery, or atomically take over one stale claim.
+     * The generated token, not the worker name, proves ownership. Eligibility skips a row waiting out a backoff and a dead-lettered one, inside the claiming statement.
      */
     claimNextDelivery(
         worker: string,
@@ -467,18 +434,8 @@ export class Store {
     }
 
     /**
-     * Count one failed attempt against this token's delivery, then either
-     * schedule its retry or dead-letter it — one statement, so the count
-     * and the state it decides can never disagree.
-     *
-     * The cap is compared against the INCREMENTED count, so `maxAttempts`
-     * reads as "attempts this delivery gets in total". It is a parameter
-     * rather than a constant because the store owns no policy; the caller
-     * that owns the backoff owns the budget it spends.
-     *
-     * `notOwned` is the same refusal `completeDeliveryWithReport` gives:
-     * a worker whose claim was taken over cannot spend the replacement
-     * claim's retry budget, and learns that it lost the delivery.
+     * Count one failed attempt, then either schedule the retry or dead-letter it — one
+     * statement, so the count and the state it decides can never disagree. The cap is compared against the INCREMENTED count, and is a parameter: the store owns no policy.
      */
     releaseDeliveryAfterFailure(
         input: ReleaseDeliveryAfterFailureInput,
@@ -527,9 +484,8 @@ export class Store {
     }
 
     /**
-     * Read every dead-lettered delivery in stable dead-letter then GUID
-     * order. Identity and attempt count only: the retained payload leaves
-     * the store through a claim, exactly as it does for live work.
+     * Every dead-lettered delivery, in stable dead-letter then GUID order.
+     * Identity and attempt count only; the payload leaves the store through a claim.
      */
     deadLetteredDeliveries(): DeadLetteredDelivery[] {
         const rows = this.db
@@ -587,10 +543,9 @@ export class Store {
         return (
             rows
                 .map((row) => row.delivery_id as DeliveryGuid)
-                // Default sort: UTF-16 code-unit order, which for these
-                // lowercase-hex GUIDs IS SQLite's BINARY collation. A locale
-                // comparator can disagree with it; a hand-written one breeds
-                // equivalent mutants on an equal branch no unique key reaches.
+                // Default sort is UTF-16 code-unit order, which for these lowercase-hex
+                // GUIDs IS SQLite's BINARY collation; a locale comparator can disagree.
+
                 .sort()
         );
     }
@@ -616,17 +571,8 @@ export class Store {
     // ── Effect journal (detector) ───────────────────────────────────
 
     /**
-     * Record intent BEFORE the call — the row that survives any crash
-     * after it. One upsert: a `done` row is immutable, so acknowledged
-     * history never regresses to `sent`, and re-declaring a still-open
-     * call increments a durable `attempt` counter —
-     * FINDING(store-journal-attempts), D42.
-     *
-     * `revision` is required and has no default on purpose. The recovery
-     * loop compares it against the current plan's revision. A default
-     * would journal a value matching no real plan, surfacing every
-     * effect as unresolved — fail-closed for a reason no operator
-     * could act on.
+     * Record intent BEFORE the call — the row that survives any crash after it. A
+     * `done` row is immutable, and re-declaring a still-open call increments a durable `attempt` counter (D42). `revision` has no default: one would match no real plan.
      */
     intent(effectId: string, seq: number, intent: string, at: string, revision: string): void {
         assertUtcInstant(at, "at");
@@ -646,9 +592,8 @@ export class Store {
     }
 
     /**
-     * Mark a call done. Returns whether a row was actually marked —
-     * `false` means no such intent row exists, which is a caller bug
-     * worth noticing, not a state the store absorbs silently.
+     * Mark a call done. `false` means no such intent row exists, which is a caller bug
+     * worth noticing rather than a state the store absorbs silently.
      */
     done(effectId: string, seq: number, at: string): boolean {
         assertUtcInstant(at, "at");
@@ -661,15 +606,8 @@ export class Store {
     }
 
     /**
-     * Classify an effect from the journal alone — the left half of the
-     * storage decision's recovery loop. `planLength` is the declared
-     * call count of the effect's plan; the journal
-     * cannot know completion without it.
-     *
-     * Classification reads the highest-seq row only, which assumes caller
-     * discipline: calls run sequentially,
-     * and seq N+1 is never declared while seq N is still `sent`. The
-     * store does not police that invariant.
+     * Classify an effect from the journal alone — the recovery loop's left half.
+     * Reads the highest-seq row only, which assumes caller discipline: seq N+1 is never declared while seq N is still `sent`, and the store does not police that.
      */
     effectState(effectId: string, planLength: number): EffectState {
         const rows = this.db
@@ -709,10 +647,8 @@ export class Store {
     }
 
     /**
-     * The sweep's worklist — every open `sent` row at or before
-     * `before`, across all effects: the intents whose outcomes the
-     * recovery loop must resolve against GitHub. Read-only;
-     * resolution itself stays with `done`/`intent` and the resolver.
+     * The sweep's worklist — every open `sent` row at or before `before`.
+     * Read-only; resolution stays with `done`/`intent` and the resolver.
      */
     openIntents(before: string): OpenIntent[] {
         assertUtcInstant(before, "before");
@@ -745,18 +681,8 @@ export class Store {
     // ── Claims (lock) ───────────────────────────────────────────────
 
     /**
-     * One-winner LEASE on an effect — the 6.5 race serializer, with
-     * atomic stale takeover so a crashed holder cannot deadlock the
-     * effect. A fresh claim inserts; a claim with `at <= staleBefore`
-     * is taken over in the same upsert (no delete-then-claim window).
-     *
-     * Returns true iff the caller now holds it. Non-contention failures
-     * throw, so `false` strictly means "a live worker holds it".
-     *
-     * A lease can be stolen from a live worker that outlives it
-     * (D41). The journal and GitHub re-read provide recovery evidence but
-     * cannot fence a request already in flight.
-     * FINDING(store-claim-lease).
+     * One-winner LEASE on an effect, with atomic stale takeover so a crashed holder
+     * cannot deadlock it. Non-contention failures throw, so `false` strictly means a live worker holds it. A lease can still be stolen from a live worker (D41).
      */
     claim(effectId: string, worker: string, now: string, staleBefore: string): boolean {
         assertUtcInstant(now, "now");
@@ -774,10 +700,8 @@ export class Store {
     }
 
     /**
-     * Release a claim on clean completion — deletes only the caller's
-     * OWN row, so releasing after your lease was stolen is a safe
-     * no-op. Returns whether a row was actually released; `false`
-     * means you no longer held it, which a caller may want to log.
+     * Release a claim on clean completion — deletes only the caller's OWN row, so
+     * releasing after your lease was stolen is a safe no-op.
      */
     release(effectId: string, worker: string): boolean {
         const result = this.db
@@ -789,16 +713,8 @@ export class Store {
     // ── Destructive warnings (grace.md §4) ──────────────────────────
 
     /**
-     * Record the warning an act's warning comment just landed, keyed by the
-     * ACT's effect id.
-     *
-     * An upsert, because the applier writes it after a comment that may have
-     * been `already` rather than `applied` — a resend must leave one row, not
-     * two. In ordinary running it writes once: the moment a warning stands,
-     * the engine stops approving the warning effect and starts judging the act
-     * against it, so nothing reaches this a second time. A re-record is what a
-     * lost row looks like, and re-dating the promise there is the conservative
-     * direction — the person gets the full grace again rather than less of it.
+     * Record the warning an act's warning comment just landed, keyed by the ACT's id.
+     * An upsert, because the applier writes it after a comment that may have been `already`: a re-record re-dates the promise, which is the conservative direction.
      */
     recordWarning(warning: StoredWarning): void {
         assertUtcInstant(warning.warnedAt, "warnedAt");
@@ -812,7 +728,7 @@ export class Store {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(effect_id) DO UPDATE SET
                     warned_at = excluded.warned_at,
-                    grace_days = excluded.grace_days,
+                    grace_hours = excluded.grace_hours,
                     earliest_action_at = excluded.earliest_action_at,
                     cancelled_by = excluded.cancelled_by,
                     reverses_with = excluded.reverses_with,
@@ -827,7 +743,7 @@ export class Store {
             .run(
                 warning.effectId,
                 warning.warnedAt,
-                warning.gracePeriodDays,
+                warning.gracePeriodHours,
                 warning.earliestActionAt,
                 warning.cancelledBy,
                 warning.reversesWith,
@@ -849,7 +765,7 @@ export class Store {
         return {
             effectId: row.effect_id,
             warnedAt: row.warned_at,
-            gracePeriodDays: row.grace_days,
+            gracePeriodHours: row.grace_hours,
             earliestActionAt: row.earliest_action_at,
             cancelledBy: row.cancelled_by,
             reversesWith: row.reverses_with,
@@ -873,12 +789,8 @@ export class Store {
     }
 
     /**
-     * Atomically claim every due pending schedule (pending → running,
-     * stamped with `claimed_at = now`) and return the claimed rows.
-     * Two instances calling concurrently split the due set; a restart
-     * mid-processing does NOT re-fire a running schedule — redriving
-     * stuck `running` rows is `requeueStuck`, driven by the
-     * reconciliation sweep, deliberately not this method.
+     * Atomically claim every due pending schedule and return the claimed rows.
+     * A restart mid-processing does NOT re-fire a running schedule; redriving stuck `running` rows is `requeueStuck`, deliberately not this method.
      */
     claimDue(now: string): ClaimedScheduleRow[] {
         assertUtcInstant(now, "now");
@@ -922,18 +834,8 @@ export class Store {
     }
 
     /**
-     * Complete this firing and arm the next one, in one statement.
-     *
-     * A recurring schedule cannot be re-declared: `schedule()` is
-     * `INSERT OR IGNORE` and the row is still there, so a completed sweep would
-     * never come round again. Nor may the two halves be separate statements — a
-     * crash between them either loses the schedule for good or leaves a row
-     * claimed by a token nobody holds.
-     *
-     * Ownership is checked exactly as `scheduleDone` checks it: only the token
-     * that claimed this firing may end it, so a takeover after a stale redrive
-     * cannot have its successor's due date overwritten by the worker it
-     * replaced.
+     * Complete this firing and arm the next one, in one statement: `schedule()` is
+     * `INSERT OR IGNORE`, so a completed sweep could never come round again, and a crash between two statements would lose the schedule or strand the claim.
      */
     scheduleAgain(scheduleId: string, claimToken: string, dueAt: string): boolean {
         assertUtcInstant(dueAt, "dueAt");
@@ -950,15 +852,8 @@ export class Store {
     }
 
     /**
-     * The sweep's redrive: atomically return stuck `running` schedules,
-     * claimed at or before `claimedBefore`, to `pending`.
-     *
-     * Stuckness is claim age, never due time, so a backlog catch-up is
-     * not stolen from. Requeued work re-fires through `claimDue`; there
-     * is no parallel firing mechanism. A slow-but-alive handler can be
-     * requeued and fire twice, so its effects still need D41's overlap contract. The
-     * threshold is the sweep's ops decision.
-     * FINDING(store-sweep-api), D43.
+     * The sweep's redrive: atomically return stuck `running` schedules to `pending`.
+     * Stuckness is claim age, never due time, so a backlog catch-up is not stolen from. A slow-but-alive handler can fire twice, so effects still need D41's contract (D43).
      */
     requeueStuck(claimedBefore: string): ScheduleRow[] {
         assertUtcInstant(claimedBefore, "claimedBefore");
@@ -986,9 +881,8 @@ export class Store {
     // ── Retention (the sweep's pruning half — D43's adopted windows) ─
 
     /**
-     * Delete only completed delivery identities whose completion time
-     * reached the retention boundary. Pending and processing payloads
-     * are never eligible, regardless of their age.
+     * Delete only completed delivery identities past the retention boundary.
+     * Pending and processing payloads are never eligible, regardless of age.
      */
     pruneCompletedDeliveries(before: string): number {
         assertUtcInstant(before, "before");
@@ -1027,12 +921,7 @@ export class Store {
 
     /**
      * Delete warnings warned at or before `before` (grace.md §4).
-     *
-     * The caller sets the boundary, because the store cannot know it: it is
-     * the longest grace any capability declares plus the standing retention
-     * window, and both are the composition's facts. Pruning by `warned_at`
-     * rather than by `earliest_action_at` keeps the rule the same one every
-     * other retention window uses — how long ago did this happen.
+     * The caller sets the boundary; pruning by `warned_at` keeps the rule every other retention window uses — how long ago did this happen.
      */
     pruneWarnings(before: string): number {
         assertUtcInstant(before, "before");
@@ -1041,9 +930,8 @@ export class Store {
     }
 
     /**
-     * Delete DONE journal rows at or before `before`. Open (`sent`)
-     * rows are never pruned — an unresolved effect stays visible until
-     * the recovery loop or an operator closes it, however old.
+     * Delete DONE journal rows at or before `before`.
+     * Open (`sent`) rows are never pruned, however old.
      */
     pruneDoneJournal(before: string): number {
         assertUtcInstant(before, "before");

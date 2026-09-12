@@ -55,6 +55,7 @@ function source(steps: readonly ResponseStep[], grants: readonly PermissionGrant
             http: harness.client,
             repository: REPOSITORY,
             config: NO_CONFIG,
+            knownCapabilities: [],
         }),
         calls: harness.scripted.calls,
     };
@@ -359,6 +360,7 @@ describe("linkedIssues", () => {
                 http: httpHarness([page()]).client,
                 repository: REPOSITORY,
                 config: NO_CONFIG,
+                knownCapabilities: [],
             })("linkedIssues", { item: null } as never),
         ).toMatchObject({ detail: "linkedIssues requires a valid pull request item" });
         expect(await answer([page()], [])).toMatchObject({
@@ -435,6 +437,7 @@ describe("linkedIssues", () => {
                     http: harness.client,
                     repository: REPOSITORY,
                     config: NO_CONFIG,
+                    knownCapabilities: [],
                 }),
             ),
         ).toEqual({

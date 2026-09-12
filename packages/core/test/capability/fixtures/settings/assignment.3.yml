@@ -1,22 +1,21 @@
 capabilities:
   assignment:
     enabled: true
-    settings:
-      autoAssign:
-        enabled: true
-        claimableOnlyWhen: [] # any open issue
-        notClaimableWhen: [blocked]
-        maxOpen: 3
-      unassign:
-        enabled: true
-      skillGates:
-        enabled: true
-        goodFirstIssue:
-          maxOpen: 1 # tier override of the cap
-          maxCompletions: 2
-        beginner:
-          requiresPrevious: 1
-        intermediate:
-          requiresPrevious: 5
-        advanced:
-          requiresPrevious: 10
+    autoAssign:
+      enabled: true
+      claimableOnlyWhen: [] # any open issue
+      notClaimableWhen: [blocked]
+      maxOpen: 3
+    unassign:
+      enabled: true
+    skillGates:
+      enabled: true
+      goodFirstIssue:
+        maxOpen: 1 # tier override of the cap
+        maxCompletions: 2
+      beginner:
+        requiresPrevious: 1
+      intermediate:
+        requiresPrevious: 5
+      advanced:
+        requiresPrevious: 10

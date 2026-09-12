@@ -2,12 +2,8 @@
  * Protocol 7.1's receiver: accept a real webhook delivery, verify its
  * signature, scrub it, write it to `evidence/pending/`.
  *
- * `pending/`, not `curated/`: a human reads every scrubbed capture before it
- * moves to the tracked directory — the scrubber makes leaks unlikely, the
- * review makes the promotion deliberate. Nothing here writes anywhere a
- * commit can reach.
- *
- * Zero dependencies. Run: `WEBHOOK_SECRET=… pnpm --filter … capture`.
+ * `pending/`, not `curated/`: a human reviews every capture before it is
+ * tracked. Run: `WEBHOOK_SECRET=… pnpm --filter … capture`.
  */
 
 import { createServer } from "node:http";

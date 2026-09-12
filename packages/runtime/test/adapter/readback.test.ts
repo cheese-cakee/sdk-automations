@@ -145,40 +145,55 @@ describe("reading the item itself", () => {
 
         expect(outcome).toEqual({
             ok: true,
-            value: { labels: ["status: triage"], closed: false, merged: false },
+            value: { labels: ["status: triage"], closed: false, merged: false, draft: false },
         });
         expect(scripted.calls[0]!.url).toBe(ISSUE);
     });
 
-    it("reads a pull request at the pulls endpoint, which is where `merged` lives", async () => {
+    it("reads a pull request at the pulls endpoint, which is where `merged` and `draft` live", async () => {
         const { readBack, scripted } = harness([
-            listed('{"state":"closed","labels":[{"name":"status: review"}],"merged":true}'),
+            listed(
+                '{"state":"closed","labels":[{"name":"status: review"}],"merged":true,"draft":false}',
+            ),
         ]);
 
         const outcome = await readBack.item(PR);
 
         expect(outcome).toEqual({
             ok: true,
-            value: { labels: ["status: review"], closed: true, merged: true },
+            value: { labels: ["status: review"], closed: true, merged: true, draft: false },
         });
         expect(scripted.calls[0]!.url).toBe(PULL);
     });
 
     it("tells a closed-unmerged pull request from a merged one", async () => {
-        const { readBack } = harness([listed('{"state":"closed","labels":[],"merged":false}')]);
+        const { readBack } = harness([
+            listed('{"state":"closed","labels":[],"merged":false,"draft":false}'),
+        ]);
 
         expect(await readBack.item(PR)).toEqual({
             ok: true,
-            value: { labels: [], closed: true, merged: false },
+            value: { labels: [], closed: true, merged: false, draft: false },
         });
     });
 
-    it("reports a closed issue as closed", async () => {
+    it("carries the draft mode a re-gate judges a draft claim by", async () => {
+        const { readBack } = harness([
+            listed('{"state":"open","labels":[],"merged":false,"draft":true}'),
+        ]);
+
+        expect(await readBack.item(PR)).toEqual({
+            ok: true,
+            value: { labels: [], closed: false, merged: false, draft: true },
+        });
+    });
+
+    it("reports a closed issue as closed, and in neither native mode", async () => {
         const { readBack } = harness([listed('{"state":"closed","labels":[]}')]);
 
         expect(await readBack.item(ITEM)).toEqual({
             ok: true,
-            value: { labels: [], closed: true, merged: false },
+            value: { labels: [], closed: true, merged: false, draft: false },
         });
     });
 
@@ -199,12 +214,20 @@ describe("reading the item itself", () => {
         expect(outcome.ok ? "" : outcome.detail).toBe("GitHub returned an unreadable item");
     });
 
-    it("refuses a pull request whose merge fact is missing or not a boolean", async () => {
-        const missing = harness([listed('{"state":"closed","labels":[]}')]);
-        const wrongType = harness([listed('{"state":"closed","labels":[],"merged":"true"}')]);
+    it("refuses a pull request whose merge or draft fact is missing or not a boolean", async () => {
+        const noMerge = harness([listed('{"state":"closed","labels":[],"draft":false}')]);
+        const wrongMerge = harness([
+            listed('{"state":"closed","labels":[],"merged":"true","draft":false}'),
+        ]);
+        const noDraft = harness([listed('{"state":"closed","labels":[],"merged":false}')]);
+        const wrongDraft = harness([
+            listed('{"state":"closed","labels":[],"merged":false,"draft":"no"}'),
+        ]);
 
-        expect((await missing.readBack.item(PR)).ok).toBe(false);
-        expect((await wrongType.readBack.item(PR)).ok).toBe(false);
+        expect((await noMerge.readBack.item(PR)).ok).toBe(false);
+        expect((await wrongMerge.readBack.item(PR)).ok).toBe(false);
+        expect((await noDraft.readBack.item(PR)).ok).toBe(false);
+        expect((await wrongDraft.readBack.item(PR)).ok).toBe(false);
     });
 
     it("names GitHub's refusal rather than inventing an open, unlabelled item", async () => {
@@ -223,6 +246,50 @@ describe("reading the item itself", () => {
 
         expect(scripted.calls).toHaveLength(1);
         expect(sleeps).toEqual([]);
+    });
+});
+
+describe("reading a pull request's review decision", () => {
+    const PR = { kind: "pullRequest", number: 132 } as const;
+    const REVIEWS =
+        "https://api.github.com/repos/hiero-hackers/sdk-automations/pulls/132/reviews?per_page=100&page=1";
+
+    const review = (login: string, state: string): Record<string, unknown> => ({
+        user: { login },
+        state,
+    });
+
+    it("folds the reviews list the way the sweep folds it", async () => {
+        const { readBack, scripted } = harness([
+            listed(JSON.stringify([review("ana", "CHANGES_REQUESTED")])),
+        ]);
+
+        expect(await readBack.changesRequested(PR)).toEqual({ ok: true, value: true });
+        expect(scripted.calls[0]!.url).toBe(REVIEWS);
+    });
+
+    it("reads a request a later review lifted as lifted", async () => {
+        const { readBack } = harness([
+            listed(JSON.stringify([review("ana", "CHANGES_REQUESTED"), review("ana", "APPROVED")])),
+        ]);
+
+        expect(await readBack.changesRequested(PR)).toEqual({ ok: true, value: false });
+    });
+
+    it("answers an issue without spending a call — an issue has no review decision", async () => {
+        const { readBack, scripted } = harness([]);
+
+        expect(await readBack.changesRequested(ITEM)).toEqual({ ok: true, value: false });
+        expect(scripted.calls).toEqual([]);
+    });
+
+    it("names GitHub's refusal rather than reporting the request lifted", async () => {
+        const { readBack } = harness([failure(403, "Forbidden")]);
+
+        const outcome = await readBack.changesRequested(PR);
+
+        expect(outcome.ok).toBe(false);
+        expect(outcome.ok ? "" : outcome.detail).toContain("#132 reviews");
     });
 });
 
@@ -253,15 +320,28 @@ describe("a list longer than one page", () => {
         expect(scripted.calls).toHaveLength(1);
     });
 
-    it("refuses a next page GitHub would not name the end of", async () => {
-        const { readBack } = harness([
-            listed("[]", { link: `<${ISSUE}/labels?page=2>; rel="next"` }),
+    it("walks on through next-only headers, the shape cursor pagination sends", async () => {
+        const next = (cursor: string) => `<${ISSUE}/labels?after=${cursor}>; rel="next"`;
+        const { readBack, scripted } = harness([
+            listed('[{"name":"p1"}]', { link: next("c1") }),
+            listed('[{"name":"p2"}]', { link: next("c2") }),
+            listed('[{"name":"p3"}]', { link: `<${ISSUE}/labels?page=2>; rel="prev"` }),
+        ]);
+
+        expect(await readBack.labels(ITEM)).toEqual({ ok: true, value: ["p1", "p2", "p3"] });
+        expect(scripted.calls).toHaveLength(3);
+    });
+
+    it("refuses a next-only list that runs past the cap", async () => {
+        const { readBack, scripted } = harness([
+            listed('[{"name":"p"}]', { link: `<${ISSUE}/labels?after=c>; rel="next"` }),
         ]);
 
         const outcome = await readBack.labels(ITEM);
 
         expect(outcome.ok).toBe(false);
-        expect(outcome.ok ? "" : outcome.detail).toContain("without naming the last");
+        expect(outcome.ok ? "" : outcome.detail).toContain("longer than 5 pages");
+        expect(scripted.calls).toHaveLength(5);
     });
 });
 

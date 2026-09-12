@@ -62,7 +62,7 @@ not this document's.
 | `noWarning` | `destructive.ts` | No recorded warning; a destructive action never occurs on first observation. |
 | `warningRequestMismatch` | `destructive.ts` | The warning authorizes a different capability, target, change, or causal observation. |
 | `invalidDestructivePlan` | `destructive.ts` | The plan carries a non-finite value, or a warning predating its observation or shorter than the full grace period. |
-| `graceBelowFloor` | `destructive.ts` | The grace period is below `MIN_GRACE_DAYS`. |
+| `graceBelowFloor` | `destructive.ts` | The grace period is below `MIN_GRACE_HOURS`. |
 | `graceRunning` | `destructive.ts` | The grace period has not fully elapsed. |
 | `activityCancelled` | `destructive.ts` | The affected person provided qualifying activity during the grace period. |
 <!-- /generated -->

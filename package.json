@@ -3,6 +3,10 @@
     "version": "0.0.0",
     "private": true,
     "packageManager": "pnpm@10.29.1",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/hiero-hackers/sdk-automations.git"
+    },
     "description": "Workspace root — see README.md. Implementation packages: core (pure logic), runtime (the owned operational store, the GitHub adapter and the transport shell), capabilities (the capabilities the shell composes).",
     "scripts": {
         "test": "pnpm -r test",

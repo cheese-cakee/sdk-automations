@@ -1,14 +1,6 @@
 /**
- * Parsing and automatic-wait bounds for GitHub rate-limit headers.
- *
- * PROBED by experiment 6.4, 2026-07-23. Goes stale when the header semantics
- * or the secondary-limit floor change; the first symptom is waits that are
- * far too short, or absent. It degrades rather than failing loudly, so only
- * the re-probe closes the gap (D40).
- *
- * GitHub documents these fields as whole seconds. JavaScript's
- * `Number("") === 0` coercion is therefore unsafe here: a malformed
- * response must not turn into an immediate retry.
+ * Parsing and automatic-wait bounds for GitHub rate-limit headers (experiment 6.4, D40).
+ * GitHub documents these fields as whole seconds: a malformed one must not become no wait.
  */
 
 export type ParsedSecondsHeader =
@@ -16,14 +8,9 @@ export type ParsedSecondsHeader =
     | { readonly kind: "invalid"; readonly rawValue: string }
     | { readonly kind: "valid"; readonly seconds: number };
 
-/**
- * Longer waits belong in durable scheduling or operator handling, not
- * in the automatic retry path. One hour covers GitHub's normal primary
- * rate-limit window without permitting an unbounded in-process timer.
- */
+/** Longer waits belong in durable scheduling or operator handling, not the automatic retry path. */
 export const MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS = 60 * 60;
 
-/** Parse a GitHub whole-seconds header without permissive number coercion. */
 export function parseSecondsHeader(rawValue: string | undefined): ParsedSecondsHeader {
     if (rawValue === undefined) return { kind: "missing" };
     if (!/^\d+$/.test(rawValue)) {

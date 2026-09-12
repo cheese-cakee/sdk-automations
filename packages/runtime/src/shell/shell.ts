@@ -1,15 +1,8 @@
 /**
- * The composition root: receiver + store + processor wired into one
- * running shell. Every box is existing, gated code — this file's whole
- * contribution is ORDER: verify before accept, accept before ack, decide
- * before act, then atomically commit the canonical report and completion.
- *
- * Plus one clock. A webhook arrival is the only other thing that ever
- * drains, so work a drain left behind — a stale claim from a killed
- * worker, a delivery waiting out its backoff, an effect whose answer was
- * lost between the send and the acknowledgement — would sit until the next
- * delivery happened to arrive. The sweep is what makes those recover on
- * their own in a quiet repository.
+ * The composition root: receiver + store + processor wired into one running shell.
+ * Every box is existing, gated code; this file's whole contribution is ORDER.
+ * Plus one clock — a webhook arrival is the only other thing that ever drains, so
+ * the sweep is what makes stale work recover on its own in a quiet repository.
  */
 
 import { randomUUID } from "node:crypto";
@@ -32,16 +25,8 @@ import { createSweep, DEFAULT_SWEEP_CADENCE_MS, type SweepFactsSource } from "./
 export const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 
 /**
- * How long one connection may hold the edge open. Node's defaults are 300s
- * for a whole request and 60s for its headers, which is a slow-loris budget
- * rather than a webhook's.
- *
- * GitHub abandons a delivery it has not been answered within about ten
- * seconds and redelivers later, so a body still arriving after thirty is
- * one nobody is waiting for; cutting it costs a redelivery this shell was
- * built to absorb. Headers arrive in the first segment or not at all, so
- * ten seconds is already generous, and it is the header phase a loris
- * spends its connections on.
+ * How long one connection may hold the edge open; Node's defaults are a slow-loris budget.
+ * GitHub abandons a delivery unanswered for about ten seconds and redelivers later.
  */
 const REQUEST_TIMEOUT_MS = 30_000;
 const HEADERS_TIMEOUT_MS = 10_000;
@@ -56,32 +41,15 @@ export interface ShellOptions {
     readonly worker?: string;
     readonly clock?: () => Date;
     readonly sweepIntervalMs?: number;
-    /**
-     * The write path, when one is wired. See `ProcessorOptions.applier`: with
-     * none, active mode is still refused before `decide()` and the sweep's
-     * recovery pass has nothing to recover with.
-     */
+    /** The write path, when one is wired; with none, active mode is refused before `decide()`. */
     readonly applier?: Applier;
-    /**
-     * The fact sweep, when a composition has something to read GitHub with.
-     *
-     * Absent is the shipped composition and today's behaviour exactly: due
-     * `sweep:` rows are simply never claimed, so a clock-driven capability is
-     * declared, configured, and never woken. Wiring a reader is what starts it,
-     * and that is the composition root's decision — the same shape the write
-     * path's `applier` has, for the same reason.
-     */
+    /** The fact sweep, when a composition has something to read GitHub with. Absent is the shipped composition: due `sweep:` rows are simply never claimed. */
     readonly sweep?: {
         readonly facts: SweepFactsSource;
-        /** How long until the next firing; the default is daily. */
+        /** How long until the next firing; the default is hourly. */
         readonly cadenceMs?: number;
     };
-    /**
-     * Where the receiver, the processor and the sweep say what they did.
-     * Optional here and required of both of them: this is the composition
-     * root's own seam, so it defaults to the production log rather than to
-     * silence, and a component that forgot to take one cannot compile.
-     */
+    /** Optional here and required of every component: the root defaults to the production log. */
     readonly log?: Log;
 }
 
@@ -89,11 +57,7 @@ export interface Shell {
     readonly server: Server;
     /** Pump everything pending — exposed so tests and operators drain deterministically. */
     drain(): Promise<void>;
-    /**
-     * The drain in flight, if there is one. Starts no work: a shutdown
-     * joins the pass that already holds a claim rather than beginning
-     * another one it would have to abandon.
-     */
+    /** The drain in flight, if there is one. Starts no work. */
     settled(): Promise<void>;
     /** Stop the sweep. The server stays the caller's to close. */
     stopSweep(): void;
@@ -120,10 +84,8 @@ export function createShell(options: ShellOptions): Shell {
         ...(options.applier === undefined ? {} : { applier: options.applier }),
     });
     /**
-     * The fact sweep, if this composition can read one. It rides the same tick
-     * as the reconciliation below rather than owning a timer of its own: the
-     * DUE DATE on the schedule row is what decides when a repository is read,
-     * so a second interval would only be a second thing to stop.
+     * It rides the reconciliation tick rather than owning a timer: the schedule row's DUE
+     * DATE decides when a repository is read, so a second interval is a second thing to stop.
      */
     const factSweep =
         options.sweep === undefined
@@ -155,17 +117,7 @@ export function createShell(options: ShellOptions): Shell {
     });
     /**
      * The effects a worker journalled and never closed.
-     *
-     * The window is one lease: a row younger than that may still belong to a
-     * pass that is running right now, and the lease is what serialises the two
-     * anyway — asking about them would only be work the claim refuses. Every
-     * row is re-driven through the applier's own dispatch, which reads GitHub
-     * before it resends anything, so a sweep can never turn a landed write
-     * into a second one.
-     *
-     * Nothing happens without a configuration this run could read: a resend is
-     * gated on the repository still being in active mode, and a config outage
-     * is not a repository saying yes.
+     * Every row is re-driven through the applier's dispatch, which reads GitHub before it resends, so a sweep can never turn a landed write into a second one.
      */
     const recoverEffects = async (): Promise<void> => {
         const applier = options.applier;
@@ -188,22 +140,15 @@ export function createShell(options: ShellOptions): Shell {
     };
 
     /**
-     * One tick: hand back claims their worker died holding, resolve the
-     * effects nobody closed, pump, and fire any sweep row that has come due.
-     *
-     * Contained, because a tick that throws inside a timer callback takes
-     * the process down, and a store that cannot be swept is a thing to
-     * report rather than a reason to stop serving webhooks. Overlapping
-     * ticks are already harmless: the processor's drain shares one loop, an
-     * effect's lease admits one worker at a time, and the fact sweep shares
-     * its firing pass the way the drain shares its loop.
+     * One tick: hand back dead claims, resolve unclosed effects, pump, fire any due sweep row.
+     * Contained, because a throw inside a timer callback takes the process down.
      */
     const reconcile = (): void => {
         try {
             const staleBefore = new Date(clock().getTime() - STALE_CLAIM_MINUTES * 60_000);
             const requeued = options.store.requeueStuckDeliveries(staleBefore.toISOString());
-            // A sweep that requeued nothing changed nothing, and a line
-            // every interval forever would bury the ones that did.
+            // A line every interval forever would bury the sweeps that requeued something.
+
             if (requeued.length > 0) {
                 log({
                     event: "sweepRequeued",
@@ -221,14 +166,15 @@ export function createShell(options: ShellOptions): Shell {
         void processor.drain().catch((error: unknown) => {
             log({ event: "drainFailed", phase: "sweep", detail: detailOf(error) });
         });
-        // No `.catch`: `runDue` contains its own failures and says them in the
-        // log itself, because a rejection would also reach `settled()` — and a
-        // shutdown awaiting that has nowhere to put it.
+        // No `.catch`: `runDue` contains its own failures, and a rejection would also
+        // reach `settled()`, where a shutdown awaiting it has nowhere to put it.
+
         void factSweep?.runDue();
     };
     const ticking = setInterval(reconcile, options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS);
-    // The sweep is recovery, never a reason for the process to stay alive.
     // Stryker disable next-line CallExpression: unref only decides whether an otherwise-idle event loop keeps running; nothing in this process can observe it, and the shell's own exit is explicit.
+    // The sweep is recovery, never a reason for the process to stay alive.
+
     ticking.unref();
 
     const server = createServer(handler);
@@ -238,12 +184,7 @@ export function createShell(options: ShellOptions): Shell {
     return {
         server,
         drain: () => processor.drain(),
-        /**
-         * BOTH passes, because both hold a claim: the delivery lane's, and the
-         * fact sweep's schedule row. A shutdown that joined only the first would
-         * walk away from a firing mid-read, leaving a `running` row nothing in
-         * this process will re-arm.
-         */
+        /** BOTH passes, because both hold a claim: the delivery lane's, and the sweep's row. */
         settled: async () => {
             await Promise.all([processor.settled(), factSweep?.settled()]);
         },

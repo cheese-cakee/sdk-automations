@@ -1,12 +1,6 @@
 /**
  * What proves we are the App: the short-lived assertion every call starts from.
- *
- * `token.ts` exchanges one of these for an installation token. Nothing here
- * reads a clock or the network — `now` arrives from the caller, so the whole
- * file is a pure function of its inputs.
- *
- * Both bounds below are GitHub's, not preferences: it rejects an assertion
- * whose `iat` sits in its own future, and one whose span exceeds ten minutes.
+ * Nothing here reads a clock or the network; `now` arrives from the caller.
  */
 
 import { createSign } from "node:crypto";
@@ -18,7 +12,7 @@ export interface AppCredentials {
     readonly installationId: string;
 }
 
-/** Backdates `iat`, because our clock and GitHub's are not the same clock. */
+/** GitHub rejects an assertion whose `iat` sits in its own future. */
 export const ASSERTION_BACKDATE_SECONDS = 60;
 
 /** Span from `iat`. GitHub's ceiling is 600; the margin absorbs drift. */

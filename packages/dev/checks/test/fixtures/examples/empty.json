@@ -1,0 +1,13 @@
+{
+    "revision": "empty.yml",
+    "schemaVersion": 1,
+    "mode": "observe",
+    "capabilities": {},
+    "mappings": {
+        "labels": {},
+        "commands": {},
+        "skills": {},
+        "alerts": {}
+    },
+    "principals": {}
+}

@@ -1,12 +1,22 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
+    count,
+    describeSpec,
+    duration,
+    flag,
+    section,
+    spec,
+    writeDuration,
+} from "../../src/capability/index.js";
+import {
     parseConfig,
     NO_CONFIG,
     labelKey,
     MAPPABLE_MEANINGS,
     REPOSITORY_MODES,
 } from "../../src/config/index.js";
+import { admitting } from "./builders.js";
 import { VALUE_REJECTIONS, expectRejection } from "./documents.js";
 
 /**
@@ -26,6 +36,50 @@ const SEED = 20260725;
 const PROPERTY_TIMEOUT_MS = 30_000;
 
 const camelName = fc.stringMatching(/^[a-z][a-zA-Z0-9]{0,10}$/);
+
+/**
+ * A handle or team slug, which is what a principal is. Blank names are not in
+ * the space: an empty one renders an `@` that pings nobody, so the parser
+ * refuses it with the rest of the file and a generator emitting one would be
+ * generating rejections.
+ */
+const principalHandle = fc.stringMatching(/^[a-zA-Z][a-zA-Z0-9/-]{0,20}$/);
+
+/**
+ * The spec every generated capability is admitted with, and the block the
+ * generator writes against it.
+ *
+ * Valid BY CONSTRUCTION now covers the settings block too: since C1 a value
+ * the spec cannot read rejects the file, so a generator that wrote arbitrary
+ * JSON under a declared key would be generating rejections and the property
+ * below would be about nothing. One flag and one clock is enough to make the
+ * fixed-point property say something — both default, so a block that states
+ * neither still resolves to a value, which is what has to be stable.
+ *
+ * Not every constructor is like that, and the property is honest about its
+ * reach rather than widened to claim it: `text({ optional: true })` resolves
+ * an absent key to `null`, which is not a value a document may write, so a
+ * resolved block is not in general a document. Nothing re-parses one — the
+ * shell reads text from GitHub every time — and this test is the only caller
+ * that tries.
+ */
+const GENERATED_SETTINGS = spec({
+    announce: flag({ default: false }),
+    after: duration({ default: "7d" }),
+});
+
+/**
+ * One capability's block as a maintainer writes it: consent and the spec's own
+ * keys on one level, each optional, because the document is flat.
+ */
+const capabilityBlock = fc.record(
+    {
+        enabled: fc.boolean(),
+        announce: fc.boolean(),
+        after: fc.nat({ max: 90 }).map((n) => `${String(n)}d`),
+    },
+    { requiredKeys: [] },
+);
 
 /** Valid-by-construction config: injective labels, camelCase names. */
 const validConfig = fc
@@ -48,25 +102,37 @@ const validConfig = fc
     .chain((labels) =>
         fc.record(
             {
-                schemaVersion: fc.constant(1 as const),
+                schemaVersion: fc.constant(2 as const),
                 mode: fc.constantFrom(...REPOSITORY_MODES),
-                capabilities: fc.dictionary(
-                    camelName,
-                    fc.record(
-                        {
-                            enabled: fc.boolean(),
-                            settings: fc.dictionary(camelName, fc.jsonValue()),
-                        },
-                        { requiredKeys: [] },
-                    ),
-                    { maxKeys: 5 },
-                ),
+                capabilities: fc.dictionary(camelName, capabilityBlock, { maxKeys: 5 }),
                 mappings: fc.constant({ labels }),
-                principals: fc.dictionary(camelName, fc.string(), { maxKeys: 5 }),
+                principals: fc.dictionary(camelName, principalHandle, { maxKeys: 5 }),
             },
             { requiredKeys: ["schemaVersion"] },
         ),
     );
+
+/**
+ * Resolved settings back in the document's own spelling — the one key of
+ * `GENERATED_SETTINGS` that a walk cannot copy across unchanged.
+ */
+const written = (settings: Readonly<Record<string, unknown>>): Record<string, unknown> =>
+    Object.fromEntries(
+        Object.entries(settings).map(([key, value]) => [
+            key,
+            describeSpec(GENERATED_SETTINGS)[key]?.kind === "duration"
+                ? writeDuration(value as number)
+                : value,
+        ]),
+    );
+
+/** Every generated capability, admitted with the spec its block was written against. */
+const admittedIn = (raw: { readonly capabilities?: Readonly<Record<string, unknown>> }) =>
+    admitting(Object.keys(raw.capabilities ?? {}), {
+        ...Object.fromEntries(
+            Object.keys(raw.capabilities ?? {}).map((name) => [name, GENERATED_SETTINGS]),
+        ),
+    });
 
 describe("parseConfig properties", () => {
     it("never throws and ok ⇔ no errors, for arbitrary values", () => {
@@ -88,7 +154,7 @@ describe("parseConfig properties", () => {
                 fc.property(validConfig, (raw) => {
                     const result = parseConfig(raw, {
                         revision: "rev-test",
-                        knownCapabilities: Object.keys(raw.capabilities ?? {}),
+                        knownCapabilities: admittedIn(raw),
                     });
                     if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
                 }),
@@ -105,16 +171,30 @@ describe("parseConfig properties", () => {
             // outputs must be exactly what it would output again.
             fc.assert(
                 fc.property(validConfig, (raw) => {
-                    const knownCapabilities = Object.keys(raw.capabilities ?? {});
+                    const knownCapabilities = admittedIn(raw);
                     const first = parseConfig(raw, { revision: "rev-test", knownCapabilities });
                     if (!first.ok) return; // covered by the property above
                     /**
-                     * `revision` is metadata ABOUT the document, not a key IN
-                     * it (D77), so a parsed configuration is not itself a
-                     * valid document. Stripping it is what leaves something
-                     * that can be parsed a second time.
+                     * A parsed configuration is not itself a valid document,
+                     * in three places. `revision` is metadata ABOUT the
+                     * document rather than a key IN it (D77); a resolved
+                     * capability is `{ enabled, settings }` where the document
+                     * writes those keys beside `enabled`; and a resolved
+                     * `duration` is a number of HOURS where the document
+                     * writes `14d` (D147's recorded limit, one kind wider).
+                     * Undoing all three is what leaves something that can be
+                     * parsed a second time.
                      */
-                    const { revision: _stamped, ...asDocument } = first.config;
+                    const { revision: _stamped, ...rest } = first.config;
+                    const asDocument = {
+                        ...rest,
+                        capabilities: Object.fromEntries(
+                            Object.entries(rest.capabilities).map(([name, block]) => [
+                                name,
+                                { enabled: block.enabled, ...written(block.settings) },
+                            ]),
+                        ),
+                    };
                     const second = parseConfig(asDocument as unknown, {
                         revision: "rev-test",
                         knownCapabilities,
@@ -173,7 +253,6 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             commands: {},
             skills: {},
             alerts: {},
-            types: {},
         });
         expect(NO_CONFIG.schemaVersion).toBe(1);
     });
@@ -181,14 +260,14 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     it("accepts the documented candidate shape (§3)", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 mode: "observe",
                 capabilities: {
                     prQuality: {
                         enabled: true,
-                        settings: { checks: { dco: true, mergeConflict: true } },
+                        checks: { dco: true, mergeConflict: true },
                     },
-                    assignment: { enabled: false, settings: { maxOpenAssignments: 2 } },
+                    assignment: { enabled: false, maxOpenAssignments: 2 },
                 },
                 mappings: {
                     labels: {
@@ -198,7 +277,18 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                 },
                 principals: { maintainerTeam: "hiero-sdk-cpp-maintainers" },
             },
-            { revision: "rev-test", knownCapabilities: ["prQuality", "assignment"] },
+            {
+                revision: "rev-test",
+                knownCapabilities: admitting(["prQuality", "assignment"], {
+                    prQuality: spec({
+                        checks: section({
+                            dco: flag({ default: false }),
+                            mergeConflict: flag({ default: false }),
+                        }),
+                    }),
+                    assignment: spec({ maxOpenAssignments: count({ default: 0 }) }),
+                }),
+            },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -208,14 +298,57 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         }
     });
 
+    it("keeps version 1 repositories on the settings wrapper", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: {
+                    intake: { enabled: true, settings: { announce: true } },
+                },
+            },
+            {
+                revision: "rev-test",
+                knownCapabilities: admitting(["intake"], {
+                    intake: spec({ announce: flag({ default: false }) }),
+                }),
+            },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.config.capabilities.intake?.settings).toEqual({ announce: true });
+        }
+    });
+
+    it("rejects a block that mixes the version 1 wrapper with version 2 fields", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: {
+                    intake: { enabled: true, settings: { announce: true }, announce: false },
+                },
+            },
+            {
+                revision: "rev-test",
+                knownCapabilities: admitting(["intake"], {
+                    intake: spec({ announce: flag({ default: false }) }),
+                }),
+            },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok)
+            expect(result.errors.map((error) => error.path)).toContain(
+                "capabilities.intake.announce",
+            );
+    });
+
     /**
      * §2.4's other half. The corpus holds the three truthy values that are
      * NOT consent; this holds the one shape that is silence.
      */
     it("an omitted enabled leaves the capability off, not on", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { intake: { settings: {} } } },
-            { revision: "rev-test", knownCapabilities: ["intake"] },
+            { schemaVersion: 1, capabilities: { intake: {} } },
+            { revision: "rev-test", knownCapabilities: admitting(["intake"]) },
         );
         expect(result.ok).toBe(true);
         if (result.ok) expect(result.config.capabilities.intake?.enabled).toBe(false);
@@ -254,7 +387,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                 knownCapabilities: [
                     {
                         name: "intake",
-                        configKeys: ["announce"],
+                        settings: spec({ announce: flag({ default: false }) }),
                         requiredMappings: { labels: ["awaitingTriage"] },
                     },
                 ],
@@ -265,30 +398,53 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     });
 
     /**
-     * The settings rule judges NAMES only. Values stay the capability's own
-     * business (config-schema.md §3), so a declared key holding nonsense is
-     * accepted here and refused — if at all — by the capability that owns it.
+     * What replaces "names here, values there" (C1): the block is stored as
+     * the spec RESOLVED it, defaults materialised, so nobody downstream reads
+     * a raw document again. The corpus holds the rejections; this is the
+     * accepting half, and the claim a rejection row cannot make.
      */
-    it("a declared settings key is accepted whatever its value", () => {
+    it("stores a settings block as the spec resolved it, defaults and all", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
-                capabilities: { intake: { enabled: false, settings: { announce: [1, { a: 2 }] } } },
+                capabilities: {
+                    intake: { enabled: false },
+                    triage: { enabled: false },
+                },
             },
             {
                 revision: "rev-test",
-                knownCapabilities: [
-                    {
-                        name: "intake",
-                        configKeys: ["announce"],
-                        requiredMappings: { labels: ["awaitingTriage"] },
-                    },
-                ],
+                knownCapabilities: admitting(["intake", "triage"], {
+                    intake: spec({
+                        announce: flag({ default: true }),
+                        after: duration({ default: "7d" }),
+                    }),
+                }),
             },
         );
         expect(result.ok).toBe(true);
-        if (result.ok)
-            expect(result.config.capabilities.intake?.settings.announce).toEqual([1, { a: 2 }]);
+        if (!result.ok) return;
+        expect(result.config.capabilities.intake?.settings).toEqual({
+            announce: true,
+            after: 7 * 24,
+        });
+        // A capability admitted with the empty spec resolves to the empty
+        // block, which is the written answer for one that takes no setting.
+        expect(result.config.capabilities.triage?.settings).toEqual({});
+    });
+
+    /**
+     * D31 as revised: an absent version IS version 1, so nothing at all is a
+     * complete document. A future format has to state `schemaVersion: 2` to be
+     * read as one, which is what stops a file drifting into a newer version by
+     * accident. The corpus holds the present-but-null half.
+     */
+    it("an absent schemaVersion is version 1, and an empty mapping is a whole document", () => {
+        for (const raw of [{ mode: "observe" }, {}]) {
+            const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
+            expect(result.ok).toBe(true);
+            if (result.ok) expect(result.config.schemaVersion).toBe(1);
+        }
     });
 
     // D56 — an absent key defaults; the corpus holds the present-but-empty

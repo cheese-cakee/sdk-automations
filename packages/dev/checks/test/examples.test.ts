@@ -11,31 +11,23 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-    MAPPING_SECTION_KEYS,
-    parseConfigDocument,
-    type AdmittedCapability,
-} from "@hiero-hackers/automation-core";
+import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
+import { parse as parseYaml } from "yaml";
+import { MAPPING_SECTION_KEYS, parseConfigDocument } from "@hiero-hackers/automation-core";
 import { declaredCapabilityNames, shippedCapabilities } from "./capabilities.js";
-import { docsDir, exampleFiles, normalizeNewlines } from "./repository.js";
+import { SCHEMA_PATH } from "./editor-schema.js";
+import { admittedCapabilities, parseExample, snapshotPath, snapshotText } from "./examples.js";
+import { docsDir, exampleFiles, normalizeNewlines, repoRoot } from "./repository.js";
 
 const examplesDir = join(docsDir, "examples");
 
-/**
- * The declarations the parser judges a document against: name, the settings
- * keys each declares, and the mappings it requires (D84). Read off the
- * shipped list (`capabilities.ts`), so an example that configures a
- * capability the shell does not ship fails here rather than in a
- * maintainer's repository.
- */
-const KNOWN: AdmittedCapability[] = shippedCapabilities()
-    .map(({ name, configKeys, requiredMappings }) => ({ name, configKeys, requiredMappings }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+/** The declarations the parser judges a document against (`examples.ts`). */
+const KNOWN = admittedCapabilities();
 
 const parseText = (text: string, revision: string) =>
     parseConfigDocument(text, { revision, knownCapabilities: KNOWN });
 
-const parse = (file: string) => parseText(readFileSync(join(examplesDir, file), "utf8"), file);
+const parse = parseExample;
 
 const files = exampleFiles();
 
@@ -65,11 +57,9 @@ describe("the shipped examples", () => {
      * `intake` is the capability that has both, so it is the one worth pinning.
      */
     it("reads each capability's declared settings keys and required mappings", () => {
-        expect(KNOWN.find(({ name }) => name === "intake")).toEqual({
-            name: "intake",
-            configKeys: ["announce"],
-            requiredMappings: { labels: ["awaitingTriage"] },
-        });
+        const intake = KNOWN.find(({ name }) => name === "intake");
+        expect(Object.keys(intake?.settings ?? {})).toEqual(["announce"]);
+        expect(intake?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });
     });
 
     /**
@@ -111,11 +101,11 @@ describe("the shipped examples", () => {
 
     it("refuses a settings key no capability declares", () => {
         const typo = parseText(
-            "schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: false\n    settings:\n      annouce: true\n",
+            "schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: false\n    annouce: true\n",
             "typo",
         );
         expect(typo.ok ? [] : typo.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
-            "unknownKey @ capabilities.intake.settings.annouce",
+            "unknownKey @ capabilities.intake.annouce",
         ]);
     });
 
@@ -170,8 +160,14 @@ describe("the shipped examples", () => {
         expect(Object.keys(full.config.principals)).not.toEqual([]);
     });
 
-    /** The schedule-driven example enables the one capability with no webhook. */
-    it("inactivity.yml enables only the scheduled capability", () => {
+    /**
+     * The schedule-driven example enables nothing a webhook drives — a SUBSET,
+     * not the whole scheduled list. Equality made the second capability on the
+     * schedule a change to this file and to the example's own prose, which is
+     * the opposite of what the example is showing: it is one repository's
+     * choice, not the roster.
+     */
+    it("inactivity.yml enables only capabilities the schedule drives", () => {
         const scheduled = shippedCapabilities()
             .filter(({ triggers }) => triggers.every((t) => t.kind === "schedule"))
             .map(({ name }) => name);
@@ -181,7 +177,9 @@ describe("the shipped examples", () => {
         const enabled = Object.entries(example.config.capabilities)
             .filter(([, block]) => block.enabled)
             .map(([name]) => name);
-        expect(enabled).toEqual(scheduled);
+        // An example that enabled nothing would satisfy any subset claim.
+        expect(enabled).not.toEqual([]);
+        expect(enabled.filter((name) => !scheduled.includes(name))).toEqual([]);
     });
 
     /**
@@ -207,5 +205,89 @@ describe("the shipped examples", () => {
     it("every example is described in the README", () => {
         const readme = readFileSync(join(examplesDir, "README.md"), "utf8");
         for (const file of files) expect(readme).toContain(`\`${file}\``);
+    });
+});
+
+/**
+ * The editor schema accepts what the parser accepts.
+ *
+ * `docs.test.ts` holds the schema FILE to what the specs generate; this is the
+ * other half, and the only one that could catch a generated schema that is
+ * valid JSON Schema and wrong — a capability's settings rendered as the wrong
+ * type, an `additionalProperties` a level too high. A maintainer whose editor
+ * underlines a documented example has been told a lie by the file we ship.
+ *
+ * `ajv` through its 2020-12 entry point, because the schema declares that
+ * draft. A real validator rather than a hand-rolled walk: the point of the
+ * check is that the SAME software the maintainer's editor runs agrees.
+ */
+describe("the editor schema accepts the shipped examples", () => {
+    const schema = JSON.parse(readFileSync(join(repoRoot, SCHEMA_PATH), "utf8")) as object;
+    const validate = new Ajv2020({ allErrors: true }).compile(schema);
+
+    /** Every failure at once, as an editor would underline them. */
+    const failures = (document: unknown): string[] =>
+        validate(document)
+            ? []
+            : (validate.errors ?? []).map(
+                  (e: ErrorObject) => `${e.instancePath || "/"} ${e.message ?? ""}`,
+              );
+
+    const documentIn = (file: string): unknown =>
+        parseYaml(readFileSync(join(examplesDir, file), "utf8"));
+
+    /**
+     * A file of nothing but comments parses to `null`, which is the parser's
+     * no-configuration path rather than a document to check (`parse.ts`). It
+     * is named here so the skip cannot go silent.
+     */
+    it("is one empty example, which has no document to check", () => {
+        expect(files.filter((file) => documentIn(file) === null)).toEqual(["empty.yml"]);
+    });
+
+    it.each(files)("%s satisfies the schema", (file) => {
+        const document = documentIn(file);
+        if (document === null) return;
+        expect(failures(document), file).toEqual([]);
+    });
+
+    /**
+     * The negative control, and the exact mistake the schema exists for: one
+     * transposition in a settings key. `annouce:` was a working file that did
+     * the opposite of what it said until D84 made it an error at parse — an
+     * editor should say so before the file is ever pushed.
+     */
+    it("refuses a settings key no capability declares", () => {
+        const typo = documentIn("full.yml") as {
+            capabilities: { intake: Record<string, unknown> };
+        };
+        typo.capabilities.intake = { enabled: true, annouce: true };
+        expect(failures(typo).join(" ")).toContain("/capabilities/intake");
+    });
+});
+
+/**
+ * The value-level pin the configuration migration (C1, C2) is held to: each
+ * example as the `RepositoryConfig` it parses to today, committed.
+ *
+ * The checks above say a file still parses; these say it parses to the same
+ * VALUE — defaults applied, families filled, revision stamped. A later phase
+ * that changes how a file parses must change these files deliberately and say
+ * what changed; an accidental change turns up here as a diff rather than as a
+ * maintainer's repository behaving differently.
+ *
+ * The repair is `pnpm contracts`, which rewrites these the same way it
+ * rewrites every other generated artifact (`examples.ts`, `generated.ts`).
+ * The text compared here is the runner's own, so the two cannot disagree
+ * about an indent and no `vitest -u` is needed to repair one.
+ */
+describe("the shipped examples parse to the value they parsed to", () => {
+    it.each(files)("%s parses to its committed value", async (file) => {
+        const result = parse(file);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        await expect(snapshotText(result.config)).toMatchFileSnapshot(
+            join(repoRoot, snapshotPath(file)),
+        );
     });
 });

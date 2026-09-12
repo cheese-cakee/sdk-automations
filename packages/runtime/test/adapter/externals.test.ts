@@ -163,7 +163,6 @@ describe("ordering evidence", () => {
         const { lookup } = source([
             page([
                 entry("labeled", "app[bot]", "2026-08-20T10:00:00Z", "Bot"),
-                entry("commented", "maintainer", "2026-08-20T11:00:00Z"),
                 entry("milestoned", "maintainer", "2026-08-20T12:00:00Z"),
                 entry("cross-referenced", "maintainer", "2026-08-20T13:00:00Z"),
             ]),
@@ -172,13 +171,24 @@ describe("ordering evidence", () => {
         expect(await lookup(ITEM)).toBeNull();
     });
 
-    it.each(["labeled", "unlabeled", "assigned", "unassigned", "closed", "reopened"])(
-        "counts a lone %s event as a human change",
-        async (kind) => {
-            const { lookup } = source([page([entry(kind, "maintainer", "2026-08-20T10:00:00Z")])]);
-            expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T10:00:00Z"));
-        },
-    );
+    it.each([
+        "labeled",
+        "unlabeled",
+        "assigned",
+        "unassigned",
+        "closed",
+        "reopened",
+        "commented",
+        "committed",
+        "convert_to_draft",
+        "ready_for_review",
+        "reviewed",
+        "review_dismissed",
+        "review_requested",
+    ])("counts a lone %s event as a human change", async (kind) => {
+        const { lookup } = source([page([entry(kind, "maintainer", "2026-08-20T10:00:00Z")])]);
+        expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T10:00:00Z"));
+    });
 
     it("excludes the cause but keeps ties from another actor and later changes", async () => {
         const cause = CAUSE;
@@ -471,6 +481,7 @@ describe("why an ordering came back unknown", () => {
                 http: built.client,
                 repository: REPOSITORY,
                 config: NO_CONFIG,
+                knownCapabilities: [],
                 onUnknownOrdering: (detail) => details.push(detail),
             },
             PAYLOAD,
@@ -557,6 +568,7 @@ describe("live externals for one delivery", () => {
                     http: built.client,
                     repository: REPOSITORY,
                     config: NO_CONFIG,
+                    knownCapabilities: [],
                 },
                 PAYLOAD,
             ),
@@ -574,6 +586,7 @@ describe("live externals for one delivery", () => {
                 http: built.client,
                 repository: REPOSITORY,
                 config: NO_CONFIG,
+                knownCapabilities: [],
             },
             PAYLOAD,
         );
@@ -600,6 +613,7 @@ describe("live externals for one delivery", () => {
                 http: built.client,
                 repository: REPOSITORY,
                 config: NO_CONFIG,
+                knownCapabilities: [],
             },
             {},
         );
@@ -620,6 +634,7 @@ describe("live externals for one delivery", () => {
             http: built.client,
             repository: REPOSITORY,
             config: NO_CONFIG,
+            knownCapabilities: [],
         };
 
         const first = await liveExternalsForDelivery(options, PAYLOAD);

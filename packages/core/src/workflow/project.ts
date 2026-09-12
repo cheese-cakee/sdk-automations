@@ -1,38 +1,22 @@
 /**
- * Observed labels to workflow position — the projection step that human
- * sovereignty implies (`design/contracts/safety.md` §3) but no document owns.
+ * Observed labels to workflow position — the projection human sovereignty
+ * implies (`design/contracts/safety.md` §3).
  *
- * GitHub's reality is a SET of labels; the state machine's is a scalar
- * position. The shell turns label strings into meanings through the
- * validated mapping, which the config layer guarantees is injective, and
- * passes the meanings here.
- *
- * More than one own-flow position is a conflict, never a repair. A
- * conflicted item has no `WorkItemState`, so it can never reach
- * `applyTransition` — the no-write rule is structural, not a check.
+ * More than one own-flow position is a conflict, never a repair: a conflicted
+ * item has no `WorkItemState`, so it can never reach `applyTransition`.
  */
 
 import { ISSUE_MEANINGS, PR_MEANINGS, type IssueMeaning, type PrMeaning } from "./positions.js";
 import { isBlocked, type ClosureReason, type WorkItemState } from "./state.js";
 import type { MappableMeaning } from "../config/index.js";
 
-/**
- * What the shell observed on one issue or pull request. `meanings` holds
- * only MAPPED meanings — an unmapped label never appears here, so the
- * platform leaves it alone entirely (§3 rule 1).
- */
+/** What the shell observed on one item. `meanings` holds only MAPPED meanings (§3 rule 1). */
 export interface LabelObservation {
     readonly closedBy: ClosureReason | null;
     readonly meanings: readonly MappableMeaning[];
 }
 
-/**
- * A set of labels read as a position, or refused as a conflict.
- *
- * The conflict branch repeats `blocked` and `closedBy` so an operator can
- * judge whether it needs attention (D59). `ignored` is the other flow's
- * meanings, reported but never a conflict (D35).
- */
+/** A set of labels read as a position, or refused as a conflict. `ignored` is reported (D35). */
 export type Projection<M> =
     | {
           readonly kind: "position";
@@ -63,9 +47,7 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
             ignored: distinct.filter((m) => !ownSet.has(m) && m !== "blocked"),
         };
     }
-    // `blocked` with no position is legal — "no position, paused" (D28) —
-    // and a closed item keeps its position labels unrepaired, with the
-    // closure reason riding alongside rather than erasing them (D35, D47).
+    // `blocked` with no position is legal — "no position, paused" (D28).
     return {
         kind: "position",
         state: {
@@ -88,12 +70,8 @@ export function projectPullRequest(observation: LabelObservation): Projection<Pr
 }
 
 /**
- * Is this item closed, whichever branch the projection took?
- *
- * Closure sits in two places: `state.closedBy` on a position, `closedBy` at
- * the top level on a conflict (D59). Reading one branch compiles fine and
- * silently treats every conflicted, closed item as open, which is the
- * mistake the first capability to consume a projection made.
+ * Is this item closed, whichever branch the projection took? Closure sits in
+ * two places — `state.closedBy` on a position, `closedBy` on a conflict (D59).
  */
 export function closureOf<M>(projection: Projection<M>): ClosureReason | null {
     return projection.kind === "position" ? projection.state.closedBy : projection.closedBy;

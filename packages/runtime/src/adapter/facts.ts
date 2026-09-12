@@ -1,40 +1,19 @@
 /**
  * The sweep's reads: every open item of a repository, and the fact groups
- * `design/guides/sweep.md` §1 names, as `IssueFacts` / `PullRequestFacts`.
- *
- * The webhook producer (`core`'s `normalize/`) reads the projection and marks
- * every group unread. This is the OTHER producer, and the whole difference is
- * how much it reads — which is why the clock-driven capabilities need it. What
- * it promises to read is not stated here but in core's `PRODUCERS`, under
- * `sweep`, because a capability's declaration is judged against that row at
- * boot; this file consults the row and never reaches past it.
- *
- * Two rules run through the file. NOTHING IS INVENTED: a read that failed, and
- * a read the endpoint-permission matrix has not confirmed, both leave their
- * group `UNREAD` rather than contributing a shorter list — an empty assignee
- * list is a fact the safety world cannot tell from a lie. And NOTHING THROWS:
- * every reader is total over whatever GitHub sent, in `untrusted.ts`'s idiom,
- * because a sweep that dies on one malformed item stops sweeping the rest.
- *
- * `CONFIRMED_SWEEP_READS` below is the second rule's data. Three of the reads
- * sweep.md §1 names are implemented here and are absent from it: each needs one
- * sandbox protocol run before it may enter the matrix with a citation, and
- * until then the `review` group is `UNREAD` and the pull-request ladder is
- * silent, honestly, by the engine's `factsUnread` finding.
- *
- * Every call is a GET on the pinned origin, or the one GraphQL query
- * `admission.ts` already admits — the gate needed no new arm.
- *
- * In order below: the read set, the paging, the per-read readers, the reader.
+ * `design/guides/sweep.md` §1 names. Nothing is invented — a read that failed and a
+ * read the endpoint matrix has not confirmed both leave their group `UNREAD`. And
+ * nothing throws: every reader is total over whatever GitHub sent.
  */
 
 import {
     alertsOfLabels,
+    labelKey,
     meaningsOfLabels,
     producerReads,
     projectIssue,
     projectPullRequest,
     UNREAD,
+    type AdmittedCapability,
     type AssigneeClock,
     type ClosureReason,
     type FactGroup,
@@ -48,6 +27,7 @@ import {
     type Unread,
 } from "@hiero-hackers/automation-core";
 import {
+    advertisesNextPage,
     describeFailure,
     lastPageFromLink,
     repoPath,
@@ -71,19 +51,11 @@ export const SWEEP_READS = [
     "linkedIssues",
 ] as const;
 
-/** One of `SWEEP_READS`. */
 export type SweepRead = (typeof SWEEP_READS)[number];
 
 /**
- * The reads `design/findings/endpoint-permission-matrix.md` records as
- * confirmed, each with the citation that confirmed it.
- *
- * A read absent from this list is implemented below and never called by the
- * reader: its group answers `UNREAD` instead, so a capability that declared
- * the group is skipped with `factsUnread` rather than judging a clock from a
- * number nobody has evidence the App may read. Three are absent —
- * `changesRequested`, `reapableSince` and `lastCommitAt` — and each joins this
- * list when one sandbox protocol run puts its row in the matrix (sweep.md §4).
+ * The reads the endpoint-permission matrix records as confirmed, each with its citation.
+ * A read absent from this list answers `UNREAD` rather than being called.
  */
 export const CONFIRMED_SWEEP_READS: readonly SweepRead[] = [
     // `GET /repos/{o}/{r}/issues` — Issues R — `2026-07-23T19-36-29-346Z#1–6`
@@ -94,32 +66,27 @@ export const CONFIRMED_SWEEP_READS: readonly SweepRead[] = [
     "lastWorkingAt",
     // `GET /repos/{o}/{r}/pulls/{n}` — Pull requests R — `2026-07-23T19-41-18-911Z#3`
     "draft",
-    // GraphQL `closingIssuesReferences` — Issues R + Pull requests R —
-    // `2026-08-29T20-51-00.386Z#same-repository`
+    // GraphQL `closingIssuesReferences` — Issues R + Pull requests R — `2026-08-29T20-51-00.386Z#same-repository`
     "linkedIssues",
+    // `GET /repos/{o}/{r}/pulls/{n}/reviews` — Pull requests R — `2026-09-12T06-31-36-229Z#10` (D156)
+    "changesRequested",
+    // the item timeline on a PULL REQUEST number — Pull requests R — `2026-09-12T06-31-36-229Z#15`
+    "reapableSince",
+    // `GET /repos/{o}/{r}/pulls/{n}/commits` — Pull requests R — `2026-09-12T06-31-36-229Z#19`
+    "lastCommitAt",
 ];
 
 /**
- * The reads each group is built from; a group is read only when every one of
- * them is confirmed.
- *
- * Keyed by `FactGroup` so the table cannot fall behind the vocabulary: a group
- * added to core is a missing property here before it is anything else, and
- * `producers.test.ts` reads it to say which groups this producer can fill
- * today as against the ones its registry row promises.
+ * The reads each group is built from; a group is read only when every one is confirmed.
+ * Keyed by `FactGroup`, so a group added to core is a missing property here first.
  */
 export const GROUP_READS: { readonly [G in FactGroup]: readonly SweepRead[] } = {
     assignees: ["assignedAt", "lastWorkingAt"],
     links: ["linkedIssues", "assignedAt", "lastWorkingAt"],
     review: ["changesRequested", "reapableSince", "lastCommitAt"],
-    // `draft` left `review` for a group of its own, and this row is why it
-    // could: its single read is confirmed, so the sweep answers draft state
-    // for real while `review` waits on three nobody has probed.
+    /** A WEBHOOK can read `draft` and cannot read the other three (`design/contracts/facts.md` §2). */
     readiness: ["draft"],
-    // The sweep makes no comment record, so it reads no command — and the
-    // sweep's own row in `PRODUCERS` says so first. Empty here would mean
-    // "every read confirmed", which is why the row rather than this table is
-    // what stops the group being built.
+    /** The sweep makes no comment record; its `PRODUCERS` row, not this table, stops the group. */
     command: [],
 };
 
@@ -139,11 +106,7 @@ const PAGE_SIZE = 100;
 
 /**
  * How many pages one read may walk before it gives up and answers unread.
- *
- * Every read here folds a WHOLE list — the newest assignment per login, the
- * newest `/working` per author — so a partial walk is not a smaller answer, it
- * is a wrong one. Ten pages is a thousand entries, past anything the fleet
- * design point meets; beyond it the honest answer is that nobody read this.
+ * Every read folds a WHOLE list, so a partial walk is a wrong answer, not a smaller one.
  */
 const MAX_PAGES = 10;
 
@@ -155,11 +118,7 @@ const unreadable = (detail: string): Read<never> => ({ ok: false, detail });
 
 /**
  * Every entry of a paged list, or the reason there is no complete answer.
- *
- * Page one names the last page in its `link` header; a header that advertises a
- * successor without naming the last page is refused rather than guessed at,
- * exactly as the ordering reader refuses it — a walk that cannot know where it
- * ends cannot know that it finished.
+ * Walking past `MAX_PAGES` with a successor still advertised is unread, not shorter.
  */
 async function allPages(
     http: GitHubHttpClient,
@@ -175,17 +134,9 @@ async function allPages(
         const read = jsonArrayOf(outcome.body);
         if (read === null) return unreadable(`${at}: the body was not a JSON array`);
         entries.push(...read);
-        if (page === 1) {
-            const link = outcome.headers["link"];
-            const named = lastPageFromLink(link);
-            if (named === null) {
-                return link !== undefined && link.includes('rel="next"')
-                    ? unreadable(`${what}: GitHub advertised a next page without naming the last`)
-                    : { ok: true, value: entries };
-            }
-            lastPage = named;
-        }
-        if (page >= lastPage) return { ok: true, value: entries };
+        const link = outcome.headers["link"];
+        if (page === 1) lastPage = lastPageFromLink(link) ?? lastPage;
+        if (page >= lastPage && !advertisesNextPage(link)) return { ok: true, value: entries };
     }
     return unreadable(`${what}: the list is longer than ${String(MAX_PAGES)} pages`);
 }
@@ -219,21 +170,12 @@ function newer(held: Date | undefined, seen: Date): Date {
 // ─── What the reader is built over ───────────────────────────────────
 
 /**
- * One open item as `GET /repos/{o}/{r}/issues` carries it: the fields the list
- * itself answers, and nothing read separately.
- *
- * `closedBy` is read rather than assumed. The query asks for open items, so it
- * is `null` for every item the list returns today — but the projection judges
- * closure, and a producer that hard-coded "open" would be asserting a fact it
- * did not read.
+ * One open item as `GET /repos/{o}/{r}/issues` carries it.
+ * `closedBy` is read rather than assumed: a producer must not assert a fact it did not read.
  */
 export interface OpenItem {
     readonly item: ItemRef;
-    /**
-     * Who opened it. Not a group and not gated on a confirmation: it rides on
-     * `openItems`, which the matrix already confirmed, so every item this
-     * reader can list at all carries one.
-     */
+    /** Rides on `openItems`, which the matrix confirmed, so every listed item carries one. */
     readonly author: string;
     readonly labels: readonly string[];
     readonly assignees: readonly string[];
@@ -249,34 +191,17 @@ export type OpenItemsOutcome =
 export interface FactsReaderOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    /**
-     * The repository's reviewed configuration — the two mapping families this
-     * reader speaks. `mappings.labels` is what turns the list's label strings
-     * into the projection every gate judges by, and `mappings.commands.working`
-     * is the spelling a comment's first token has to fold to before it counts
-     * as a clock reset. A repository that mapped no `working` spelling has no
-     * such command, so no comment can reset a clock and no comment is read.
-     */
+    /** The two mapping families this reader speaks: `mappings.labels` and `mappings.commands.working`. */
     readonly config: RepositoryConfig;
-    /**
-     * When this sweep is happening — every record's `observedAt`.
-     *
-     * NOT the item's `updated_at`, which is what a webhook record carries: a
-     * clock's elapsed days are measured from `observedAt`, so dating a stale
-     * item's record at its own last update would answer zero days idle for
-     * every item on the ladder.
-     */
+    /** When this sweep is happening — every record's `observedAt`, NOT the item's `updated_at`. */
     readonly clock: () => Date;
+    /** Passed straight through to the resolver source this reader builds. */
+    readonly knownCapabilities: readonly AdmittedCapability[];
 }
 
 /**
  * The seam the sweep driver reads through — sweep.md §2.2.
- *
- * Both record builders take what only the DRIVER holds. An issue's open linked
- * pull requests are the inverse of the pull-request link reads, which the
- * driver has already done by then; a pull request's linked issues are joined to
- * the issues the driver has already listed, so a link to something outside this
- * sweep's open set is dropped rather than read separately.
+ * Both record builders take what only the DRIVER holds.
  */
 export interface FactsReader {
     openItems(): Promise<OpenItemsOutcome>;
@@ -286,18 +211,26 @@ export interface FactsReader {
 
 // ─── The per-read readers ────────────────────────────────────────────
 
-/** The reads below share these three; the reader binds them once per sweep. */
-interface ReadContext {
+/**
+ * What any read needs to reach one repository: the client, and which one.
+ * Named apart from `ReadContext` so a reader here can be reused outside this file.
+ */
+export interface RepositoryReads {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    /** The reviewed mapping, so this context IS a `ResolverSourceOptions`. */
-    readonly config: RepositoryConfig;
 }
 
-const issuePath = ({ repository }: ReadContext, number: number): string =>
+/** The reads below share these three; the reader binds them once per sweep. */
+interface ReadContext extends RepositoryReads {
+    /** The reviewed mapping, so this context IS a `ResolverSourceOptions`. */
+    readonly config: RepositoryConfig;
+    readonly knownCapabilities: readonly AdmittedCapability[];
+}
+
+const issuePath = ({ repository }: RepositoryReads, number: number): string =>
     `${repoPath(repository)}/issues/${String(number)}`;
 
-const pullPath = ({ repository }: ReadContext, number: number): string =>
+const pullPath = ({ repository }: RepositoryReads, number: number): string =>
     `${repoPath(repository)}/pulls/${String(number)}`;
 
 const paged = (url: string, page: number): string =>
@@ -305,12 +238,7 @@ const paged = (url: string, page: number): string =>
 
 /**
  * Every open item, with the fields the list carries.
- *
- * A pull request appears in this list too, flagged by its `pull_request`
- * member, which is the whole reason one call covers both kinds. A row this
- * cannot read makes the WHOLE list unusable: a sweep that quietly skipped the
- * items it could not parse would be a sweep that decided about a repository
- * from part of it.
+ * A row this cannot read makes the WHOLE list unusable.
  */
 async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
     const url = `${repoPath(context.repository)}/issues`;
@@ -382,11 +310,8 @@ function loginsOf(assignees: unknown): readonly string[] | null {
 }
 
 /**
- * When each login's current assignment began — the newest `assigned` event per
- * login on the item's timeline.
- *
- * Newest rather than first: an unassign-and-reassign starts a new clock, and
- * the older entry is a previous run of the same person's involvement.
+ * When each login's current assignment began — the newest `assigned` event per login.
+ * Newest rather than first: an unassign-and-reassign starts a new clock.
  */
 export async function readAssignedAt(
     context: ReadContext,
@@ -421,16 +346,11 @@ function firstToken(body: unknown): string | null {
 }
 
 /**
- * The newest `/working` comment per author — the one reset that applies to any
- * clock (`design/guides/sweep.md` §1).
- *
- * The FIRST token only: a comment that mentions the command halfway through a
- * sentence is chatter, and chatter is not progress. The comparison folds case,
- * the way the label mapping's does, so a repository that spelled the command
- * `/Working` is matched by what a contributor actually types.
+ * The newest `/working` comment per author — the one reset that applies to any clock.
+ * The FIRST token only, folded for case the way the label mapping's is.
  */
 export async function readLastWorkingAt(
-    context: ReadContext,
+    context: RepositoryReads,
     number: number,
     spelling: string,
 ): Promise<Read<ReadonlyMap<string, Date>>> {
@@ -478,20 +398,11 @@ const DECIDING_REVIEW_STATES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether the pull request's review decision is "changes requested" — the
- * reviews list folded to each reviewer's latest DECIDING state.
- *
- * **Unconfirmed** (sweep.md §1): implemented, and absent from
- * `CONFIRMED_SWEEP_READS` until one sandbox protocol run puts
- * `GET /repos/{o}/{r}/pulls/{n}/reviews` in the endpoint-permission matrix with
- * a citation. Until then the `review` group is `UNREAD`.
- *
- * `COMMENTED` reviews never change a decision — GitHub's own `reviewDecision`
- * ignores them — so folding them in would let a reviewer's later remark cancel
- * the change request they are remarking on.
+ * The reviews list folded to each reviewer's latest DECIDING state.
+ * THE ONE FOLD: `readback.ts` calls this rather than folding the list a second time.
  */
 export async function readChangesRequested(
-    context: ReadContext,
+    context: RepositoryReads,
     number: number,
 ): Promise<Read<boolean>> {
     const read = await allPages(
@@ -513,28 +424,14 @@ export async function readChangesRequested(
     return { ok: true, value: [...latest.values()].includes("CHANGES_REQUESTED") };
 }
 
-/** The timeline events that put a pull request into a contributor-side mode. */
-const MODE_EVENTS: ReadonlySet<string> = new Set([
-    "convert_to_draft",
-    "ready_for_review",
-    "review_requested",
-]);
-
 /**
- * When the pull request entered the mode it is in now — the newest of its mode
- * events and its newest changes-requested review, or the moment it was opened.
- *
- * **Unconfirmed** (sweep.md §1): implemented, and absent from
- * `CONFIRMED_SWEEP_READS` until one sandbox protocol run confirms the timeline
- * on a PULL REQUEST number. The item timeline is confirmed for issues; that a
- * pull request number answers the same endpoint under the same grant is the
- * part no packet can assert for itself.
- *
- * The fallback is the pull request's own `created_at`, because a pull request
- * that was opened ready and never reviewed has been reapable since it opened —
- * which is a date, not an absence.
+ * When the pull request entered each reapable mode, or the moment it was opened.
+ * The item timeline answers a PULL REQUEST number (`2026-09-12T06-31-36-229Z#15`).
  */
-export async function readReapableSince(context: ReadContext, number: number): Promise<Read<Date>> {
+export async function readReapableSince(
+    context: ReadContext,
+    number: number,
+): Promise<Read<Exclude<PullRequestFacts["review"], Unread>["reapableSince"]>> {
     const opened = await readRecord(
         context.http,
         pullPath(context, number),
@@ -552,34 +449,42 @@ export async function readReapableSince(context: ReadContext, number: number): P
     );
     if (!read.ok) return read;
 
-    let entered = createdAt;
+    const entered = {
+        needsRevision: createdAt,
+        changesRequested: createdAt,
+        draft: createdAt,
+    };
+    const revisionLabel = context.config.mappings.labels.needsRevision;
     for (const entry of read.value) {
         const kind = field(entry, "event");
-        const changesRequested =
-            kind === "reviewed" && field(entry, "state") === "changes_requested";
-        if (typeof kind !== "string" || !(MODE_EVENTS.has(kind) || changesRequested)) continue;
+        const label = field(field(entry, "label"), "name");
+        const reason =
+            kind === "convert_to_draft"
+                ? "draft"
+                : kind === "reviewed" && field(entry, "state") === "changes_requested"
+                  ? "changesRequested"
+                  : kind === "labeled" &&
+                      typeof label === "string" &&
+                      revisionLabel !== undefined &&
+                      labelKey(label) === labelKey(revisionLabel)
+                    ? "needsRevision"
+                    : null;
+        if (reason === null) continue;
         const at = instant(field(entry, "created_at") ?? field(entry, "submitted_at"));
         if (at === null) {
             return unreadable(`#${String(number)} timeline: a mode event was undated`);
         }
-        entered = newer(entered, at);
+        entered[reason] = newer(entered[reason], at);
     }
     return { ok: true, value: entered };
 }
 
 /**
  * The newest commit on the pull request, or `null` when it carries none.
- *
- * **Unconfirmed** (sweep.md §1): implemented, and absent from
- * `CONFIRMED_SWEEP_READS` until one sandbox protocol run puts
- * `GET /repos/{o}/{r}/pulls/{n}/commits` in the endpoint-permission matrix
- * with a citation.
- *
- * `null` is a real answer here and not an unread one: a pull request with no
- * commits has no commit date, and the clock it resets simply never started.
+ * `null` is a real answer here, not an unread one.
  */
 export async function readLastCommitAt(
-    context: ReadContext,
+    context: RepositoryReads,
     number: number,
 ): Promise<Read<Date | null>> {
     const read = await allPages(
@@ -599,16 +504,29 @@ export async function readLastCommitAt(
     return { ok: true, value: newest };
 }
 
+export async function readPullRequestActivity(
+    context: RepositoryReads,
+    number: number,
+    working: string | undefined,
+): Promise<Read<Date | null>> {
+    const commit = await readLastCommitAt(context, number);
+    if (!commit.ok) return commit;
+    if (working === undefined) return commit;
+    const comments = await readLastWorkingAt(context, number, working);
+    if (!comments.ok) return comments;
+    let newest = commit.value;
+    for (const at of comments.value.values()) {
+        if (newest === null || at.getTime() > newest.getTime()) newest = at;
+    }
+    return { ok: true, value: newest };
+}
+
 /** The three reads the `review` group is one value of. */
 type ReviewFacts = Exclude<PullRequestFacts["review"], Unread>;
 
 /**
- * The whole `review` group, read as one. Every read must answer: a group is
- * read or it is not, and two thirds of a review is not a review.
- *
- * `draft` is NOT among them any more — it is the `readiness` group's own, read
- * from an endpoint the matrix has confirmed, so a capability wanting only
- * draft state is no longer held behind three reads nobody has probed.
+ * The whole `review` group, read as one: a group is read or it is not.
+ * `draft` is the `readiness` group's own, so wanting only it costs one read.
  */
 export async function readReview(context: ReadContext, number: number): Promise<Read<ReviewFacts>> {
     const changesRequested = await readChangesRequested(context, number);
@@ -631,12 +549,7 @@ export async function readReview(context: ReadContext, number: number): Promise<
 
 /**
  * The sweep's reader over one repository, for one firing.
- *
- * The clock memo is what keeps the cost in sweep.md §3: an issue's assignment
- * and `/working` reads are shared between its own record and every pull request
- * that links to it, so a linked issue costs nothing the second time it is
- * named. It must not outlive the firing — the same rule the ordering memo
- * carries, for the same reason — which is why this is a factory.
+ * The clock memo must not outlive the firing, which is why this is a factory.
  */
 export function createFactsReader(options: FactsReaderOptions): FactsReader {
     const { config, clock } = options;
@@ -644,19 +557,14 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         http: options.http,
         repository: options.repository,
         config: options.config,
+        knownCapabilities: options.knownCapabilities,
     };
     const working = config.mappings.commands.working;
     const clocks = new Map<number, Promise<Read<readonly AssigneeClock[]>>>();
 
     /**
      * A group's value, or `UNREAD`.
-     *
-     * The three ways a group goes unread meet here on purpose. A group this
-     * producer's registry row does not promise is never attempted, a read the
-     * matrix has not confirmed is never attempted, and a read that was
-     * attempted and failed contributes nothing either — because from a
-     * capability's side all three are the same fact: nobody read this, so do
-     * not decide from it.
+     * Unpromised, unconfirmed and failed meet here: from a capability's side all three are one fact.
      */
     const groupOf = async <T>(
         kind: FactKind,
@@ -671,12 +579,7 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
 
     /**
      * One item's assignees, as clocks.
-     *
-     * The logins come from the list row rather than from a read of their own —
-     * the list already carries them, and re-reading would answer a question
-     * already asked. A login with no `assigned` event makes the whole read
-     * unusable rather than a clock started now: the alternative is reaping from
-     * a start date the platform invented.
+     * A login with no `assigned` event makes the whole read unusable, not a clock started now.
      */
     const readClocks = async (
         number: number,
@@ -684,8 +587,8 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
     ): Promise<Read<readonly AssigneeClock[]>> => {
         const assigned = await readAssignedAt(context, number);
         if (!assigned.ok) return assigned;
-        // No spelling, no command: nobody can have typed it, so no comment page
-        // is worth a call and every reset is honestly absent.
+        // No spelling, no command: no comment page is worth a call.
+
         const worked =
             working === undefined
                 ? { ok: true as const, value: new Map<string, Date>() }
@@ -703,13 +606,7 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         return { ok: true, value: built };
     };
 
-    /**
-     * One item's assignee clocks, read once per firing.
-     *
-     * The memo is what keeps a linked issue free: its clocks are read for its
-     * own record and named again by every pull request that closes it, and the
-     * second naming costs nothing.
-     */
+    /** One item's assignee clocks, read once per firing. */
     const clocksFor = (
         item: ItemRef,
         logins: readonly string[],
@@ -724,8 +621,8 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
 
     const meanings = (listed: OpenItem) => meaningsOfLabels(config, listed.labels);
 
-    // Nothing ARRIVES on a sweep: a clock fired, and no label moved for us to
-    // have seen it move. The empty list is the fact, not a gap in the read.
+    // Nothing ARRIVES on a sweep: the empty list is the fact, not a gap in the read.
+
     const alerts = (listed: OpenItem) => ({
         carried: alertsOfLabels(config, listed.labels),
         arrived: [],
@@ -744,9 +641,8 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         const linked: LinkedIssue[] = [];
         for (const reference of answer.value) {
             const listed = openIssues.find((open) => open.item.number === reference.number);
-            // A link to a closed issue, or to one outside this sweep's open set,
-            // is not something to read separately: the group is about the open
-            // items a close would release alongside.
+            // A link outside this sweep's open set is not read separately.
+
             if (listed === undefined) continue;
             const read = await clocksFor(listed.item, listed.assignees);
             if (!read.ok) return read;
@@ -766,8 +662,6 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
                 observedAt: clock(),
                 trigger: { kind: "sweep" },
                 author: listed.author,
-                // Nobody caused a sweep. `null` is the fact, not an unread
-                // group: the clock fired, and no person is behind this record.
                 actor: null,
                 alerts: alerts(listed),
                 position: projectIssue({
@@ -777,15 +671,14 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
                 assignees: await groupOf("issue", "assignees", () =>
                     clocksFor(listed.item, listed.assignees),
                 ),
-                // The driver reads this one — an issue's open pull requests are
-                // the inverse of link reads it has already done — so the row is
-                // consulted here rather than around a call.
+                // The driver reads this one, so the row is consulted here, not around a call.
+
                 links:
                     links === UNREAD || !promised("issue", "links")
                         ? UNREAD
                         : { openPullRequests: links },
-                // The sweep makes no comment record, so its row leaves this
-                // group unread and `groupOf` never runs a reader for it.
+                // The sweep makes no comment record, so its row leaves this group unread.
+
                 command: UNREAD,
             };
         },
@@ -811,17 +704,9 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
                     clocksFor(listed.item, listed.assignees),
                 ),
                 links: links === UNREAD ? UNREAD : { issues: links },
-                // The one read this file never performs. `groupOf` short-circuits
-                // on `GROUP_READS.review`, three of which no protocol has
-                // confirmed, so the line below stands unexecuted until they are —
-                // which is exactly what "promised, and honestly unread" looks
-                // like, and why the row rather than the record is what a
-                // declaration is judged against.
                 review: await groupOf("pullRequest", "review", () =>
                     readReview(context, listed.item.number),
                 ),
-                // Unlike `review`, this one DOES run: its single read is
-                // confirmed, so the sweep answers draft state for real.
                 readiness: await groupOf("pullRequest", "readiness", async () => {
                     const draft = await readDraft(context, listed.item.number);
                     return draft.ok ? { ok: true, value: { draft: draft.value } } : draft;

@@ -16,11 +16,15 @@
 import { describe, expect, it } from "vitest";
 import {
     declareCapability,
+    flag,
+    spec,
+    text,
     deriveIdempotencyKey,
     idempotencyOf,
     intentFactoryFor,
     INTENT_OPERATIONS,
     projectCapabilityView,
+    readIntent,
     screenIntent,
     type AnyIntent,
 } from "../../src/index.js";
@@ -29,7 +33,7 @@ import { configWith } from "../config/builders.js";
 const declaration = declareCapability({
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: ["announce"],
+    settings: spec({ announce: flag({ default: false }) }),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],
@@ -328,6 +332,61 @@ describe("screenIntent", () => {
     });
 });
 
+/**
+ * The claim vocabulary as the boundary reads it. A capability is ordinary code
+ * that can be built from `unknown`, so the mode claim is checked against the
+ * closed list here rather than trusted from the compiler.
+ */
+describe("the pull-request mode claim", () => {
+    const position = {
+        kind: "position" as const,
+        state: { meaning: null, blocked: false, closedBy: null },
+        ignored: [],
+    };
+    const claiming = (mode: unknown) =>
+        intent({
+            claims: {
+                meaningsPresent: [],
+                meaningsAbsent: [],
+                closed: false,
+                pullRequestMode: mode,
+            },
+        });
+
+    it("accepts either native mode", () => {
+        expect(screenIntent(claiming("draft"), declaration, position)).toEqual({ ok: true });
+        expect(screenIntent(claiming("changesRequested"), declaration, position)).toEqual({
+            ok: true,
+        });
+    });
+
+    it.each([
+        ["a mode nobody has", "readyToMerge"],
+        ["a meaning", "needsRevision"],
+        ["a number", 1],
+    ])("refuses %s as a mode", (_label, mode) => {
+        expect(screenIntent(claiming(mode), declaration, position)).toMatchObject({
+            ok: false,
+            code: "malformedIntent",
+        });
+    });
+
+    /**
+     * The compatibility claim: a value written before the mode was claimable
+     * carries no such key, and must read back as CLAIMING NOTHING rather than
+     * as malformed or as a claim of `undefined`.
+     */
+    it("reads a claim with no mode as one that makes none", () => {
+        const parsed = readIntent(intent());
+        expect(parsed?.claims).toEqual({
+            meaningsPresent: [],
+            meaningsAbsent: [],
+            closed: false,
+        });
+        expect(parsed !== null && "pullRequestMode" in parsed.claims).toBe(false);
+    });
+});
+
 describe("deriveIdempotencyKey", () => {
     const base = {
         capability: "fixture",
@@ -386,14 +445,15 @@ describe("deriveIdempotencyKey", () => {
 describe("projectCapabilityView (contract.md §2)", () => {
     const config = configWith({
         capabilities: ["fixture", "other"],
-        settings: {
-            fixture: { announce: true, undeclared: "leak" },
-            other: { secret: "theirs" },
+        settings: { fixture: { announce: true }, other: { secret: "theirs" } },
+        specs: {
+            fixture: spec({ announce: flag({ default: false }) }),
+            other: spec({ secret: text({ optional: true }) }),
         },
         labels: { awaitingTriage: "status: triage", blocked: "blocked" },
     });
 
-    it("passes through only the capability's declared config keys", () => {
+    it("carries the capability's own settings, as the parser resolved them", () => {
         const view = projectCapabilityView(declaration, config);
         expect(view.settings).toEqual({ announce: true });
     });
@@ -417,9 +477,35 @@ describe("projectCapabilityView (contract.md §2)", () => {
             commands: [],
             skills: [],
             alerts: [],
-            types: [],
         });
-        expect(view.settings).toEqual({});
+    });
+
+    /**
+     * A block the file never mentioned. `decide()` evaluates nothing whose
+     * block is absent, so this is the answer `NO_CONFIG` and any other
+     * hand-built configuration gets — and it is the capability's own defaults,
+     * because an empty object would promise a field it does not hold.
+     */
+    it("resolves the declaration's own defaults for a block the file never named", () => {
+        const unmentioned = configWith({ mode: "observe", known: ["fixture"] });
+        expect(projectCapabilityView(declaration, unmentioned).settings).toEqual({
+            announce: false,
+        });
+    });
+
+    /**
+     * The one spec that has no defaults to fall back on: a required field
+     * cannot be absent, so there is nothing honest to resolve and the empty
+     * block is what the view carries.
+     */
+    it("carries the empty block when the spec cannot be read against nothing", () => {
+        const demanding = declareCapability({
+            ...declaration,
+            name: "demanding",
+            settings: spec({ guide: text({ optional: false }) }),
+        });
+        const unmentioned = configWith({ mode: "observe", known: ["demanding"] });
+        expect(projectCapabilityView(demanding, unmentioned).settings).toEqual({});
     });
 });
 

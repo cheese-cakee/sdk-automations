@@ -1,19 +1,6 @@
 /**
- * The live configuration read: `automations.yml` at the repository's
- * default branch, through the shared client.
- *
- * The seam speaks `ConfigLoadOutcome` — typed values, never a throw — and
- * refuses the tempting shortcut: a bare 404 is `notFoundOrNotInstalled`,
- * never confident absence (D51, D122). Absence is CORROBORATED: the config
- * 404s while the repository itself answers, so the file is genuinely not
- * there. `permanent` marks defects of the committed file — the outcomes a
- * new commit fixes and a retry never will.
- *
- * Absence is re-corroborated on EVERY load — deliberately unmemoized. A
- * repository's first commit of `automations.yml` (including one whose whole
- * point is `mode: disabled`) must bind on the next delivery, not after a
- * belief window expires; the two GETs absence costs are that promptness's
- * price, and the documented config-less default pays it rarely enough.
+ * The live configuration read: `automations.yml` at the repository's default branch.
+ * Absence is re-corroborated on every load, deliberately unmemoized (D51, D122).
  */
 
 import { Buffer } from "node:buffer";
@@ -36,13 +23,16 @@ export interface GitHubConfigSourceOptions {
 
 const BLOB_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
-/** A document, a defect of the committed file, or a shape we do not know. */
-type DecodedContents =
+/**
+ * A document, a defect of the committed file, or a shape we do not know.
+ * Exported with its decoder: `configAtHead` reads the same endpoint at another ref.
+ */
+export type DecodedContents =
     | { readonly kind: "document"; readonly revision: string; readonly text: string }
     | { readonly kind: "defective"; readonly detail: string; readonly revision: string }
     | { readonly kind: "unrecognized" };
 
-function decodeContents(body: string): DecodedContents {
+export function decodeContents(body: string): DecodedContents {
     const response = jsonRecordOf(body);
     const sha = field(response, "sha");
     // Stryker disable next-line ConditionalExpression,LogicalOperator: field() answers undefined on null and test() stringifies non-strings to a miss — the leading arms are for readers.
@@ -58,8 +48,8 @@ function decodeContents(body: string): DecodedContents {
         };
     }
     const content = field(response, "content");
+    // GitHub answers `encoding: "none"` with empty content over 1 MB.
     if (field(response, "encoding") !== "base64" || typeof content !== "string") {
-        // GitHub answers `encoding: "none"` with empty content over 1 MB.
         return {
             kind: "defective",
             detail: "the config file's content is not retrievable inline (too large?)",
@@ -76,10 +66,10 @@ function decodeContents(body: string): DecodedContents {
                 revision: `git:${sha}`,
             };
         }
-        // The shared content hash, not the blob sha: the SAME text yields
-        // the SAME revision whichever source loaded it (D122 follow-on).
-        // The decoder's WHATWG default drops a leading BOM — deliberate,
-        // matched by fileConfigSource, so environments never diverge.
+        /**
+         * The content hash, not the blob sha: the same text yields the same revision (D122).
+         * The WHATWG default drops a leading BOM, matched by `fileConfigSource`.
+         */
         const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
         return { kind: "document", revision: revisionOf(text), text };
     } catch {

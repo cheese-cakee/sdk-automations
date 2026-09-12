@@ -1,24 +1,33 @@
 capabilities:
   inactivity:
     enabled: true
-    settings:
-      exemptBlocked: true # the blocked mapping skips every warning and action
-      remindAfterDays: 14 # defaults — any ladder or reason may override
-      reapAfterDays: 21 # reap = unassign (issues) · close + unassign (PRs)
-      issues: # warns, then unassigns assigned issues with no open PR
-        enabled: true
-      pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
-        enabled: true
-        reapAfterDays: 60 # ladder override
-        reapWhen: # reminders and actions apply only to PRs in:
-          draft: # GitHub draft mode
+    exemptBlocked: true # the blocked mapping skips every warning and action
+    remindAfter: 14d # default — any ladder or reason may override
+    reap:
+      after: 21d # the release clock every level inherits; consent is each acting level's own
+    issues: # warns, then unassigns assigned issues with no open PR
+      enabled: true
+      reap:
+        enabled: true # without this block the ladder reminds and never releases
+    pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
+      enabled: true
+      reap: # a section here — the ladder passes its clock down and acts on nothing itself
+        after: 60d # ladder override
+      reapWhen: # reminders and actions apply only to PRs in:
+        draft: # GitHub draft mode
+          enabled: true
+          reap:
             enabled: true
-          changesRequested: # GitHub review state
+        changesRequested: # GitHub review state
+          enabled: true
+          reap:
             enabled: true
-          needsRevision: # the label pr-quality's label mode applies for DCO, GPG, linked-issue and assignment failures
+        needsRevision: # the label pr-quality's label mode applies for DCO, GPG, linked-issue and assignment failures
+          enabled: true
+          remindAfter: 2d # reason override — quality failures reap fast
+          reap:
             enabled: true
-            remindAfterDays: 2 # reason override — quality failures reap fast
-            reapAfterDays: 5
+            after: 5d
 
 mappings:
   labels: # needed only by the label-based reasons and exemptions — native draft and changes-requested modes work unmapped

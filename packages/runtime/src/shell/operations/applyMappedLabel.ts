@@ -1,9 +1,6 @@
 /**
- * Moving one item's position label, whole: what the move plans, how its two
- * rows are spelled and read, and the presence read that proves each one.
- *
- * The only operation whose plan is more than one call, and the order of the
- * two is the decision — see `plan`.
+ * Moving one item's position label, whole: the plan, its two rows, and the presence read that proves each.
+ * The only operation whose plan is more than one call, and the order of the two is the decision.
  */
 
 import {
@@ -23,13 +20,7 @@ function positionsOf(kind: ItemRef["kind"]): readonly MappableMeaning[] {
 
 /**
  * The position this move displaces, or `undefined` when the item held none.
- *
- * Read from the capability's own claim rather than from a live read, and that
- * is what makes it honest: `deriveWorld` refuses the write unless every
- * claimed meaning is one the authoritative projection actually observed, so a
- * claim that survives the gate is a fact. At most one own-flow position can
- * survive it — two project as a conflict, which `screenIntent` refuses — so
- * the first match is the only match.
+ * Read from the capability's claim: `deriveWorld` refuses the write unless the authoritative projection observed it, and at most one own-flow position survives.
  */
 function displacedBy(intent: Intent<"applyMappedLabel">): MappableMeaning | undefined {
     return positionsOf(intent.item.kind).find(
@@ -38,17 +29,12 @@ function displacedBy(intent: Intent<"applyMappedLabel">): MappableMeaning | unde
     );
 }
 
-/** The `applyMappedLabel` operation, as the registry holds it. */
 export const applyMappedLabel: OperationHandler<"applyMappedLabel"> = {
     verbs: ["addLabel", "removeLabel"],
 
     /**
-     * Add, then remove, and the order is the decision. The intermediate state
-     * carries two position labels, which projects as a conflict — so every
-     * other capability's decision about the item safe-holds until the removal
-     * lands, and a human sees an item that is obviously mid-move. Removing
-     * first would leave a window with NO position, which reads as untriaged
-     * and invites exactly the automation that should be waiting.
+     * Add, then remove. The intermediate state carries two position labels, which projects
+     * as a conflict, so every other decision safe-holds; removing first would leave a window with NO position, which reads as untriaged.
      */
     plan(effect, config) {
         const { intent } = effect;

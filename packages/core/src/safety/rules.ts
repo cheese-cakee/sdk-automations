@@ -1,20 +1,6 @@
 /**
- * The general rules every write passes, and the preflight before them.
- *
- * `design/contracts/safety.md`'s mechanically checkable subset only. Rules
- * 6–10 — naming the exact value, postcondition verification, unclear-outcome
- * reconciliation, tested rollback, dry-run-before-active rollout — cannot be
- * decided from one request and are `design/guides/write-operations.md` §8's.
- *
- * Precedence is policy: kill switch → authoritative precondition → observation
- * → consent → permissions → closure → pause → human conflict → mode. Only the
- * kill switch changes an OUTCOME; the rest decide which `code` gets reported,
- * and the tests freeze that order.
- * **If you are asking "why was my write refused?", this is the file.**
- * Both doors — `write.ts` and `destructive.ts` — arrive here after their
- * own policy. The rule ORDER is exported because order is contract (D39,
- * D52), and `evaluateStandingRules` exports the item-independent subset so
- * the write path's resume gate reuses these rules rather than restating them.
+ * The general rules every write passes, and the preflight before them —
+ * `design/contracts/safety.md`'s mechanically checkable subset only.
  */
 
 import type { RepositoryConfig } from "../config/index.js";
@@ -30,7 +16,6 @@ import type {
     WriteRequest,
 } from "./types.js";
 
-/** The brake's own verdict, in one place: two entry points return it. */
 const KILL_SWITCH: SafetyVerdict = {
     outcome: "refuse",
     code: "killSwitch",
@@ -39,9 +24,7 @@ const KILL_SWITCH: SafetyVerdict = {
 
 /** Kill switch and authoritative precondition run before either write door. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
-    // Before the observation-intent short-circuit: the brake refuses those
-    // requests too. `decide()` has already evaluated the capability and any
-    // resolver, so this is not a transport/read stop (D117).
+    // Ahead of the observation short-circuit: the brake refuses those too (D117).
     if (context.killSwitchActive) return KILL_SWITCH;
     if (!context.world.preconditionHolds) {
         return {
@@ -53,10 +36,7 @@ export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
     return null;
 }
 
-/**
- * What a rule may look at when it knows nothing about the item: the
- * repository's file, the class of action, and the installation's grants.
- */
+/** What a rule may look at when it knows nothing about the item. */
 interface StandingFacts {
     readonly config: RepositoryConfig;
     readonly actionClass: StandingRequest["actionClass"];
@@ -64,9 +44,7 @@ interface StandingFacts {
     readonly missing: readonly string[];
 }
 
-/**
- * Everything a rule may look at, derived once so no rule recomputes it.
- */
+/** Everything a rule may look at, derived once so no rule recomputes it. */
 interface Facts extends StandingFacts {
     readonly request: WriteRequest;
     readonly context: WriteContext;
@@ -76,31 +54,15 @@ type StandingRule = (f: StandingFacts) => SafetyVerdict | null;
 type Rule = (f: Facts) => SafetyVerdict | null;
 
 /**
- * Which facts one rule needs, as data beside the rule itself.
- *
- * `standing` rules read only the repository's configuration and the
- * installation, so they are the same answer whatever the item looks like now.
- * `itemState` rules read the derived world, the ordering evidence or the
- * cause's own timestamp, and can only be judged against a live read.
- *
- * The split is what lets `evaluateStandingRules` run a SUBSET without
- * restating it: the scope travels with the rule, so a rule that starts reading
- * the item has one place to say so.
+ * Which facts one rule needs. `standing` rules read only configuration and the
+ * installation; `itemState` rules can only be judged against a live read.
  */
 export type RuleScope = "standing" | "itemState";
 
-/** One entry of `GENERAL_RULES`, discriminated by its scope. */
 type GeneralRule =
     | readonly [name: string, rule: StandingRule, scope: "standing"]
     | readonly [name: string, rule: Rule, scope: "itemState"];
 
-/**
- * One entry, per scope. The list below is written through these rather than
- * as bare tuples for a typing reason: a tuple literal checked against the
- * union above infers nothing for the rule's own parameter, so every rule would
- * have to annotate the facts it reads. Naming the scope in the call says the
- * same thing once, where a reader is already looking.
- */
 const standing = (name: string, rule: StandingRule): GeneralRule => [name, rule, "standing"];
 const itemState = (name: string, rule: Rule): GeneralRule => [name, rule, "itemState"];
 
@@ -115,13 +77,8 @@ const record = (code: RecordOnlyCode, reason: string): SafetyVerdict => ({
     reason,
 });
 
-/**
- * The general rules, IN ORDER — order is contract, not style (D39, D52).
- * Data rather than `if`s so precedence is asserted directly by the tests
- * instead of inferred from contrived multi-trigger inputs.
- */
+/** The general rules, IN ORDER — order is contract, not style (D39, D52). */
 export const GENERAL_RULES: readonly GeneralRule[] = [
-    // Observations need no permission and are always recordable.
     standing("observation", (f) =>
         f.actionClass === "observation"
             ? record("observation", "observation records a finding")
@@ -143,16 +100,7 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
                   `the installation lacks ${f.missing.join(", ")} (rule 2)`,
               ),
     ),
-    // Closure ahead of the pause, the order `workflow/reference.ts`'s walk
-    // already uses: a pause is a state a human lifts, closure is where the
-    // item's flow ended. Reporting the pause on a closed item would name
-    // the reversible fact and hide the terminal one.
-    //
-    // A capability may still claim `claims.closed: false`, but that
-    // claim is optional and defaults to no claim (D47, `factory.ts`), so
-    // it protects only the capabilities that remember to make it. This
-    // rule reads the derived world instead, and therefore holds for every
-    // capability including one built from `unknown`.
+    // Reads the derived world, never `claims.closed`, which defaults to no claim (D47).
     itemState("itemClosed", (f) =>
         f.context.world.closure === null
             ? null
@@ -166,8 +114,7 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
             ? refuse("itemBlocked", "the item is blocked — capability writes are paused")
             : null,
     ),
-    // Unestablished ordering is a conflict, never an absence — checked
-    // before the comparison, because there is nothing to compare against.
+    // Before the comparison: unestablished ordering is a conflict, not an absence.
     itemState("humanOrderingUnknown", (f) =>
         f.context.latestHumanChangeAt === "unknown"
             ? refuse(
@@ -189,8 +136,7 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
               )
             : null,
     ),
-    // Ties go to the human: GitHub timestamps have second granularity,
-    // so exact ties happen (D33).
+    // Ties go to the human — `>=`, not `>` (D33).
     itemState("newerHumanChange", (f) =>
         f.context.latestHumanChangeAt !== null &&
         f.context.latestHumanChangeAt !== "unknown" &&
@@ -217,7 +163,6 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
     ),
 ];
 
-/** The half of the facts a standing request and context already carry. */
 function standingFacts(
     request: StandingRequest,
     config: RepositoryConfig,
@@ -232,7 +177,7 @@ function standingFacts(
     };
 }
 
-/** The ordered rules, run in order. Both doors arrive here after their own policy. */
+/** The ordered rules, run in order — both doors arrive here after their own policy. */
 export function evaluateGeneralRulesAfterPreflight(
     request: WriteRequest,
     config: RepositoryConfig,
@@ -249,14 +194,6 @@ export function evaluateGeneralRulesAfterPreflight(
 /**
  * The kill switch and every `standing` rule, in the same order — the brakes a
  * caller holding no item can still consult.
- *
- * The write path's resume gate is the caller (`shell/src/apply.ts`). It runs
- * this INSTEAD of the full ladder, and the argument for the subset belongs
- * there, with the half-finished label swap that motivates it. What belongs
- * here is why the subset can be trusted: the rules are the same functions in
- * the same order, so a repository that turned a capability off, left active
- * mode, or lost a grant refuses a resend under the code it would refuse a
- * fresh decision under.
  */
 export function evaluateStandingRules(
     request: StandingRequest,

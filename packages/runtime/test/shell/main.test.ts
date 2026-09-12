@@ -91,13 +91,12 @@ const TIMELINE_AT = "2026-08-06T23:10:51Z";
 const MISSING_VARIABLES =
     "WEBHOOK_SECRET, REPO_OWNER and REPO_NAME are required (the sandbox App's secret and the repository this endpoint serves).";
 
-const CONFIG = `schemaVersion: 1
+const CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: true
+    announce: true
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -108,14 +107,14 @@ mappings:
  * capability that runs on a clock, so enabling it is what makes the processor
  * declare a `sweep:` schedule row.
  */
-const SWEEP_CONFIG = `schemaVersion: 1
+const SWEEP_CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
   inactivity:
     enabled: true
-    settings:
-      remindAfterDays: 14
-      reapAfterDays: 21
+    remindAfter: 14d
+    reap:
+      after: 21d
 `;
 
 /**
@@ -125,13 +124,12 @@ capabilities:
  * would be refused as `preconditionStale` and the case would be about that
  * instead of about the composition.
  */
-const ACTIVE_CONFIG = `schemaVersion: 1
+const ACTIVE_CONFIG = `schemaVersion: 2
 mode: active
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: false
+    announce: false
 mappings:
   labels:
     awaitingTriage: "${TRIAGE_LABEL}"

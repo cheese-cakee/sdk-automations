@@ -1,11 +1,7 @@
 /**
- * How the engine calls a capability whose declaration type it cannot know.
- *
- * `capability/boundary.ts` is the typed side: `Capability<D>` and
- * `PlatformHandle<D>` say what one capability sees, with its declaration as
- * the type parameter. The engine holds a heterogeneous LIST and so has no
- * single `D` — it works against the erased shapes here, and `decide.ts`
- * composes them without restating the erasure at every call.
+ * How the engine calls a capability whose declaration type it cannot know: it
+ * holds a heterogeneous list and so has no single `D`, and works against the
+ * erased shapes here.
  */
 
 import type {
@@ -38,37 +34,95 @@ function item(
         : null;
 }
 
-function answerValue(query: ResolverName, value: unknown): unknown | null {
-    if (query === "isAutomationActor" || query === "mergeability") {
-        return typeof value === "boolean" ? value : null;
+/** One `ConfigError`, re-read: the four fields a report renders. */
+function configError(value: unknown): unknown | null {
+    const code = own(value, "code");
+    const message = own(value, "message");
+    const path = own(value, "path");
+    const line = own(value, "line");
+    if (typeof code !== "string" || typeof message !== "string") return null;
+    if (path !== null && typeof path !== "string") return null;
+    if (line !== undefined && (typeof line !== "number" || !Number.isSafeInteger(line)))
+        return null;
+    return line === undefined ? { code, message, path } : { code, message, path, line };
+}
+
+/**
+ * `configAtHead`'s union, read to the depth a reader of it branches on. The
+ * parsed `RepositoryConfig` is checked for being a mapping and no further (D77).
+ */
+function configAtHead(value: unknown): unknown | null {
+    const touched = own(value, "touched");
+    if (touched === false) return { touched: false };
+    if (touched !== true) return null;
+
+    const revision = own(value, "revision");
+    const result = own(value, "result");
+    const ok = own(result, "ok");
+    if (typeof revision !== "string" || revision.length === 0) return null;
+
+    if (ok === true) {
+        const config = own(result, "config");
+        return typeof config === "object" && config !== null
+            ? { touched: true, revision, result: { ok: true, config } }
+            : null;
     }
-    if (!Array.isArray(value)) return null;
-    const entries = [...value];
-    if (query === "assigneesOf") {
-        return entries.every((entry) => typeof entry === "string") ? entries : null;
-    }
-    if (query === "linkedIssues") {
-        const items = entries.map(item);
-        return items.every((entry) => entry !== null) ? items : null;
-    }
-    if (query === "commitAttestations") {
-        const commits = entries.map((entry) => {
-            const sha = own(entry, "sha");
-            const summary = own(entry, "summary");
-            const signedOff = own(entry, "signedOff");
-            const verified = own(entry, "verified");
-            const merge = own(entry, "merge");
-            return typeof sha === "string" &&
-                typeof summary === "string" &&
-                typeof signedOff === "boolean" &&
-                typeof verified === "boolean" &&
-                typeof merge === "boolean"
-                ? { sha, summary, signedOff, verified, merge }
-                : null;
-        });
-        return commits.every((entry) => entry !== null) ? commits : null;
-    }
-    const assignments = entries.map((entry) => {
+    if (ok !== false) return null;
+
+    const errors = own(result, "errors");
+    if (!Array.isArray(errors)) return null;
+    const read = errors.map(configError);
+    return read.every((error) => error !== null)
+        ? { touched: true, revision, result: { ok: false, errors: read } }
+        : null;
+}
+
+/** A list answer's entries, or `null` when the answer is not a list at all. */
+function entriesOf(value: unknown): readonly unknown[] | null {
+    return Array.isArray(value) ? [...(value as readonly unknown[])] : null;
+}
+
+/** `assigneesOf` — logins, as written. */
+function assignees(value: unknown): unknown | null {
+    const listed = entriesOf(value);
+    if (listed === null) return null;
+    return listed.every((entry) => typeof entry === "string") ? [...listed] : null;
+}
+
+/** `linkedIssues` — the items a pull request closes. */
+function linked(value: unknown): unknown | null {
+    const listed = entriesOf(value);
+    if (listed === null) return null;
+    const items = listed.map(item);
+    return items.every((entry) => entry !== null) ? items : null;
+}
+
+/** `commitAttestations` — the five facts a quality check judges, per commit. */
+function attestations(value: unknown): unknown | null {
+    const listed = entriesOf(value);
+    if (listed === null) return null;
+    const commits = listed.map((entry) => {
+        const sha = own(entry, "sha");
+        const summary = own(entry, "summary");
+        const signedOff = own(entry, "signedOff");
+        const verified = own(entry, "verified");
+        const merge = own(entry, "merge");
+        return typeof sha === "string" &&
+            typeof summary === "string" &&
+            typeof signedOff === "boolean" &&
+            typeof verified === "boolean" &&
+            typeof merge === "boolean"
+            ? { sha, summary, signedOff, verified, merge }
+            : null;
+    });
+    return commits.every((entry) => entry !== null) ? commits : null;
+}
+
+/** `openAssignments` — each held item with the meanings it carries. */
+function assignments(value: unknown): unknown | null {
+    const listed = entriesOf(value);
+    if (listed === null) return null;
+    const held = listed.map((entry) => {
         const target = item(own(entry, "item"));
         const meanings = own(entry, "meanings");
         return target !== null &&
@@ -80,7 +134,33 @@ function answerValue(query: ResolverName, value: unknown): unknown | null {
             ? { item: target, meanings: [...meanings] }
             : null;
     });
-    return assignments.every((entry) => entry !== null) ? assignments : null;
+    return held.every((entry) => entry !== null) ? held : null;
+}
+
+/** A resolver added to the catalogue needs a reader above, or this file does not build. */
+function assertNever(_query: never): null {
+    return null;
+}
+
+/** One resolver's answer value, re-read to the shape its catalogue entry promises. */
+function answerValue(query: ResolverName, value: unknown): unknown | null {
+    switch (query) {
+        case "isAutomationActor":
+        case "mergeability":
+            return typeof value === "boolean" ? value : null;
+        case "configAtHead":
+            return configAtHead(value);
+        case "assigneesOf":
+            return assignees(value);
+        case "linkedIssues":
+            return linked(value);
+        case "commitAttestations":
+            return attestations(value);
+        case "openAssignments":
+            return assignments(value);
+        default:
+            return assertNever(query);
+    }
 }
 
 function resolverAnswer(query: ResolverName, value: unknown): ResolverAnswer<unknown> | null {
@@ -111,10 +191,8 @@ export interface EngineCapability {
 }
 
 /**
- * The one blessed erasure (D92). Sound because `never` in every parameter
- * position is what any concrete `evaluate` accepts contravariantly: nothing
- * widens, and the capability gains no reach it did not have. The argument
- * lives here once so that no call site has to make it again.
+ * The one blessed erasure (D92), sound because `never` in every parameter
+ * position is what any concrete `evaluate` accepts contravariantly.
  */
 export function toEngine<D extends TypedDeclaration>(capability: Capability<D>): EngineCapability {
     return capability as unknown as EngineCapability;
@@ -139,14 +217,8 @@ export function thrownDetail(thrown: unknown): string {
 }
 
 /**
- * The handle a capability is given: it refuses an undeclared resolver
- * WITHOUT throwing, recording the violation instead. The engine is total,
- * and an undeclared resolver call is a capability defect — a defect deserves
- * a problem finding, not a crash in the shell.
- *
- * A resolver SOURCE that throws is contained the same way, and the two are
- * recorded separately because they blame different people: `violations` is
- * the capability's defect, `failures` the shell's.
+ * The handle a capability is given: it refuses an undeclared resolver without
+ * throwing, into `violations`; a throwing resolver source goes to `failures`.
  */
 export class EngineHandle {
     readonly explanations: StructuredExplanation[] = [];
@@ -179,10 +251,7 @@ export class EngineHandle {
             this.failures.push(`${query}: ${detail}`);
             return { ok: false, reason: "unavailable", detail };
         } catch (thrown) {
-            // `unavailable`, never an empty value: "unknown is not an answer"
-            // (`design/contracts/catalogue.md`) forbids a capability reading a
-            // broken lookup as a negative answer, and a source that threw
-            // established nothing at all.
+            // `unavailable`, never an empty value: a source that threw established nothing.
             const detail = thrownDetail(thrown);
             this.failures.push(`${query}: ${detail}`);
             return { ok: false, reason: "unavailable", detail };

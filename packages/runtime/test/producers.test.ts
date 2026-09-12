@@ -17,14 +17,13 @@
  * a group and then never fills it, which is a boot check admitting a capability
  * that is skipped on every delivery.
  *
- * ONE STANDING EXCEPTION, and it is in the data rather than in an `if` here:
- * three of the sweep's `review` reads are absent from the endpoint-permission
- * matrix, so that group answers `UNREAD` on a record while its row still
- * promises it (`design/guides/sweep.md` §4). The row is the promise and the
- * record is the day's fact — which is exactly why `decide()` keeps the
- * `factsUnread` skip. `readableToday` below computes that gap from
- * `CONFIRMED_SWEEP_READS` rather than naming a group, so the exception expires
- * on its own the day the matrix rows land.
+ * THERE IS NO STANDING EXCEPTION ANY MORE. `review` used to be one — the sweep
+ * promised it and answered `UNREAD`, because three of its reads were absent
+ * from the endpoint-permission matrix — and protocol 6.9 cited all three, so
+ * every row below is met by the record itself. The gap that made the exception
+ * possible is still real (`design/guides/sweep.md` §4), which is why `decide()`
+ * keeps its `factsUnread` skip and why the first case below asserts the gap is
+ * empty rather than assuming it cannot open again.
  */
 
 import { describe, expect, it } from "vitest";
@@ -39,7 +38,6 @@ import {
     PRODUCER_NAMES,
     producerReads,
     producesKind,
-    type FactGroup,
     type FactKind,
     type Facts,
     type ProducerName,
@@ -196,6 +194,7 @@ async function fromSweep(kind: FactKind): Promise<Facts> {
         http: http.client,
         repository: TEST_REPOSITORY,
         config: config(),
+        knownCapabilities: [],
         clock: () => NOW,
     });
     const outcome = await reader.openItems();
@@ -213,21 +212,21 @@ function recordFrom(producer: ProducerName, kind: FactKind): Promise<Facts> {
 
 // ─── The registry, held against the records ──────────────────────────
 
-/**
- * Can this producer read this group TODAY, as against promise it?
- *
- * Only the sweep can differ, and only because a read its group is built from
- * may be absent from the endpoint-permission matrix — in which case the read is
- * never attempted and the group is honestly unread.
- */
-function readableToday(producer: ProducerName, group: FactGroup): boolean {
-    return (
-        producer !== "sweep" ||
-        GROUP_READS[group].every((read) => CONFIRMED_SWEEP_READS.includes(read))
-    );
-}
-
 describe("every producer reads the groups its registry row names", () => {
+    /**
+     * The gap the cases below are allowed to have, asserted empty. Only the
+     * sweep can open one: a read its group is built from may be absent from
+     * the endpoint-permission matrix, in which case the read is never
+     * attempted and the group is honestly unread on a row that promises it.
+     */
+    it("promises no group whose reads the matrix has not confirmed", () => {
+        const unreadable = FACT_GROUPS.filter((group) =>
+            GROUP_READS[group].some((read) => !CONFIRMED_SWEEP_READS.includes(read)),
+        );
+
+        expect(unreadable).toEqual([]);
+    });
+
     for (const producer of PRODUCER_NAMES) {
         for (const kind of FACT_KINDS) {
             if (!producesKind(producer, kind)) continue;
@@ -244,17 +243,11 @@ describe("every producer reads the groups its registry row names", () => {
                 expect({ read, unread }).toEqual({
                     read: FACT_GROUPS.filter(
                         (group) =>
-                            carriesFactGroup(kind, group) &&
-                            producerReads(producer, kind, group) &&
-                            readableToday(producer, group),
+                            carriesFactGroup(kind, group) && producerReads(producer, kind, group),
                     ),
                     unread: FACT_GROUPS.filter(
                         (group) =>
-                            carriesFactGroup(kind, group) &&
-                            !(
-                                producerReads(producer, kind, group) &&
-                                readableToday(producer, group)
-                            ),
+                            carriesFactGroup(kind, group) && !producerReads(producer, kind, group),
                     ),
                 });
             });
@@ -285,19 +278,5 @@ describe("every producer reads the groups its registry row names", () => {
                 FACT_GROUPS.some((group) => producerReads(producer, "pullRequest", group)),
             ),
         ).toEqual(["pull_request", "sweep"]);
-    });
-
-    /**
-     * The exception, stated where it can expire: `review` is the one group the
-     * sweep promises and cannot yet read, and this fails the day the matrix
-     * gains its three rows — which is the day to delete `readableToday`.
-     */
-    it("names the one group promised and not yet readable", () => {
-        expect(
-            FACT_GROUPS.filter(
-                (group) =>
-                    producerReads("sweep", "pullRequest", group) && !readableToday("sweep", group),
-            ),
-        ).toEqual(["review"]);
     });
 });

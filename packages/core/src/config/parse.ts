@@ -1,12 +1,11 @@
 /**
- * `parseConfig` — the one entry point for an already-parsed value.
- *
- * The section order below is the order a maintainer reads their mistakes in,
- * outermost problem first, and the tests freeze it.
+ * `parseConfig` — the one entry point for an already-parsed value. The ERROR
+ * order below is what a maintainer reads their mistakes in, and tests freeze it.
  */
 
-import type { ParseConfigOptions, RepositoryConfig } from "./schema.js";
-import { err, type ConfigResult } from "./results.js";
+import type { SettingsView } from "../capability/spec.js";
+import type { Mappings, ParseConfigOptions, RepositoryConfig } from "./schema.js";
+import { err, type Checked, type ConfigResult } from "./results.js";
 import {
     checkRequiredMappings,
     checkSchemaVersion,
@@ -19,9 +18,8 @@ import {
 } from "./sections.js";
 
 /**
- * A null-prototype record, so a key nobody set always reads `undefined`.
- * Otherwise `capabilities["constructor"]` is truthy for a capability that
- * does not exist. `NO_CONFIG` below and `parse.ts` build every record with it.
+ * A null-prototype record, so a key nobody set always reads `undefined`:
+ * otherwise `capabilities["constructor"]` is truthy for a missing capability.
  */
 export function cleanRecord<V>(
     entries: readonly (readonly [string, V])[],
@@ -32,22 +30,38 @@ export function cleanRecord<V>(
 }
 
 /**
- * What a repository with no configuration file gets. config-schema.md §1 and
- * §4 say no configuration causes no workflow-changing writes.
- *
- * FINDING(config-no-config-mode): the contract now records `observe`, the
- * current implementation choice.
- * `observe` obeys the rule and still shows findings. `disabled` is the
- * stricter reading. Undecided, and this constant is where the assumption sits.
+ * What a repository with no configuration file gets: no workflow-changing
+ * writes (config-schema.md §1, §4). FINDING(config-no-config-mode) is undecided.
  */
 export const NO_CONFIG: RepositoryConfig = {
     revision: "",
     schemaVersion: 1,
     mode: "observe",
     capabilities: cleanRecord([]),
-    mappings: { labels: {}, commands: {}, skills: {}, alerts: {}, types: {} },
+    mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
     principals: cleanRecord([]),
 };
+
+/**
+ * What a settings value is allowed to NAME: the meanings this document mapped
+ * and the principals it declared. `null` when either section did not parse.
+ */
+function namesIn(
+    mappings: Checked<Mappings>,
+    principals: Checked<[string, string][]>,
+): SettingsView | null {
+    if (!mappings.ok || !principals.ok) return null;
+    const mapped = mappings.value;
+    return {
+        mapped: {
+            labels: Object.keys(mapped.labels),
+            commands: Object.keys(mapped.commands),
+            skills: Object.keys(mapped.skills),
+            alerts: Object.keys(mapped.alerts),
+        },
+        principals: principals.value.map(([name]) => name),
+    };
+}
 
 export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigResult {
     if (raw === undefined || raw === null) {
@@ -60,31 +74,29 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         };
     }
 
+    const schemaVersion = raw.schemaVersion === 2 ? 2 : 1;
     const mode = readMode(raw);
-    const capabilities = readCapabilities(raw, options.knownCapabilities);
     const mappings = readMappings(raw);
     const principals = readPrincipals(raw);
+    const capabilities = readCapabilities(
+        raw,
+        options.knownCapabilities,
+        namesIn(mappings, principals),
+        schemaVersion,
+    );
 
-    // §2.6 — fail closed: any error anywhere yields no configuration at
-    // all, whole-file (D38).
+    // §2.6 — fail closed: any error anywhere yields no configuration, whole-file (D38).
     const structural = [...checkTopLevelKeys(raw), ...checkSchemaVersion(raw)];
 
     /**
-     * Whether an enabled capability's declared needs are met is a question
-     * about its block AND the mapping families, so it is asked only when both
-     * parsed. When one did not, the file is rejected anyway and an unmet-need
-     * error read off a broken family would point at the wrong line.
-     *
-     * It comes last in the error list because it is the only rule a maintainer
-     * cannot see by looking at one section (D84).
+     * Asked only when both sections parsed. Last in the error list because it
+     * is the only rule a maintainer cannot see in one section (D84).
      */
     const unmet =
         capabilities.ok && mappings.ok
             ? checkRequiredMappings(capabilities.value, mappings.value, options.knownCapabilities)
             : [];
 
-    // One test doing two jobs: it reports every failed section and narrows
-    // all four results, so the success path below needs no cast.
     if (!mode.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
         return {
             ok: false,
@@ -106,7 +118,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         ok: true,
         config: {
             revision: options.revision,
-            schemaVersion: 1,
+            schemaVersion,
             mode: mode.value,
             capabilities: cleanRecord(capabilities.value),
             mappings: mappings.value,

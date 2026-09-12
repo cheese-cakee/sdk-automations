@@ -28,7 +28,7 @@ const ACT =
 const warning = (over: Partial<StoredWarning> = {}): StoredWarning => ({
     effectId: ACT,
     warnedAt: "2026-09-01T00:00:00.000Z",
-    gracePeriodDays: 7,
+    gracePeriodHours: 7 * 24,
     earliestActionAt: "2026-09-08T00:00:00.000Z",
     cancelledBy: "a commit or a /working comment",
     reversesWith: "re-assign / reopen",

@@ -1,22 +1,6 @@
 /**
- * The endpoint-permission matrix as code: may this request be sent?
- *
- * Every request passes this gate before a token is acquired, so a refusal
- * never costs a mint, and the URL leaves normalised so everything downstream
- * sees one spelling. What it judges is structural — the pinned origin, the one
- * GraphQL query this package may POST, and the write endpoints
- * `design/findings/endpoint-permission-matrix.md` confirmed, matched by path
- * SHAPE rather than by text. The shapes belong to the operations that reach
- * them, so this file asks the registry in `operations/` and spells no path of
- * its own. It answers the permission half of the same question too: the grants
- * a request needs and its token does not carry.
- *
- * A write that passes carries one more answer out — the cache keys its landing
- * makes untrustworthy. Nothing here sends anything, waits, or reads a
- * response: that is `http.ts`, this file's only caller. The vocabulary it
- * refuses in is `contract.ts`.
- *
- * In order below: the admitted request, then the grants.
+ * The endpoint-permission matrix as code: may this request be sent, and with which grants?
+ * Nothing here sends anything, waits, or reads a response; that is `http.ts`.
  */
 
 import type { PermissionGrant } from "@hiero-hackers/automation-core";
@@ -36,8 +20,6 @@ import { writeEndpointOf } from "./operations/index.js";
 import type { WriteEndpoint } from "./operations/transport.js";
 import type { InstallationToken } from "./token.js";
 import { jsonRecordOf } from "./untrusted.js";
-
-// ─── The admitted request ────────────────────────────────────────────
 
 type GitHubApiUrl =
     | { readonly ok: true; readonly url: URL }
@@ -76,7 +58,7 @@ const refused = (reason: Exclude<NotSentReason, "brokenSeam">): AdmittedRequest 
 });
 
 /**
- * The one GraphQL query this package may POST, checked before it is sent.
+ * The one GraphQL query this package may POST.
  * Nothing else may reach `/graphql`, and this operation may reach nothing else.
  */
 function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest {
@@ -99,17 +81,13 @@ function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest 
 
 /**
  * A write against the per-endpoint allowlist.
- *
- * The body rule is per endpoint rather than per method, because the four
- * endpoints disagree: three carry a JSON object and the label removal carries
- * nothing. A body where none belongs is refused rather than dropped — sending
- * a request the caller did not write is worse than not sending it.
+ * The body rule is per endpoint, not per method: the label removal carries none.
  */
 function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
     const write = writeEndpointOf(request.method, url);
     if (write === null) return refused("disallowedMethod");
     // Unreachable through the type, and the retry policy reads this field.
-    // A declaration that is neither word is a malformed request, not a write.
+
     if (request.idempotency !== "idempotent" && request.idempotency !== "nonIdempotent") {
         return refused("invalidBody");
     }
@@ -123,12 +101,8 @@ function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
 }
 
 /**
- * The gate every request passes before a token is acquired: the admitted
- * methods, the pinned origin, the one GraphQL query this package may POST, and
- * the four write endpoints the matrix confirmed.
- *
- * It runs first so a refusal never costs a mint, and it normalises the URL so
- * everything downstream — the cache key included — sees one spelling.
+ * The admitted methods, the pinned origin, the one GraphQL query, the confirmed
+ * write endpoints. It runs before a token is acquired, so a refusal costs no mint.
  */
 export function admit(request: GitHubRequest): AdmittedRequest {
     const write = isWrite(request);
@@ -142,8 +116,6 @@ export function admit(request: GitHubRequest): AdmittedRequest {
     return { ok: true, request: { ...request, url: parsed.url.href }, write: null };
 }
 
-// ─── The grants ──────────────────────────────────────────────────────
-
 const LINKED_ISSUES_GRANTS: readonly PermissionGrant[] = ["issues:read", "pull_requests:read"];
 
 /** Every admitted write is an issue-surface write; nothing weaker allows one. */
@@ -156,12 +128,7 @@ function hasReadGrant(token: InstallationToken, required: PermissionGrant): bool
 
 /**
  * Grants this request needs and the token does not carry.
- *
- * The read-side precheck (D123) is the pattern; what differs is what counts as
- * enough. A read is satisfied by the matching write grant, because write
- * implies read. A write is satisfied by nothing weaker than itself, so the
- * check is equality and the accepted permission it reports is the exact grant
- * an installation would have to add.
+ * A read is satisfied by the matching write grant; a write by nothing weaker (D123).
  */
 export function missingGrants(
     request: GitHubRequest,

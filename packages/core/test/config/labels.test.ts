@@ -114,7 +114,7 @@ describe("meaningsOfLabels", () => {
 describe("alertsOfLabels", () => {
     const alerting = configWith({
         labels: { blocked: "status: blocked" },
-        alerts: { p0: { label: "P0-🔥" }, security: { label: "Security" } },
+        alerts: { p0: "P0-🔥", security: "Security" },
     });
 
     it("names the alerts the labels carry, in the file's own declaration order", () => {

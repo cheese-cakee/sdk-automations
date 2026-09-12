@@ -43,9 +43,12 @@ the platform posts the warning, records it when it lands, and judges the act aga
 ## Writing a capability
 
 If a capability needs more than this page says, the platform is missing something. Build the
-smallest honest version, mark the rest not built with the reason, and write the finding in
-`design/findings/` — never a workaround inside the capability. Every build so far has needed that
-sentence at least once.
+smallest honest version and mark the rest not built with the reason — never a workaround inside the
+capability.
+
+A gap you can only STATE belongs in your design page, in the "Needs first" cell of the phase that
+needs it and in the one-line `Not built:` list under the title. A file in `design/findings/` is for
+a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place.
 
 0. **Check the design against the platform before writing code.** Four lines, in the design page's
    Declaration table, each answered by a file:
@@ -53,6 +56,11 @@ sentence at least once.
      every group you need must be read by a producer your trigger names, or boot refuses the
      declaration. A webhook reads the projection, `readiness`, `actor`, `author` and — on
      `issue_comment` — `command`; the sweep reads everything the endpoint matrix has confirmed.
+     Then check the group's element TYPE against what that producer can READ: `AssigneeClock`
+     carries two clocks no webhook payload holds, so the `issues` webhook reads no assignee group
+     and "add the row" is not the fix. A design needing a group its trigger cannot fill needs a
+     different trigger, or the fact-shape change §6 prices — both interfaces, every producer, every
+     fixture.
    - resolvers → `RESOLVER_NAMES` in `packages/core/src/capability/catalogue.ts`, AND what feeds
      each one's input, AND which path answers it (a resolver needing a credential is `unavailable`
      on the credential-free path; the shell's stubbed externals list what they answer).
@@ -62,29 +70,64 @@ sentence at least once.
    - any "once" or "in place" promise → identity is per item and purpose (`kind` + `topic`);
      the effect id is per occasion. A comment with the same purpose on the same item is updated
      in place; two purposes need two topics.
+   - settings → your design's config block, key by key, against the table in
+     `design/guides/capability-kits.md` §3. A CROSS-FIELD rule is not expressible, and what moves
+     is the design's config, to a structural form — a block or a group under the choice that needs
+     it (§3.3), never the toolkit. `duration` has no optional form: an optional clock is a block,
+     whose absence parks it. Every value a rendered comment interpolates must come from
+     `CapabilityView` or the facts, and the view carries mapped NAMES and no spellings
+     (contract.md §2). A block a repository opts into makes every example that enables the
+     capability a no-op until the block is written there too — a doc edit per example.
    Designs written before the platform existed are often stale here. Correct the page first.
-1. **Write the design page**, four sections: what it does, the config block, how it works (a
-   flowchart of the guards in order), verified-by (the scenarios, which become the test titles).
-   Read the exemplar nearest your shape: `prQuality` (webhook, resolvers, one comment), `intake`
-   (webhook, labels, several stations), `inactivity` (schedule, clocks, destructive acts —
-   nine files, one per concern, `declaration.ts` at the root).
-2. **Baseline.** `pnpm -r test` and `pnpm -r test:coverage` before you touch anything, so a later
-   red is yours.
+1. **Write the design page**, four sections: what the output looks like (the rendered comments), the
+   config block, how it works (a flowchart of the guards in order, the declaration and the phases),
+   verified-by (the scenarios, which become the test titles). Read the exemplar nearest your shape:
+   `prQuality` (webhook, resolvers, one comment), `intake` (webhook, labels, several stations),
+   `inactivity` (schedule, clocks, destructive acts — nine files, one per concern).
+2. **Baseline.** `pnpm -r test` and `pnpm format:check` before you touch anything, so a later red is
+   yours. `pnpm -r test:coverage` is the MUTATION path — it runs Stryker, it is slow, and it is
+   CI's to judge; run it only when you mean to.
 3. **Make the folder** under `packages/capabilities/src/<name>/`: `capability.ts`, `settings.ts`
    (the spec, from `design/guides/capability-kits.md`), `capability.test.ts`, and the design page
-   MOVED here as `design.md` (update the table in `design/guides/capabilities/README.md`). Four
-   files is the minimum, not the shape: split by concern when a file answers two questions. Add
-   one line to `packages/capabilities/src/index.ts`; the P3 matrix now covers you. If the folder
-   already exists it is a seed — promote it in place.
+   MOVED here as `design.md` — updating the table in `design/guides/capabilities/README.md` and the
+   one in `packages/capabilities/README.md`. Four files is the minimum, not the shape: split by
+   concern when a file answers two questions. If the folder already exists it is a seed — promote
+   it in place.
+
+   The `design.md` title is READ: its first line must be `# <name> — <purpose>`, with a spaced
+   em-dash, because `docs/capabilities.md`'s purpose column is the half after it
+   (`packages/dev/checks/test/capabilities.test.ts`). Your `capability.test.ts` builds its records
+   from `packages/capabilities/test/world.ts`, and a capability declaring FEWER groups than its
+   producer reads wraps `sweptPullRequest()` in `asDeclared` — the erasure the engine performs at
+   the boundary.
+
+   Register in `packages/capabilities/src/index.ts`: an import and one entry in `CAPABILITIES`. The
+   named `export { … }` block is a third line only if something outside the package names your
+   capability. The P3 matrix then covers you, and it writes each block at its own spec's FULLEST
+   valid settings (`test/world.ts`), so work behind an `enabled: true` still runs in the alone-run.
+   A PRINCIPAL your spec requires must be declared under `principals:` by every example that
+   enables you.
+
+   `test/engine-matrix.test.ts` pins every managed comment four fixtures earn, by capability, item
+   and topic, and it is hand-written on purpose: derived from the registry it would assert whatever
+   the code had just produced. The swept pull request is a DRAFT and earns none today, so a
+   capability that acts on it adds a row to a file whose name does not mention it. Budget the edit.
 4. **Declare** what you read in `catalogue.ts`'s words: fact kinds and groups, required mappings,
    resolvers, intents, and `evaluates` nothing else. A typo does not compile; a need no producer
    reads does not boot.
-5. **Write `evaluate` in three captions**: read the settings (`readSettings`, `unusable`); the
-   guards in the flowchart's order, each a visible `if` returning `[]` or `skipped(...)` — a design's
-   "on event X" is a STATE here, never a trigger; then the act, intents through the factory. The
-   judgements every capability makes live in `capability/facts.ts` (`isOpen`, `isPaused`,
-   `isConflicted`, `people`, the clocks, `mentions`, `on`, `inert`, `moveTo`); import them, never a
-   sibling.
+5. **Write `evaluate` in two captions**: the guards in the flowchart's order, each a visible `if`
+   returning `[]` or `skipped(...)` — a design's "on event X" is a STATE here, never a trigger; then
+   the act, intents through the factory. `view.settings` arrives typed and already judged, so there
+   is nothing to read first. An intent's `cause` is FREE TEXT, with one exception:
+   `applyMappedLabel` moves the item, so its cause comes from the closed list in
+   `workflow/causes.ts` and the workflow map picks it (`moveTo`). The judgements every capability
+   makes live in `capability/facts.ts` (`isOpen`, `isPaused`, `isConflicted`, `people`, the clocks,
+   `mentions`, `on`, `inert`, `moveTo`); import them, never a sibling.
+
+   An intent the safety ladder does not refuse contributes a `capabilityExplained` finding
+   immediately BEFORE its verdict (`engine/decide.ts` → `gateIntent`), so two intents from one
+   record produce two, interleaved with the verdicts. A `ConfigError`'s `message` already carries
+   its own dotted path: format the pair as `path :: message`, never `${path}: ${message}`.
 6. **If you need a word the platform lacks**, this is what each costs and where it lives. A GitHub
    read or write the endpoint matrix (`design/findings/endpoint-permission-matrix.md`) has not
    confirmed is implemented and REFUSING until a sandbox protocol cites it — never called.
@@ -92,19 +135,44 @@ sentence at least once.
    | You need | Where it registers | What else it obliges |
    |---|---|---|
    | an operation | one module in each of `core/src/capability/operations/`, `runtime/src/shell/operations/`, `runtime/src/adapter/operations/` + a key in `IntentCatalogue` | a row pin in the shell's journal test; `pnpm contracts`; `design/guides/write-operations.md` |
-   | a resolver | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; one arm in `runtime/src/adapter/resolvers.ts`, gated by `CONFIRMED_RESOLVER_READS` | a sentence in the generator's map; the credential-free path if it needs no credential |
+   | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; one arm in `answerValue` (`packages/core/src/engine/invoke.ts`), which re-reads the answer to the shape the catalogue promises; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/main.ts` |
+   | a resolver whose read it has NOT | the same, minus the adapter arm: the gate narrows `query` to `ConfirmedRead` BEFORE the switch, so an arm for an unconfirmed name does not compile. The adapter edit is a docstring saying which endpoint it would read and what the matrix lacks | the same two value pins; the capability shows the check undetermined until a sandbox protocol cites the row |
    | a fact group | `FACT_GROUPS` + `GROUP_KEYS` in `catalogue.ts`; every producer's row in the registry; every producer | `facts.md` regenerates; fixtures |
    | a fact field (always read) | both fact interfaces; every producer; a `NORMALIZE_MALFORMED_CODES` entry if a payload may lack it | fixtures |
    | a producer (a new event) | one module in `core/src/engine/normalize/`, a union member and registry line in `engine/events.ts`, a row in the producers registry | a captured payload in the testkit, or a test that says there is none |
-   | a mapping family | `config/schema.ts` (closed: a `MeaningFamily` spec; open-keyed: the open-family shape) + the toolkit reader | two error codes → `docs/configuration.md`, `config-schema.md` §6, and a reachable document per code |
+   | a mapping family | `config/schema.ts` + one `MeaningFamily` spec, whose `meanings` is the closed list or `null` for an open-keyed family, read by the one family reader | two error codes → `docs/configuration.md`, `config-schema.md` §6, and a reachable document per code |
+   | a meaning | one row in `MEANING_FACTS` (`config/schema.ts`), which the union and the array derive from + one row in `design/contracts/taxonomy.md` §2 | the meanings table in `docs/configuration.md` (locked by `docs.test.ts`), `docs/examples/full.yml`, and the workflow map (`packages/core/src/workflow/transitions.ts`, `causes.ts`) if the meaning is a position |
    | a settings constructor | `capability/settings.ts`, with its rule stated | the kits guide's table |
+   | a REQUIRED setting (`duration()` with no default, `text`/`principal` not optional, any `oneOf`) | your own `settings.ts`. The settings tree renders such a key as a placeholder (`packages/dev/checks/test/generated.ts` → `placeholder`), so there is no generator edit | every example that ENABLES you states the key; `docs/examples/full.yml` always does |
+   | a principal (`principal({ optional: false })`) | the same | a `principals:` section in every example that enables you, and the name your `notify:` points at |
+   | a second capability on one trigger | the registry line only | the examples whose PROSE claims to show that trigger — `docs/examples/inactivity.yml` is the schedule's |
    | a field on a desired payload | `IntentCatalogue` + the generator's `DESIRED_FIELDS` map | the shell handler that renders it |
+   | a FIRST settings key on a capability that had none | your own `settings.ts` | your own `capability.test.ts`, and `configReport`'s expected comment body — it renders every enabled capability's settings, so a key on one capability reds a test file with another capability's name on it |
    | a fact KIND, durable state, a cross-item read, a subject that is not an item | not coverable — the platform's unit of decision is one item | the smallest honest version, the rest marked not built, and a finding |
 
+   **Every closed vocabulary here is pinned BY VALUE in at least one test, and the new name goes
+   into the pin in the same commit as the vocabulary.** Adding a resolver reds
+   `packages/core/test/engine/invoke.test.ts`, whose fixture list is asserted equal to
+   `RESOLVER_NAMES`, and `packages/runtime/test/adapter/item-resolvers.test.ts`, which pins
+   `CONFIRMED_RESOLVER_READS` by value. Answer a red pin rather than deriving it away.
+
 7. **Run the suite.** The checks read the working tree, so a new file is judged before it is
-   committed. `pnpm contracts` regenerates the catalogue and producer tables. Keep working notes
-   out of the tree (a study branch, or outside the repository) — every markdown file is checked as
-   documentation.
+   committed.
+
+   **`pnpm contracts` first, then the checks**, and first means after your LAST edit rather than
+   after your code. It rewrites every generated artifact: the contract tables of
+   `design/contracts/catalogue.md`, `design/contracts/facts.md` and `design/contracts/safety.md`,
+   the constructor table of `design/guides/capability-kits.md`, the capability table and settings
+   trees of `docs/capabilities.md`, the editor schema `docs/automations.schema.json`, and the
+   committed parsed value of each file in `docs/examples/`. Nothing there is edited by hand. It
+   typechecks `packages/dev/checks` before it generates anything, so a generator you broke arrives
+   as a TYPE error under that package.
+
+   **Keep working notes out of the tree.** `repositoryFiles()` is
+   `git ls-files --cached --others --exclude-standard`
+   (`packages/dev/checks/test/repository.ts`), so an untracked note is documentation the moment it
+   exists, and `packages/dev/checks/test/citations.test.ts` resolves every `design/….md` and
+   `docs/….yml` string in every document. Put notes on a study branch or outside the repository.
 
 The skills in `.claude/skills/` are the house style for what you write: `placement` (where a
 file goes), `docstrings` (what a header says), `clarity` (how a body reads), `capability-design`

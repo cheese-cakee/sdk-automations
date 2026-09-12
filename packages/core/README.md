@@ -222,7 +222,7 @@ code as its evidence:
   pause flag, not a workflow position.
 - `FINDING(taxonomy-manual-entry)` → **D29** — manual entry is observed
   reality to reconcile, not a requestable transition.
-- `FINDING(safety-grace-floor)` → **D30** — `MIN_GRACE_DAYS = 1`, so the
+- `FINDING(safety-grace-floor)` → **D30** — `MIN_GRACE_HOURS = 1`, so the
   floor question cannot be silently skipped.
 - `FINDING(config-no-config-mode)` → **D31** — the no-config mode is
   `observe`, chosen over `disabled`.

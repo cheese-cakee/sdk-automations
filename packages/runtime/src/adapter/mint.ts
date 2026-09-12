@@ -1,9 +1,6 @@
 /**
- * The one call that cannot travel through the HTTP client: minting
- * authenticates with the App assertion, and the client authenticates with
- * the token minting produces. So this file owns its own narrow POST — the
- * same origin pin, refused redirects, timeout, and no-throw outcome — for
- * exactly one endpoint, and nothing else may reuse it.
+ * The token mint: the one call that cannot travel through the shared HTTP client.
+ * It authenticates with the App assertion the client's own token comes from.
  */
 
 import { classifyFailure } from "@hiero-hackers/automation-core";
@@ -56,10 +53,8 @@ function mintedTokenOf(body: string): InstallationToken | null {
 }
 
 /**
- * The live mint `createTokenSource` injects: one POST to
- * `/app/installations/{id}/access_tokens`, authenticated with the caller's
- * assertion. Never throws — every failure is a classified `TokenOutcome`,
- * which is the contract `MintInstallationToken` states.
+ * One POST to `/app/installations/{id}/access_tokens`, with the caller's assertion.
+ * Never throws; every failure is a classified `TokenOutcome`.
  */
 export function githubMintInstallationToken(
     options: GitHubMintOptions = {},

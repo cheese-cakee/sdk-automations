@@ -27,7 +27,9 @@
  */
 
 import { expect } from "vitest";
+import { flag, spec, text } from "../../src/capability/index.js";
 import type { AdmittedCapability, ConfigErrorCode, ConfigResult } from "../../src/config/index.js";
+import { admitting } from "./builders.js";
 
 /**
  * What every rejection says, whatever it was parsed from.
@@ -79,12 +81,13 @@ export interface DocumentRejection extends RejectionCase {
 export interface ValueRejection extends RejectionCase {
     readonly raw: unknown;
     /**
-     * What the application admits. Empty admits nothing. A bare NAME admits
-     * only the name, so the rows about settings keys and required meanings
-     * pass `AdmittedCapability` objects — those two checks have nothing to
-     * judge against otherwise (D84).
+     * What the application admits. Empty admits nothing, and every entry
+     * states a spec: the spec IS the schema for a block, so a row about a
+     * settings key or a settings value says which keys the capability
+     * declares and what each may hold (D84, C1). `admitting` is the shorthand
+     * for the rows whose subject is the name alone.
      */
-    readonly known?: readonly (string | AdmittedCapability)[];
+    readonly known?: readonly AdmittedCapability[];
 }
 
 /**
@@ -121,6 +124,88 @@ export function expectRejection(result: ConfigResult, rejection: RejectionCase):
 
 const VALID_TAIL = `capabilities: {}\n`;
 
+/**
+ * The largest wrong file there is: every UNBUILT design's `capabilities:`
+ * block, pasted as `design/guides/capabilities/` writes it, in one document.
+ *
+ * A maintainer who reads the design pages and copies what they promise writes
+ * this file, and what they must get back is six lines they can act on — one
+ * per block, in the order they wrote them, each at its own line. So the claim
+ * is the SHAPE of the refusal and not only its code: the settings under an
+ * unadmitted name add nothing, because a name with no spec has no schema to be
+ * wrong against, and depth does not multiply the complaint.
+ *
+ * Only the `capabilities:` sections are pasted. Their `mappings:` and
+ * `principals:` sections are each design's own, and two of them map the same
+ * family, so merging those would make the document a `duplicateKey` about YAML
+ * rather than a rejection about the capabilities.
+ */
+export const UNBUILT_DESIGNS_YAML = `schemaVersion: 2
+mode: observe
+capabilities:
+  advancement:
+    enabled: true
+    noticeOn: latestActivity # comment on the contributor's most recent authored item, cc maintainerTeam
+    reference: "https://github.com/hiero-ledger/governance/blob/main/roles/advancement-qualifications.md"
+    roles: # any names, any number — each is a set of pillar thresholds
+      juniorCommitter:
+        enabled: true
+        pillars:
+          activeWeeks: { atLeast: 8, window: 12 }
+          mergedPRs: { atLeast: 5, minTier: beginner }
+          reviews: { atLeast: 9 }
+          issuesAuthored: { atLeast: 3, outcome: accepted }
+        uncounted: [review substance, triage judgement, community support, responsiveness]
+      committer:
+        enabled: true
+        pillars:
+          activeWeeks: { atLeast: 20, window: 40 }
+          mergedPRs: { atLeast: 20, minTier: intermediate }
+          reviews: { atLeast: 20 }
+          issuesAuthored: { atLeast: 6, outcome: completed }
+        uncounted: [standing as junior committer, review depth, breadth, judgement, mentorship]
+      maintainer:
+        enabled: true
+        pillars:
+          activeWeeks: { atLeast: 30, window: 52 }
+          mergedPRs: { atLeast: 10, minTier: advanced }
+          reviews: { atLeast: 40 }
+        uncounted: [standing as committer, technical mastery, design leadership,
+          review depth and judgement, API and compatibility judgement, debugging depth,
+          stewardship, mentorship, community leadership, escalation]
+  assignment:
+    enabled: true
+    autoAssign: # the /assign command
+      enabled: true
+      maxOpen: 2 # default cap; 0 = uncapped
+      maxPerDay: 1 # claims per person per day
+      minAccountAge: 7d # refuses brand-new accounts
+    unassign: # the self /unassign command
+      enabled: true
+    skillGates:
+      enabled: false
+  merged:
+    enabled: true
+  notifications:
+    enabled: true
+    subscriptions: # alert name → who gets pinged
+      critical:
+        notify: maintainerTeam
+      high:
+        notify: triageTeam
+  onboarding:
+    enabled: true
+  reviews:
+    enabled: true
+    remindAfter: 7d # no review for this long, counted from entering review
+    notify: reviewersTeam # who the reminder addresses
+    exemptWhen: [blocked] # meanings that pause the clock
+    escalate: # the second, stronger ping — off unless enabled
+      enabled: true
+      escalateAfter: 21d # must exceed remindAfter by MIN_GRACE_HOURS
+      to: maintainerTeam
+`;
+
 export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     // ---- document level: the file never became a mapping ----
     {
@@ -131,12 +216,12 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "documentUnparseable",
         why: "a flow sequence is never closed",
-        yaml: `schemaVersion: 1\nmode: [observe\n`,
+        yaml: `schemaVersion: 2\nmode: [observe\n`,
     },
     {
         code: "documentUnparseable",
         why: "a quoted scalar is never closed",
-        yaml: `schemaVersion: 1\nmode: "observe\n`,
+        yaml: `schemaVersion: 2\nmode: "observe\n`,
     },
     {
         code: "documentUnparseable",
@@ -169,20 +254,20 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "duplicateKey",
         why: "mode is declared twice, and the second one wins",
-        yaml: `schemaVersion: 1\nmode: observe\nmode: active\n${VALID_TAIL}`,
+        yaml: `schemaVersion: 2\nmode: observe\nmode: active\n${VALID_TAIL}`,
         messageIncludes: ["line 3"],
     },
     {
         code: "duplicateKey",
         why: "a nested key is declared twice",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: false\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: false\n    enabled: true\n`,
     },
 
     // ---- the document parsed, but is not a mapping ----
     {
         code: "notAMapping",
         why: "a sequence at the top level",
-        yaml: `- schemaVersion: 1\n- mode: observe\n`,
+        yaml: `- schemaVersion: 2\n- mode: observe\n`,
     },
     { code: "notAMapping", why: "a bare scalar", yaml: `observe\n` },
     { code: "notAMapping", why: "a number", yaml: `1\n` },
@@ -191,72 +276,91 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "unknownKey",
         why: "capabilities is misspelt, so the block would be silently ignored",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilties: {}\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilties: {}\n`,
     },
     {
         code: "unknownKey",
         why: "several unknown keys are all reported, not just the first",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}nope: 1\nalsoNope: 2\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}nope: 1\nalsoNope: 2\n`,
         errorCount: 2,
     },
 
     {
         code: "schemaVersionUnsupported",
         why: "a version that does not exist yet",
-        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}`,
+        yaml: `schemaVersion: 3\nmode: observe\n${VALID_TAIL}`,
     },
     {
         code: "schemaVersionUnsupported",
         why: 'the version is quoted, so it is the string "1"',
         yaml: `schemaVersion: "1"\nmode: observe\n${VALID_TAIL}`,
     },
+    /**
+     * Absence is version 1, so the only way to say nothing is to write
+     * nothing. `schemaVersion:` with no value is a STATED version — null —
+     * and is refused, the way an empty `mode:` is (D56).
+     */
     {
         code: "schemaVersionUnsupported",
-        why: "no version at all — a document must say which schema it is",
-        yaml: `mode: observe\n${VALID_TAIL}`,
+        why: "the key is there with nothing after it, which states null rather than nothing",
+        yaml: `schemaVersion:\nmode: observe\n${VALID_TAIL}`,
     },
 
     {
         code: "modeInvalid",
         why: "a plausible word that is not one of the four modes",
-        yaml: `schemaVersion: 1\nmode: enabled\n${VALID_TAIL}`,
+        yaml: `schemaVersion: 2\nmode: enabled\n${VALID_TAIL}`,
     },
     {
         code: "modeInvalid",
         why: "YAML reads an unquoted no as a boolean, not a mode",
-        yaml: `schemaVersion: 1\nmode: no\n${VALID_TAIL}`,
+        yaml: `schemaVersion: 2\nmode: no\n${VALID_TAIL}`,
     },
     {
         code: "modeInvalid",
         why: "the right word in the wrong case",
-        yaml: `schemaVersion: 1\nmode: Observe\n${VALID_TAIL}`,
+        yaml: `schemaVersion: 2\nmode: Observe\n${VALID_TAIL}`,
     },
 
     // ---- capabilities ----
     {
         code: "capabilityNameInvalid",
         why: "a name that could not be a configuration key",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  Pr-Quality:\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  Pr-Quality:\n    enabled: true\n`,
     },
     {
         code: "capabilityNameInvalid",
         why: "a prototype-pollution key, rejected by the same rule",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  __proto__:\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  __proto__:\n    enabled: true\n`,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "a quoted true is a string, and truthy is not consent",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: "true"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: "true"\n`,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "1 is not a boolean either",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: 1\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: 1\n`,
     },
     {
         code: "capabilityUnknown",
         why: "mentioning a capability that does not ship",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  autoMerge:\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  autoMerge:\n    enabled: true\n`,
+    },
+    /**
+     * Six unbuilt designs, each block as its own page writes it: six errors and
+     * no others. The deep settings under each name are not a seventh
+     * complaint, because a name the App does not admit has no spec for them to
+     * be judged against. `document.test.ts` asserts the line each one lands on.
+     */
+    {
+        code: "capabilityUnknown",
+        why: "every design that is not built yet, pasted into one file",
+        yaml: UNBUILT_DESIGNS_YAML,
+        errorCount: 6,
+        path: "capabilities.advancement",
+        messageIncludes: ["not available", "intake, prQuality"],
     },
     /**
      * D84, as the file a maintainer actually types. The misspelt setting is
@@ -268,15 +372,31 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         code: "unknownKey",
         why: "a settings key the capability never declared",
         yaml:
-            `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
-            `    settings:\n      annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
-        path: "capabilities.intake.settings.annouce",
+            `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `    annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
+        path: "capabilities.intake.annouce",
         errorCount: 1,
+    },
+    /**
+     * The same file one character further on: the key is right and the VALUE
+     * is not. `announce: yes` is YAML for the string "yes", which is exactly
+     * the shape §2.4 refuses for consent — and since C1 it refuses it here,
+     * with the rest of the file, rather than on every delivery that meets it.
+     */
+    {
+        code: "settingInvalid",
+        why: "a settings value the capability's spec cannot read",
+        yaml:
+            `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `    announce: "yes"\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
+        path: "capabilities.intake.announce",
+        errorCount: 1,
+        messageIncludes: ["must be true or false"],
     },
     {
         code: "meaningRequired",
         why: "intake is enabled in a file that never maps the meaning it needs",
-        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n`,
         path: "mappings.labels.awaitingTriage",
         errorCount: 1,
         messageIncludes: ['"intake"', "add mappings.labels.awaitingTriage"],
@@ -286,42 +406,42 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "meaningNotMappable",
         why: "a meaning the platform does not have",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    almostReady: "status: nearly"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    almostReady: "status: nearly"\n`,
     },
     {
         code: "labelInvalid",
         why: "an empty label maps a meaning onto nothing",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: ""\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: ""\n`,
     },
     {
         code: "labelInvalid",
         why: "whitespace is not a label",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "   "\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "   "\n`,
     },
     {
         code: "labelInvalid",
         why: "a label that YAML read as a number",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: 3\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: 3\n`,
     },
     {
         code: "labelNotInjective",
         why: "two meanings share a label, so the mapping cannot be read backwards",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "status: go"\n    readyToMerge: "status: go"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "status: go"\n    readyToMerge: "status: go"\n`,
     },
     {
         code: "labelNotInjective",
         why: "the collision is only visible after trimming and lowercasing",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "Status: Go"\n    readyToMerge: "status: go  "\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "Status: Go"\n    readyToMerge: "status: go  "\n`,
     },
     {
         code: "commandNotMappable",
         why: "a command the platform does not have",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    approve: "/approve"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    approve: "/approve"\n`,
     },
     {
         code: "commandInvalid",
         why: "an empty command maps an act onto nothing",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: ""\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: ""\n`,
     },
     /**
      * The slash is demanded rather than added: a repository that writes a bare
@@ -331,28 +451,28 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "commandInvalid",
         why: "a bare word is not a command",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: "take"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: "take"\n`,
         messageIncludes: ['command must start with "/"'],
     },
     {
         code: "commandNotInjective",
         why: "two commands share a word, and a comment cannot mean both",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: "/take"\n    unassign: "/Take "\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  commands:\n    assign: "/take"\n    unassign: "/Take "\n`,
     },
     {
         code: "skillNotMappable",
         why: "a tier outside the ladder",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    expert: "skill: expert"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    expert: "skill: expert"\n`,
     },
     {
         code: "skillInvalid",
         why: "a tier label that YAML read as a number",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    beginner: 3\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    beginner: 3\n`,
     },
     {
         code: "skillNotInjective",
         why: "two tiers share a label",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    beginner: "skill: easy"\n    intermediate: "Skill: Easy"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    beginner: "skill: easy"\n    intermediate: "Skill: Easy"\n`,
     },
     /**
      * Tiers and positions are both GitHub labels, so one spelling cannot be
@@ -362,104 +482,113 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "skillNotInjective",
         why: "one label is both a position and a tier",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "up for grabs"\n  skills:\n    goodFirstIssue: "Up For Grabs"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    ready: "up for grabs"\n  skills:\n    goodFirstIssue: "Up For Grabs"\n`,
         messageIncludes: ['already mapped to "ready" under mappings.labels'],
         errorCount: 1,
     },
 
-    // ---- alerts (open-keyed: no notMappable, the names are the file's own) ----
-    {
-        code: "alertInvalid",
-        why: "an alert is a mapping with a label, not a bare string",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: "P0"\n`,
-    },
+    // ---- alerts (the open family: the names are the file's own) ----
     {
         code: "alertInvalid",
         why: "an alert label that YAML read as a number",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { label: 3 }\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: 3\n`,
     },
     /**
-     * The native project-field form is notifications phase 2. Refused BY NAME:
-     * a maintainer who writes the shape their design doc shows deserves to be
-     * told which phase they are waiting on, not to watch an alert never fire.
+     * The native project-field form is notifications' phase 2, and nothing
+     * refuses it by name any more: an entry is a label string, so the shape is
+     * simply not one. The day a project-field read has an endpoint row the
+     * VALUE widens to a string-or-object union, which accepts every file
+     * written against today's line.
      */
     {
         code: "alertInvalid",
-        why: "the native field form is not implemented yet",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { field: Priority, value: Critical }\n`,
-        messageIncludes: ["notifications phase 2"],
+        why: "the native field form is a mapping, and an alert is spelled by a label",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { field: Priority, value: Critical }\n`,
         errorCount: 1,
     },
+    /**
+     * The one refusal an open family has that a closed one does not need: the
+     * repository names the alerts, so the only question left about a name is
+     * whether it is shaped like every other key the parser admits.
+     */
     {
-        code: "unknownKey",
-        why: "an alert entry carries a key that is not label",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { label: "P0", colour: red }\n`,
+        code: "alertInvalid",
+        why: "an alert name that is not a key the parser admits",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    priority.critical: "P0"\n`,
+        messageIncludes: ["camelCase"],
+        errorCount: 1,
     },
     {
         code: "alertNotInjective",
         why: "two alerts share a label",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { label: "P0" }\n    urgent: { label: "p0 " }\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: "P0"\n    urgent: "p0 "\n`,
     },
     {
         code: "alertNotInjective",
         why: "one label is both a position and an alert",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    blocked: "On Fire"\n  alerts:\n    critical: { label: "on fire" }\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  labels:\n    blocked: "On Fire"\n  alerts:\n    critical: "on fire"\n`,
         messageIncludes: ['already mapped to "blocked" under mappings.labels'],
+        errorCount: 1,
+    },
+    /**
+     * Positions, tiers and alerts are all GitHub labels, so one spelling
+     * cannot be two of them. Alerts are read last, so this is the label the
+     * maintainer is told to change.
+     */
+    {
+        code: "alertNotInjective",
+        why: "one label is both a tier and an alert",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    goodFirstIssue: "good first issue"\n  alerts:\n    critical: "Good First Issue"\n`,
+        messageIncludes: ['already mapped to "goodFirstIssue" under mappings.skills'],
         errorCount: 1,
     },
 
     {
         code: "notAMapping",
-        why: "an open family that is not a mapping at all",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts: "P0"\n`,
-    },
-
-    // ---- types (the second open family: same reader, its own two codes) ----
-    {
-        code: "typeInvalid",
-        why: "a type is a mapping with a label, not a bare string",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  types:\n    bug: "Defect"\n`,
-    },
-    {
-        code: "typeInvalid",
-        why: "a type label that YAML read as a number",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  types:\n    bug: { label: 7 }\n`,
-    },
-    {
-        code: "typeNotInjective",
-        why: "two types share a label",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  types:\n    bug: { label: "Defect" }\n    regression: { label: " defect " }\n`,
-    },
-    /**
-     * Types, tiers, positions and alerts are all GitHub labels, so one
-     * spelling cannot be two of them. Types are read last, so this is the
-     * label the maintainer is told to change.
-     */
-    {
-        code: "typeNotInjective",
-        why: "one label is both a tier and a type",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  skills:\n    goodFirstIssue: "good first issue"\n  types:\n    bug: { label: "Good First Issue" }\n`,
-        messageIncludes: ['already mapped to "goodFirstIssue" under mappings.skills'],
-        errorCount: 1,
-    },
-    {
-        code: "typeNotInjective",
-        why: "one label is both an alert and a type",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}mappings:\n  alerts:\n    critical: { label: "On Fire" }\n  types:\n    bug: { label: "on fire" }\n`,
-        messageIncludes: ['already mapped to "critical" under mappings.alerts'],
-        errorCount: 1,
+        why: "the open family is not a mapping at all",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}mappings:\n  alerts: "P0"\n`,
     },
 
     // ---- principals ----
+    /**
+     * The KEY is the repository's own, so the only question about it is its
+     * shape — the same question `mappings.alerts` asks of an alert name, with
+     * the same pattern and the same sentence. A dotted name would become an
+     * error path nobody can find the line for, and would reach a settings
+     * field as a value it is checked against.
+     */
+    {
+        code: "principalNameInvalid",
+        why: "a principal name that is not a key the parser admits",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}principals:\n  maintainer.team: "@alice"\n`,
+        messageIncludes: ["camelCase"],
+        errorCount: 1,
+    },
     {
         code: "principalNotAString",
         why: "a principal is a name, not a number",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: 42\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: 42\n`,
     },
     {
         code: "principalNotAString",
         why: "nor a list",
-        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: [a, b]\n`,
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: [a, b]\n`,
+    },
+    /**
+     * `principals:` is the one section a settings value turns into a
+     * `@`-mention (`packages/core/src/capability/managed.ts`), so an empty
+     * name is refused the way an empty label is: it renders an `@` that pings
+     * nobody and says nothing about having done so.
+     */
+    {
+        code: "principalNotAString",
+        why: "a role declared with nothing after the colon",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: ""\n`,
+    },
+    {
+        code: "principalNotAString",
+        why: "whitespace is not a name",
+        yaml: `schemaVersion: 2\nmode: observe\n${VALID_TAIL}principals:\n  maintainerTeam: "   "\n`,
     },
 ];
 
@@ -469,7 +598,7 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
  * `path` it pins is the path of the only error there is.
  */
 const COMPLETE = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode: "active",
     capabilities: {},
     mappings: { labels: {} },
@@ -477,10 +606,10 @@ const COMPLETE = {
 };
 
 /** The names `COMPLETE`-based rows admit, so `intake` is never also unknown. */
-const INTAKE = ["intake"];
+const INTAKE = admitting(["intake"]);
 
 /** Two shipped capabilities, for the rows about what the App admits. */
-const SHIPPED = ["prQuality", "assignment"];
+const SHIPPED = admitting(["prQuality", "assignment"]);
 
 /**
  * What the DOCUMENT driver admits: two capabilities declared rather than
@@ -488,8 +617,16 @@ const SHIPPED = ["prQuality", "assignment"];
  * (D84). Shaped on the real ones, so a row fails the way a repository would.
  */
 export const DOCUMENT_ADMISSIONS = [
-    { name: "intake", configKeys: ["announce"], requiredMappings: { labels: ["awaitingTriage"] } },
-    { name: "prQuality", configKeys: ["marker"], requiredMappings: {} },
+    {
+        name: "intake",
+        settings: spec({ announce: flag({ default: false }) }),
+        requiredMappings: { labels: ["awaitingTriage"] },
+    },
+    {
+        name: "prQuality",
+        settings: spec({ marker: text({ optional: true }) }),
+        requiredMappings: {},
+    },
 ] as const satisfies readonly AdmittedCapability[];
 
 /** `intake` alone, for the value rows about one capability's declaration. */
@@ -499,7 +636,7 @@ const INTAKE_DECLARED = [DOCUMENT_ADMISSIONS[0]];
 const TRIAGE_DECLARED = [
     {
         name: "triage",
-        configKeys: [],
+        settings: spec({}),
         requiredMappings: { labels: ["awaitingTriage", "needsReview"] },
     },
 ] as const satisfies readonly AdmittedCapability[];
@@ -533,7 +670,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "notAMapping",
         why: "an inherited mode is not configuration and must not activate",
-        raw: Object.assign(Object.create({ mode: "active" }), { schemaVersion: 1 }),
+        raw: Object.assign(Object.create({ mode: "active" }), { schemaVersion: 2 }),
         path: null,
         errorCount: 1,
     },
@@ -542,19 +679,22 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "schemaVersionUnsupported",
         why: "a version that does not exist yet",
-        raw: { ...COMPLETE, schemaVersion: 2 },
+        raw: { ...COMPLETE, schemaVersion: 3 },
         known: INTAKE,
         path: "schemaVersion",
     },
     {
         code: "schemaVersionUnsupported",
-        why: "no version at all — a document must say which schema it is",
-        raw: { mode: "observe" },
+        why: "the version is stated as null, which is a version and not silence",
+        raw: { ...COMPLETE, schemaVersion: null },
+        known: INTAKE,
+        path: "schemaVersion",
+        errorCount: 1,
     },
     {
         code: "unknownKey",
         why: "capabilities is misspelt, and the misspelling is quoted back",
-        raw: { schemaVersion: 1, mode: "observe", capabilties: {} },
+        raw: { schemaVersion: 2, mode: "observe", capabilties: {} },
         path: "capabilties",
         messageIncludes: ['unknown key "capabilties"'],
     },
@@ -581,7 +721,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "modeInvalid",
         why: "a well-formed capability alongside a bad mode is discarded too",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode: "actively",
             capabilities: { prQuality: { enabled: true } },
         },
@@ -594,12 +734,12 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "modeInvalid",
         why: "mode: with no value is null, not a default",
-        raw: { schemaVersion: 1, mode: null },
+        raw: { schemaVersion: 2, mode: null },
     },
     {
         code: "modeInvalid",
         why: "an empty string is not a mode either",
-        raw: { schemaVersion: 1, mode: "" },
+        raw: { schemaVersion: 2, mode: "" },
     },
 
     // ---- capability level ----
@@ -613,20 +753,20 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "notAMapping",
         why: "a sequence where the capabilities block should be",
-        raw: { schemaVersion: 1, capabilities: [] },
+        raw: { schemaVersion: 2, capabilities: [] },
         messageIncludes: ["capabilities must be a mapping"],
     },
     {
         code: "notAMapping",
         why: "a capability whose body is a sequence",
-        raw: { schemaVersion: 1, capabilities: { a: [] } },
+        raw: { schemaVersion: 2, capabilities: { a: [] } },
         path: "capabilities.a",
         messageIncludes: ['capability "a" must be a mapping'],
     },
     {
         code: "notAMapping",
         why: "a null capability body is not an empty one",
-        raw: { schemaVersion: 1, capabilities: { assignment: null } },
+        raw: { schemaVersion: 2, capabilities: { assignment: null } },
         messageIncludes: ['capability "assignment" must be a mapping'],
     },
     /**
@@ -638,22 +778,15 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "notAMapping",
         why: "a capability key with no body at all",
-        raw: { schemaVersion: 1, capabilities: { assignment: undefined } },
+        raw: { schemaVersion: 2, capabilities: { assignment: undefined } },
         path: "capabilities.assignment",
         errorCount: 1,
         messageIncludes: ['capability "assignment" must be a mapping'],
     },
     {
-        code: "notAMapping",
-        why: "settings is opaque, but it is still a mapping",
-        raw: { schemaVersion: 1, capabilities: { a: { settings: [] } } },
-        path: "capabilities.a.settings",
-        messageIncludes: ["settings must be a mapping"],
-    },
-    {
         code: "capabilityNameInvalid",
         why: "a dotted path is not a capability name",
-        raw: { schemaVersion: 1, capabilities: { "a.b": { enabled: false } } },
+        raw: { schemaVersion: 2, capabilities: { "a.b": { enabled: false } } },
     },
     {
         code: "capabilityNameInvalid",
@@ -665,21 +798,26 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "capabilityNameInvalid",
         why: "PascalCase is not a configuration key",
-        raw: { schemaVersion: 1, capabilities: { PascalCase: { enabled: false } } },
+        raw: { schemaVersion: 2, capabilities: { PascalCase: { enabled: false } } },
     },
     {
         code: "capabilityNameInvalid",
         why: "a leading underscore is not a configuration key",
-        raw: { schemaVersion: 1, capabilities: { _private: { enabled: false } } },
+        raw: { schemaVersion: 2, capabilities: { _private: { enabled: false } } },
     },
     {
         code: "capabilityNameInvalid",
         why: "the empty name",
-        raw: { schemaVersion: 1, capabilities: { "": { enabled: false } } },
+        raw: { schemaVersion: 2, capabilities: { "": { enabled: false } } },
     },
+    /**
+     * The block is flat, so there is no third kind of key in it: everything
+     * beside `enabled` is a setting, and one the capability never declared is
+     * refused at its own line.
+     */
     {
         code: "unknownKey",
-        why: "an unknown key inside a capability block",
+        why: "a key beside enabled is a setting, and this capability declares none",
         raw: { ...COMPLETE, capabilities: { intake: { enabled: true, stray: 1 } } },
         known: INTAKE,
         path: "capabilities.intake.stray",
@@ -696,14 +834,14 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "unknownKey",
         why: "a misspelt settings key configured nothing and said nothing",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: {
-                intake: { enabled: true, settings: { annouce: true } },
+                intake: { enabled: true, annouce: true },
             },
             mappings: { labels: { awaitingTriage: "status: triage" } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.settings.annouce",
+        path: "capabilities.intake.annouce",
         errorCount: 1,
         messageIncludes: ['unknown setting "annouce"', "it declares: announce"],
     },
@@ -716,22 +854,22 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "unknownKey",
         why: "a typo in a disabled block is caught now, not on the day it is enabled",
         raw: {
-            schemaVersion: 1,
-            capabilities: { intake: { enabled: false, settings: { annouce: true } } },
+            schemaVersion: 2,
+            capabilities: { intake: { enabled: false, annouce: true } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.settings.annouce",
+        path: "capabilities.intake.annouce",
         errorCount: 1,
     },
     {
         code: "unknownKey",
         why: "a capability declaring no settings says so rather than showing a blank list",
         raw: {
-            schemaVersion: 1,
-            capabilities: { triage: { enabled: false, settings: { anything: 1 } } },
+            schemaVersion: 2,
+            capabilities: { triage: { enabled: false, anything: 1 } },
         },
         known: TRIAGE_DECLARED,
-        path: "capabilities.triage.settings.anything",
+        path: "capabilities.triage.anything",
         messageIncludes: ["it declares: no settings"],
     },
     /**
@@ -743,30 +881,71 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "unknownKey",
         why: "__proto__ as a settings key is an ordinary undeclared one",
         raw: JSON.parse(
-            '{"schemaVersion":1,"capabilities":{"intake":{"enabled":false,"settings":{"__proto__":{"announce":true}}}}}',
+            '{"schemaVersion":1,"capabilities":{"intake":{"enabled":false,"__proto__":{"announce":true}}}}',
         ),
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.settings.__proto__",
+        path: "capabilities.intake.__proto__",
         errorCount: 1,
     },
     /**
-     * A name-only admission buys neither new check. `intake` is admitted as a
-     * bare string here and the same typo passes — which is the seam stated as
-     * behaviour, not an oversight: a caller that declares nothing has told the
-     * parser nothing to judge against.
+     * The name check and the settings checks are separate rules over one
+     * block list, and a file can trip both: the misspelt setting belongs to
+     * the admitted capability, the unknown name to the block beside it.
+     * Reported together, in the order the blocks are written (D38).
      */
     {
-        code: "capabilityUnknown",
-        why: "a name-only admission still judges the NAME, and nothing more",
+        code: "unknownKey",
+        why: "a misspelt setting and an unknown capability are both reported",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: {
-                intake: { enabled: false, settings: { annouce: true } },
+                intake: { enabled: false, annouce: true },
                 ghost: { enabled: false },
             },
         },
-        known: INTAKE,
-        path: "capabilities.ghost",
+        known: INTAKE_DECLARED,
+        alsoReports: ["capabilityUnknown"],
+        path: "capabilities.intake.annouce",
+        errorCount: 2,
+    },
+
+    // ---- settings values, judged against the same spec (C1) ----
+    /**
+     * D38 extended from key names to VALUES. `announce: "yes"` is not consent
+     * and never was, and until C1 the file was valid: the capability read the
+     * block on every delivery, reported it unusable, and did nothing — while
+     * every other capability in the file went on running. One error anywhere
+     * rejects the whole file, and a settings value is now one of them.
+     */
+    {
+        code: "settingInvalid",
+        why: "a truthy string where the spec reads a boolean",
+        raw: {
+            schemaVersion: 2,
+            capabilities: {
+                intake: { enabled: true, announce: "yes" },
+            },
+            mappings: { labels: { awaitingTriage: "status: triage" } },
+        },
+        known: INTAKE_DECLARED,
+        path: "capabilities.intake.announce",
+        errorCount: 1,
+        messageIncludes: ["capabilities.intake.announce: must be true or false"],
+    },
+    /**
+     * The other half of D84's reasoning, one level down: a DISABLED block's
+     * values are read too, because a value that waits for the day somebody
+     * flips `enabled` is the same latent surprise as a key that does.
+     */
+    {
+        code: "settingInvalid",
+        why: "a bad value in a disabled block is caught now, not on the day it is enabled",
+        raw: {
+            schemaVersion: 2,
+            capabilities: { intake: { enabled: false, announce: 1 } },
+        },
+        known: INTAKE_DECLARED,
+        path: "capabilities.intake.announce",
         errorCount: 1,
     },
 
@@ -780,7 +959,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "meaningRequired",
         why: "intake is enabled without the triage meaning it declares it needs",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: { intake: { enabled: true } },
             mappings: { labels: { ready: "status: ready" } },
         },
@@ -797,7 +976,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "meaningRequired",
         why: "a repository mapping nothing at all is missing it just the same",
-        raw: { schemaVersion: 1, capabilities: { intake: { enabled: true } } },
+        raw: { schemaVersion: 2, capabilities: { intake: { enabled: true } } },
         known: INTAKE_DECLARED,
         path: "mappings.labels.awaitingTriage",
         errorCount: 1,
@@ -810,7 +989,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "meaningRequired",
         why: "both missing meanings are reported, not just the first",
-        raw: { schemaVersion: 1, capabilities: { triage: { enabled: true } } },
+        raw: { schemaVersion: 2, capabilities: { triage: { enabled: true } } },
         known: TRIAGE_DECLARED,
         errorCount: 2,
         messageIncludes: ['"awaitingTriage"', '"needsReview"'],
@@ -819,7 +998,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "meaningRequired",
         why: "a partially mapped repository is told only about what is missing",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: { triage: { enabled: true } },
             mappings: { labels: { awaitingTriage: "status: triage" } },
         },
@@ -834,26 +1013,27 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
      */
     {
         code: "unknownKey",
-        why: "a misspelt capability key and an unmappable meaning are reported together",
+        why: "a misspelt consent key, an unknown capability and an unmappable meaning are reported together",
         raw: {
-            schemaVersion: 1,
-            capabilities: { intake: { enable: true } },
+            schemaVersion: 2,
+            capabilities: { intake: { enable: true }, ghost: { enabled: false } },
             mappings: { labels: { readyForDev: "status: ready" } },
         },
+        known: INTAKE,
         alsoReports: ["capabilityUnknown", "meaningNotMappable"],
-        messageIncludes: ['unknown key "enable"', '"readyForDev" is not a mappable meaning'],
+        messageIncludes: ['unknown setting "enable"', '"readyForDev" is not a mappable meaning'],
     },
     // §2.4 — only boolean true enables a capability; truthiness is not consent.
     {
         code: "capabilityEnabledNotBoolean",
         why: "1 is not a boolean",
-        raw: { schemaVersion: 1, capabilities: { intake: { enabled: 1 } } },
+        raw: { schemaVersion: 2, capabilities: { intake: { enabled: 1 } } },
         known: INTAKE,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "a quoted true is a string",
-        raw: { schemaVersion: 1, capabilities: { intake: { enabled: "true" } } },
+        raw: { schemaVersion: 2, capabilities: { intake: { enabled: "true" } } },
         known: INTAKE,
     },
     {
@@ -866,7 +1046,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "capabilityUnknown",
         why: "a capability that does not ship, with the available names listed",
-        raw: { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
+        raw: { schemaVersion: 2, capabilities: { checksGate: { enabled: true } } },
         known: SHIPPED,
         path: "capabilities.checksGate",
         messageIncludes: ['"checksGate"', "not available", "assignment, prQuality"],
@@ -878,15 +1058,15 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "capabilityUnknown",
         why: "an empty admission list says none rather than showing a blank list",
-        raw: { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
+        raw: { schemaVersion: 2, capabilities: { checksGate: { enabled: true } } },
         messageIncludes: ["(available: none)"],
     },
     {
         code: "capabilityUnknown",
         why: "a DISABLED unknown capability is rejected, not retained as a tombstone",
         raw: {
-            schemaVersion: 1,
-            capabilities: { removedProbe: { enabled: false, settings: { old: 1 } } },
+            schemaVersion: 2,
+            capabilities: { removedProbe: { enabled: false, old: 1 } },
         },
         known: SHIPPED,
         path: "capabilities.removedProbe",
@@ -896,7 +1076,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "capabilityUnknown",
         why: "a shipped capability alongside an unshipped one is discarded too",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: { prQuality: { enabled: true }, checksGate: { enabled: true } },
         },
         known: SHIPPED,
@@ -915,21 +1095,21 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "notAMapping",
         why: "a sequence where the mappings block should be",
-        raw: { schemaVersion: 1, mappings: [] },
+        raw: { schemaVersion: 2, mappings: [] },
         path: "mappings",
         messageIncludes: ["mappings must be a mapping"],
     },
     {
         code: "notAMapping",
         why: "a sequence where the label table should be",
-        raw: { schemaVersion: 1, mappings: { labels: [] } },
+        raw: { schemaVersion: 2, mappings: { labels: [] } },
         path: "mappings.labels",
         messageIncludes: ["mappings.labels must be a mapping"],
     },
     {
         code: "unknownKey",
         why: "a family mappings does not have",
-        raw: { schemaVersion: 1, mappings: { fields: {} } },
+        raw: { schemaVersion: 2, mappings: { fields: {} } },
         path: "mappings.fields",
         messageIncludes: ['mappings: unknown key "fields"'],
     },
@@ -961,7 +1141,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "labelNotInjective",
         why: "two meanings share a label exactly",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mappings: { labels: { ready: "status: wip", inProgress: "status: wip" } },
         },
         messageIncludes: [
@@ -974,7 +1154,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "labelNotInjective",
         why: "injectivity is not scoped per entity — the strict reading, pending D34",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mappings: { labels: { ready: "attention", needsReview: "attention" } },
         },
     },
@@ -995,7 +1175,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "labelNotInjective",
         why: "labels differing only in case are one label to GitHub",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mappings: { labels: { ready: "status: ready", needsReview: "Status: Ready" } },
         },
         messageIncludes: ["injective", "GitHub treats as the same label"],
@@ -1004,7 +1184,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "labelNotInjective",
         why: "labels differing only in surrounding space are one label to GitHub",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mappings: { labels: { ready: "status: ready", needsReview: "  status: ready  " } },
         },
         messageIncludes: ["injective", "GitHub treats as the same label"],
@@ -1013,7 +1193,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "labelNotInjective",
         why: "labels differing in both case and surrounding space",
         raw: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mappings: { labels: { ready: "Status: Ready", needsReview: " status: ready " } },
         },
         messageIncludes: ["injective", "GitHub treats as the same label"],
@@ -1023,16 +1203,25 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "notAMapping",
         why: "a sequence where the principals block should be",
-        raw: { schemaVersion: 1, principals: [] },
+        raw: { schemaVersion: 2, principals: [] },
         path: "principals",
         messageIncludes: ["principals must be a mapping"],
     },
     {
+        code: "principalNameInvalid",
+        why: "a dotted principal name is refused before its value is read",
+        raw: { ...COMPLETE, principals: { "a.b": "@alice" } },
+        known: INTAKE,
+        path: "principals.a.b",
+        messageIncludes: ['principals: "a.b" is not a valid name (camelCase)'],
+        errorCount: 1,
+    },
+    {
         code: "principalNotAString",
         why: "a principal is a name, not a number",
-        raw: { schemaVersion: 1, principals: { a: 1 } },
+        raw: { schemaVersion: 2, principals: { a: 1 } },
         path: "principals.a",
-        messageIncludes: ["principals.a: must be a string"],
+        messageIncludes: ["principals.a: must be a non-empty string"],
     },
     {
         code: "principalNotAString",
@@ -1040,6 +1229,22 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: { ...COMPLETE, principals: { reviewer: 3 } },
         known: INTAKE,
         path: "principals.reviewer",
+    },
+    {
+        code: "principalNotAString",
+        why: "an empty name would render an @ that pings nobody",
+        raw: { ...COMPLETE, principals: { reviewer: "" } },
+        known: INTAKE,
+        path: "principals.reviewer",
+        errorCount: 1,
+    },
+    {
+        code: "principalNotAString",
+        why: "and whitespace is the same absence one space along",
+        raw: { ...COMPLETE, principals: { reviewer: " \t " } },
+        known: INTAKE,
+        path: "principals.reviewer",
+        errorCount: 1,
     },
 
     // ---- hostile keys: `__proto__` reaches every level, and is ordinary at each ----
@@ -1068,5 +1273,18 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         why: "__proto__ under labels is an ordinary unmappable meaning",
         raw: JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
         path: "mappings.labels.__proto__",
+    },
+    /**
+     * The same key one section along, and the reason `principals` grew a name
+     * check: a declared principal reaches a `principal()` field as a value it
+     * is checked against, so a name the shape rule does not admit is refused
+     * where the maintainer wrote it.
+     */
+    {
+        code: "principalNameInvalid",
+        why: "a principal named __proto__ is rejected rather than lost after validation",
+        raw: JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"@alice"}}'),
+        path: "principals.__proto__",
+        messageIncludes: ["not a valid name"],
     },
 ];

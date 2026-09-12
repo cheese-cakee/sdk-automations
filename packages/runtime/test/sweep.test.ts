@@ -58,18 +58,20 @@ const DAY_MS = 24 * 60 * 60_000;
 const ISSUE: ItemRef = { kind: "issue", number: 12 };
 const PULL: ItemRef = { kind: "pullRequest", number: 34 };
 
-const CONFIG_TEXT = `schemaVersion: 1
+const CONFIG_TEXT = `schemaVersion: 2
 mode: dry-run
 capabilities:
   inactivity:
     enabled: true
-    settings:
-      remindAfterDays: 14
-      reapAfterDays: 21
-      issues:
+    remindAfter: 14d
+    reap:
+      after: 21d
+    issues:
+      enabled: true
+      reap:
         enabled: true
-      pullRequests:
-        enabled: true
+    pullRequests:
+      enabled: true
 mappings:
   commands:
     working: "/working"
@@ -602,6 +604,7 @@ describe("the reader and the driver together", () => {
                     http: http.client,
                     repository: REPOSITORY,
                     config,
+                    knownCapabilities: [],
                     clock: () => NOW,
                 }),
             clock: () => NOW,

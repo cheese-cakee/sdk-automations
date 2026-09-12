@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
     declareCapability,
+    spec,
     deriveIdempotencyKey,
     intentFactory,
     intentFactoryFor,
@@ -22,7 +23,7 @@ const occasion = {
 const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],
@@ -106,6 +107,29 @@ describe("what the factory defaults", () => {
             meaningsPresent: [],
             meaningsAbsent: ["awaitingTriage"],
             closed: false,
+        });
+    });
+
+    /**
+     * The byte-compatibility half of the mode claim: a capability that claims
+     * no mode produces an intent with NO such key, which is what every intent
+     * written before the mode was claimable looks like — so a record from then
+     * and one from now are the same object, not two.
+     */
+    it("writes the mode claim in only when one is made", () => {
+        expect("pullRequestMode" in label().claims).toBe(false);
+        const claimed = make({
+            operation: "applyMappedLabel",
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+            cause: "c",
+            claims: { closed: false, pullRequestMode: "draft" },
+            explain: { summary: "s" },
+        });
+        expect(claimed.claims).toEqual({
+            meaningsPresent: [],
+            meaningsAbsent: [],
+            closed: false,
+            pullRequestMode: "draft",
         });
     });
 

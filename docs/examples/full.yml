@@ -2,46 +2,63 @@
 # every mapping family filled, a principal, and inactivity's clocks overridden
 # at each of the three levels they can be. Not a recommendation — a catalogue
 # of the options, each with the sentence that says what it is for. Copy the
-# parts you want. The test suite holds this file to that claim: a capability
-# the App gains and this file does not is a failing check.
+# parts you want. Every setting at its DEFAULT, with its sentence, is the
+# generated tree on docs/capabilities.md; this file is where the overrides
+# are shown. The test suite holds it to that claim: a capability the App
+# gains and this file does not is a failing check.
 #
 # `dry-run` is the rehearsal: the report names each change the App would make,
 # and nothing is written.
 
-schemaVersion: 1
+schemaVersion: 2 # the flat capability shape used by this catalogue
 mode: dry-run
 
 capabilities:
   intake: # a new issue is labelled awaitingTriage
     enabled: true
-    settings:
-      announce: true # and told so in a comment (default: false)
+    announce: true # and told so in a comment (default: false)
 
   prQuality: # one comment per pull request, kept current: what stops it being reviewable
+    enabled: true
+    checks: # every check the App runs today, switched on — each one is off until it is
+      linkedIssues: # the pull request references no issue
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Linking-Issues" # optional — shown to the contributor on failure
+
+  configReport: # a pull request that changes this file gets one comment saying what it would mean
     enabled: true # reads no settings today
 
-  inactivity: # on the daily schedule: remind about stalled work, then release it
+  inactivity: # on the hourly schedule: remind about stalled work, then release it
     enabled: true
-    settings:
-      exemptBlocked: true # default: true — an item carrying `blocked` is never reminded or reaped
-      remindAfterDays: 14 # default: 14 — the capability-wide clocks …
-      reapAfterDays: 21 # default: 21 — … which every ladder and reason may override
-      issues: # assigned issues with no open pull request
+    exemptBlocked: true # default: true — an item carrying `blocked` is never reminded or reaped
+    remindAfter: 14d # default: 14d — the capability-wide reminder …
+    reap: # … and the capability-wide release clock, which every level inherits
+      after: 21d # default: 21d — consent to act belongs to each level that acts
+    issues: # assigned issues with no open pull request
+      enabled: true
+      remindAfter: 21d # ladder override
+      reap: # omit this block and the ladder reminds and never releases
         enabled: true
-        remindAfterDays: 21 # ladder override
-        reapAfterDays: 30 # reap = release the assignment
-      pullRequests: # any pull request, linked or not
-        enabled: true
-        reapAfterDays: 60 # ladder override; remindAfterDays inherits 14. reap = close and release
-        reapWhen: # the ladder applies only to pull requests in one of these states
-          draft: # GitHub's draft state — no mapping needed
+        after: 30d # reap = release the assignment
+    pullRequests: # any pull request, linked or not
+      enabled: true
+      reap: # a section, not a block: the ladder passes the clock down and acts on nothing itself
+        after: 60d # ladder override; remindAfter inherits 14d. reap = close
+      reapWhen: # the ladder applies only to pull requests in one of these states
+        draft: # GitHub's draft state — no mapping needed
+          enabled: true
+          reap:
+            enabled: true # inherits the ladder's 60d
+        changesRequested: # GitHub's review state — no mapping needed
+          enabled: true
+          reap:
             enabled: true
-          changesRequested: # GitHub's review state — no mapping needed
+        needsRevision: # your needsRevision label, mapped below
+          enabled: true
+          remindAfter: 2d # reason override — a quality failure moves fast
+          reap:
             enabled: true
-          needsRevision: # your needsRevision label, mapped below
-            enabled: true
-            remindAfterDays: 2 # reason override — a quality failure moves fast
-            reapAfterDays: 5
+            after: 5d
 
 mappings:
   labels: # the App names the meaning; you supply the label it is spelled with
@@ -62,11 +79,8 @@ mappings:
     intermediate: "skill: intermediate"
     advanced: "skill: advanced"
   alerts: # names are yours; each is carried by a label
-    p0: { label: "P0-🔥" }
-    security: { label: "Security" }
-  types: # names are yours
-    bug: { label: "Bug" }
-    docs: { label: "Documentation" }
+    p0: "P0-🔥"
+    security: "Security"
 
 principals: # roles a capability may address, one name each
   maintainerTeam: hiero-sdk-js-maintainers

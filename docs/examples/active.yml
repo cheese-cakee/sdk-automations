@@ -4,42 +4,53 @@
 # records `modeUnsupported` and rejects this mode before deciding. It performs
 # no GitHub effect.
 #
-# `inactivity` shows a nested settings block while disabled — two ladders and a
-# per-reason clock. The shared parser confirms only that `settings` is a
+# `inactivity` shows a nested block while disabled — two ladders and a
+# per-reason clock. The shared parser confirms only that the block is a
 # mapping; the capability's own spec reads the keys and reports what it cannot.
 
-schemaVersion: 1
+schemaVersion: 2
 mode: active
 
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: true
+    announce: true
 
   prQuality:
     enabled: true
+    checks: # a check is off until it is enabled, the capability's own consent one level down
+      linkedIssues:
+        enabled: true
 
   inactivity:
     enabled: false
-    settings:
-      exemptBlocked: true # the blocked mapping skips every warning and action
-      remindAfterDays: 14 # defaults — any ladder or reason may override
-      reapAfterDays: 21 # reap = release the assignment (issues) or close the PR
-      issues: # warns, then releases assigned issues with no open PR
-        enabled: true
-      pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
-        enabled: true
-        reapAfterDays: 60 # ladder override
-        reapWhen: # reminders and actions apply only to PRs in:
-          draft: # GitHub draft mode
+    exemptBlocked: true # the blocked mapping skips every warning and action
+    remindAfter: 14d # default — any ladder or reason may override
+    reap:
+      after: 21d # the release clock every level inherits; consent is each acting level's own
+    issues: # warns, then releases assigned issues with no open PR
+      enabled: true
+      reap:
+        enabled: true # drop this block and the ladder reminds and never releases
+    pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
+      enabled: true
+      reap: # a section here — the ladder passes its clock down and acts on nothing itself
+        after: 60d # ladder override
+      reapWhen: # reminders and actions apply only to PRs in:
+        draft: # GitHub draft mode
+          enabled: true
+          reap:
             enabled: true
-          changesRequested: # GitHub review state
+        changesRequested: # GitHub review state
+          enabled: true
+          reap:
             enabled: true
-          needsRevision: # the label pr-quality's label mode applies for quality failures
+        needsRevision: # the label pr-quality's label mode applies for quality failures
+          enabled: true
+          remindAfter: 2d # reason override — quality failures reap fast
+          reap:
             enabled: true
-            remindAfterDays: 2 # reason override — quality failures reap fast
-            reapAfterDays: 5
+            after: 5d
 
 mappings:
   labels:

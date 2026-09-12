@@ -55,13 +55,12 @@ const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
 
 // Maps awaitingTriage because intake requires it: enabling without the
 // mapping is now a configRejected, which has its own coverage in core.
-const CONFIG_TEXT = `schemaVersion: 1
+const CONFIG_TEXT = `schemaVersion: 2
 mode: dry-run
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: false
+    announce: false
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -717,14 +716,14 @@ describe("the configuration this lane reads", () => {
  * request to be swept gets written down (`design/guides/sweep.md` §2).
  */
 describe("the sweep row this lane declares", () => {
-    const INACTIVITY_CONFIG = `schemaVersion: 1
+    const INACTIVITY_CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
   inactivity:
     enabled: ENABLED
-    settings:
-      remindAfterDays: 14
-      reapAfterDays: 21
+    remindAfter: 14d
+    reap:
+      after: 21d
 `;
 
     const declaring = (enabled: boolean) =>
@@ -800,7 +799,7 @@ describe("one fact record decided outside the queue", () => {
                     ok: true,
                     document: {
                         revision: "rev-sweep",
-                        text: `schemaVersion: 1\nmode: ${mode}\ncapabilities:\n  inactivity:\n    enabled: true\n`,
+                        text: `schemaVersion: 2\nmode: ${mode}\ncapabilities:\n  inactivity:\n    enabled: true\n`,
                     },
                 }),
             },

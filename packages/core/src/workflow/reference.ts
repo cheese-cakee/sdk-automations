@@ -1,13 +1,10 @@
 /**
- * The taxonomy as an executable spec: given a state and a requested move,
- * what does the item look like afterwards?
+ * The taxonomy as an executable spec: given a state and a requested move, what
+ * does the item look like afterwards?
  *
- * NOTHING IN PRODUCTION CALLS THIS. `capability/intent.ts` screens moves
- * through `canTransition*` in `transitions.ts`; this file walks the whole
- * state machine, which no runtime path needs. It is the test oracle today and
- * the adapter's read-back conformance checker when that lands (D93).
- *
- * So read it as a specification, not as a hot path.
+ * NOTHING IN PRODUCTION CALLS THIS. It walks the whole state machine — the test
+ * oracle today, the adapter's read-back conformance checker when that lands
+ * (D93). Read it as a specification, not as a hot path.
  */
 
 import type { IssueMeaning, PrMeaning } from "./positions.js";
@@ -26,8 +23,7 @@ export interface Outcome<M> {
     readonly verdict: TransitionVerdict;
 }
 
-/** The walk itself. Generic so both flows share it; private so no caller
- * ever names `M` or `C`. */
+/** The walk itself, generic so both flows share it. */
 function walk<M, C extends TransitionCause>(
     state: WorkItemState<M>,
     request: TransitionRequest<M, C>,
@@ -67,12 +63,10 @@ function walk<M, C extends TransitionCause>(
     if (!verdict.allowed) return { state, verdict };
     return {
         state: {
-            // Closure is orthogonal to position: closing records why the
-            // item closed but preserves the mapped position for reopen.
+            // Closure is orthogonal to position: the position survives for reopen.
             meaning: request.to === null ? state.meaning : request.to,
             blocked: state.blocked,
-            // Only a closure cause can reach `to: null` — pinned by the
-            // edge-table invariant test, so this is never null here.
+            // Only a closure cause reaches `to: null` — pinned by the edge-table test.
             closedBy: request.to === null ? closureReasonFor(request.cause) : null,
         },
         verdict,
@@ -97,9 +91,7 @@ export function applyPrTransition(
 
 /**
  * Reopening is a closure CLEAR, not a transition: closing never removes the
- * position labels (D35), so a reopened item returns exactly where it was. A
- * merged pull request can never reopen, which GitHub enforces and this refuses
- * explicitly rather than omitting (`FINDING(taxonomy-reopen)`, D49, D28).
+ * position labels (D35), so a reopened item returns where it was.
  */
 export function applyReopen<M>(state: WorkItemState<M>): Outcome<M> {
     if (state.closedBy === null) {

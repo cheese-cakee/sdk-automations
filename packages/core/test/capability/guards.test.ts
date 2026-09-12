@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
     declareCapability,
+    spec,
     skipped,
     type PlatformHandle,
     type StructuredExplanation,
@@ -22,7 +23,7 @@ import {
 const fixture = declareCapability({
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],

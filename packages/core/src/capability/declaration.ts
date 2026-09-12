@@ -1,7 +1,6 @@
 /**
  * What a capability declares about itself, and the one admission path for the
- * complete set the platform ships. `boundary.ts` invokes an admitted
- * capability; the platform catalogues remain authoritative for operation facts.
+ * complete set the platform ships.
  */
 
 import {
@@ -16,6 +15,7 @@ import type { FactGroup, FactKind, IntentOperation, ResolverName } from "./catal
 import { carriesFactGroup, FACT_GROUPS, FACT_KINDS, RESOLVER_NAMES } from "./catalogue.js";
 import { INTENT_OPERATIONS } from "./operations/index.js";
 import type { ProducerName } from "./producers.js";
+import type { Spec } from "./spec.js";
 import {
     isWebhookProducer,
     producerReads,
@@ -25,14 +25,8 @@ import {
 } from "./producers.js";
 
 /**
- * contract.md §1 triggers, split into the two real shapes.
- *
- * Not the catalogue's `Trigger`, which is what actually woke the platform for
- * one record. This is what a capability says it wants to be woken FOR.
- *
- * A trigger NAMES A PRODUCER — an event the webhook producer of that event, a
- * schedule the sweep — which is what makes a declared need answerable at boot
- * rather than at the first delivery (`producers.ts`).
+ * contract.md §1 triggers: what a capability wants to be woken for. A trigger
+ * names a producer, so a declared need is answerable at boot (`producers.ts`).
  */
 export type DeclaredTrigger =
     | { readonly kind: "event"; readonly event: string }
@@ -46,11 +40,7 @@ export interface OperationalNeeds {
     readonly externalDelivery: boolean;
 }
 
-/**
- * The three mapping families a declaration may demand, unnarrowed — an
- * external declaration is validated against the catalogues, never trusted to
- * have named them correctly.
- */
+/** The three mapping families a declaration may demand, unnarrowed. */
 export interface DeclaredMappings {
     readonly labels?: readonly string[];
     readonly commands?: readonly string[];
@@ -58,25 +48,13 @@ export interface DeclaredMappings {
 }
 
 /**
- * A capability's self-description — `design/contracts/contract.md` §1.
- *
- * `configKeys` and `requiredMappings` are the two the CONFIGURATION layer
- * reads: the first says which `settings` names are legal, the second which
- * meanings must be mapped, by family, before the capability may be enabled.
- * Both are empty rather than absent for a capability that wants neither, so
- * "declares nothing" is a written answer instead of a forgotten field (D84).
- *
- * `facts` and `needs` are the two the ENGINE reads (contracts/facts.md §3):
- * which item kinds this capability is handed a record for, and which groups of
- * that record it reads. A capability is invoked only when every group it needs
- * was read, so it never sees `Unread` for one it declared — and a need no
- * producer its triggers name ever reads is refused here, because that
- * capability would be skipped on every delivery instead.
+ * A capability's self-description — contract.md §1. `settings` and
+ * `requiredMappings` are empty rather than absent when neither is wanted (D84).
  */
 export interface CapabilityDeclaration {
     readonly name: string;
     readonly triggers: readonly DeclaredTrigger[];
-    readonly configKeys: readonly string[];
+    readonly settings: Spec;
     readonly requiredMappings: DeclaredMappings;
     readonly facts: readonly string[];
     readonly needs: readonly string[];
@@ -85,14 +63,7 @@ export interface CapabilityDeclaration {
     readonly operationalNeeds: OperationalNeeds;
 }
 
-/**
- * A declaration whose names are catalogue keys. `CapabilityDeclaration`
- * keeps `readonly string[]` so malformed external declarations remain
- * runtime-validatable; the runtime boundary needs key-constrained names.
- *
- * Narrowing `requiredMappings` here is also what makes a declaration usable
- * as `AdmittedCapability` without a cast — the shape `parseConfig` admits.
- */
+/** A declaration whose names are catalogue keys — the shape `parseConfig` admits. */
 export interface TypedDeclaration extends CapabilityDeclaration {
     readonly requiredMappings: RequiredMappings;
     readonly facts: readonly FactKind[];
@@ -102,12 +73,8 @@ export interface TypedDeclaration extends CapabilityDeclaration {
 }
 
 /**
- * Identity at runtime; the point is the `const` type parameter, which
- * pins `facts`, `needs`, `resolvers`, and `intents` as literal tuples. A
- * declaration written as a plain object widens them to `string[]`, and
- * every projection in `boundary.ts` then degrades to "any name" — losing
- * exactly the isolation the boundary exists to enforce. Declare capabilities
- * through this function, never by annotating them `: TypedDeclaration`.
+ * Pins `facts`, `needs`, `resolvers`, and `intents` as literal tuples. Declare
+ * capabilities through this, never by annotating them `: TypedDeclaration`.
  */
 export function declareCapability<const D extends TypedDeclaration>(d: D): D {
     return d;
@@ -121,9 +88,8 @@ function duplicates(values: readonly string[]): string[] {
 }
 
 /**
- * Is the declaration structurally sound, judged without the catalogues? Pure;
- * returns every violation rather than the first, in the same errors-as-values
- * style as `parseConfig`.
+ * Is the declaration structurally sound, judged without the catalogues?
+ * Returns every violation rather than the first.
  */
 function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
@@ -143,8 +109,14 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
         errors.push(`${at}: declares a schedule trigger but operationalNeeds.schedule is false`);
     }
 
+    if (Object.hasOwn(d.settings, "enabled")) {
+        errors.push(
+            `${at}: settings may not declare "enabled" — it is consent on the capability's own block, whose other keys are the settings`,
+        );
+    }
+
+    // No `settings` row: a spec's keys are unique by construction.
     const lists: (readonly [string, readonly string[]])[] = [
-        ["configKeys", d.configKeys],
         ["facts", d.facts],
         ["needs", d.needs],
         ["resolvers", d.resolvers],
@@ -186,11 +158,6 @@ function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly str
     const errors: string[] = [];
     const at = `capability "${declaration.name}"`;
 
-    /**
-     * A meaning nobody can map is a requirement nobody can satisfy: the
-     * capability would be enabled-and-refused in every repository, and the
-     * configuration error would name a meaning the file is forbidden to spell.
-     */
     for (const family of MAPPING_FAMILIES) {
         for (const meaning of declaration.requiredMappings[family] ?? []) {
             if (FAMILY_MEANINGS[family].some((name) => name === meaning)) continue;
@@ -202,12 +169,7 @@ function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly str
             errors.push(`${at}: fact kind "${fact}" is not in the fact catalogue`);
         }
     }
-    /**
-     * facts.md §3: a need is satisfiable only if some declared kind carries the
-     * group. `review` on an issue-only declaration is a capability the engine
-     * could never invoke, refused once at boot rather than skipped in silence
-     * on every record.
-     */
+    // facts.md §3: a need is satisfiable only if some declared kind carries the group.
     const kinds = declaration.facts.filter(isFactKind);
     for (const need of declaration.needs) {
         if (!isFactGroup(need)) {
@@ -230,19 +192,8 @@ function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly str
 }
 
 /**
- * Every need this producer leaves unread, as errors — the defect that made the
- * check necessary, in one sentence each.
- *
- * A need the waking producer never reads is not a capability that runs with
- * less. It is a capability that never runs: the engine records `factsUnread`
- * and skips, on every delivery, in silence. Finding it costs a build, and it
- * reads as a bug in the capability (the capability study of 2026-09-10,
- * defect 2).
- *
- * The message names all three things the fix needs — which trigger, which
- * group, and who does read it — because the repair is always either a
- * different trigger or one fewer need. A group with no reader at all cannot
- * arise: `producers.test.ts` holds every group to at least one producer.
+ * Every need this producer leaves unread, as errors: the engine records
+ * `factsUnread` and skips every delivery the trigger wakes, in silence.
  */
 function needsUnreadBy(
     declaration: CapabilityDeclaration,
@@ -263,14 +214,7 @@ function needsUnreadBy(
     return errors;
 }
 
-/**
- * Is every declared need answered by the producer each trigger wakes?
- *
- * Per trigger, because both quantifiers are real: one capability may be woken
- * by a webhook and by a sweep, and each answers for its own deliveries. An
- * event no producer wakes on is the same defect one step earlier — nothing
- * ever delivers, so the capability is dead code whatever it needs.
- */
+/** Is every declared need answered by the producer each trigger wakes? */
 function checkAgainstProducers(declaration: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
     for (const trigger of declaration.triggers) {
@@ -289,10 +233,7 @@ function checkAgainstProducers(declaration: CapabilityDeclaration): readonly str
     return errors;
 }
 
-/**
- * Validate the complete direct capability set before any caller can use it.
- * Returns every structural, catalogue, and duplicate-name error.
- */
+/** Validate the complete direct capability set; returns every error. */
 export function validateCapabilityDeclarations(
     declarations: readonly CapabilityDeclaration[],
 ): readonly string[] {

@@ -1,20 +1,7 @@
 /**
  * The shell's log: one JSON line per event, over a closed vocabulary.
- *
- * The question this exists to answer is "what happened to delivery X", so
- * every line about one delivery carries `deliveryId`, and the union below
- * is what enforces that — a variant that omitted the field would fail to
- * compile at the site that emits it. Every line also carries `at` and
- * `event`; nothing else is universal.
- *
- * There is deliberately no `level` field. The vocabulary is closed and
- * small enough to read, so the event name already says whether a line is
- * routine, and a second severity vocabulary would only be a thing to keep
- * in step with the first. `PROBLEM_EVENTS` picks stderr over stdout
- * instead, for the operator who watches only one of the two.
- *
- * No dependency, and none wanted: a logging library arrives with
- * transports, levels and configuration for a surface of twenty-two events.
+ * Every line about one delivery carries `deliveryId`, and the union below enforces it.
+ * No `level` field and no dependency: `PROBLEM_EVENTS` picks stderr over stdout instead.
  */
 
 import type { ReleaseDeliveryAfterFailureResult } from "../store/index.js";
@@ -22,10 +9,7 @@ import type { EffectOutcomeCode } from "./effects.js";
 
 /**
  * Every line the shell may write.
- *
- * `detail` is always prose about what went wrong — the one field no
- * consumer should parse. `kind` mirrors the record union in `processor.ts`,
- * so a fifth record kind fails to compile here until this list admits it.
+ * `detail` is always prose and the one field no consumer should parse.
  */
 export type ShellEvent =
     | {
@@ -37,17 +21,9 @@ export type ShellEvent =
           readonly configSource: "live" | "local";
           readonly configPath: string;
           readonly storePath: string;
-          /**
-           * Whether this composition wired a write path. `absent` is the
-           * shipped default and the reason `mode: active` records
-           * `modeUnsupported`; see `main.ts` on `APP_SLUG`.
-           */
+          /** Whether this composition wired a write path; `absent` is the shipped default. */
           readonly writes: "armed" | "absent";
-          /**
-           * Whether this composition reads the repository on a clock. `absent`
-           * is the shipped default and the reason a clock-driven capability is
-           * never woken; see `main.ts` on `SWEEP_CADENCE_HOURS`.
-           */
+          /** Whether this composition reads the repository on a clock; `absent` is the default. */
           readonly sweep: "armed" | "absent";
       }
     | { readonly event: "shutdown"; readonly signal: string }
@@ -76,8 +52,8 @@ export type ShellEvent =
     | {
           readonly event: "deliveryClaimed";
           readonly deliveryId: string;
-          readonly eventName: string;
           /** Failures already counted against this delivery; 0 on its first pass. */
+          readonly eventName: string;
           readonly attempts: number;
       }
     | {
@@ -102,11 +78,7 @@ export type ShellEvent =
       }
     | { readonly event: "orderingUnknown"; readonly deliveryId: string; readonly detail: string }
     | {
-          /**
-           * A recovery pass closed an effect's open call — the write landed
-           * after all, or a resend made it land. The delivery lane reports its
-           * own effects in the record instead; only the sweep says it here.
-           */
+          /** A recovery pass closed an effect's open call; only the sweep says it here. */
           readonly event: "effectApplied";
           readonly effectId: string;
           readonly seq: number;
@@ -139,18 +111,13 @@ export type ShellEvent =
           readonly dueAt: string;
       }
     | {
-          /**
-           * The open-item list could not be read, so this firing decided
-           * nothing. Loud: a sweep that reads nothing is indistinguishable from
-           * a repository with nothing stale, and the two need different fixes.
-           */
+          /** The open-item list could not be read, so this firing decided nothing. */
           readonly event: "sweepUnreadable";
           readonly scheduleId: string;
           readonly detail: string;
       }
     | {
-          /** A firing ended and the next one is armed — the line a quiet
-           * repository's operator reads to know the sweep is alive. */
+          /** A firing ended and the next one is armed. */
           readonly event: "sweepFinished";
           readonly scheduleId: string;
           readonly items: number;
@@ -171,16 +138,8 @@ export type ShellEvent =
 export type Log = (event: ShellEvent) => void;
 
 /**
- * The events an operator is meant to notice. Everything else is the shell
- * doing its job, and goes to stdout.
- *
- * `sweepRequeued` and `deliveryConflict` are here on purpose: a requeue
- * means some worker died holding a claim, and a conflict means one delivery
- * GUID arrived under two different bodies. `effectRefused` and
- * `effectAbandoned` join them for the same reason: each is a repository change
- * this platform decided on, journalled, and then did not make.
- * `effectApplied` stays on stdout — a recovery that worked is the recovery
- * doing its job.
+ * The events an operator is meant to notice; everything else goes to stdout.
+ * Each is a repository change this platform decided on, journalled, then did not make.
  */
 const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
     "legacyStoreFound",
@@ -199,9 +158,8 @@ const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
 ]);
 
 /**
- * What a caught `unknown` says in a log line. Total by construction: the
- * fallback reads a tag off the prototype rather than calling `toString`,
- * which is code the thrower could have written.
+ * What a caught `unknown` says in a log line. Total by construction.
+ * The fallback reads a prototype tag rather than calling code the thrower wrote.
  */
 export function detailOf(error: unknown): string {
     if (typeof error === "string") return error;
@@ -215,11 +173,7 @@ export function detailOf(error: unknown): string {
 
 /**
  * A log that cannot change what it observes.
- *
- * The seam is called from `catch` blocks and from timer callbacks, where an
- * escaping throw would turn a diagnostic into the failure it was describing.
- * Contained once, at the seam — the same treatment the adapter's
- * `onUnknownOrdering` gets, for the same reason.
+ * Called from `catch` blocks and timer callbacks, where a throw would become the failure.
  */
 export function contained(log: Log): Log {
     return (event) => {
@@ -238,11 +192,7 @@ export interface LoggerOptions {
     readonly err?: (line: string) => void;
 }
 
-/**
- * The production log. Serialization cannot fail: every field in the union
- * above is a string, a number, a boolean, `null`, or a list of strings, so
- * there is no cycle for `JSON.stringify` to meet and no `undefined` to drop.
- */
+/** The production log. Serialization cannot fail: every field is a scalar or a string list. */
 export function createLogger(options: LoggerOptions = {}): Log {
     const clock = options.clock ?? (() => new Date());
     const out = options.out ?? ((line: string) => void process.stdout.write(line));

@@ -86,7 +86,7 @@ describe("the recorded warning a decision reads", () => {
     const stored: StoredWarning = {
         effectId: "act-1",
         warnedAt: "2026-09-01T00:00:00.000Z",
-        gracePeriodDays: 7,
+        gracePeriodHours: 7 * 24,
         earliestActionAt: "2026-09-08T00:00:00.000Z",
         cancelledBy: "a commit or a /working comment",
         reversesWith: "re-assign / reopen",
@@ -108,7 +108,7 @@ describe("the recorded warning a decision reads", () => {
         const warning = warningFor("act-1");
         expect(warning).toMatchObject({
             warnedAtMs: Date.parse(stored.warnedAt),
-            gracePeriodDays: 7,
+            gracePeriodHours: 7 * 24,
             earliestActionAtMs: Date.parse(stored.earliestActionAt),
             cancelledBy: stored.cancelledBy,
             reversesWith: stored.reversesWith,

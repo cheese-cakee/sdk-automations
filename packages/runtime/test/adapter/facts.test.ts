@@ -27,6 +27,7 @@ import {
     readChangesRequested,
     readDraft,
     readLastCommitAt,
+    readPullRequestActivity,
     readReapableSince,
     readReview,
     SWEEP_READS,
@@ -48,6 +49,7 @@ import {
 const NOW = new Date("2026-09-09T12:00:00.000Z");
 
 const TRIAGE_LABEL = "status: triage";
+const REVISION_LABEL = "status: needs revision";
 
 function configWith(commands = '\n  commands:\n    working: "/working"'): RepositoryConfig {
     const result = parseConfigDocument(
@@ -55,7 +57,9 @@ function configWith(commands = '\n  commands:\n    working: "/working"'): Reposi
 mode: observe
 mappings:
   labels:
-    awaitingTriage: "${TRIAGE_LABEL}"${commands}
+    awaitingTriage: "${TRIAGE_LABEL}"
+    needsRevision: "${REVISION_LABEL}"
+${commands}
 `,
         { revision: "rev-facts-1", knownCapabilities: [] },
     );
@@ -172,6 +176,7 @@ function readerOver(
             repository: TEST_REPOSITORY,
             config,
             clock: () => NOW,
+            knownCapabilities: [],
         }),
         urls: () => http.scripted.calls.map((call) => call.url),
     };
@@ -186,15 +191,20 @@ async function listed(reader: FactsReader): Promise<readonly OpenItem[]> {
 }
 
 describe("the confirmed read set", () => {
-    it("names the five reads the matrix confirmed, and none of the three it did not", () => {
+    it("names every read the matrix confirmed, which since 6.9 is all eight", () => {
         expect([...CONFIRMED_SWEEP_READS].sort()).toEqual(
-            ["assignedAt", "draft", "lastWorkingAt", "linkedIssues", "openItems"].sort(),
+            [
+                "assignedAt",
+                "changesRequested",
+                "draft",
+                "lastCommitAt",
+                "lastWorkingAt",
+                "linkedIssues",
+                "openItems",
+                "reapableSince",
+            ].sort(),
         );
-        expect(SWEEP_READS.filter((read) => !CONFIRMED_SWEEP_READS.includes(read))).toEqual([
-            "changesRequested",
-            "reapableSince",
-            "lastCommitAt",
-        ]);
+        expect(SWEEP_READS.filter((read) => !CONFIRMED_SWEEP_READS.includes(read))).toEqual([]);
     });
 });
 
@@ -241,17 +251,37 @@ describe("the open-item list", () => {
         expect(urls()).toHaveLength(2);
     });
 
-    it("refuses a successor page GitHub will not name the end of", async () => {
-        const { reader } = readerOver({
+    it("walks on through a next-only header, the shape cursor pagination sends", async () => {
+        const { reader, urls } = readerOver({
+            "&page=1": json([ISSUE_ROW], {
+                link: '<https://api.github.com/x?after=c1>; rel="next"',
+            }),
+            "&page=2": json([{ ...ISSUE_ROW, number: 98, assignees: [] }], {
+                link: '<https://api.github.com/x?after=c2>; rel="next"',
+            }),
+            "&page=3": json([{ ...ISSUE_ROW, number: 99, assignees: [] }], {
+                link: '<https://api.github.com/x?page=2>; rel="prev"',
+            }),
+        });
+
+        const items = await listed(reader);
+
+        expect(items.map(({ item }) => item.number)).toEqual([12, 98, 99]);
+        expect(urls()).toHaveLength(3);
+    });
+
+    it("is unread when a next-only list runs past the walk's bound", async () => {
+        const { reader, urls } = readerOver({
             "/issues?": json([ISSUE_ROW], {
-                link: '<https://api.github.com/x?page=2>; rel="next"',
+                link: '<https://api.github.com/x?after=c>; rel="next"',
             }),
         });
 
         await expect(reader.openItems()).resolves.toEqual({
             ok: false,
-            detail: "the open-item list: GitHub advertised a next page without naming the last",
+            detail: "the open-item list: the list is longer than 10 pages",
         });
+        expect(urls()).toHaveLength(10);
     });
 
     it.each([
@@ -286,6 +316,7 @@ describe("the open-item list", () => {
             repository: TEST_REPOSITORY,
             config: configWith(),
             clock: () => NOW,
+            knownCapabilities: [],
         });
 
         const first = await listed(reader);
@@ -457,7 +488,7 @@ describe("the links group", () => {
     });
 });
 
-describe("the review group — the three reads no protocol has confirmed", () => {
+describe("the review group — the three reads protocol 6.9 confirmed", () => {
     const REVIEW_ROUTES = {
         "/pulls/34/reviews": json([
             { state: "CHANGES_REQUESTED", user: { login: "linus" } },
@@ -471,6 +502,11 @@ describe("the review group — the three reads no protocol has confirmed", () =>
         "/issues/34/timeline": json([
             { event: "convert_to_draft", created_at: "2026-08-25T00:00:00Z" },
             { event: "reviewed", state: "changes_requested", submitted_at: "2026-08-26T00:00:00Z" },
+            {
+                event: "labeled",
+                label: { name: REVISION_LABEL },
+                created_at: "2026-08-27T00:00:00Z",
+            },
         ]),
     };
 
@@ -478,15 +514,25 @@ describe("the review group — the three reads no protocol has confirmed", () =>
         http: httpHarness([routed(routes)], { outcomes: SWEEP_GRANTS }).client,
         repository: TEST_REPOSITORY,
         config: NO_CONFIG,
+        knownCapabilities: [],
     });
 
-    it("stays UNREAD on a record, because the group's reads are not all confirmed", async () => {
+    it("is READ on a pull-request record, now that all three reads are confirmed", async () => {
         const { reader } = readerOver({ ...wholeRepository(), ...REVIEW_ROUTES });
         const items = await listed(reader);
 
         const record = await reader.pullRequestFacts(items[1]!, [items[0]!]);
 
-        expect(record.review).toBe(UNREAD);
+        expect(record.review).not.toBe(UNREAD);
+        expect(record.review).toEqual({
+            changesRequested: true,
+            reapableSince: {
+                needsRevision: new Date("2026-08-27T00:00:00Z"),
+                changesRequested: new Date("2026-08-26T00:00:00Z"),
+                draft: new Date("2026-08-25T00:00:00Z"),
+            },
+            lastCommitAt: new Date("2026-08-30T00:00:00Z"),
+        });
     });
 
     it("reads all three facts when asked directly", async () => {
@@ -494,7 +540,11 @@ describe("the review group — the three reads no protocol has confirmed", () =>
             ok: true,
             value: {
                 changesRequested: true,
-                reapableSince: new Date("2026-08-26T00:00:00Z"),
+                reapableSince: {
+                    needsRevision: new Date("2026-08-01T00:00:00Z"),
+                    changesRequested: new Date("2026-08-26T00:00:00Z"),
+                    draft: new Date("2026-08-25T00:00:00Z"),
+                },
                 lastCommitAt: new Date("2026-08-30T00:00:00Z"),
             },
         });
@@ -520,7 +570,11 @@ describe("the review group — the three reads no protocol has confirmed", () =>
         };
         await expect(readReapableSince(context(untouched), 34)).resolves.toEqual({
             ok: true,
-            value: new Date("2026-08-01T00:00:00Z"),
+            value: {
+                needsRevision: new Date("2026-08-01T00:00:00Z"),
+                changesRequested: new Date("2026-08-01T00:00:00Z"),
+                draft: new Date("2026-08-01T00:00:00Z"),
+            },
         });
     });
 
@@ -533,10 +587,30 @@ describe("the review group — the three reads no protocol has confirmed", () =>
         });
     });
 
+    it("reads the newest commit or `/working` as current pull-request activity", async () => {
+        const routes = {
+            "/pulls/34/commits": json([
+                { commit: { committer: { date: "2026-08-28T00:00:00Z" } } },
+            ]),
+            "/issues/34/comments": json([
+                {
+                    user: { login: "linus" },
+                    created_at: "2026-08-30T00:00:00Z",
+                    body: "/working",
+                },
+            ]),
+        };
+
+        await expect(readPullRequestActivity(context(routes), 34, "/working")).resolves.toEqual({
+            ok: true,
+            value: new Date("2026-08-30T00:00:00Z"),
+        });
+    });
+
     it.each([
         ["a draft that is not a boolean", { "/pulls/34": json({ draft: "yes" }) }],
         ["a review with no state", { "/pulls/34/reviews": json([{ user: { login: "l" } }]) }],
-        ["an undated mode event", { "/issues/34/timeline": json([{ event: "ready_for_review" }]) }],
+        ["an undated mode event", { "/issues/34/timeline": json([{ event: "convert_to_draft" }]) }],
         ["an undated commit", { "/pulls/34/commits": json([{ commit: {} }]) }],
         ["a pull request that is not an object", { "/pulls/34": json([]) }],
         ["a pull request with no created_at", { "/pulls/34": json({ draft: false }) }],

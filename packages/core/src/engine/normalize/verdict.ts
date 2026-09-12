@@ -1,21 +1,11 @@
 /**
- * The verdict vocabulary every normalizer speaks. A delivery becomes a fact
- * record, or it is skipped, or it is refused — and this file owns all three
- * words plus the constructor for the refusal.
- *
- * It reads nothing and decides nothing: `payload.ts` holds the readers,
- * `issues.ts` and `pull-request.ts` the families, `../events.ts` the walk
- * that routes between them. Nothing here imports any of them.
+ * The verdict vocabulary every normalizer speaks — read, skipped or refused —
+ * plus the constructor for the refusal.
  */
 
 import type { Facts } from "../../capability/index.js";
 
-/**
- * `ignored` and `malformed` are different verdicts on purpose: the first is
- * the system working (most webhook traffic is not workflow traffic), the
- * second is a fact the operator surface must see — it means GitHub's shape
- * and our reading of it have diverged.
- */
+/** Every way a consumed delivery can be unreadable; the operator surface must see each. */
 export const NORMALIZE_MALFORMED_CODES = [
     "payloadNotObject",
     "repositoryUnreadable",

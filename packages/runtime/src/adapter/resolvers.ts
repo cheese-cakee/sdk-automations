@@ -1,28 +1,21 @@
 /**
- * The adapter's answers to the questions core lets a capability ask: one
- * arm per name in core's `RESOLVER_NAMES`, and nothing else.
- *
- * Every answer is VERIFIED on this side rather than taken on trust. A
- * linked-issue page must name the repository and the pull request that
- * were asked about, a page claiming a successor must carry a cursor that
- * is new, and paging stops at `MAX_LINKED_ISSUE_PAGES`. Whatever fails a
- * check becomes a typed failure, never a shorter list: a capability
- * reading `[]` as "no linked issue" would act on a rate limit
- * (`design/contracts/catalogue.md`, "unknown is not an answer").
- *
- * `CONFIRMED_RESOLVER_READS` is the second rule, and it is `facts.ts`'s rule
- * one directory over: a read the endpoint matrix has not confirmed is
- * IMPLEMENTED here and answered `unavailable`, never sent. A resolver is a
- * question a capability asks before it acts, so an unconfirmed read that
- * answered anyway would be the capability acting on evidence nobody has
- * established the App may gather. Each such name joins the list when one
- * sandbox protocol run puts its row in the matrix with a citation.
+ * The adapter's answers to the questions core lets a capability ask: one arm per
+ * name in core's `RESOLVER_NAMES`, and nothing else. Every answer is VERIFIED on
+ * this side — whatever fails a check becomes a typed failure, never a shorter list
+ * (`design/contracts/catalogue.md`, "unknown is not an answer"). A read the endpoint
+ * matrix has not confirmed is implemented here and answered `unavailable`, never sent.
  */
 
 import {
+    ABSENT_CONFIG_REVISION,
+    CONFIG_PATH,
     isAutomationLogin,
     meaningsOfLabels,
+    parseConfig,
+    parseConfigDocument,
+    type AdmittedCapability,
     type CommitAttestation,
+    type ConfigAtHead,
     type ItemRef,
     type MappableMeaning,
     type RepositoryConfig,
@@ -33,6 +26,7 @@ import {
     type ResolverSource,
 } from "@hiero-hackers/automation-core";
 import {
+    advertisesNextPage,
     describeFailure,
     GITHUB_GRAPHQL_URL,
     lastPageFromLink,
@@ -41,6 +35,7 @@ import {
     type GitHubHttpClient,
     type GitHubSuccess,
 } from "./contract.js";
+import { decodeContents } from "./config.js";
 import { field, jsonArrayOf, jsonRecordOf } from "./untrusted.js";
 
 const LINKED_ISSUES_QUERY = `query LinkedIssues(
@@ -68,38 +63,15 @@ type ResolverFailure = Extract<ResolverAnswer<never>, { readonly ok: false }>;
 export interface ResolverSourceOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    /**
-     * The repository's reviewed configuration — the label mapping
-     * `openAssignments` projects each assignment's labels through, so a
-     * capability receives meanings and never a label string (contract.md §2).
-     *
-     * Required, not optional. Every composition on this line has a config in
-     * hand where it builds this source, and an optional one would mean a
-     * resolver silently answering with the meanings missing rather than a
-     * compiler asking which config it should have used.
-     */
+    /** The label mapping `openAssignments` projects each assignment's labels through (contract.md §2). */
     readonly config: RepositoryConfig;
+    /** The declarations the shell ships; the adapter may not import them itself. */
+    readonly knownCapabilities: readonly AdmittedCapability[];
 }
 
 /**
- * The reads `design/findings/endpoint-permission-matrix.md` records as
- * confirmed, each with the citation that confirmed it — `facts.ts`'s
- * `CONFIRMED_SWEEP_READS`, for the resolver surface.
- *
- * `openAssignments` is here under the list-issues row: the endpoint is
- * confirmed with its link-header paging, and a query FILTER on a confirmed
- * endpoint is already treated as inside that row — the sweep sends `state=open`
- * against it with no citation of its own. What is not separately evidenced is
- * how GitHub matches `assignee` (exact login, case), which is why the reader
- * below re-checks every returned item's assignee list rather than trusting the
- * filter.
- *
- * TWO ARE ABSENT, and both are implemented below and never sent.
- * `commitAttestations` reads `GET /repos/{o}/{r}/pulls/{n}/commits`, and
- * `assigneesOf` reads `GET /repos/{o}/{r}/issues/{n}` — the matrix confirms
- * `GET /repos/{o}/{r}/issues`, the LIST, which is a different endpoint and
- * cannot answer one issue. A capability shows the check as undetermined rather
- * than judging a contributor from a call nobody has evidence the App may make.
+ * The reads the endpoint-permission matrix records as confirmed, each with its citation.
+ * A name absent from this list is answered `unavailable` rather than sent.
  */
 export const CONFIRMED_RESOLVER_READS = [
     // GraphQL `closingIssuesReferences` — Issues R — `2026-08-29T20-51-00.386Z#same-repository`
@@ -110,6 +82,12 @@ export const CONFIRMED_RESOLVER_READS = [
     "mergeability",
     // `GET /repos/{o}/{r}/issues` — Issues R — `2026-07-23T19-36-29-346Z#1–6`
     "openAssignments",
+    // files, pull, contents (with `ref`) — Pull requests R, Contents R — `2026-07-23T20-16-41-190Z#7`, `2026-07-23T19-41-18-911Z#3`, `2026-07-23T19-09-37-225Z#2`
+    "configAtHead",
+    // `GET /repos/{o}/{r}/pulls/{n}/commits` — Pull requests R — `2026-09-12T06-31-36-229Z#23`
+    "commitAttestations",
+    // `GET /repos/{o}/{r}/issues/{n}` — Issues R — `2026-09-12T06-31-36-229Z#27`
+    "assigneesOf",
 ] as const satisfies readonly ResolverName[];
 
 /** One of `CONFIRMED_RESOLVER_READS` — a name the dispatch below must answer. */
@@ -142,13 +120,7 @@ const rateLimited = (detail: string): ResolverFailure => ({
 
 /**
  * A failed call as a resolver answer.
- *
- * The `reason` is the capability's half of this and stays coarse — a
- * capability can act on "rate limited" and on nothing finer. The `detail` is
- * the operator's half, and the three rate classes are three different
- * problems: an hourly budget spent, a burst that must slow down, and a wait
- * signal nobody could read. The adapter has already waited whatever was worth
- * waiting, so what arrives here is what an operator must decide about.
+ * `reason` is the capability's half and stays coarse; `detail` is the operator's.
  */
 function httpFailure(outcome: GitHubFailure): ResolverFailure {
     const failure = outcome.failure;
@@ -299,10 +271,8 @@ async function linkedIssues(
 // ─── The item reads ──────────────────────────────────────────────────
 
 /**
- * The readers below share one question — "which item is this about?" — and one
- * answer to a bad one. An input that does not name a plausible item is
- * `unavailable` rather than a throw, because a resolver is called from inside
- * a capability's own evaluation and a throw there kills the delivery.
+ * Which item is this about? An input naming no plausible one is `unavailable`.
+ * Never a throw: a resolver runs inside a capability's own evaluation.
  */
 function itemNumber(input: unknown, kind: ItemRef["kind"]): number | null {
     const item = field(input, "item");
@@ -316,9 +286,8 @@ function itemNumber(input: unknown, kind: ItemRef["kind"]): number | null {
 }
 
 /**
- * GitHub's own ceiling on the commits endpoint. A pull request with more
- * commits than this cannot be answered at all: the API stops listing, and a
- * check that read 250 of 400 commits and said "all signed off" would be lying.
+ * GitHub's own ceiling on the commits endpoint.
+ * A pull request with more commits than this cannot be answered at all.
  */
 const MAX_COMMITS = 250;
 
@@ -340,8 +309,8 @@ function attestationOf(entry: unknown): CommitAttestation | null {
     if (!Array.isArray(parents)) return null;
     return {
         sha,
-        // The subject line alone. The body is where a contributor pastes a
-        // stack trace, and no check reads it.
+        // The subject line alone; no check reads the body.
+
         summary: message.split("\n")[0] ?? "",
         signedOff: hasSignoff(message),
         verified: field(field(commit, "verification"), "verified") === true,
@@ -351,10 +320,7 @@ function attestationOf(entry: unknown): CommitAttestation | null {
 
 /**
  * Every commit of a pull request, or the reason there is no complete answer.
- *
- * Exported although the gate refuses before reaching it, exactly as `facts.ts`
- * exports `readReview`: the reader is complete and tested, and confirming the
- * endpoint is one entry in `CONFIRMED_RESOLVER_READS` rather than a build.
+ * `verified` is GitHub's word and not a signature this file checks.
  */
 export async function readCommitAttestations(
     { http, repository }: ResolverSourceOptions,
@@ -377,10 +343,8 @@ export async function readCommitAttestations(
         }
         if (entries.length < PAGE_SIZE) break;
     }
-    // A list AT the ceiling may be all of them or the first 250 of four
-    // hundred, and nothing in the response says which — so it is no answer,
-    // not a short one — unknown is not an answer
-    // (`design/contracts/catalogue.md`).
+    // A list AT the ceiling is no answer, not a short one.
+
     return commits.length >= MAX_COMMITS
         ? unavailable(
               `GitHub lists at most ${String(MAX_COMMITS)} commits per pull request, and this one reached that limit`,
@@ -388,12 +352,20 @@ export async function readCommitAttestations(
         : { ok: true, value: commits };
 }
 
+/** The `commitAttestations` arm: the item's number, then the reader above. */
+async function commitAttestations(
+    options: ResolverSourceOptions,
+    input: unknown,
+): Promise<ResolverAnswer<readonly CommitAttestation[]>> {
+    const number = itemNumber(input, "pullRequest");
+    return number === null
+        ? unavailable("commitAttestations requires a valid pull request item")
+        : readCommitAttestations(options, number);
+}
+
 /**
  * Can GitHub merge this pull request cleanly?
- *
- * GitHub computes mergeability in the background and reports `null` while it
- * is still thinking — which is neither `true` nor `false` and must never be
- * read as either. A capability asking again later is the whole recovery.
+ * GitHub reports `null` while it is still computing; that is neither `true` nor `false`.
  */
 async function mergeability(
     { http, repository }: ResolverSourceOptions,
@@ -419,14 +391,7 @@ async function mergeability(
     return { ok: true, value: mergeable };
 }
 
-/**
- * The logins assigned to one item. Unpaged on purpose: GitHub caps assignees
- * at ten and returns them all on the item itself, so a page-walk would be a
- * second call for a list that cannot have a second page.
- *
- * Exported and unreachable for the same reason `readCommitAttestations` is —
- * `GET /repos/{o}/{r}/issues/{n}` is not a row in the matrix.
- */
+/** The logins assigned to one item. Unpaged: GitHub caps assignees at ten. */
 export async function readAssigneesOf(
     { http, repository }: ResolverSourceOptions,
     number: number,
@@ -454,13 +419,22 @@ export async function readAssigneesOf(
 }
 
 /**
- * Every entry of the filtered open-issue list, or the reason there is no
- * complete answer — the sweep's `allPages` rule, one resolver over.
- *
- * A partial walk is a WRONG answer here, not a smaller one, because the caller
- * is about to compare the count to a cap. So a successor GitHub advertised
- * without naming the last page, and a list longer than the walk, are both
- * failures rather than what was read so far.
+ * The `assigneesOf` arm: the item's number, then the reader above.
+ * An ISSUE number only; the matrix row was cited on an issue.
+ */
+async function assigneesOf(
+    options: ResolverSourceOptions,
+    input: unknown,
+): Promise<ResolverAnswer<readonly string[]>> {
+    const number = itemNumber(input, "issue");
+    return number === null
+        ? unavailable("assigneesOf requires a valid issue item")
+        : readAssigneesOf(options, number);
+}
+
+/**
+ * Every entry of the filtered open-issue list, or the reason there is no complete answer.
+ * A list still advertising a successor past the walk's bound is a failure, not a short list.
  */
 async function assignedPages(
     http: GitHubHttpClient,
@@ -481,36 +455,16 @@ async function assignedPages(
         const read = jsonArrayOf(outcome.body);
         if (read === null) return unavailable("GitHub returned malformed assignment data");
         entries.push(...read);
-        if (page === 1) {
-            const link = outcome.headers["link"];
-            const named = lastPageFromLink(link);
-            if (named === null) {
-                return link !== undefined && link.includes('rel="next"')
-                    ? unavailable(
-                          "GitHub advertised a next assignment page without naming the last",
-                      )
-                    : { ok: true, entries };
-            }
-            lastPage = named;
-        }
-        if (page >= lastPage) return { ok: true, entries };
+        const link = outcome.headers["link"];
+        if (page === 1) lastPage = lastPageFromLink(link) ?? lastPage;
+        if (page >= lastPage && !advertisesNextPage(link)) return { ok: true, entries };
     }
     return unavailable(`GitHub assignment pagination exceeded ${String(MAX_LIST_PAGES)} pages`);
 }
 
 /**
- * Every open issue in this repository one login is assigned to, each with the
- * meanings its labels projected to.
- *
- * The filter is `assignee=` on the confirmed list endpoint, and the answer is
- * re-checked rather than trusted: every returned item must actually carry the
- * login on its assignees, and a pull request that arrives in the same list is
- * dropped — an assignment is an issue claim, and a pull request counted toward
- * an issue cap would be arithmetic nobody asked for.
- *
- * A partial walk is a WRONG answer, not a smaller one, because the caller is
- * about to compare it to a cap. So an unreadable row, an unnamed last page and
- * an over-long list are all failures.
+ * Every open issue one login is assigned to, with the meanings its labels projected to.
+ * The `assignee=` filter's answer is re-checked, and a pull request in the list is dropped.
  */
 async function openAssignments(
     { http, repository, config }: ResolverSourceOptions,
@@ -550,10 +504,8 @@ async function openAssignments(
             }
             names.push(name);
         }
-        // Read every login before judging any: an entry whose shape is not
-        // GitHub's must REFUSE, not fail to match. A `some` that skipped it
-        // would answer a shorter list, which is the one thing this file may
-        // never do.
+        // Read every login before judging any: a bad shape must REFUSE, not fail to match.
+
         const holders: string[] = [];
         for (const assignee of assignees) {
             const each = field(assignee, "login");
@@ -571,10 +523,139 @@ async function openAssignments(
     return { ok: true, value: assignments };
 }
 
+// ─── The configuration a pull request proposes ───────────────────────
+
 /**
- * GitHub gives every App actor the `[bot]` suffix, so no call is needed — and
- * the suffix itself is core's observed fact, not this file's.
+ * Whether this pull request touches `automations.yml`, and how.
+ * `status` is GitHub's own word and `null` is the file untouched; it is only ever compared.
  */
+type ConfigFileChange = { readonly ok: true; readonly status: string | null } | ResolverFailure;
+
+/** GitHub's object names, and the one shape that may be spliced into a URL. */
+const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/**
+ * Did this pull request change the configuration file, and how?
+ * A rename AWAY from the path counts; the path is matched exactly (`CONFIG_PATH`, D93).
+ */
+async function configFileChange(
+    http: GitHubHttpClient,
+    repository: RepositoryRef,
+    number: number,
+): Promise<ConfigFileChange> {
+    const url = `${repoPath(repository)}/pulls/${String(number)}/files`;
+    let lastPage = 1;
+    for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
+        const outcome = await http.request({
+            url: `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`,
+            method: "GET",
+        });
+        if (!outcome.ok) return httpFailure(outcome);
+        const entries = jsonArrayOf(outcome.body);
+        if (entries === null) return unavailable("GitHub returned malformed pull request files");
+
+        for (const entry of entries) {
+            const filename = field(entry, "filename");
+            const status = field(entry, "status");
+            const previous = field(entry, "previous_filename");
+            if (typeof filename !== "string" || typeof status !== "string") {
+                return unavailable("GitHub returned malformed pull request files");
+            }
+            if (filename === CONFIG_PATH) return { ok: true, status };
+            if (previous === CONFIG_PATH) return { ok: true, status: "removed" };
+        }
+
+        const link = outcome.headers["link"];
+        if (page === 1) lastPage = lastPageFromLink(link) ?? lastPage;
+        if (page >= lastPage && !advertisesNextPage(link)) return { ok: true, status: null };
+    }
+    return unavailable(`GitHub pull request files exceeded ${String(MAX_LIST_PAGES)} pages`);
+}
+
+/**
+ * The commit this pull request currently proposes.
+ * The shape is checked before the value reaches a URL.
+ */
+async function headShaOf(
+    http: GitHubHttpClient,
+    repository: RepositoryRef,
+    number: number,
+): Promise<{ readonly ok: true; readonly sha: string } | ResolverFailure> {
+    const outcome = await http.request({
+        url: `${repoPath(repository)}/pulls/${String(number)}`,
+        method: "GET",
+    });
+    if (!outcome.ok) return httpFailure(outcome);
+    const body = jsonRecordOf(outcome.body);
+    if (body === null) return unavailable("GitHub returned malformed pull request data");
+    if (body["number"] !== number)
+        return unavailable("GitHub answered about a different pull request");
+    const sha = field(field(body, "head"), "sha");
+    return typeof sha === "string" && COMMIT_SHA.test(sha)
+        ? { ok: true, sha }
+        : unavailable("GitHub reported no usable head commit for this pull request");
+}
+
+/**
+ * What `automations.yml` would mean if this pull request were merged — a report input only.
+ * A 404 is absence only where the pull request's own file list said so (D51, D122).
+ */
+async function configAtHead(
+    { http, repository, knownCapabilities }: ResolverSourceOptions,
+    input: unknown,
+): Promise<ResolverAnswer<ConfigAtHead>> {
+    const number = itemNumber(input, "pullRequest");
+    if (number === null) return unavailable("configAtHead requires a valid pull request item");
+
+    const change = await configFileChange(http, repository, number);
+    if (!change.ok) return change;
+    if (change.status === null) return { ok: true, value: { touched: false } };
+    if (change.status === "removed") {
+        return {
+            ok: true,
+            value: {
+                touched: true,
+                revision: ABSENT_CONFIG_REVISION,
+                // The parser's own no-file answer, so a deleted and an absent file agree by construction.
+
+                result: parseConfig(null, {
+                    revision: ABSENT_CONFIG_REVISION,
+                    knownCapabilities,
+                }),
+            },
+        };
+    }
+
+    const head = await headShaOf(http, repository, number);
+    if (!head.ok) return head;
+
+    const outcome = await http.request({
+        url: `${repoPath(repository)}/contents/${CONFIG_PATH}?ref=${encodeURIComponent(head.sha)}`,
+        method: "GET",
+    });
+    if (!outcome.ok) return httpFailure(outcome);
+    const decoded = decodeContents(outcome.body);
+    if (decoded.kind !== "document") {
+        return unavailable(
+            decoded.kind === "defective"
+                ? `the proposed config file is unreadable: ${decoded.detail}`
+                : "GitHub returned an unrecognized contents response",
+        );
+    }
+    return {
+        ok: true,
+        value: {
+            touched: true,
+            revision: decoded.revision,
+            result: parseConfigDocument(decoded.text, {
+                revision: decoded.revision,
+                knownCapabilities,
+            }),
+        },
+    };
+}
+
+/** GitHub gives every App actor the `[bot]` suffix, so no call is needed. */
 function isAutomationActor(input: unknown): ResolverAnswer<boolean> {
     const login = field(input, "login");
     return typeof login === "string" && login.length > 0
@@ -583,20 +664,14 @@ function isAutomationActor(input: unknown): ResolverAnswer<boolean> {
 }
 
 export function createResolverSource(options: ResolverSourceOptions): ResolverSource {
-    // Exhaustive, with no default arm: a name added to RESOLVER_NAMES leaves
-    // this switch able to return undefined, which the declared type refuses.
-    // Adding the resolver is then a compile error, not a silent inheritance
-    // of whichever answer happened to sit last.
+    // Exhaustive, with no default arm: a new `RESOLVER_NAMES` entry is a compile error.
+
     const resolve = async (
         query: ResolverName,
         input: unknown,
     ): Promise<ResolverAnswer<unknown>> => {
-        // The matrix gate, before the dispatch: an unconfirmed read is
-        // implemented and not sent, so a capability is told nobody could
-        // answer rather than acting on evidence nobody may gather. Adding a
-        // name to `CONFIRMED_RESOLVER_READS` makes the switch non-exhaustive,
-        // so the compiler asks for the arm rather than a maintainer
-        // remembering to write one.
+        // The matrix gate, before the dispatch: an unconfirmed read is implemented, not sent.
+
         if (!isConfirmedRead(query)) {
             return unavailable(
                 `"${query}" reads an endpoint the permission matrix has not confirmed`,
@@ -611,10 +686,15 @@ export function createResolverSource(options: ResolverSourceOptions): ResolverSo
                 return mergeability(options, input);
             case "openAssignments":
                 return openAssignments(options, input);
+            case "configAtHead":
+                return configAtHead(options, input);
+            case "commitAttestations":
+                return commitAttestations(options, input);
+            case "assigneesOf":
+                return assigneesOf(options, input);
         }
     };
-    // The one erasure: `ResolverSource` ties each name to its own output
-    // type, and a body that dispatches at runtime cannot prove that pairing
-    // per call. The switch above is what makes the pairing true.
+    // The one erasure: the switch above is what makes the per-name pairing true.
+
     return resolve as ResolverSource;
 }

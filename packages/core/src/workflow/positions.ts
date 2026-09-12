@@ -1,8 +1,4 @@
-/**
- * Where an item sits, per flow. Everything here is DERIVED from `config`'s
- * `MEANING_FACTS` table and nothing restates it — which is why adding a
- * meaning is a change to config, not to this file.
- */
+/** Where an item sits, per flow — DERIVED from `config`'s `MEANING_FACTS`, never restating it. */
 
 import {
     MAPPABLE_MEANINGS,
@@ -13,11 +9,7 @@ import {
 
 export type { EntityKind };
 
-/**
- * Read the conditional as "keep K when its declared flow is F, else discard
- * it" — dense, but you never need to read it to USE the types below, and
- * tests pin the results (D90).
- */
+/** Keep `K` when its declared flow is `F`, else discard it. */
 type MeaningsWithFlow<F extends EntityKind> = {
     [K in MappableMeaning]: (typeof MEANING_FACTS)[K]["flow"] extends F ? K : never;
 }[MappableMeaning];

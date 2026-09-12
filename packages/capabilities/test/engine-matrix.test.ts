@@ -32,6 +32,8 @@ import type { Facts } from "@hiero-hackers/automation-core";
 import { CAPABILITIES } from "../src/index.js";
 import {
     configEnabling,
+    fullestValidSettings,
+    namesOffered,
     subsets,
     sweptIssue,
     sweptPullRequest,
@@ -57,8 +59,8 @@ const RECORDS: readonly Facts[] = [
     }),
     // One of each kind since D143, so the vacuity control and the identity
     // block exercise both ladders rather than only the issue one. The pull
-    // request is a stale draft the repository never opted into reaping, which
-    // is the silent branch — the issue record above is what makes the sweep do
+    // request is a stale draft, which is the silent branch even with the
+    // ladder enabled — the issue record above is what makes the sweep do
     // visible work.
     sweptPullRequest({
         assignees: [
@@ -71,19 +73,54 @@ const RECORDS: readonly Facts[] = [
     }),
 ];
 
-const SETTINGS = {
-    intake: { announce: true },
-    inactivity: { issues: { enabled: true } },
+/**
+ * A document that maps every meaning a shipped block names.
+ *
+ * The three the probe world maps by default do not include `needsRevision`,
+ * and a settings block is only as usable as the mappings under it: consenting
+ * to inactivity's `needsRevision` reason against a document that never mapped
+ * the meaning makes the capability skip the whole file as unusable, which is
+ * the one thing a matrix measuring decisions must not do silently.
+ */
+const MAPPINGS = {
+    labels: {
+        awaitingTriage: "status: triage",
+        inProgress: "status: in progress",
+        blocked: "blocked",
+        needsRevision: "status: needs revision",
+    },
 };
+
+/**
+ * Every capability at its fullest, derived the way `ALL` and `NAMES` are: each
+ * block consented to, each flag thrown, each required key at its smallest value,
+ * everything else at its own default.
+ *
+ * A hand-kept map here was the one line a capability's first opt-in block did
+ * not move. An alone-run under the smallest valid block does nothing, and the
+ * vacuity control below is what notices — after the capability is written, in
+ * a file whose name does not mention it.
+ */
+const SETTINGS = Object.fromEntries(
+    ALL.map(({ declaration }) => [
+        declaration.name,
+        fullestValidSettings(declaration.settings, namesOffered(MAPPINGS)),
+    ]),
+);
 
 const externals: Externals = {
     killSwitchActive: false,
     installationGrants: ["issues:write"],
     latestHumanChangeAt: () => null,
-    resolve: async (query) =>
-        query === "linkedIssues"
-            ? ({ ok: true, value: [] } as never)
-            : ({ ok: true, value: false } as never),
+    resolve: async (query) => {
+        // Each name answered in its OWN shape. A blanket `false` typechecks
+        // through the erasure and would hand `configAtHead` a value with no
+        // `touched` on it — a capability reading a nonsense answer is not the
+        // isolation this matrix measures.
+        if (query === "linkedIssues") return { ok: true, value: [] } as never;
+        if (query === "configAtHead") return { ok: true, value: { touched: false } } as never;
+        return { ok: true, value: false } as never;
+    },
 };
 
 /** A capability's observable share of a decision. */
@@ -108,7 +145,7 @@ function sliceFor(decisions: readonly Decision[], name: string): Slice {
 }
 
 async function runAll(enabled: readonly string[]): Promise<readonly Decision[]> {
-    const config = configEnabling(enabled, NAMES, SETTINGS);
+    const config = configEnabling(enabled, NAMES, SETTINGS, MAPPINGS);
     const decisions: Decision[] = [];
     for (const facts of RECORDS) {
         decisions.push(await decide({ kind: "facts", facts }, config, ALL, externals));
@@ -155,14 +192,17 @@ describe("P3 through the engine", () => {
          * Both halves of facts.md §4 in one list, in record order: the two
          * webhook records are skipped because inactivity needs groups a
          * webhook does not read, and the swept issue's reminder is gated and
-         * approved. The swept pull request is silent because this repository
-         * never enabled that ladder.
+         * approved. The swept pull request earns its own pair now — every
+         * reason under its ladder acts, the draft one included, so a stale
+         * draft is warned exactly as a stale label is.
          */
         const staleAlone = sliceFor(await runAll(["inactivity"]), "inactivity");
         expect(staleAlone.approved.length).toBeGreaterThan(0);
         expect(staleAlone.findings.map((finding) => finding.code)).toEqual([
             "factsUnread",
             "factsUnread",
+            "capabilityExplained",
+            "applied",
             "capabilityExplained",
             "applied",
         ]);
@@ -190,7 +230,7 @@ describe("prQuality on a conflicted pull request", () => {
     it("refuses preconditionStale and approves nothing", async () => {
         const decision = await decide(
             { kind: "facts", facts: conflicted },
-            configEnabling(["prQuality"], NAMES, SETTINGS),
+            configEnabling(["prQuality"], NAMES, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -216,7 +256,7 @@ describe("prQuality on a conflicted pull request", () => {
         });
         const decision = await decide(
             { kind: "facts", facts: merged },
-            configEnabling(["prQuality"], NAMES, SETTINGS),
+            configEnabling(["prQuality"], NAMES, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -243,7 +283,8 @@ describe("managed-comment identity is minted by the platform", () => {
         /**
          * Record order, and a capability sees every record of a kind it
          * declared: intake and prQuality read the sweep-shaped pair too, since
-         * a sweep reads a superset of what a webhook does.
+         * a sweep reads a superset of what a webhook does (intake's `announce`
+         * is a flag, and the fullest document throws it).
          */
         expect(
             comments.map((effect) => ({
@@ -260,6 +301,9 @@ describe("managed-comment identity is minted by the platform", () => {
             // warning is about ONE assignee's clock (D145).
             { capability: "inactivity", item: 13, kind: "warning", topic: "contributor" },
             { capability: "prQuality", item: 14, kind: "summary", topic: "" },
+            // The same discriminator on a pull request is the REASON, so a
+            // pull request re-warned under another one gets its own comment.
+            { capability: "inactivity", item: 14, kind: "warning", topic: "draft" },
         ]);
         // The identity is minted from the intent's OWN fields, never chosen —
         // and it names the ITEM and the purpose, never the occasion.
@@ -313,7 +357,7 @@ describe("managed-comment identity is minted by the platform", () => {
 describe("intake conflict behavior", () => {
     it("reports a conflicted item in dry-run without approving a repair", async () => {
         const config = {
-            ...configEnabling(["intake"], NAMES, SETTINGS),
+            ...configEnabling(["intake"], NAMES, SETTINGS, MAPPINGS),
             mode: "dry-run" as const,
         };
         const facts = webhookIssue({

@@ -15,7 +15,33 @@
  * directory, so in-package support is support that survives mutation (D82).
  */
 
-import { parseConfig, type RepositoryConfig, type RepositoryMode } from "../../src/config/index.js";
+import { spec, type Spec } from "../../src/capability/index.js";
+import {
+    parseConfig,
+    type AdmittedCapability,
+    type RepositoryConfig,
+    type RepositoryMode,
+} from "../../src/config/index.js";
+
+/**
+ * What a suite admits when the settings block is not its subject: the name,
+ * a spec with no keys, and nothing required.
+ *
+ * `parseConfig` takes admissions rather than names, because the spec IS the
+ * schema for a block (C1). A test about projection, mode or mappings should
+ * not have to describe a schema to say "this capability ships", and the empty
+ * spec is the written answer for one that takes no setting.
+ */
+export function admitting(
+    names: readonly string[],
+    specs: Readonly<Record<string, Spec>> = {},
+): readonly AdmittedCapability[] {
+    return names.map((name) => ({
+        name,
+        settings: specs[name] ?? spec({}),
+        requiredMappings: {},
+    }));
+}
 
 /**
  * What a built configuration says beyond the empty document.
@@ -31,8 +57,8 @@ export interface ConfigOptions {
     readonly labels?: Record<string, string>;
     /** Command → the word this repository answers to, as a maintainer writes it. */
     readonly commands?: Record<string, string>;
-    /** Alert name → the label carrying it, in the open family's entry shape. */
-    readonly alerts?: Record<string, { readonly label: string }>;
+    /** Alert name → the label carrying it, as a maintainer writes it. */
+    readonly alerts?: Record<string, string>;
     /** The capability names the document declares, each with `enabled`. */
     readonly capabilities?: readonly string[];
     /** The consent every declared capability carries. Boolean, never truthy (§2.4). */
@@ -44,6 +70,13 @@ export interface ConfigOptions {
      * only the settings they are about.
      */
     readonly settings?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+    /**
+     * The spec each admitted capability is admitted with, keyed by name. A
+     * name with no entry is admitted with the empty spec, which takes no
+     * setting — so a suite states a spec exactly when its document writes a
+     * settings block.
+     */
+    readonly specs?: Readonly<Record<string, Spec>>;
     /**
      * The application's admitted names. Defaults to `capabilities`, so a
      * declared capability is an admitted one; pass `[]` for the tests whose
@@ -70,19 +103,22 @@ export function configWith({
     capabilities = [],
     enabled = true,
     settings = {},
+    specs = {},
     known = capabilities,
     revision = "rev-test",
 }: ConfigOptions = {}): RepositoryConfig {
     const result = parseConfig(
         {
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode,
+            // The document is flat: a block is `enabled` and the capability's
+            // own keys beside it, so the settings spread in rather than nest.
             capabilities: Object.fromEntries(
-                capabilities.map((name) => [name, { enabled, settings: settings[name] ?? {} }]),
+                capabilities.map((name) => [name, { enabled, ...(settings[name] ?? {}) }]),
             ),
             mappings: { labels, commands, alerts },
         },
-        { revision, knownCapabilities: known },
+        { revision, knownCapabilities: admitting(known, specs) },
     );
     if (!result.ok) throw new Error(result.errors.map((e) => e.code).join(","));
     return result.config;

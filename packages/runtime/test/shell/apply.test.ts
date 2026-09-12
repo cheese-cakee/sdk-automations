@@ -16,6 +16,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeRequestFor, type Effect } from "@hiero-hackers/automation-core";
 import { Store } from "../../src/store/index.js";
 import { useTempDir } from "@hiero-hackers/automation-testkit";
 import {
@@ -36,6 +37,8 @@ import {
     BASE,
     callsOf,
     CAUSE_AT,
+    CLOSE_EFFECT_ID,
+    closeEffect,
     commentEffect,
     configFor,
     configWithCapabilityOff,
@@ -1396,7 +1399,7 @@ describe("a warning effect's comment, once it lands", () => {
         expect(store.warning(ACT_EFFECT_ID)).toEqual({
             effectId: ACT_EFFECT_ID,
             warnedAt: BASE.toISOString(),
-            gracePeriodDays: 7,
+            gracePeriodHours: 7 * 24,
             earliestActionAt: new Date(BASE.getTime() + 7 * 24 * 60 * 60_000).toISOString(),
             cancelledBy: "a commit or a /working comment",
             reversesWith: "re-assign / reopen",
@@ -1457,6 +1460,154 @@ describe("a warning effect's comment, once it lands", () => {
  * here, and a grace still running refuses the act however long ago it was
  * approved.
  */
+/**
+ * The mode arm of the re-gate. A pull request's mode is native state, so it is
+ * claimed on its own and re-read here — and a close whose reason was a mode
+ * gets exactly the treatment a close whose reason was a label gets: refused
+ * under `preconditionStale` when the evidence moved.
+ */
+describe("a close that claimed a native pull-request mode", () => {
+    const DAY = 24 * 60 * 60_000;
+    const later = (days: number) => new Date(BASE.getTime() + days * DAY);
+
+    /** The installation that may actually close a pull request. */
+    const granted: EffectExternalsSource = () =>
+        stubbedExternals({ installationGrants: ["issues:write", "pull_requests:write"] });
+
+    /**
+     * The record the close's own warning comment would have written, snapshot
+     * and all — taken from the ONE builder, so a change to what a close is
+     * called cannot leave this row silently unmatched.
+     */
+    const recordWarning = (mode: "draft" | "changesRequested"): void => {
+        const request = writeRequestFor(closeEffect(mode).intent);
+        store.recordWarning({
+            effectId: CLOSE_EFFECT_ID,
+            warnedAt: BASE.toISOString(),
+            gracePeriodHours: 7 * 24,
+            earliestActionAt: later(7).toISOString(),
+            cancelledBy: "a commit or a /working comment",
+            reversesWith: "re-assign / reopen",
+            actionClass: request.actionClass,
+            capability: request.capability,
+            causeObservedAt: request.causeObservedAt.toISOString(),
+            cause: request.cause,
+            item: request.target.item,
+            change: request.target.change,
+        });
+    };
+
+    const applyAt = async (github: FakeGitHub, effect: Effect) =>
+        one(
+            await applierOver(github, { clock: () => later(8), externals: granted }).applyAll(
+                [effect],
+                configFor(),
+            ),
+        );
+
+    it("reaches the send while the mode it claimed still holds", async () => {
+        recordWarning("draft");
+        const github = fakeGitHub({ draft: true });
+
+        const outcome = await applyAt(github, closeEffect("draft"));
+
+        // No confirmed endpoint closes a pull request, so the send is the
+        // stop — past every gate, which is what this row is about.
+        expect(outcome).toMatchObject({ outcome: "refused", code: "writeForbidden" });
+        expect(github.world.comments).toEqual([]);
+    });
+
+    it("refuses `preconditionStale` when the pull request was marked ready for review", async () => {
+        recordWarning("draft");
+        // Between the warning and here: the author pressed Ready for review.
+        const github = fakeGitHub({ draft: false });
+
+        const outcome = await applyAt(github, closeEffect("draft"));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "preconditionStale" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("reaches the send while the change request still stands", async () => {
+        recordWarning("changesRequested");
+        const github = fakeGitHub({ changesRequested: true });
+
+        const outcome = await applyAt(github, closeEffect("changesRequested"));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "writeForbidden" });
+    });
+
+    it("refuses `preconditionStale` when a later review lifted the request", async () => {
+        recordWarning("changesRequested");
+        const github = fakeGitHub({ changesRequested: false });
+
+        const outcome = await applyAt(github, closeEffect("changesRequested"));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "preconditionStale" });
+        expect(github.calls).toEqual([]);
+    });
+
+    /**
+     * The cancellation the mode reasons share with every other clock-triggered
+     * act: a push during the grace stops it. The mode is untouched by a
+     * commit, so this row reaches `activityCancelled` rather than stopping one
+     * gate earlier at the mode.
+     */
+    it("cancels on a push after the warning, with the mode still holding", async () => {
+        recordWarning("draft");
+        const github = fakeGitHub({ draft: true });
+
+        const outcome = await applyAt(github, closeEffect("draft", later(3)));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "activityCancelled" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("cancels when a push happened after the decision was made", async () => {
+        recordWarning("draft");
+        const github = fakeGitHub({ draft: true, activityAt: later(3) });
+
+        const outcome = await applyAt(github, closeEffect("draft"));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "activityCancelled" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("uses newer live activity when the decision also saw activity", async () => {
+        recordWarning("draft");
+        const github = fakeGitHub({ draft: true, activityAt: later(3) });
+
+        const outcome = await applyAt(github, closeEffect("draft", later(2)));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "activityCancelled" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("asks again when current pull-request activity cannot be read", async () => {
+        recordWarning("draft");
+        const github = fakeGitHub({ draft: true });
+        github.faults.activityReadFails = true;
+
+        const outcome = await applyAt(github, closeEffect("draft"));
+
+        expect(outcome).toMatchObject({ outcome: "retryLater", code: "itemUnreadable" });
+        expect(outcome.detail).toContain("activity could not be read");
+        expect(github.calls).toEqual([]);
+    });
+
+    it("asks again rather than closing on a mode it could not read", async () => {
+        recordWarning("changesRequested");
+        const github = fakeGitHub({ changesRequested: true });
+        github.faults.reviewReadFails = true;
+
+        const outcome = await applyAt(github, closeEffect("changesRequested"));
+
+        expect(outcome).toMatchObject({ outcome: "retryLater", code: "itemUnreadable" });
+        expect(outcome.detail).toContain("the pull request's mode could not be read");
+        expect(github.calls).toEqual([]);
+    });
+});
+
 describe("a graced act at the apply-time re-gate", () => {
     /** A day, and the two instants these rows read the promise from. */
     const DAY = 24 * 60 * 60_000;
@@ -1471,7 +1622,7 @@ describe("a graced act at the apply-time re-gate", () => {
         store.recordWarning({
             effectId: ACT_EFFECT_ID,
             warnedAt: BASE.toISOString(),
-            gracePeriodDays: 7,
+            gracePeriodHours: 7 * 24,
             earliestActionAt: later(7).toISOString(),
             cancelledBy: "a commit or a /working comment",
             reversesWith: "re-assign / reopen",

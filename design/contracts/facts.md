@@ -70,6 +70,11 @@ projection was. `actor` is a field whose value may be `null`, which is NOT an `U
 was read because a clock fired, so "nobody caused this" is a fact about the record rather than a
 group somebody skipped.
 
+**A pull-request record carries no head sha.** Nothing above names one, and no group holds one, so
+a capability that needs the commit a pull request currently points at asks a resolver for it — the
+adapter is where a head sha is read, and it is read at the moment of asking rather than carried from
+whenever the record was made.
+
 **`readiness` is `draft` alone, and it left `review` for a reason.** It is the one readiness fact a
 WEBHOOK can read — the payload carries it — while the three facts remaining in `review` need the
 timeline. A capability wanting only draft state would otherwise have to declare `review` and be
@@ -98,9 +103,10 @@ the row is what a declaration is judged against.
 
 **The row is the promise; the record is the day's fact.** A read that failed, and a read the
 endpoint-permission matrix has not confirmed, both leave their group unread on a record its row
-says `read` — which is the sweep's `review` today (`design/guides/sweep.md` §4). That is why §4's
-`factsUnread` skip stays: the boot check refuses a capability that could never run, and the skip
-covers the record that falls short of what was promised.
+says `read`. No row falls short that way today — the sweep's `review` was the standing example and
+protocol 6.9 cited its three reads (`design/guides/sweep.md` §4) — and the `factsUnread` skip stays
+anyway: the boot check refuses a capability that could never run, and the skip covers the record
+that falls short of what was promised, whichever of the two reasons put it there.
 
 ## 3. What a capability declares
 
@@ -109,7 +115,7 @@ declareCapability({
     name: "inactivity",
     facts: ["issue", "pullRequest"],          // the kinds it reads (was `observations`)
     needs: ["assignees", "links", "review"],   // the groups it reads
-    // triggers, configKeys, requiredMappings, resolvers, intents, operationalNeeds as before
+    // triggers, settings, requiredMappings, resolvers, intents, operationalNeeds as before
 });
 ```
 

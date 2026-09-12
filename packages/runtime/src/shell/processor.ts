@@ -1,19 +1,9 @@
 /**
- * The worker half: claim a durable delivery, prepare, reject an unsupported
- * mode or call the one verb, apply what it approved, then commit the outcome
- * with completion. The receiver acknowledged long ago; GitHub never observes
- * retries here.
- *
- * The reading key: a claimed delivery always ends as exactly ONE of four
- * records — `repositoryMismatch`, `configRejected`, `modeUnsupported`, or
- * a decision — and there is no fifth exit. The try/catch in `attemptNext`
- * is routing, not handling: any throw becomes a counted failed attempt,
- * and the retry policy above IS the recovery logic — a bounded, spaced
- * reclaim, ending in the store's dead letter when the budget runs out.
- *
- * `recordFor` below is stations ③ to ⑤ of this package's README table,
- * one named step per station, plus the applier this file hands the approved
- * effects to while the delivery's claim is still held (`apply.ts`).
+ * The worker half: claim a durable delivery, prepare, reject an unsupported mode or
+ * call the one verb, apply what it approved, then commit the outcome with completion.
+ * The reading key: a claimed delivery always ends as exactly ONE of four records —
+ * `repositoryMismatch`, `configRejected`, `modeUnsupported`, or a decision, with no
+ * fifth exit. The try/catch in `attemptNext` is routing, not handling.
  */
 
 import {
@@ -45,15 +35,8 @@ import { declareSweep, SWEEP_EFFECT } from "./schedule.js";
 export const STALE_CLAIM_MINUTES = 15;
 
 /**
- * The retry bounds. A delivery that keeps failing gets five attempts in
- * all, waiting 30s, 60s, 120s and 240s between them.
- *
- * Thirty seconds is longer than the blips this worker actually meets — a
- * config read that lost its token, externals answering unavailable — and
- * five attempts spread over about eight minutes outlast most of them
- * without holding a delivery for an afternoon. The hourly ceiling is a
- * bound on the doubling rather than a number this schedule reaches; it
- * only binds if the attempt budget is raised.
+ * The retry bounds: five attempts in all, waiting 30s, 60s, 120s and 240s between.
+ * The hourly ceiling bounds the doubling rather than being a number this reaches.
  */
 const MAX_DELIVERY_ATTEMPTS = 5;
 const RETRY_BASE_MS = 30_000;
@@ -70,27 +53,13 @@ export interface ProcessorOptions {
     readonly capabilities: readonly EngineCapability[];
     readonly configSource: ConfigSource;
     readonly externals: ExternalsForDelivery;
-    /**
-     * The shell's routing knowledge (`DecideInput` asks for it): the one
-     * repository this endpoint serves. It is the name an unreadable
-     * delivery's report carries, and — see `recordFor` — the name every
-     * readable payload is held to.
-     */
+    /** The one repository this endpoint serves, and the name every payload is held to. */
     readonly repository: RepositoryRef;
     readonly worker: string;
     readonly clock: () => Date;
     /** Every line here names its delivery: this is the lane that retries. */
     readonly log: Log;
-    /**
-     * The write path, when a composition root has wired one.
-     *
-     * Absent is the shipped composition. `main.ts` supplies no applier, so
-     * `mode: active` still ends as `modeUnsupported` before `decide()` runs —
-     * the shell genuinely has no effect path, which is what that record has
-     * always said. Wiring one is how the gate lifts, and that is stage E's
-     * decision to make at the composition root rather than a branch anyone
-     * deletes here.
-     */
+    /** The write path, when a composition root has wired one. Absent is the shipped composition, so `mode: active` ends as `modeUnsupported` before `decide()` runs — the shell genuinely has no effect path. */
     readonly applier?: Applier;
 }
 
@@ -104,9 +73,8 @@ interface RecordIdentity {
 }
 
 /**
- * The canonical shell record persisted for one delivery — and the record a
- * swept item comes to, which is the same shape for the same reason: a sweep is
- * a second CALLER of `decide()`, not a second pipeline (facts.md §4).
+ * The canonical shell record persisted for one delivery — and a swept item's, which
+ * is the same shape because a sweep is a second CALLER of `decide()` (facts.md §4).
  */
 export type ShellRecord =
     | (RecordIdentity & {
@@ -133,17 +101,10 @@ export type ShellRecord =
           readonly observed: string;
       });
 
-/**
- * Stamped when a record was reached without consulting the configuration,
- * as `repositoryMismatch` is: the file of a repository this endpoint does
- * not serve is not the file that would have been read.
- */
+/** Stamped when a record was reached without consulting the configuration. */
 const CONFIG_NOT_CONSULTED_REVISION = "sha256:unconsulted";
 
-/**
- * Invalid JSON flows onward as an unreadable payload — the normalizer's
- * `payloadNotObject` names it in the report; the shell has no opinion.
- */
+/** Invalid JSON flows onward as an unreadable payload; the shell has no opinion. */
 function parsePayload(bytes: Uint8Array): unknown {
     try {
         return JSON.parse(Buffer.from(bytes).toString("utf8"));
@@ -153,38 +114,20 @@ function parsePayload(bytes: Uint8Array): unknown {
     }
 }
 
-/**
- * The `owner/repo` a payload names, spelled for a record — reading via
- * core's `repositoryNamedBy` so the three field reads live once, beside
- * the normalizer that owns them.
- */
+/** The `owner/repo` a payload names, read via core's `repositoryNamedBy`. */
 function repositorySpelledBy(payload: unknown): string | null {
     const named = repositoryNamedBy(payload);
     return named === null ? null : `${named.owner}/${named.repo}`;
 }
 
-/**
- * Case-insensitively, because GitHub's names are: no two repositories
- * differ only in case, so a differently-cased `REPO_OWNER` names the same
- * repository and refusing it would refuse the truth.
- */
+/** Case-insensitively, because GitHub's names are: no two repositories differ only in case. */
 function sameRepository(named: string, served: string): boolean {
     return named.toLowerCase() === served.toLowerCase();
 }
 
 /**
- * One fact record to decide about, outside the delivery queue — the sweep's
- * entry to the lifecycle this file already owns (`design/guides/sweep.md` §2).
- *
- * `deliveryId` is `sweep:{schedule}:{item}`: a NAME, for the log and for the
- * record, never a durable delivery row. The store keys deliveries by GitHub's
- * own GUID, and minting one for a sweep would put an event GitHub never sent in
- * the deduplication table.
- *
- * The configuration is passed in rather than loaded here because the sweep
- * reads it ONCE per firing and decides many items from it — a per-item read
- * would spend a call an item and could hand two items of one sweep two
- * different files.
+ * One fact record to decide about, outside the delivery queue — the sweep's entry to
+ * the lifecycle this file owns (sweep.md §2). `deliveryId` is a NAME, never a durable row. The configuration is passed in because the sweep reads it ONCE per firing.
  */
 export interface FactRecordInput {
     readonly facts: Facts;
@@ -199,35 +142,22 @@ export interface Processor {
     processOnce(): Promise<boolean>;
     drain(): Promise<void>;
     /**
-     * Decide one fact record and apply what it approved — stations ④ to ⑥ for
-     * a caller that already holds the record and the configuration.
-     *
-     * ONE lifecycle, not two: the mode gate, `decide()`, the applier and the
-     * record shape are the delivery lane's, reached here without the queue.
-     * A throw is the caller's to handle; the sweep's schedule row is the claim
-     * that ends, where a delivery's own claim ends here.
+     * Decide one fact record and apply what it approved — stations ④ to ⑥ for a caller
+     * that already holds the record and the configuration. ONE lifecycle, not two.
      */
     processFacts(input: FactRecordInput): Promise<ShellRecord>;
     /** The drain in flight, if any; resolved at once when none is. */
     settled(): Promise<void>;
     /**
-     * The current configuration as this lane reads it, or `null` when it
-     * cannot be read or does not parse.
-     *
-     * Exposed for the sweep's effect recovery, which has to gate a resend on
-     * the same file the deliveries are gated on. A second reader with its own
-     * source and its own parser would be the one fact in two places this
-     * repository keeps finding — and the two could disagree about whether a
-     * repository is still in active mode, which is the disagreement that
-     * writes to GitHub.
+     * The current configuration as this lane reads it, or `null` when it cannot be read.
+     * Exposed for the sweep's effect recovery, so a resend is gated on the same file: two readers could disagree about active mode, and that disagreement writes to GitHub.
      */
     configuration(): Promise<RepositoryConfig | null>;
 }
 
 /**
- * What one claimed-and-carried delivery came to. The failure case is a
- * VALUE because the drain has to keep going after it, and needs to know
- * what the store made of the failure to decide whether it can.
+ * What one claimed-and-carried delivery came to.
+ * The failure case is a VALUE, because the drain has to keep going after it.
  */
 type PassOutcome =
     | { readonly kind: "idle" }
@@ -241,9 +171,7 @@ type PassOutcome =
 
 /**
  * What the failure did to the delivery, as the fields its line carries.
- *
- * `attempts` is `null` for exactly one disposition: a lost claim counts
- * nothing, so reporting a number there would invent one.
+ * `attempts` is `null` for exactly one disposition: a lost claim counts nothing.
  */
 function dispositionOf(release: ReleaseDeliveryAfterFailureResult): {
     readonly disposition: ReleaseDeliveryAfterFailureResult["outcome"];
@@ -286,8 +214,7 @@ export function createProcessor(options: ProcessorOptions): Processor {
         return store.claimNextDelivery(worker, now.toISOString(), staleBefore.toISOString());
     };
 
-    /** Station 4: fetch the text, parse it. Every rejection is a value —
-     * nothing downstream ever sees a half-read configuration. */
+    /** Station 4: fetch the text, parse it. Every rejection is a value. */
     const loadConfig = async (): Promise<{
         readonly revision: string;
         readonly result: ConfigResult;
@@ -295,17 +222,12 @@ export function createProcessor(options: ProcessorOptions): Processor {
         const loaded = await configSource.load();
         if (!loaded.ok) {
             if (loaded.permanent) {
-                // Fail closed and COMPLETE, exactly like a config that
-                // parses wrong: redelivering cannot fix a defective file.
                 return {
                     revision: loaded.revision ?? UNREADABLE_CONFIG_REVISION,
                     result: {
                         ok: false,
-                        // documentUnparseable, not a new code: the error
-                        // catalogue only admits codes a DOCUMENT can reach
-                        // (D76's demonstration rule), and an unreadable file
-                        // is the parse failure's upstream twin. The message
-                        // carries which one it was.
+                        // documentUnparseable, not a new code: the catalogue only admits codes a DOCUMENT can reach (D76).
+
                         errors: [
                             {
                                 code: "documentUnparseable",
@@ -316,9 +238,9 @@ export function createProcessor(options: ProcessorOptions): Processor {
                     },
                 };
             }
-            // Transient: the throw costs the delivery one attempt and
-            // schedules the next. A config that is unreachable for good
-            // therefore dead-letters instead of retrying without end.
+            // Transient: the throw costs one attempt and schedules the next, so a config
+            // unreachable for good dead-letters instead of retrying without end.
+
             throw new Error(`configuration unavailable: ${loaded.detail}`);
         }
         const { document } = loaded;
@@ -326,8 +248,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
             revision: document.revision,
             result: parseConfigDocument(document.text, {
                 revision: document.revision,
-                // Full declarations, not names: the parser holds settings
-                // keys to configKeys and enabling to requiredMappings.
+                // Full declarations, not names: the parser reads each settings block against its own spec.
+
                 knownCapabilities: capabilities.map((c) => c.declaration),
             }),
         };
@@ -339,6 +261,7 @@ export function createProcessor(options: ProcessorOptions): Processor {
         decidedAt: Date,
     ): RecordIdentity => ({
         // The branded GUID becomes plain text here: records are JSON.
+
         deliveryId: String(claimed.deliveryId),
         event: claimed.eventName,
         receivedAt: claimed.receivedAt,
@@ -346,17 +269,14 @@ export function createProcessor(options: ProcessorOptions): Processor {
         configRevision,
     });
 
-    /** Stations 5–10 live behind this one call: normalize, evaluate,
-     * screen, derive the world, gate. The shell's contribution ends at
-     * the parenthesis. */
+    /** Stations 5–10 live behind one call: normalize, evaluate, screen, derive, gate. */
     const decideOn = async (
         claimed: ClaimedDelivery,
         payload: unknown,
         config: RepositoryConfig,
     ): Promise<Decision> => {
-        // Built per delivery: the live path binds its ordering-evidence
-        // memo to exactly this delivery. A rejection here is a counted
-        // failed attempt, like any other failure before completion.
+        // Built per delivery: the live path binds its ordering-evidence memo to this one.
+
         const facts = await externals({
             payload,
             deliveryId: String(claimed.deliveryId),
@@ -366,23 +286,16 @@ export function createProcessor(options: ProcessorOptions): Processor {
             { kind: "delivery", repository, event: claimed.eventName, payload },
             config,
             capabilities,
-            // The recorded warning is the store's, not the delivery's, so it
-            // is bound HERE rather than in the per-delivery fill: every
-            // composition that owns a store can answer it, credentials or not
-            // (grace.md §2).
+            // The recorded warning is the store's, not the delivery's, so every composition
+            // that owns a store can answer it, credentials or not (grace.md §2).
+
             { ...facts, warningFor: recordedWarningsIn(store) },
         );
     };
 
     /**
-     * Stations ④ to ⑥ over a configuration that has already parsed: the mode
-     * gate, one decision, and the effects it approved applied while the caller
-     * still holds its claim.
-     *
-     * BOTH callers end here — the delivery lane and the sweep — which is what
-     * makes "one lifecycle" true rather than said. The write path is acquired
-     * in one place, so no future producer of fact records can acquire one by
-     * arriving.
+     * Stations ④ to ⑥ over a configuration that has already parsed.
+     * BOTH callers end here, which is what makes "one lifecycle" true rather than said: the write path is acquired in one place.
      */
     const decidedRecord = async (
         identity: RecordIdentity,
@@ -398,8 +311,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
             };
         }
         const decision = await decideIt();
-        // Only in active mode — nothing else ever approves one, and saying so
-        // here means a future mode cannot acquire a write path by accident.
+        // Only in active mode, so a future mode cannot acquire a write path by accident.
+
         const effects =
             active && applier !== undefined
                 ? await applier.applyAll(decision.approved, config)
@@ -410,16 +323,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
     const served = `${repository.owner}/${repository.repo}`;
 
     /**
-     * Build one delivery's canonical record, stations ③ to ⑤ in reading
-     * order — after the one question no station asks.
-     *
-     * The repository comes FIRST, before the configuration is even read.
-     * This endpoint serves exactly one repository, and a payload naming
-     * another is a permanent property of the delivery's own bytes: it must
-     * end the delivery whatever the config source is doing, or a config
-     * outage would turn a refusal into four retries and a dead letter. It
-     * mislabels a report today; the day active mode lands it would be
-     * write authority over a repository nobody configured.
+     * Build one delivery's canonical record, stations ③ to ⑤ in reading order.
+     * The repository comes FIRST, before the configuration is read: a payload naming another is a permanent property of the bytes, so a config outage cannot turn a refusal into four retries and a dead letter.
      */
     const recordFor = async (claimed: ClaimedDelivery): Promise<ShellRecord> => {
         const payload = parsePayload(claimed.payload);
@@ -433,28 +338,27 @@ export function createProcessor(options: ProcessorOptions): Processor {
             };
         }
         const config = await loadConfig();
-        // One instant serves as the record's `decidedAt` AND the gates'
-        // clock, so the journal never disagrees with the decision it holds.
+        // One instant is the record's `decidedAt` AND the gates' clock, so the journal
+        // never disagrees with the decision it holds.
+
         const identity = identityFor(claimed, config.revision, clock());
 
         if (!config.result.ok) {
-            // Fail closed and COMPLETE: redelivering cannot fix a broken
-            // config — the fixed file arrives as its own future delivery.
+            // Fail closed and COMPLETE: the fixed file arrives as its own future delivery.
+
             return { kind: "configRejected", ...identity, errors: config.result.errors };
         }
         const parsed = config.result.config;
-        // The one thing this lane does for the OTHER one: a repository whose
-        // file enables a clock-driven capability gets its sweep row declared
+        // The one thing this lane does for the OTHER one: the sweep row is declared
         // here, because this is where the file is read (sweep.md §2, step 1).
+
         declareSweep({ store, repository, config: parsed, capabilities, now: clock() });
         return decidedRecord(identity, parsed, () => decideOn(claimed, payload, parsed));
     };
 
     /**
-     * Count one failed attempt against this claim, which either spaces the
-     * next one or ends the delivery as a dead letter. The wait is derived
-     * from the attempts the claim arrived with, so a delivery that keeps
-     * failing backs off instead of being re-claimed on every drain.
+     * Count one failed attempt, which either spaces the next or ends the delivery.
+     * The wait is derived from the attempts the claim arrived with.
      */
     const recordFailure = (claimed: ClaimedDelivery): ReleaseDeliveryAfterFailureResult => {
         const failedAt = clock();
@@ -471,9 +375,7 @@ export function createProcessor(options: ProcessorOptions): Processor {
 
     /**
      * Station 3 onward: claim, decide, then atomically persist-and-complete.
-     * A failure before canonical completion is counted, not just released:
-     * a delivery nothing can process spends its budget and dead-letters
-     * rather than being retried forever.
+     * A failure before canonical completion is counted, not just released.
      */
     const attemptNext = async (): Promise<PassOutcome> => {
         const claimed = claimNext();
@@ -508,8 +410,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
                 ...dispositionOf(release),
                 detail: detailOf(error),
             });
-            // A second line, because this is where a delivery STOPS: the
-            // one an operator greps for is not one of five failed attempts.
+            // A second line, because this is where a delivery STOPS.
+
             if (release.outcome === "deadLettered") {
                 log({ event: "deliveryDeadLettered", deliveryId, attempts: release.attempts });
             }
@@ -518,10 +420,7 @@ export function createProcessor(options: ProcessorOptions): Processor {
     };
 
     return {
-        /**
-         * One swept item, decided and applied. No claim of its own: the sweep
-         * holds the schedule row, and a throw here is what ends that firing.
-         */
+        /** One swept item, decided and applied. No claim of its own: the sweep holds the row. */
         processFacts({ facts, deliveryId, receivedAt, config }): Promise<ShellRecord> {
             return decidedRecord(
                 {
@@ -534,9 +433,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
                 config,
                 async () =>
                     decide({ kind: "facts", facts }, config, capabilities, {
-                        // No payload: a sweep has no causing human action to
-                        // exclude from its own ordering evidence, which is the
-                        // absence `causeFingerprintOf` already answers for.
+                        // No payload: a sweep has no causing human action to exclude.
+
                         ...(await externals({ payload: undefined, deliveryId, config })),
                         warningFor: recordedWarningsIn(store),
                     }),
@@ -550,14 +448,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
             return outcome.kind === "completed";
         },
         /**
-         * Process until the queue is empty, stepping OVER a delivery that
-         * failed: it is backed off or dead-lettered by then, so the queue
-         * behind it moves. Overlapping calls share one loop.
-         *
-         * The one failure that ends the pass early is a lost claim. The
-         * attempt went uncounted, so the same delivery can be handed back
-         * immediately, and a loop that cannot prove progress should stop
-         * rather than spin — the next drain starts from a fresh claim.
+         * Process until the queue is empty, stepping OVER a failed delivery: it is backed
+         * off or dead-lettered by then. The one failure that ends the pass early is a lost claim — the attempt went uncounted, so a loop that cannot prove progress stops.
          */
         drain(): Promise<void> {
             draining ??= (async () => {
@@ -565,9 +457,8 @@ export function createProcessor(options: ProcessorOptions): Processor {
                     for (;;) {
                         const outcome = await attemptNext();
                         if (outcome.kind === "idle") return;
-                        // The failure is already logged, where the store's
-                        // answer to it was known; here it is only a routing
-                        // question — can this pass prove progress?
+                        // Already logged where the store's answer was known; here it is only routing.
+
                         if (outcome.kind === "failed" && outcome.release.outcome === "notOwned") {
                             return;
                         }
@@ -579,19 +470,15 @@ export function createProcessor(options: ProcessorOptions): Processor {
             return draining;
         },
         /**
-         * What a shutdown waits for. It cannot be `drain()`: with no pass
-         * in flight that would START one, claiming work the process is
-         * about to walk away from — the stranded claim this exists to
-         * prevent.
+         * What a shutdown waits for. It cannot be `drain()`: with no pass in flight that
+         * would START one, claiming work the process is about to walk away from.
          */
         settled(): Promise<void> {
             return draining ?? Promise.resolve();
         },
         /**
-         * A read, never a decision: a source that cannot answer and a file
-         * that does not parse are both `null`, because the sweep's response to
-         * either is the same — gate nothing on a configuration nobody could
-         * read, and try again next tick.
+         * A read, never a decision: an unanswerable source and an unparsable file are both
+         * `null`, because the sweep's response to either is the same.
          */
         async configuration(): Promise<RepositoryConfig | null> {
             try {

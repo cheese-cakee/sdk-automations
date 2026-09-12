@@ -1,14 +1,13 @@
 capabilities:
   advancement:
     enabled: true
-    settings:
-      noticeOn: trackingIssue
-      noticeIssue: 7
-      mentionCandidate: false
-      roles:
-        trustedReviewer:
-          enabled: true
-          pillars:
-            reviews: { atLeast: 25 }
-            activeWeeks: { atLeast: 10, window: 16 }
-          uncounted: [review quality]
+    noticeOn: trackingIssue
+    noticeIssue: 7
+    mentionCandidate: false
+    roles:
+      trustedReviewer:
+        enabled: true
+        pillars:
+          reviews: { atLeast: 25 }
+          activeWeeks: { atLeast: 10, window: 16 }
+        uncounted: [review quality]

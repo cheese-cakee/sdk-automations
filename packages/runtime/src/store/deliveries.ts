@@ -1,18 +1,13 @@
 /**
- * What a delivery is, and what comes back from operating on one: one
- * input and one closed result type per durable-intake operation.
- *
- * Vocabulary only. `store.ts` owns the transitions and the SQLite rows
- * behind them, `schema.ts` the table definitions. `effects.ts` and
- * `schedules.ts` are the sibling vocabularies.
+ * What a delivery is, and what comes back from operating on one: one input and one
+ * closed result type per durable-intake operation. Vocabulary only.
  */
 
 import type { DeliveryGuid } from "@hiero-hackers/automation-core";
 
 /**
- * One delivery's durable queue state. `failed` is the dead letter: attempts
- * reached the caller's cap, so nothing claims it again and it keeps its
- * payload for inspection and manual redrive.
+ * One delivery's durable queue state.
+ * `failed` is the dead letter: nothing claims it again, and it keeps its payload.
  */
 export type DeliveryState = "pending" | "processing" | "done" | "failed";
 
@@ -45,9 +40,7 @@ export type AcceptDeliveryResult =
 
 /**
  * A delivery plus the token that currently owns its processing claim.
- *
- * `attempts` counts the failures BEFORE this claim, so a first claim reads
- * zero. It is what a caller derives a backoff and a retry budget from.
+ * `attempts` counts the failures preceding this claim, so a first claim reads zero.
  */
 export interface ClaimedDelivery {
     readonly deliveryId: DeliveryGuid;
@@ -84,13 +77,8 @@ export type ReleaseDeliveryResult =
     { readonly outcome: "released" } | { readonly outcome: "notOwned" };
 
 /**
- * One failed processing attempt, and the two instants that decide what
- * happens to the delivery next.
- *
- * `retryNotBefore` is when the delivery may be claimed again, and
- * `failedAt` stamps the dead letter when `maxAttempts` is reached instead.
- * Both are caller-supplied, like every other instant the store accepts: the
- * store counts attempts, the caller owns the retry policy that spaces them.
+ * One failed processing attempt, and the two instants that decide what happens next.
+ * Both are caller-supplied: the store counts attempts, the caller owns the policy.
  */
 export interface ReleaseDeliveryAfterFailureInput {
     readonly deliveryId: DeliveryGuid;

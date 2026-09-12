@@ -14,7 +14,7 @@ point the shell will use on a real repository.
 | `minimal.yml` | The smallest configuration that says anything — three lines. |
 | `observe-only.yml` | A real repository with mappings and a capability, still writing nothing. |
 | `full.yml` | Every shipped capability on, every mapping family filled, every option commented — the catalogue. The suite holds it to that: a capability the App gains and this file does not is a failing check. |
-| `inactivity.yml` | The scheduled capability alone, at its defaults, with the two optional mappings it reads. |
+| `inactivity.yml` | Schedule-driven capabilities only, at their defaults, with the two optional mappings `inactivity` reads. |
 | `active.yml` | A reserved active configuration. Rejected unless the endpoint wires a write path. |
 
 `active.yml` remains parseable because active mode stays in Core's general vocabulary. The runnable shell
@@ -34,7 +34,7 @@ testing. As files here they ran, passed, and measured nothing.
 ## What is deliberately not decided here
 
 These files show the SHAPE of a configuration at the decided repository-root path, `automations.yml`.
-They do not implement the future default-branch fetch. `capabilities.*.settings` is opaque to the shared
-parser, which checks the key names against each capability's declaration and nothing more; the values
-are read by the capability's own spec, and `packages/capabilities/test/examples.test.ts` holds every
-file here to those specs, enabled or not.
+They do not implement the future default-branch fetch. A capability's own keys — everything in its
+block beside `enabled` — are opaque to the shared parser, which checks the key names against each
+capability's declaration and nothing more; the values are read by the capability's own spec, and
+`packages/capabilities/test/examples.test.ts` holds every file here to those specs, enabled or not.

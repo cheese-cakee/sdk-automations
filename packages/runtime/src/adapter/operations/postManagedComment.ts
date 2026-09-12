@@ -1,11 +1,4 @@
-/**
- * The comment operation's transport: the two comment endpoints, and the two
- * verbs that reach them.
- *
- * A comment is created at the item's comment list and edited at a path that
- * names only the comment — two shapes, two verbs, and the create is the one
- * non-idempotent write the platform makes.
- */
+/** The comment operation's transport: the two comment endpoints and the two verbs. */
 
 import { GITHUB_API_ORIGIN, repoPath } from "../contract.js";
 import {
@@ -30,11 +23,8 @@ const CREATE_COMMENT: EndpointShape = {
 };
 
 /**
- * `PATCH …/issues/comments/{id}` — the one write shape that does not name an
- * item number: the literal comes first and the comment id second.
- *
- * It is also the one whose landing stales a single key, because the path does
- * not name its parent issue — so the issue's comment list survives an edit.
+ * `PATCH …/issues/comments/{id}` — the one write shape naming no item number.
+ * Its landing stales a single key, so the issue's comment list survives an edit.
  */
 const UPDATE_COMMENT: EndpointShape = {
     endpoint: "updateComment",
@@ -46,7 +36,6 @@ const UPDATE_COMMENT: EndpointShape = {
     invalidates: (url) => [`${GITHUB_API_ORIGIN}${url.pathname}`],
 };
 
-/** The comment operation's endpoints and verbs. */
 export const POST_MANAGED_COMMENT = {
     endpoints: [CREATE_COMMENT, UPDATE_COMMENT],
     verbs: (context: VerbContext): Pick<WriteVerbs, "createComment" | "updateComment"> => ({

@@ -237,7 +237,7 @@ jobs:
       # against 9s incremental with nothing changed) compares against.
       - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run --incremental${{ github.event_name == 'push' && ' --force' || steps.mode.outputs.flags }}
       - if: matrix.package == 'runtime'
-        run: node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-incremental.json src/store/ 96
+        run: node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-report.json src/store/ 96
       # The other half of the restore above, and the reason the seed stays
       # authoritative: `push` is the same condition that adds `--force`, and
       # `on.push.branches` admits only main — so the single entry any run can

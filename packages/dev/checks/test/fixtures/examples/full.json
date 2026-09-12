@@ -1,0 +1,108 @@
+{
+    "revision": "full.yml",
+    "schemaVersion": 2,
+    "mode": "dry-run",
+    "capabilities": {
+        "intake": {
+            "enabled": true,
+            "settings": {
+                "announce": true
+            }
+        },
+        "prQuality": {
+            "enabled": true,
+            "settings": {
+                "checks": {
+                    "linkedIssues": {
+                        "enabled": true,
+                        "guide": "https://github.com/<org>/<repo>/wiki/Linking-Issues"
+                    }
+                }
+            }
+        },
+        "configReport": {
+            "enabled": true,
+            "settings": {}
+        },
+        "inactivity": {
+            "enabled": true,
+            "settings": {
+                "exemptBlocked": true,
+                "remindAfter": 336,
+                "reap": {
+                    "after": 504
+                },
+                "issues": {
+                    "enabled": true,
+                    "remindAfter": 504,
+                    "reap": {
+                        "enabled": true,
+                        "after": 720
+                    }
+                },
+                "pullRequests": {
+                    "enabled": true,
+                    "remindAfter": 336,
+                    "reap": {
+                        "after": 1440
+                    },
+                    "reapWhen": {
+                        "draft": {
+                            "enabled": true,
+                            "remindAfter": 336,
+                            "reap": {
+                                "enabled": true,
+                                "after": 1440
+                            }
+                        },
+                        "changesRequested": {
+                            "enabled": true,
+                            "remindAfter": 336,
+                            "reap": {
+                                "enabled": true,
+                                "after": 1440
+                            }
+                        },
+                        "needsRevision": {
+                            "enabled": true,
+                            "remindAfter": 48,
+                            "reap": {
+                                "enabled": true,
+                                "after": 120
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "mappings": {
+        "labels": {
+            "awaitingTriage": "status: triage",
+            "ready": "status: ready for dev",
+            "inProgress": "status: in progress",
+            "needsReview": "status: needs review",
+            "needsRevision": "status: needs revision",
+            "readyToMerge": "status: ready to merge",
+            "blocked": "status: blocked"
+        },
+        "commands": {
+            "assign": "/assign",
+            "unassign": "/unassign",
+            "working": "/working"
+        },
+        "skills": {
+            "goodFirstIssue": "good first issue",
+            "beginner": "skill: beginner",
+            "intermediate": "skill: intermediate",
+            "advanced": "skill: advanced"
+        },
+        "alerts": {
+            "p0": "P0-🔥",
+            "security": "Security"
+        }
+    },
+    "principals": {
+        "maintainerTeam": "hiero-sdk-js-maintainers"
+    }
+}

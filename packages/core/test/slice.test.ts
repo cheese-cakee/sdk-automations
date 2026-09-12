@@ -29,6 +29,7 @@ import { capture } from "@hiero-hackers/automation-testkit";
 import {
     INTENT_OPERATIONS,
     declareCapability,
+    spec,
     decide,
     deriveWorld,
     writeRequestFor,
@@ -54,7 +55,7 @@ const payload = capture("issues.opened.json").json();
 const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],

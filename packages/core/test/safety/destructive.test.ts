@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import {
     evaluateDestructive,
     createDestructiveWarning,
-    MIN_GRACE_DAYS,
+    MIN_GRACE_HOURS,
     type WriteRequest,
     type WriteContext,
     type DestructivePlan,
@@ -36,7 +36,7 @@ const warningFor = (
     createDestructiveWarning({
         request: warnedRequest,
         warnedAt: new Date("2026-07-01T00:00:00Z"),
-        gracePeriodDays: 7,
+        gracePeriodHours: 7 * 24,
         earliestActionAt: new Date("2026-07-08T00:00:00Z"),
         cancelledBy: "any comment or commit by the assignee",
         reversesWith: "a maintainer or author restores the previous state",
@@ -260,14 +260,14 @@ describe("evaluateDestructive (guides/grace.md)", () => {
         }
     });
 
-    it.each([0, -1, MIN_GRACE_DAYS - 1])(
-        "refuses a grace period of %s days (grace floor)",
-        (days) => {
+    it.each([0, -1, MIN_GRACE_HOURS - 1])(
+        "refuses a grace period of %s hours (grace floor)",
+        (hours) => {
             const plan = destructive();
             const verdict = evalDestructive(
                 {
                     ...plan,
-                    warning: warningFor(plan.request, { gracePeriodDays: days }),
+                    warning: warningFor(plan.request, { gracePeriodHours: hours }),
                 },
                 dContext(),
                 afterGrace,
@@ -278,14 +278,19 @@ describe("evaluateDestructive (guides/grace.md)", () => {
 
     it.each([
         ["a non-finite grace period", Number.NaN, new Date("2026-07-01T00:00:00Z"), afterGrace],
-        ["an invalid warning timestamp", 7, new Date("invalid"), afterGrace],
-        ["an invalid current timestamp", 7, new Date("2026-07-01T00:00:00Z"), new Date("invalid")],
-    ] as const)("fails closed on %s", (_name, gracePeriodDays, warnedAt, now) => {
+        ["an invalid warning timestamp", 168, new Date("invalid"), afterGrace],
+        [
+            "an invalid current timestamp",
+            168,
+            new Date("2026-07-01T00:00:00Z"),
+            new Date("invalid"),
+        ],
+    ] as const)("fails closed on %s", (_name, gracePeriodHours, warnedAt, now) => {
         const plan = destructive();
         const verdict = evalDestructive(
             {
                 ...plan,
-                warning: warningFor(plan.request, { gracePeriodDays, warnedAt }),
+                warning: warningFor(plan.request, { gracePeriodHours, warnedAt }),
             },
             dContext(),
             now,
@@ -305,17 +310,17 @@ describe("evaluateDestructive (guides/grace.md)", () => {
         const atFloor = {
             ...plan,
             warning: warningFor(plan.request, {
-                gracePeriodDays: MIN_GRACE_DAYS,
-                earliestActionAt: new Date("2026-07-02T00:00:00Z"),
+                gracePeriodHours: MIN_GRACE_HOURS,
+                earliestActionAt: new Date("2026-07-01T01:00:00Z"),
             }),
         };
-        // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_DAYS days:
+        // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_HOURS hours:
         // the grace has fully elapsed at this instant, not one ms later.
-        expect(evalDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome).toBe(
+        expect(evalDestructive(atFloor, dContext(), new Date("2026-07-01T01:00:00Z")).outcome).toBe(
             "apply",
         );
         expect(
-            evalDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
+            evalDestructive(atFloor, dContext(), new Date("2026-07-01T00:59:59.999Z")),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
     });
 
@@ -348,7 +353,7 @@ describe("evaluateDestructive (guides/grace.md)", () => {
                 afterGrace,
             ),
             evalDestructive(
-                { ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) },
+                { ...plan, warning: warningFor(plan.request, { gracePeriodHours: 0 }) },
                 dContext(),
                 afterGrace,
             ),

@@ -15,15 +15,27 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+    duration,
+    flag,
     MAPPABLE_MEANINGS,
+    oneOf,
+    principal,
     REPOSITORY_MODES,
+    spec,
+    text,
     TOP_LEVEL_KEYS,
     type ConfigErrorCode,
 } from "@hiero-hackers/automation-core";
 import type { RecordOnlyCode, SafetyRefusalCode } from "@hiero-hackers/automation-core";
 import { verdictFinding, type Severity } from "@hiero-hackers/automation-core";
 import { shippedCapabilities } from "./capabilities.js";
-import { readGeneratedBlock, renderCapabilityTable } from "./generated.js";
+import { renderEditorSchema, SCHEMA_PATH, SCHEMA_URL } from "./editor-schema.js";
+import {
+    readGeneratedBlock,
+    renderCapabilityTable,
+    renderSettingsTrees,
+    settingsTree,
+} from "./generated.js";
 import {
     docsDir,
     exampleFiles,
@@ -140,7 +152,7 @@ describe("docs/configuration.md", () => {
             "troubleshooting.md":
                 "The test suite locks the code membership and severity grouping on this page against the implementation\non every commit. The plain-language explanations still require review.",
             "capabilities.md":
-                "The test suite regenerates the table on this page from the shipped capabilities' own declarations on\nevery commit (`pnpm contracts`). The explanations around it still require review.",
+                "The test suite regenerates the table and the settings blocks on this page from the shipped\ncapabilities' own declarations on every commit (`pnpm contracts`). The explanations around them\nstill require review.",
         } as const;
         const unscoped = /every table.{0,80}(code-derived|locked|against the code)/is;
 
@@ -204,6 +216,7 @@ describe("docs/configuration.md", () => {
             capabilityNameInvalid: true,
             capabilityEnabledNotBoolean: true,
             capabilityUnknown: true,
+            settingInvalid: true,
             meaningNotMappable: true,
             meaningRequired: true,
             labelInvalid: true,
@@ -216,8 +229,7 @@ describe("docs/configuration.md", () => {
             skillNotInjective: true,
             alertInvalid: true,
             alertNotInjective: true,
-            typeInvalid: true,
-            typeNotInjective: true,
+            principalNameInvalid: true,
             principalNotAString: true,
         };
         expect(tableCodes(doc, "Every way the file can be wrong").sort()).toEqual(
@@ -225,6 +237,24 @@ describe("docs/configuration.md", () => {
         );
     });
 });
+
+/**
+ * Every line of a settings tree that a copy would turn into YAML null: a key,
+ * nothing after the colon but its comment, and no deeper line under it.
+ *
+ * The depth test is what tells the two apart. `issues:` is a mapping once its
+ * `enabled: true` is copied with it; `guide:` alone is null, and `text`'s
+ * reader rejects the file that states it.
+ */
+function bareKeys(markdown: string): string[] {
+    const lines = markdown.split("\n");
+    const indent = (line: string): number => line.length - line.trimStart().length;
+    return lines.filter((line, at) => {
+        if (!/^\s*[^#\s][^:]*:\s*(#.*)?$/.test(line)) return false;
+        const next = lines[at + 1] ?? "";
+        return next.trim() === "" || indent(next) <= indent(line);
+    });
+}
 
 describe("docs/capabilities.md", () => {
     const doc = page("capabilities.md");
@@ -252,6 +282,128 @@ describe("docs/capabilities.md", () => {
         );
         expect(rows).toEqual(shippedCapabilities().map(({ name }) => name));
         expect(rows.length).toBeGreaterThan(0);
+    });
+
+    it("holds the settings trees the shipped specs generate", () => {
+        for (const { name, markdown } of renderSettingsTrees()) {
+            expect(readGeneratedBlock(doc, name), `run \`pnpm contracts\` — ${name}`).toEqual(
+                markdown,
+            );
+        }
+        expect(renderSettingsTrees().map(({ name }) => name)).toEqual(["settings"]);
+    });
+
+    /**
+     * A tree that stopped at the top, or that showed a key with no value,
+     * would still match the block above and teach a maintainer nothing — the
+     * second is worse than the first, because a copied bare key parses to
+     * `null` and the file is rejected.
+     */
+    it("reaches the bottom of the deepest spec, with the value each key resolves to", () => {
+        const [tree] = renderSettingsTrees();
+        const markdown = tree?.markdown ?? "";
+        expect(markdown).toContain("    needsRevision: # off until enabled —");
+        expect(markdown).toContain("        after: 21d # inherited from the level above —");
+        expect(markdown).not.toMatch(/: # inherited/);
+    });
+
+    /**
+     * The rule one layer down from the one above, for the key a file may
+     * leave out. A group key with its levels under it is a mapping when it is
+     * copied; a LEAF with nothing after its colon is YAML null, and `text`'s
+     * reader refuses the whole file over it. So the tree may hold no bare key
+     * that nothing is written under.
+     */
+    it("offers no bare key a maintainer could copy into a rejected file", () => {
+        const [tree] = renderSettingsTrees();
+        expect(bareKeys(tree?.markdown ?? "")).toEqual([]);
+        expect(bareKeys("a:\n  b: 1 # default — one\nguide: # unset — a page\n")).toEqual([
+            "guide: # unset — a page",
+        ]);
+    });
+
+    /**
+     * No shipped spec declares an optional scalar, so the rule above has
+     * nothing to bite on yet and would pass a generator that had lost it.
+     * This is the spec that exercises it: the key is offered commented out,
+     * with the value stating it takes, and a maintainer uncomments it rather
+     * than deleting a `#` they were never shown.
+     */
+    it("writes a key that may be left out as a comment, never as a line", () => {
+        const rendered = settingsTree(
+            "throwaway",
+            spec({
+                announce: flag({ default: false, doc: "Say so in a comment" }),
+                guide: text({ optional: true, doc: "A page explaining how to link an issue" }),
+                owner: principal({ optional: true, doc: "Pinged when a check fails" }),
+            }),
+        );
+
+        expect(rendered.split("\n").slice(3)).toEqual([
+            "enabled: true",
+            "announce: false # default — Say so in a comment",
+            '# guide: "…" — optional; A page explaining how to link an issue',
+            '# owner: "…" — optional; Pinged when a check fails',
+            "```",
+        ]);
+        expect(bareKeys(rendered)).toEqual([]);
+    });
+
+    /**
+     * The same rule's other half, for the key a file MUST state. It cannot be
+     * offered commented out — leaving it out is already a rejected file — so it
+     * is shown as a line with a placeholder naming what it takes. A maintainer
+     * who copies the placeholder unchanged is refused at that key's own path,
+     * which is where they can act on it; a closed choice names its first value
+     * instead, and copying that writes a legal file.
+     */
+    it("writes a key the file must state with a placeholder naming what it takes", () => {
+        const rendered = settingsTree(
+            "throwaway",
+            spec({
+                remindAfter: duration({ doc: "How long the wait may run" }),
+                notify: principal({ optional: false, doc: "Addressed when the clock runs out" }),
+                guide: text({ optional: false, doc: "The page the notice points at" }),
+                noticeOn: oneOf(["latestActivity", "trackingIssue"] as const, {
+                    doc: "Where the notice is posted",
+                }),
+            }),
+        );
+
+        expect(rendered.split("\n").slice(3)).toEqual([
+            "enabled: true",
+            "remindAfter: <duration> # required — How long the wait may run",
+            "notify: <principal> # required — Addressed when the clock runs out",
+            "guide: <text> # required — The page the notice points at",
+            'noticeOn: "latestActivity" # required, one of latestActivity | trackingIssue — Where the notice is posted',
+            "```",
+        ]);
+        expect(bareKeys(rendered)).toEqual([]);
+    });
+});
+
+/**
+ * The editor schema is generated whole — JSON has no comments, so there are no
+ * markers and nothing hand-written to keep. The lock is the same sentence the
+ * block locks make: the file holds what the specs say, and `pnpm contracts` is
+ * the repair. Whether it ACCEPTS the right documents is `examples.test.ts`.
+ */
+describe("docs/automations.schema.json", () => {
+    const text = normalizeNewlines(readFileSync(join(repoRoot, SCHEMA_PATH), "utf8"));
+
+    it("is what the shipped specs and the top-level vocabulary generate", () => {
+        expect(text, "run `pnpm contracts`").toEqual(renderEditorSchema());
+    });
+
+    /**
+     * The modeline is the only way a maintainer finds this file, and an
+     * editor fetches the URL rather than resolving a path — so a link check
+     * cannot see it and the two spellings are held to one constant instead.
+     */
+    it("the quickstart points an editor at the URL the schema answers to", () => {
+        expect(page("quickstart.md")).toContain(`# yaml-language-server: $schema=${SCHEMA_URL}`);
+        expect(JSON.parse(text)).toMatchObject({ $id: SCHEMA_URL });
+        expect(SCHEMA_URL).toMatch(/^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/main\//);
     });
 });
 

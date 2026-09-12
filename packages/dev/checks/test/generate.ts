@@ -12,19 +12,29 @@
  * on its own.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { generatedDocuments, rewriteGeneratedBlocks } from "./generated.js";
+import { generatedDocuments, generatedFiles, rewriteGeneratedBlocks } from "./generated.js";
 import { repoRoot } from "./repository.js";
 
-for (const { path, blocks } of generatedDocuments()) {
-    const file = join(repoRoot, path);
-    const before = readFileSync(file, "utf8");
-    const after = rewriteGeneratedBlocks(before, blocks);
+/** Write only a changed file, so a second run reports `unchanged` for everything. */
+function write(path: string, before: string | null, after: string): void {
     if (after === before) {
         console.log(`unchanged  ${path}`);
-        continue;
+        return;
     }
-    writeFileSync(file, after);
+    writeFileSync(join(repoRoot, path), after);
     console.log(`rewrote    ${path}`);
+}
+
+for (const { path, blocks } of generatedDocuments()) {
+    const before = readFileSync(join(repoRoot, path), "utf8");
+    write(path, before, rewriteGeneratedBlocks(before, blocks));
+}
+
+// A whole-file output has no markers to rewrite between, so the first run of a
+// new one writes a file that is not there yet.
+for (const { path, text } of generatedFiles()) {
+    const file = join(repoRoot, path);
+    write(path, existsSync(file) ? readFileSync(file, "utf8") : null, text);
 }

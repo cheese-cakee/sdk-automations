@@ -1,19 +1,8 @@
 /**
  * The two ladders, one row per scenario in `design.md`'s Verified-by table.
  *
- * ONE INTENT PER STALE THING, and it is the ACT. Since grace.md the reminder
- * is not an intent: the act carries the reminder's words, and the platform
- * posts them, records the promise and holds the act for the gap between the
- * two rungs. So a row about a reminder asserts the act's `grace.warning.body`
- * — the same strings, pinned on the intent instead of on a separate comment.
- *
- * The last block is `decide()` with a stubbed `warningFor`, which is where the
- * rest of the ladder actually happens: warned first, acted only after. What
- * neither block reaches is redelivery and the apply-time re-gate, and those
- * rows are left unproved rather than faked.
- *
- * Every fixture is one record — one item, every group read (contracts/facts.md
- * §4). A scenario about two items is two calls, and there is no list to build.
+ * One intent per stale thing, and it is the act: a row about a reminder
+ * asserts the act's `grace.warning.body`. Every fixture is one record.
  */
 
 import { describe, expect, it } from "vitest";
@@ -35,7 +24,8 @@ import { inactivity, type InactivityDeclaration } from "./capability.js";
 import type { InactivityFacts, IssueLadderFacts, PullLadderFacts } from "./declaration.js";
 import { configEnabling, sweptIssue, sweptPullRequest } from "../../test/world.js";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const AT = new Date("2026-09-09T00:00:00.000Z");
 const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const ISSUE = { kind: "issue", number: 40 } as const;
@@ -53,16 +43,20 @@ const LABELS = {
 /** `design.md`'s config block, verbatim — the ladder every row below reads. */
 const DESIGN_SETTINGS = {
     exemptBlocked: true,
-    remindAfterDays: 14,
-    reapAfterDays: 21,
-    issues: { enabled: true },
+    remindAfter: "14d",
+    reap: { after: "21d" },
+    issues: { enabled: true, reap: { enabled: true } },
     pullRequests: {
         enabled: true,
-        reapAfterDays: 60,
+        reap: { after: "60d" },
         reapWhen: {
-            draft: { enabled: true },
-            changesRequested: { enabled: true },
-            needsRevision: { enabled: true, remindAfterDays: 2, reapAfterDays: 5 },
+            draft: { enabled: true, reap: { enabled: true } },
+            changesRequested: { enabled: true, reap: { enabled: true } },
+            needsRevision: {
+                enabled: true,
+                remindAfter: "2d",
+                reap: { enabled: true, after: "5d" },
+            },
         },
     },
 };
@@ -81,9 +75,8 @@ const viewWith = (settings: Readonly<Record<string, unknown>>) =>
 const view = viewWith(DESIGN_SETTINGS);
 
 /**
- * `never` by default so one helper serves both projections: a position with no
- * meaning is assignable to an issue's and a pull request's alike, and one that
- * names a meaning infers it.
+ * `never` by default so one helper serves both projections: a position naming
+ * no meaning suits either, and one that names a meaning infers it.
  */
 function position<M extends MappableMeaning = never>(
     over: {
@@ -123,15 +116,17 @@ const issueRecord = (over: Partial<IssueLadderFacts> = {}): IssueLadderFacts =>
 /** A stale draft, seventy days idle — the pull-request ladder's starting point. */
 const REVIEW = {
     changesRequested: false,
-    reapableSince: ago(70),
+    reapableSince: {
+        needsRevision: ago(70),
+        changesRequested: ago(70),
+        draft: ago(70),
+    },
     lastCommitAt: null,
 } as const;
 
 /**
- * The contributor-side facts take their own overrides, because most rows dial
- * only those. `draft` is spelled here with the review facts although it lives
- * in its own group now: it is one of the three things a row varies, and a
- * caller should not have to know which group each of them sits in.
+ * The contributor-side facts take their own overrides. `draft` is spelled
+ * with the review facts although it lives in its own group.
  */
 const pullRecord = (
     over: Partial<PullLadderFacts> = {},
@@ -172,11 +167,7 @@ const decide = async (facts: InactivityFacts, on = view, platform = human) =>
 
 describe("the clocks reset on development activity only", () => {
     it("`/working` after the reminder", async () => {
-        // A 40-day assignment, then `/working` three days ago: the clock
-        // restarts there, so the run of idleness is three days long and the
-        // assignment is not on the ladder at all. The platform's own warning
-        // for the old cycle is left holding an effect nothing asks about, and
-        // that is cycle scoping — no durable state, just a new occasion.
+        // A 40-day assignment, then `/working` three days ago: the clock restarts.
         const record = issueRecord({ assignees: [assignee("alice", 40, ago(3))] });
 
         expect(await decide(record)).toEqual([]);
@@ -190,10 +181,7 @@ describe("the clocks reset on development activity only", () => {
 
         expect(await decide(record)).toEqual([]);
 
-        // The same rule, once the reset is old enough to be back on the
-        // ladder: the clock starts at the NEWEST of the commit and every
-        // assignee's `/working`, and that same instant is the activity the
-        // platform is handed to compare against its own warning.
+        // The clock starts at the newest of the commit and every `/working`.
         const mixed = pullRecord(
             {
                 assignees: [assignee("alice", 80, ago(20)), assignee("bob", 80, ago(40))],
@@ -221,19 +209,90 @@ describe("the clocks reset on development activity only", () => {
         );
 
         expect(await decide(record)).toMatchObject([
-            { operation: "closePullRequest", item: PULL, grace: { days: 3 } },
+            { operation: "closePullRequest", item: PULL, grace: { hours: 3 * 24 } },
         ]);
     });
 });
 
 describe("the pull-request ladder judges the contributor's wait", () => {
+    /** Each reason claims the evidence it read; a native mode is not a label. */
+    it("a stale changes-requested pull request closes, claiming the mode", async () => {
+        const mode = pullRecord({}, { draft: false, changesRequested: true });
+
+        expect(await decide(mode)).toMatchObject([
+            {
+                item: PULL,
+                operation: "closePullRequest",
+                claims: { closed: false, meaningsPresent: [], pullRequestMode: "changesRequested" },
+                grace: { topic: "changesRequested" },
+            },
+        ]);
+    });
+
+    /** The reason a reminder names, in the phrase this reason renders as. */
+    it("names changes-requested in the words the warning it carries uses", async () => {
+        const mode = pullRecord({}, { draft: false, changesRequested: true });
+
+        expect(await decide(mode)).toMatchObject([
+            {
+                operation: "closePullRequest",
+                grace: {
+                    warning: {
+                        body: "⏰ Hi @alice — this pull request has had **changes requested** without development activity for 14 days. Push a commit or comment `/working` to let us know you are working on it, otherwise the pull request will be closed on **2026-10-25**.",
+                    },
+                },
+            },
+        ]);
+    });
+
+    it("a stale draft pull request closes, claiming the mode", async () => {
+        expect(await decide(pullRecord())).toMatchObject([
+            {
+                item: PULL,
+                operation: "closePullRequest",
+                claims: { closed: false, meaningsPresent: [], pullRequestMode: "draft" },
+                grace: { topic: "draft" },
+            },
+        ]);
+    });
+
+    it("the label reason still claims its meaning, and claims no mode", async () => {
+        const labelled = pullRecord(
+            { position: position({ meaning: "needsRevision" }) },
+            { draft: false, changesRequested: true },
+        );
+
+        const [intent] = await decide(labelled);
+
+        expect(intent).toMatchObject({
+            item: PULL,
+            operation: "closePullRequest",
+            claims: { closed: false, meaningsPresent: ["needsRevision"] },
+        });
+        expect(intent?.claims).not.toHaveProperty("pullRequestMode");
+    });
+
     it("PR stale for a year in `needsReview`", async () => {
         const record = pullRecord(
             { position: position({ meaning: "needsReview" }) },
-            { draft: false, reapableSince: ago(365) },
+            {
+                draft: false,
+                reapableSince: {
+                    needsRevision: ago(365),
+                    changesRequested: ago(365),
+                    draft: ago(365),
+                },
+            },
         );
 
         expect(await decide(record)).toEqual([]);
+    });
+
+    /** The first diamond is the meaning, whatever mode the pull request is in. */
+    it("leaves a draft carrying `needsReview` alone, mode or no mode", async () => {
+        const awaited = pullRecord({ position: position({ meaning: "needsReview" }) });
+
+        expect(await decide(awaited)).toEqual([]);
     });
 
     it("Draft PR marked ready for review, no `needsRevision`", async () => {
@@ -247,24 +306,39 @@ describe("the pull-request ladder judges the contributor's wait", () => {
             ...DESIGN_SETTINGS,
             pullRequests: {
                 ...DESIGN_SETTINGS.pullRequests,
-                reapWhen: { changesRequested: { enabled: true } },
+                reapWhen: { changesRequested: { enabled: true, reap: { enabled: true } } },
             },
         });
 
         expect(await decide(pullRecord(), opted)).toEqual([]);
     });
 
-    it("`needsRevision` override of 2/5 days", async () => {
+    it("`needsRevision` override of 2d/5d", async () => {
         const quality = pullRecord(
             { position: position({ meaning: "needsRevision" }) },
-            { draft: false, reapableSince: ago(3) },
+            {
+                draft: false,
+                reapableSince: {
+                    needsRevision: ago(3),
+                    changesRequested: ago(3),
+                    draft: ago(3),
+                },
+            },
         );
         // One record, one decision, so the ordinary pull request is its own
         // call: three days is nothing against the sixty-day ladder, and only
         // the label reason's own 2/5 override puts one on the ladder.
         const ordinary = pullRecord(
             { item: { kind: "pullRequest", number: 42 } },
-            { draft: false, changesRequested: true, reapableSince: ago(3) },
+            {
+                draft: false,
+                changesRequested: true,
+                reapableSince: {
+                    needsRevision: ago(3),
+                    changesRequested: ago(3),
+                    draft: ago(3),
+                },
+            },
         );
 
         expect(await decide(ordinary)).toEqual([]);
@@ -275,12 +349,9 @@ describe("the pull-request ladder judges the contributor's wait", () => {
                 item: PULL,
                 operation: "closePullRequest",
                 desired: { reason: "This pull request was closed after 5 days of inactivity." },
-                // The one reason the apply-time re-gate can re-check: draft and
-                // changes-requested are modes, and `ClaimedFacts` has no word
-                // for either.
+                // The one reason the apply-time re-gate can re-check.
                 claims: { meaningsPresent: ["needsRevision"], meaningsAbsent: [], closed: false },
-                // Dated at the clock's start, so the effect keeps one identity
-                // for as long as this run of idleness does.
+                // Dated at the clock's start, so the identity outlives the sweep.
                 cause: { cause: "pullRequestWentStale", observedAt: ago(3) },
                 explanation: {
                     capability: "inactivity",
@@ -290,9 +361,8 @@ describe("the pull-request ladder judges the contributor's wait", () => {
                 },
                 idempotencyKey: expect.any(String),
                 grace: {
-                    // 5 − 2: the gap between the two rungs is the whole of what
-                    // this capability says about waiting.
-                    days: 3,
+                    // 5d − 2d: the gap between the two rungs.
+                    hours: 3 * 24,
                     topic: "needsRevision",
                     warning: {
                         body: "⏰ Hi @alice — this pull request has carried the `needsRevision` label without development activity for 2 days. Push a commit or comment `/working` to let us know you are working on it, otherwise the pull request will be closed on **2026-09-12**.",
@@ -312,35 +382,58 @@ describe("the pull-request ladder judges the contributor's wait", () => {
         const flipped = (daysAgo: number) =>
             pullRecord(
                 { position: position({ meaning: "needsRevision" }) },
-                { draft: false, reapableSince: ago(daysAgo) },
+                {
+                    draft: false,
+                    reapableSince: {
+                        needsRevision: ago(daysAgo),
+                        changesRequested: ago(daysAgo),
+                        draft: ago(daysAgo),
+                    },
+                },
             );
 
         // The clock starts at the flip, so the reason's own two days must pass.
         expect(await decide(flipped(1))).toEqual([]);
         expect(await decide(flipped(2))).toMatchObject([
-            { operation: "closePullRequest", grace: { days: 3 } },
+            { operation: "closePullRequest", grace: { hours: 3 * 24 } },
         ]);
         // Flipped back: the wait is the maintainers' and the clock stops.
         expect(
             await decide(
                 pullRecord(
                     { position: position({ meaning: "needsReview" }) },
-                    { draft: false, reapableSince: ago(365) },
+                    {
+                        draft: false,
+                        reapableSince: {
+                            needsRevision: ago(365),
+                            changesRequested: ago(365),
+                            draft: ago(365),
+                        },
+                    },
                 ),
             ),
         ).toEqual([]);
     });
 
-    it("does not arm native draft mode without an apply-time claim", async () => {
-        expect(await decide(pullRecord({ assignees: [] }))).toEqual([]);
+    it("Unlinked PR stale in draft mode", async () => {
+        // No assignees and no links: reminded and closed like any other, and
+        // the reminder is addressed to nobody rather than to an invented name.
+        expect(await decide(pullRecord({ assignees: [] }))).toMatchObject([
+            {
+                item: PULL,
+                operation: "closePullRequest",
+                claims: { pullRequestMode: "draft" },
+                grace: {
+                    warning: {
+                        body: "⏰ This pull request has been in **draft** without development activity for 14 days. Push a commit or comment `/working` to let us know you are working on it, otherwise the pull request will be closed on **2026-10-25**.",
+                    },
+                },
+            },
+        ]);
     });
 
     it("Reaper closes a PR", async () => {
-        // The linked issues ride on the record, and alice is long past the
-        // issue ladder's 21 days on one of them — but an intent names the
-        // record's own item, so the close is the only act and it claims no
-        // release. Once the pull request is closed the issue has no open
-        // linked pull request, and its own ladder warns then releases her.
+        // An intent names the record's own item, so the close is the only act.
         const fresh = { kind: "issue", number: 45 } as const;
         const closing = pullRecord(
             {
@@ -371,10 +464,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
 
 describe("the issue ladder judges each assignment on its own clock", () => {
     it("Released then re-assigned", async () => {
-        // The occasion is the clock's start, so a re-assignment is a different
-        // effect from the run of idleness that preceded it: the old warning
-        // authorizes nothing, because nothing asks under its identity. That is
-        // cycle scoping, and it costs no durable state.
+        // The occasion is the clock's start, so a re-assignment is a new effect.
         const record = issueRecord({ assignees: [assignee("alice", 15)] });
 
         expect(await decide(record)).toEqual([
@@ -394,7 +484,7 @@ describe("the issue ladder judges each assignment on its own clock", () => {
                 },
                 idempotencyKey: expect.any(String),
                 grace: {
-                    days: 7,
+                    hours: 7 * 24,
                     topic: "alice",
                     warning: {
                         body: "⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 14 days. Still working on it? Comment `/working` to let us know development is active, otherwise this assignment will be released on **2026-09-16**.",
@@ -413,6 +503,26 @@ describe("the issue ladder judges each assignment on its own clock", () => {
         // warning recorded against one authorizes nothing about the other.
         const older = await decide(issueRecord({ assignees: [assignee("alice", 40)] }));
         expect(older[0]?.idempotencyKey).not.toBe((await decide(record))[0]?.idempotencyKey);
+    });
+
+    /** The ladder starts AT its threshold, not an hour after it. */
+    it("puts an assignment on the ladder the hour its clock reaches the threshold", async () => {
+        const idleFor = (hours: number) =>
+            issueRecord({
+                assignees: [
+                    {
+                        login: "alice",
+                        assignedAt: new Date(AT.getTime() - hours * HOUR_MS),
+                        lastWorkingAt: null,
+                    },
+                ],
+            });
+
+        // `14d` resolves to 336 hours, and the comparison is the whole claim.
+        expect(await decide(idleFor(335))).toEqual([]);
+        expect(await decide(idleFor(336))).toMatchObject([
+            { operation: "releaseAssignment", desired: { login: "alice" } },
+        ]);
     });
 
     it("Two assignees, one recent", async () => {
@@ -447,6 +557,96 @@ describe("the issue ladder judges each assignment on its own clock", () => {
         const record = issueRecord({ links: { openPullRequests: [PULL] } });
 
         expect(await decide(record)).toEqual([]);
+    });
+});
+
+/**
+ * A ladder that reminds and never acts: with no act to hang the words on, the
+ * reminder is the intent.
+ */
+describe("a ladder with no reap block reminds and never releases", () => {
+    const remindOnly = viewWith({
+        remindAfter: "14d",
+        issues: { enabled: true },
+        pullRequests: {
+            enabled: true,
+            remindAfter: "2d",
+            reapWhen: { needsRevision: { enabled: true } },
+        },
+    });
+
+    it("posts the reminder itself, with no release beside it and no date promised", async () => {
+        expect(await decide(issueRecord(), remindOnly)).toEqual([
+            {
+                capability: "inactivity",
+                repository: REPO,
+                item: ISSUE,
+                operation: "postManagedComment",
+                desired: {
+                    kind: "warning",
+                    topic: "alice",
+                    body: "⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 14 days. Still working on it? Comment `/working` to let us know development is active.",
+                },
+                claims: { meaningsPresent: [], meaningsAbsent: [], closed: false },
+                cause: { cause: "assignmentWentStale", observedAt: ago(40) },
+                explanation: {
+                    capability: "inactivity",
+                    summary:
+                        "Reminded alice about a stale assignment; this ladder releases nothing.",
+                    detail: ["idle 40 days", "no reap block is enabled, so nothing follows"],
+                },
+                idempotencyKey: expect.any(String),
+                // No grace: there is no act to hold (grace.md §1).
+                grace: null,
+            },
+        ]);
+    });
+
+    it("says the same on the pull-request side, under the reason as its topic", async () => {
+        const stale = pullRecord(
+            { position: position({ meaning: "needsRevision" }) },
+            { draft: false },
+        );
+
+        expect(await decide(stale, remindOnly)).toEqual([
+            {
+                capability: "inactivity",
+                repository: REPO,
+                item: PULL,
+                operation: "postManagedComment",
+                desired: {
+                    kind: "warning",
+                    topic: "needsRevision",
+                    body: "⏰ Hi @alice — this pull request has carried the `needsRevision` label without development activity for 2 days. Push a commit or comment `/working` to let us know you are working on it.",
+                },
+                claims: { meaningsPresent: ["needsRevision"], meaningsAbsent: [], closed: false },
+                cause: { cause: "pullRequestWentStale", observedAt: ago(70) },
+                explanation: {
+                    capability: "inactivity",
+                    summary:
+                        "Reminded about a pull request stale in needsRevision; this reason closes nothing.",
+                    detail: ["idle 70 days", "no reap block is enabled, so nothing follows"],
+                },
+                idempotencyKey: expect.any(String),
+                grace: null,
+            },
+        ]);
+    });
+
+    /**
+     * The control: the same file with the reap block consented to says what it
+     * always said, so the silence above is the missing block and nothing else.
+     */
+    it("goes back to warning-then-releasing the moment the block consents", async () => {
+        const consenting = viewWith({
+            remindAfter: "14d",
+            reap: { after: "21d" },
+            issues: { enabled: true, reap: { enabled: true } },
+        });
+
+        expect(await decide(issueRecord(), consenting)).toMatchObject([
+            { operation: "releaseAssignment", grace: { hours: 7 * 24 } },
+        ]);
     });
 });
 
@@ -556,13 +756,8 @@ describe("nothing rides along with a close", () => {
 });
 
 /**
- * The other half of the ladder, where it actually happens: `decide()` with the
- * recorded warning stubbed, so one intent can be watched through warn, wait
- * and act (grace.md §2).
- *
- * The capability says the same thing on every one of these sweeps. What
- * changes is the platform's own record, which is the point: the capability
- * keeps no clock between the rungs and reads no reminder back.
+ * `decide()` with the recorded warning stubbed, so one intent can be watched
+ * through warn, wait and act (grace.md §2).
  */
 describe("the platform warns, waits, then acts", () => {
     const ENGINE = [toEngine(inactivity)];
@@ -605,8 +800,8 @@ describe("the platform warns, waits, then acts", () => {
         return createDestructiveWarning({
             request: writeRequestFor(act),
             warnedAt: at,
-            gracePeriodDays: grace.days,
-            earliestActionAt: new Date(at.getTime() + grace.days * DAY_MS),
+            gracePeriodHours: grace.hours,
+            earliestActionAt: new Date(at.getTime() + grace.hours * HOUR_MS),
             cancelledBy: grace.cancelledBy,
             reversesWith: grace.reversesWith,
         });
@@ -629,11 +824,9 @@ describe("the platform warns, waits, then acts", () => {
                 operation: "postManagedComment",
                 desired: { kind: "warning", topic: "alice", body: act.grace?.warning.body },
                 kind: "warning",
-                // The act's topic: this warning is alice's clock and no one
-                // else's, so a second assignee earns a second comment (D145).
+                // A second assignee earns a second comment (D145).
                 topic: "alice",
-                // The warning is its own effect, and it carries the ACT's
-                // identity as what it authorizes once it lands.
+                // The warning carries the act's identity as what it authorizes.
                 records: act.idempotencyKey,
             },
         ]);
@@ -654,8 +847,7 @@ describe("the platform warns, waits, then acts", () => {
             decision.approved.map((effect) => ({
                 operation: effect.intent.operation,
                 desired: effect.intent.desired,
-                // A graced act gets an identity too — the notice it posts once
-                // it lands stands under the act's topic, beside the warning.
+                // The notice a graced act posts stands under the act's topic.
                 kind: effect.managedComment?.identity.kind,
                 topic: effect.managedComment?.identity.topic,
                 records: effect.records,

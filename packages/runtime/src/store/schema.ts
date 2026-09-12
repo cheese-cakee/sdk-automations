@@ -1,7 +1,6 @@
 /**
- * The store schema contract: recognize an owned database, migrate it in
- * order, and reject shapes or versions this package cannot interpret.
- * Operational state transitions remain in store.ts.
+ * The store schema contract: recognize an owned database, migrate it in order, and
+ * reject shapes or versions this package cannot interpret.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -50,23 +49,8 @@ const SEEN_DELIVERY_V3 = `
     )`;
 
 /**
- * Version 5 adds the two columns a bounded retry needs, and the terminal
- * state it ends in.
- *
- * `attempts` counts failed processing attempts, and `retry_not_before` is
- * the instant a `pending` row becomes claimable again — NULL meaning now.
- * Both are meaningless outside the pending queue, so the per-state CHECK
- * pins `retry_not_before` to NULL everywhere else.
- *
- * `failed` is dead-lettering: a delivery whose attempts reached the
- * caller's cap. It is claimable by nothing, and it KEEPS its payload,
- * unlike `done`. A completed delivery's bytes are superseded by its
- * canonical report; a dead-lettered one has no report, so those bytes are
- * the only surviving copy of a delivery GitHub will not send again, and
- * the only thing a manual redrive could work from.
- *
- * `completed_at` is the terminal instant for both terminal states: the
- * completion time of a `done` row, the dead-letter time of a `failed` one.
+ * Version 5 adds the two columns a bounded retry needs, and the terminal state it ends in.
+ * `failed` is dead-lettering: claimable by nothing, and it KEEPS its payload — there is no report.
  */
 const SEEN_DELIVERY_V5 = `
     CREATE TABLE seen_delivery (
@@ -158,26 +142,14 @@ const SCHEDULE_V1 = `
     )`;
 
 /**
- * Version 6 adds the record grace.md §4 asks for: one row per ACT effect,
- * written when that act's warning comment lands.
- *
- * `effect_id` is the primary key because a warning is authority for exactly
- * one effect, so a second warning for the same act is the same promise and
- * not a second one. The six snapshot columns are the request the warning
- * authorises, copied rather than referenced (D60) — a warning that could be
- * read back against a different capability, item, change or causal
- * observation would be a reusable timestamp, which is what the snapshot
- * exists to prevent.
- *
- * `earliest_action_at` is stored rather than recomputed from `warned_at` plus
- * `grace_days`, because it is the date the person was TOLD. The promise is
- * what binds, not the arithmetic a later deployment would redo (grace.md §5).
+ * Version 6 adds the record grace.md §4 asks for: one row per ACT effect, snapshot
+ * columns copied not referenced (D60), `earliest_action_at` stored not recomputed. HOURS.
  */
 const DESTRUCTIVE_WARNING_V6 = `
     CREATE TABLE destructive_warning (
         effect_id          TEXT PRIMARY KEY,
         warned_at          TEXT NOT NULL,
-        grace_days         INTEGER NOT NULL,
+        grace_hours        INTEGER NOT NULL,
         earliest_action_at TEXT NOT NULL,
         cancelled_by       TEXT NOT NULL,
         reverses_with      TEXT NOT NULL,
@@ -349,12 +321,8 @@ function addCanonicalDeliveryReports(db: DatabaseSync): void {
 }
 
 /**
- * Existing rows start at zero attempts with no retry deadline: an attempt
- * this schema never counted cannot be reconstructed, and inventing one
- * would spend a delivery's retry budget on history nobody recorded.
- *
- * The rename carries `delivery_work` onto the old table, so dropping that
- * table drops the index and the last statement puts it back.
+ * Existing rows start at zero attempts with no retry deadline: an attempt this
+ * schema never counted cannot be reconstructed.
  */
 function addBoundedDeliveryRetries(db: DatabaseSync): void {
     db.exec(`
@@ -375,10 +343,7 @@ function addBoundedDeliveryRetries(db: DatabaseSync): void {
     `);
 }
 
-/**
- * A new table and nothing else: no existing row has a warning to backfill,
- * and inventing one would authorize an act nobody was told about.
- */
+/** A new table and nothing else: no existing row has a warning to backfill. */
 function addDestructiveWarnings(db: DatabaseSync): void {
     db.exec(`${DESTRUCTIVE_WARNING_V6};`);
 }

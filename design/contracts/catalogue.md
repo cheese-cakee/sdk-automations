@@ -52,6 +52,7 @@ the platform.
 | `mergeability` | `item` | `boolean` |
 | `assigneesOf` | `item` | `string[]` |
 | `openAssignments` | `login` | `{ item, meanings }[]` |
+| `configAtHead` | `item` | `ConfigAtHead` |
 <!-- /generated -->
 
 A resolver answers `{ ok: false, reason }` rather than throwing, and an undeclared resolver is
@@ -67,9 +68,11 @@ nothing, never a licence to act as though the answer were "no".
 
 **A read the endpoint-permission matrix has not confirmed is implemented and never sent.**
 `CONFIRMED_RESOLVER_READS` in the adapter is `facts.ts`'s `CONFIRMED_SWEEP_READS` rule one directory
-over: two of the six — `commitAttestations` and `assigneesOf` — reach endpoints with no cited row,
-so the gate answers them `unavailable` before the dispatch and their readers sit complete and tested
-until a sandbox run cites the row. A resolver is a question a capability asks BEFORE it acts, so an
+over: a resolver outside that list reaches an endpoint with no cited row, so the gate answers it
+`unavailable` before the dispatch and its reader sits complete and tested until a sandbox run cites
+the row. Which names those are is the list itself, pinned by value in
+`packages/runtime/test/adapter/item-resolvers.test.ts` and nowhere restated — a count beside a
+generated table is a sentence that goes stale the day the table grows. A resolver is a question a capability asks BEFORE it acts, so an
 unconfirmed read answering anyway would be the capability acting on evidence nobody has established
 the App may gather.
 

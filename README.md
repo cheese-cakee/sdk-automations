@@ -143,7 +143,6 @@ endpoint was started with the App's identity as well as its credentials, which i
 ## See the configuration
 
 ```yaml
-schemaVersion: 1
 mode: dry-run
 
 capabilities:

@@ -1,13 +1,4 @@
-/**
- * The total readers of a journal row's untrusted bytes.
- *
- * Every function here answers over `unknown` and returns a value or `null`;
- * none of them throws. That is what lets `parseJournaledCall` and each
- * handler's `parse` give the only safe answer to a row nobody can read —
- * close it, resend nothing. This process having written the bytes buys
- * nothing: they crossed a durability boundary that outlives the version that
- * wrote them.
- */
+/** The total readers of a journal row's untrusted bytes; none of them throws. */
 
 import type { ItemRef } from "@hiero-hackers/automation-core";
 
@@ -19,7 +10,6 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const at = (value: unknown, name: string): unknown =>
     isRecord(value) && Object.hasOwn(value, name) ? value[name] : undefined;
 
-/** One field as a non-empty string, or `null`. */
 export const text = (value: unknown, name: string): string | null => {
     const read = at(value, name);
     return typeof read === "string" && read.length > 0 ? read : null;

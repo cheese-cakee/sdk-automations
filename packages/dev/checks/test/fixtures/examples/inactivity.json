@@ -1,0 +1,59 @@
+{
+    "revision": "inactivity.yml",
+    "schemaVersion": 2,
+    "mode": "dry-run",
+    "capabilities": {
+        "inactivity": {
+            "enabled": true,
+            "settings": {
+                "exemptBlocked": true,
+                "remindAfter": 336,
+                "reap": {
+                    "after": 504
+                },
+                "issues": {
+                    "enabled": true,
+                    "remindAfter": 336,
+                    "reap": {
+                        "enabled": true,
+                        "after": 504
+                    }
+                },
+                "pullRequests": {
+                    "enabled": true,
+                    "remindAfter": 336,
+                    "reap": {
+                        "after": 504
+                    },
+                    "reapWhen": {
+                        "draft": {
+                            "enabled": true,
+                            "remindAfter": 336,
+                            "reap": {
+                                "enabled": true,
+                                "after": 504
+                            }
+                        },
+                        "changesRequested": {
+                            "enabled": false
+                        },
+                        "needsRevision": {
+                            "enabled": false
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "mappings": {
+        "labels": {
+            "blocked": "status: blocked"
+        },
+        "commands": {
+            "working": "/working"
+        },
+        "skills": {},
+        "alerts": {}
+    },
+    "principals": {}
+}

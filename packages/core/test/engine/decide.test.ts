@@ -12,6 +12,7 @@ import {
     decide,
     describeChange,
     declareCapability,
+    spec,
     deriveManagedMarker,
     intentFactory,
     deriveIdempotencyKey,
@@ -37,7 +38,7 @@ const payload = (name: string): unknown => capture(name).json();
 const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],

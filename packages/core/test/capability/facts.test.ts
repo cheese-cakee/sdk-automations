@@ -16,15 +16,17 @@ import { describe, expect, it } from "vitest";
 import {
     assigneeClock,
     CANCELLED_BY,
-    DAY_MS,
+    HOUR_MS,
     inert,
     isConflicted,
     isOpen,
     isPaused,
     ISSUE_EDGES,
+    lasting,
     latestOf,
     meaningsOf,
     mentions,
+    modesOf,
     moveTo,
     on,
     people,
@@ -44,6 +46,7 @@ import {
 } from "../../src/index.js";
 
 const AT = new Date("2026-09-09T00:00:00.000Z");
+const DAY_MS = 24 * HOUR_MS;
 const ago = (days: number): Date => new Date(AT.getTime() - days * DAY_MS);
 
 function position(
@@ -133,6 +136,69 @@ describe("the three stops", () => {
     });
 });
 
+/**
+ * The native modes, which are not meanings and not on the projection: a claim
+ * on one is judged against what the RECORD read, so the difference between
+ * "not in that mode" and "nobody read it" has to survive this function.
+ */
+describe("what a record read of the native modes", () => {
+    const pull = (over: Partial<PullRequestFacts> = {}): PullRequestFacts => ({
+        kind: "pullRequest",
+        repository: { owner: "hiero-hackers", repo: "sandbox" },
+        item: { kind: "pullRequest", number: 41 },
+        observedAt: AT,
+        trigger: { kind: "sweep" },
+        author: "opener",
+        actor: null,
+        position: {
+            kind: "position",
+            state: { meaning: null, blocked: false, closedBy: null },
+            ignored: [],
+        },
+        alerts: { carried: [], arrived: [] },
+        assignees: UNREAD,
+        links: UNREAD,
+        review: UNREAD,
+        readiness: UNREAD,
+        ...over,
+    });
+
+    const reviewRead = {
+        changesRequested: true,
+        reapableSince: {
+            needsRevision: ago(10),
+            changesRequested: ago(10),
+            draft: ago(10),
+        },
+        lastCommitAt: null,
+    } as const;
+
+    it("reports each mode the record's own group carried", () => {
+        expect(modesOf(pull({ readiness: { draft: true }, review: reviewRead }))).toEqual({
+            draft: true,
+            changesRequested: true,
+        });
+        expect(
+            modesOf(
+                pull({
+                    readiness: { draft: false },
+                    review: { ...reviewRead, changesRequested: false },
+                }),
+            ),
+        ).toEqual({ draft: false, changesRequested: false });
+    });
+
+    it("leaves an unread group's mode OUT rather than calling it false", () => {
+        expect(modesOf(pull({ readiness: { draft: true } }))).toEqual({ draft: true });
+        expect(modesOf(pull({ review: reviewRead }))).toEqual({ changesRequested: true });
+        expect(modesOf(pull())).toEqual({});
+    });
+
+    it("reads neither mode on an issue, which has no group to carry one", () => {
+        expect(modesOf(issue(position()))).toEqual({});
+    });
+});
+
 describe("who counts as a person", () => {
     const answering = (answer: (login: string) => ResolverAnswer<boolean>): ActorLookup => ({
         resolve: async (_query, input) => answer(input.login),
@@ -182,7 +248,7 @@ describe("the clocks", () => {
     it("starts an assignee's clock at the assignment", () => {
         expect(assigneeClock(assignee("alice", 40), AT)).toEqual({
             idleSince: ago(40),
-            idleDays: 40,
+            idleHours: 40 * 24,
         });
     });
 
@@ -191,19 +257,19 @@ describe("the clocks", () => {
         // is why the start is a maximum rather than a preference.
         expect(assigneeClock(assignee("alice", 40, ago(3)), AT)).toEqual({
             idleSince: ago(3),
-            idleDays: 3,
+            idleHours: 3 * 24,
         });
         expect(assigneeClock(assignee("alice", 40, ago(50)), AT)).toEqual({
             idleSince: ago(40),
-            idleDays: 40,
+            idleHours: 40 * 24,
         });
     });
 
-    it("counts whole days only", () => {
-        const half = new Date(AT.getTime() - 1.5 * DAY_MS);
+    it("counts whole hours only", () => {
+        const half = new Date(AT.getTime() - 1.5 * HOUR_MS);
 
         expect(
-            assigneeClock({ login: "alice", assignedAt: half, lastWorkingAt: null }, AT).idleDays,
+            assigneeClock({ login: "alice", assignedAt: half, lastWorkingAt: null }, AT).idleHours,
         ).toBe(1);
     });
 
@@ -211,16 +277,37 @@ describe("the clocks", () => {
         over: Partial<Exclude<PullRequestFacts["review"], "unread">> = {},
     ): Exclude<PullRequestFacts["review"], "unread"> => ({
         changesRequested: false,
-        reapableSince: ago(70),
+        reapableSince: {
+            needsRevision: ago(70),
+            changesRequested: ago(70),
+            draft: ago(70),
+        },
         lastCommitAt: null,
         ...over,
     });
 
     it("starts a pull request's clock at the mode it is in", () => {
-        expect(pullRequestClock({ assignees: [], review: review() }, AT)).toEqual({
+        expect(pullRequestClock({ assignees: [], review: review() }, "draft", AT)).toEqual({
             idleSince: ago(70),
-            idleDays: 70,
+            idleHours: 70 * 24,
         });
+    });
+
+    it("starts each pull request reason from its own entry", () => {
+        const facts = {
+            assignees: [],
+            review: review({
+                reapableSince: {
+                    needsRevision: ago(2),
+                    changesRequested: ago(5),
+                    draft: ago(8),
+                },
+            }),
+        };
+
+        expect(pullRequestClock(facts, "needsRevision", AT).idleSince).toEqual(ago(2));
+        expect(pullRequestClock(facts, "changesRequested", AT).idleSince).toEqual(ago(5));
+        expect(pullRequestClock(facts, "draft", AT).idleSince).toEqual(ago(8));
     });
 
     it("resets a pull request's clock from a commit or from anyone on it", () => {
@@ -233,12 +320,17 @@ describe("the clocks", () => {
                     assignees: [assignee("alice", 80, ago(20)), assignee("bob", 80, ago(40))],
                     review: review({ lastCommitAt: ago(30) }),
                 },
+                "draft",
                 AT,
             ),
-        ).toEqual({ idleSince: ago(20), idleDays: 20 });
+        ).toEqual({ idleSince: ago(20), idleHours: 20 * 24 });
         expect(
-            pullRequestClock({ assignees: [], review: review({ lastCommitAt: ago(30) }) }, AT),
-        ).toEqual({ idleSince: ago(30), idleDays: 30 });
+            pullRequestClock(
+                { assignees: [], review: review({ lastCommitAt: ago(30) }) },
+                "draft",
+                AT,
+            ),
+        ).toEqual({ idleSince: ago(30), idleHours: 30 * 24 });
     });
 
     it("finds the newest instant, or none at all", () => {
@@ -258,8 +350,21 @@ describe("the words a warning is written in", () => {
         expect(mentions(["alice", "bob"])).toBe("@alice, @bob");
     });
 
-    it("names a date as a bold day, in UTC", () => {
-        expect(on(new Date("2026-09-16T23:30:00.000Z"))).toBe("**2026-09-16**");
+    it("names a deadline as a bold day, in UTC, when the grace is a day or more", () => {
+        // Both sides of the boundary: one hour under a day carries the time,
+        // exactly a day does not.
+        expect(on(new Date("2026-09-16T23:30:00.000Z"), 24)).toBe("**2026-09-16**");
+        expect(on(new Date("2026-09-16T23:30:00.000Z"), 23)).toBe("**2026-09-16 23:30 UTC**");
+    });
+
+    it("says a duration in the words a sentence uses", () => {
+        expect(lasting(0)).toBe("0 hours");
+        expect(lasting(1)).toBe("1 hour");
+        expect(lasting(2)).toBe("2 hours");
+        expect(lasting(23)).toBe("23 hours");
+        expect(lasting(24)).toBe("1 day");
+        expect(lasting(25)).toBe("25 hours");
+        expect(lasting(336)).toBe("14 days");
     });
 
     it("states what cancels a plan and what undoes one", () => {
@@ -269,8 +374,8 @@ describe("the words a warning is written in", () => {
         expect(REVERSES_WITH).toBe("re-assign / reopen");
     });
 
-    it("counts a day in milliseconds", () => {
-        expect(DAY_MS).toBe(86_400_000);
+    it("counts an hour in milliseconds", () => {
+        expect(HOUR_MS).toBe(3_600_000);
     });
 });
 

@@ -1,25 +1,33 @@
-# One capability on the schedule, and nothing driven by a webhook.
+# Only what the hourly schedule drives, and nothing driven by a webhook. One
+# repository's choice, not the roster: a second scheduled capability belongs
+# here only if this repository would run it.
 #
 # inactivity needs no label meaning to run: draft and changes-requested are
 # GitHub's own states. The two mappings here are the optional ones it reads —
 # `blocked`, because exemptBlocked is on by default, and the `working`
 # command, the one way a contributor resets their own clock without pushing.
-# Every clock is per assignee, and every unstated day is the default: remind
-# at 14, release at 21.
+# Every clock is per assignee, and every unstated clock is the default: remind
+# at 14d, release at 21d. A clock is written as a whole number with a unit —
+# `4h` or `14d`. On every level that ACTS — the issue ladder and each reason
+# below — the release is an enabled-block of its own: drop a `reap:` and that
+# level reminds and never acts.
 
-schemaVersion: 1
+schemaVersion: 2
 mode: dry-run
 
 capabilities:
   inactivity:
     enabled: true
-    settings:
-      issues: # assigned, no open pull request: remind at 14 days, release at 21
+    issues: # assigned, no open pull request: remind at 14d, release at 21d
+      enabled: true
+      reap:
         enabled: true
-      pullRequests:
-        enabled: true
-        reapWhen:
-          draft: # drafts only; changesRequested and needsRevision stay off
+    pullRequests:
+      enabled: true
+      reapWhen:
+        draft: # drafts only; changesRequested and needsRevision stay off
+          enabled: true
+          reap:
             enabled: true
 
 mappings:

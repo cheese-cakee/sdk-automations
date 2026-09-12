@@ -4,6 +4,4 @@
 # file is really a way of saying it out loud. Adopting the App starts here and
 # every later step is a reviewed diff against it.
 
-schemaVersion: 1
 mode: observe
-capabilities: {}

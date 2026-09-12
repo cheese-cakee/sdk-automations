@@ -1,9 +1,6 @@
 /**
- * Posting one managed comment, whole: what it plans, how its row is spelled
- * and read, and D12's create-or-update at the send.
- *
- * The only operation that reads before it writes, which is why the read-back
- * that finds this effect's own comment lives here rather than in the applier.
+ * Posting one managed comment, whole: what it plans, how its row is spelled and read,
+ * and D12's create-or-update at the send. The only operation that reads before it writes.
  */
 
 import { MANAGED_COMMENT_KINDS, type ManagedCommentKind } from "@hiero-hackers/automation-core";
@@ -20,13 +17,8 @@ const isManagedCommentKind = (value: string): value is ManagedCommentKind =>
     (MANAGED_COMMENT_KINDS as readonly string[]).includes(value);
 
 /**
- * The comment standing under this call's identity, `null` when there provably
- * is none, or the reason neither could be established.
- *
- * The `null` costs D46's gap, and that is the whole point: a stale
- * "absent" here is what makes a comment create run twice, which is the
- * duplicate protocol 6.5 measured. A match found on the first read is
- * believed at once, because a visible comment is a landed one.
+ * The comment standing under this call's identity, `null` when there provably is none,
+ * or the reason neither could be established. The `null` costs D46's gap: a stale "absent" is what makes a create run twice (protocol 6.5).
  */
 const matchedComment = async (
     pass: SendContext,
@@ -48,7 +40,6 @@ const matchedComment = async (
     };
 };
 
-/** The `postManagedComment` operation, as the registry holds it. */
 export const postManagedComment: OperationHandler<"postManagedComment"> = {
     verbs: ["postComment"],
 
@@ -85,15 +76,8 @@ export const postManagedComment: OperationHandler<"postManagedComment"> = {
     },
 
     /**
-     * D12, in full. The marker read-back runs first: no match creates, a match
-     * with the same body is `already`, and a match with a different body is
-     * updated in place — which is also the documented answer to a human
-     * editing a managed comment, and, since identity is per item and purpose,
-     * to a LATER OCCASION with something new to say (D145). The restoration
-     * happens only because a fresh decision produced this effect and reached
-     * this line. Nothing repairs a comment in the background: the read-back
-     * that recovery uses matches on IDENTITY alone, so an edited comment is a
-     * landed comment and no resend is triggered by the edit.
+     * D12, in full: no match creates, a match with the same body is `already`, and a match
+     * with a different body is updated in place (D145). Nothing repairs a comment in the background — recovery's read-back matches on IDENTITY alone.
      */
     async send(call, pass) {
         const found = await matchedComment(pass, call.body);
@@ -103,7 +87,7 @@ export const postManagedComment: OperationHandler<"postManagedComment"> = {
         return await pass.writer.updateComment(found.value.id, call.body);
     },
 
-    /** Confirms the exact body so a lost update response cannot accept the old comment. */
+    /** Confirms the exact body, so a lost update response cannot accept the old comment. */
     async confirm(call, pass) {
         const found = await matchedComment(pass, call.body);
         if (!found.ok) return "unknown";

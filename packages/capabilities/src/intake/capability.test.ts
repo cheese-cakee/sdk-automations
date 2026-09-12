@@ -1,12 +1,6 @@
 /**
- * What intake decides at the entry gate. Two facts it may not assume: that
- * the repository has mapped `awaitingTriage` (contract.md §2), and that an
- * issue carrying no position is one it should still be placed in. Each
- * refusal is paired with the input that does produce a label intent.
- *
- * One module's own branches. `boundary.test.ts` holds the conformance claims
- * and `engine-matrix.test.ts` the composition of all three capabilities, where the
- * conflict reported here travels on into a dry-run report.
+ * What intake decides at the entry gate. Each refusal is paired with the
+ * input that does produce a label intent.
  */
 
 import { describe, expect, it } from "vitest";
@@ -30,7 +24,7 @@ const silent = configEnabling(["intake"], ["intake"]);
 /** The same repository, having mapped no meanings at all. */
 const unmapped = {
     ...announcing,
-    mappings: { labels: {}, commands: {}, skills: {}, alerts: {}, types: {} },
+    mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
 };
 
 const issue = (state: Partial<WorkItemState<IssueMeaning>>) =>
@@ -60,26 +54,78 @@ const conflicted = (...positions: readonly IssueMeaning[]) =>
         } satisfies Projection<IssueMeaning>,
     });
 
-/** Declaring no resolvers, intake can only be handed a handle that records. */
-function watch(): {
+/**
+ * A handle that records what intake explained, answering its one resolver.
+ * The default answer is "a person".
+ */
+function watch(
+    actor: Awaited<ReturnType<PlatformHandle<IntakeDeclaration>["resolve"]>> = {
+        ok: true,
+        value: false,
+    },
+): {
     readonly platform: PlatformHandle<IntakeDeclaration>;
     readonly explained: StructuredExplanation[];
+    readonly asked: string[];
 } {
     const explained: StructuredExplanation[] = [];
+    const asked: string[] = [];
     return {
         platform: {
-            resolve: async () => {
-                throw new Error("intake declares no resolvers");
+            resolve: async (_query, input) => {
+                asked.push(input.login);
+                return await Promise.resolve(actor);
             },
             explain: (explanation) => {
                 explained.push(explanation);
             },
         },
         explained,
+        asked,
     };
 }
 
 describe("intake", () => {
+    it("Issue opened by a bot", async () => {
+        const { platform, explained, asked } = watch({ ok: true, value: true });
+
+        expect(
+            await intake.evaluate(
+                webhookIssue({ author: "renovate[bot]" }),
+                projectCapabilityView(intake.declaration, announcing),
+                platform,
+            ),
+        ).toEqual([]);
+        // The AUTHOR, not the actor: the guard asks who opened the issue.
+        expect(asked).toEqual(["renovate[bot]"]);
+        // Silence, not a report: a machine's issue is not a problem.
+        expect(explained).toEqual([]);
+    });
+
+    it("stops, and says so, when nobody can answer who opened the issue", async () => {
+        const { platform, explained } = watch({
+            ok: false,
+            reason: "rateLimited",
+            detail: "secondary rate limit",
+        });
+
+        expect(
+            await intake.evaluate(
+                issue({}),
+                projectCapabilityView(intake.declaration, announcing),
+                platform,
+            ),
+        ).toEqual([]);
+        expect(explained).toEqual([
+            {
+                capability: "intake",
+                summary:
+                    "Skipped: nobody could say whether this issue was opened by an automation.",
+                detail: ["the actor lookup answered rateLimited"],
+            },
+        ]);
+    });
+
     it("names both positions of a conflicted item, and repairs neither (D35)", async () => {
         const { platform, explained } = watch();
 
@@ -153,13 +199,7 @@ describe("intake", () => {
         ).toEqual([]);
     });
 
-    /**
-     * Both requests in full. The pair shares one occasion, but NOT one
-     * claim: the label claims the meaning absent, while the announcement
-     * claims only openness — its own sibling puts the label there first,
-     * so an absence claim would refuse the announcement OF the label it
-     * just applied at any apply-time re-gate (8.2 pre-flight, 2026-09-02).
-     */
+    /** Both requests in full: one occasion, but the announcement claims only openness. */
     it("asks for the label and the announcement, in that order, on their own claims", async () => {
         const occasion = { cause: "issueWithoutPosition", observedAt: AT };
         const claim = { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false };

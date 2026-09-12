@@ -1,19 +1,4 @@
-/**
- * PROBED by experiment 6.2, 2026-07-23. Goes stale when the delivery id
- * format changes; the first symptom is duplicate deliveries surviving dedup.
- * It degrades rather than failing loudly, so only the re-probe closes the
- * gap (D40).
- *
- * GitHub exposes two different webhook-delivery identifiers:
- *
- * - `X-GitHub-Delivery` and a delivery record's `guid` identify the
- *   delivered event and are the deduplication key.
- * - a delivery record's numeric `id` identifies the REST resource used
- *   by get/redeliver endpoints. These values exceed 2^53.
- *
- * Keeping separate brands prevents the intake deduper from receiving a
- * REST record id and prevents redelivery code from receiving a GUID.
- */
+/** GitHub's two webhook-delivery identifiers, branded so neither reaches the other's code. */
 
 declare const deliveryGuidBrand: unique symbol;
 declare const deliveryRecordIdBrand: unique symbol;
@@ -26,11 +11,7 @@ export type DeliveryRecordId = string & {
     readonly [deliveryRecordIdBrand]: true;
 };
 
-// Lowercase only, deliberately: GitHub sends lowercase, and the store keys
-// deliveries by BINARY comparison, so a case-variant of a seen GUID would be
-// admitted as a SECOND delivery rather than deduplicated against the first.
-// Refusing the case nobody sends is cheaper than teaching every comparison
-// about case folding.
+// Lowercase only: the store compares GUIDs as bytes, so a case variant would admit a second delivery.
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function asDeliveryGuid(raw: string): DeliveryGuid | undefined {

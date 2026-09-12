@@ -17,6 +17,7 @@ import {
     createDestructiveWarning,
     decide,
     declareCapability,
+    spec,
     intentFactory,
     writeRequestFor,
     type AnyIntent,
@@ -29,7 +30,8 @@ import {
 } from "../../src/index.js";
 import { configWith } from "../config/builders.js";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const AT = new Date("2026-09-09T00:00:00.000Z");
 const ago = (days: number): Date => new Date(AT.getTime() - days * DAY_MS);
 const REPO = { owner: "o", repo: "r" } as const;
@@ -41,7 +43,7 @@ const IDLE_SINCE = ago(40);
 const declaration = declareCapability({
     name: "reaper",
     triggers: [{ kind: "schedule", description: "sweep" }],
-    configKeys: [],
+    settings: spec({}),
     requiredMappings: {},
     facts: ["issue"],
     needs: [],
@@ -56,7 +58,7 @@ const declaration = declareCapability({
 });
 
 const GRACE: DestructiveGrace = {
-    days: 7,
+    hours: 7 * 24,
     // Whose clock this is: an issue with two stale assignees earns two
     // warnings and two notices, told apart by nothing else (grace.md §3).
     topic: "alice",
@@ -69,7 +71,7 @@ const GRACE: DestructiveGrace = {
 
 /** The same terms with the topic left to the platform's default. */
 const UNTOPICED: DestructiveGrace = {
-    days: GRACE.days,
+    hours: GRACE.hours,
     warning: GRACE.warning,
     notice: GRACE.notice,
     cancelledBy: GRACE.cancelledBy,
@@ -122,8 +124,8 @@ const warnedAt = (intent: AnyIntent, at: Date): DestructiveWarning =>
     createDestructiveWarning({
         request: writeRequestFor(intent),
         warnedAt: at,
-        gracePeriodDays: GRACE.days,
-        earliestActionAt: new Date(at.getTime() + GRACE.days * DAY_MS),
+        gracePeriodHours: GRACE.hours,
+        earliestActionAt: new Date(at.getTime() + GRACE.hours * HOUR_MS),
         cancelledBy: GRACE.cancelledBy,
         reversesWith: GRACE.reversesWith,
     });
@@ -182,7 +184,7 @@ describe("with no warning recorded", () => {
         expect(approved?.records).toEqual({
             effectId: intent.idempotencyKey,
             request: writeRequestFor({ ...intent, evaluatedAt: AT }),
-            gracePeriodDays: 7,
+            gracePeriodHours: 7 * 24,
             cancelledBy: GRACE.cancelledBy,
             reversesWith: GRACE.reversesWith,
         });
@@ -359,8 +361,8 @@ describe("the screen keeps the two classes apart", () => {
     });
 
     it("refuses a grace below the platform's floor before any door is reached", async () => {
-        for (const days of [0, -1]) {
-            const decision = await decided(act({ ...GRACE, days }));
+        for (const hours of [0, -1]) {
+            const decision = await decided(act({ ...GRACE, hours }));
 
             expect(decision.approved).toEqual([]);
             expect(decision.report.findings).toEqual([
@@ -370,7 +372,7 @@ describe("the screen keeps the two classes apart", () => {
     });
 
     it("refuses a non-finite grace before posting its warning", async () => {
-        const decision = await decided(act({ ...GRACE, days: Number.NaN }));
+        const decision = await decided(act({ ...GRACE, hours: Number.NaN }));
 
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings).toEqual([

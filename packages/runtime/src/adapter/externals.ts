@@ -1,10 +1,11 @@
 /**
- * Live facts for core: grants from the cached mint response, and timeline
- * ordering read once per item per delivery. Ordering is a Date, confirmed
- * absence (null), or "unknown"; failed/incomplete reads are unknown (D51, D119).
+ * Live facts for core: grants from the cached mint response, and timeline ordering
+ * read once per item per delivery. Ordering is a Date, confirmed absence (null), or
+ * "unknown"; failed and incomplete reads are unknown (D51, D119).
  */
 
 import type {
+    AdmittedCapability,
     FailureClass,
     HumanChangeOrdering,
     ItemRef,
@@ -29,11 +30,7 @@ export type GrantsOutcome =
     | { readonly ok: true; readonly grants: readonly PermissionGrant[] }
     | { readonly ok: false; readonly failure: FailureClass };
 
-/**
- * Current token grants, or the classified mint failure — never an invented
- * empty list (which would wrongly mean "granted nothing"). No memo here:
- * grants change with token refreshes.
- */
+/** Never an invented empty list; no memo, since grants change with token refreshes. */
 export async function installationGrants(source: TokenSource): Promise<GrantsOutcome> {
     const outcome = await source.current();
     return outcome.ok
@@ -41,10 +38,7 @@ export async function installationGrants(source: TokenSource): Promise<GrantsOut
         : { ok: false, failure: outcome.failure };
 }
 
-/**
- * D119: mapped labels, assignment, and the open/closed state decisions read.
- * Extend this list when the intent catalogue adds a surface, not before.
- */
+/** D119: the surfaces whose changes count. Extend when the catalogue adds one, not before. */
 const HUMAN_CHANGE_EVENTS: ReadonlySet<string> = new Set([
     "labeled",
     "unlabeled",
@@ -52,6 +46,13 @@ const HUMAN_CHANGE_EVENTS: ReadonlySet<string> = new Set([
     "unassigned",
     "closed",
     "reopened",
+    "commented",
+    "committed",
+    "convert_to_draft",
+    "ready_for_review",
+    "reviewed",
+    "review_dismissed",
+    "review_requested",
 ]);
 
 /** Timeline calls per item per delivery; past this the answer is `"unknown"`. */
@@ -68,20 +69,13 @@ export interface CauseFingerprint {
     readonly target: string | null;
 }
 
-/**
- * What one delivery's ordering reads need; built fresh per delivery.
- *
- * `onUnknownOrdering` exists because core's `HumanChangeOrdering` has room for
- * `"unknown"` and nothing else. A refusal by GitHub, a nonsense body, and a
- * timeline too long to read all reach a decision as the same word, and they
- * need different fixes — so the reason leaves through a seam the composition
- * root points at its log instead of dying here. It never changes an answer.
- */
+/** What one delivery's ordering reads need; built fresh per delivery. */
 export interface OrderingEvidenceOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    /** Absent for sweeps and incomplete/unhandled causes — nothing to exclude. */
+    /** Absent for sweeps and incomplete or unhandled causes — nothing to exclude. */
     readonly cause?: CauseFingerprint;
+    /** A diagnostic seam only; it never changes an answer. */
     readonly onUnknownOrdering?: (detail: string) => void;
 }
 
@@ -89,12 +83,7 @@ export interface OrderingEvidenceOptions {
 const sameSecond = (a: Date, b: Date): boolean =>
     Math.floor(a.getTime() / 1000) === Math.floor(b.getTime() / 1000);
 
-/**
- * When this timeline entry counts as a human change: a `Date`; `null` for
- * an entry that does not count — an ignored kind or a known bot;
- * `"unparsable"` for one that cannot be trusted either way — an unknown
- * actor type or an unorderable timestamp, refusing rather than ignoring.
- */
+/** A `Date`; `null` for an entry that does not count; `"unparsable"` for one that cannot be trusted. */
 function humanChangeAt(entry: unknown): Date | null | "unparsable" {
     const kind = field(entry, "event");
     // Stryker disable next-line ConditionalExpression: Set.has answers false for any non-string already; the typeof arm is for readers.
@@ -158,8 +147,8 @@ function parsePage(outcome: GitHubOutcome): PageOutcome {
     if (events === null) return { unreadable: "GitHub's timeline body was not a JSON array" };
     const link = outcome.headers.link;
     const lastPage = lastPageFromLink(link);
-    // GitHub may advertise a next page without knowing the last page.
-    // We cannot walk newest-first in that case; absence would be a guess.
+    // This reader walks newest-first from the last page, so it cannot start without one.
+
     if (lastPage === null && link?.includes('rel="next"')) {
         return { unreadable: "GitHub advertised a next page without naming the last" };
     }
@@ -168,9 +157,7 @@ function parsePage(outcome: GitHubOutcome): PageOutcome {
 
 /**
  * Pages ascend: page one locates the last page, then we walk backwards.
- * A find in that newest block is authoritative and saves further calls.
- * A page-one find with unvisited middle pages is not; under the call cap,
- * incomplete coverage without a newest-block find must answer "unknown".
+ * Incomplete coverage without a newest-block find must answer `"unknown"`.
  */
 async function readOrdering(
     { http, repository, cause, onUnknownOrdering }: OrderingEvidenceOptions,
@@ -217,24 +204,20 @@ async function readOrdering(
         if ("unreadable" in outcome) {
             return unknown(`page ${String(page)}: ${outcome.unreadable}`);
         }
-        // Keep the visited block together: the cause can be excluded only once,
-        // even when two same-second actions straddle a page boundary.
+        // Keep the visited block together: the cause can be excluded only once.
+
         recent.push(...outcome.events);
         const newest = newestOf(recent);
         if (newest !== null) return newest;
     }
     // Nothing in the newest block; only complete coverage may answer null.
+
     return lastPage <= 1 + descending.length
         ? newestOf([...recent, ...first.events])
         : unknown(`the timeline is longer than ${String(TIMELINE_READ_CAP)} reads may cover`);
 }
 
-/**
- * Match the webhook to its timeline action. `updated_at` is also core's
- * causeObservedAt: both must describe the same instant to avoid self-conflict.
- * Missing action, target, sender or dated item excludes nothing, erring
- * toward refusal rather than hiding a human change.
- */
+/** The webhook matched to its timeline action; a missing field excludes nothing. */
 export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefined {
     const login = field(field(payload, "sender"), "login");
     const item = field(payload, "issue") ?? field(payload, "pull_request");
@@ -254,11 +237,7 @@ export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefin
     return { actorLogin: login, observedAt, itemNumber, action, target };
 }
 
-/**
- * One delivery's memo: concurrent intents share each item's in-flight read.
- * Never reuse it across deliveries. ETags below reduce quota, not freshness:
- * each conditional read revalidates with GitHub.
- */
+/** One delivery's memo: concurrent intents share each item's in-flight read. */
 export function orderingEvidenceSource(
     options: OrderingEvidenceOptions,
 ): (item: ItemRef) => Promise<HumanChangeOrdering> {
@@ -291,25 +270,24 @@ export interface LiveExternalsOptions {
     readonly tokenSource: TokenSource;
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    /**
-     * The delivery's reviewed configuration, passed straight to the resolver
-     * source: `openAssignments` projects an assignment's labels through it, so
-     * a capability receives meanings and never a label string. Per delivery,
-     * because a configuration change between two deliveries must reach the
-     * second one.
-     */
+    /** The delivery's reviewed configuration, passed straight to the resolver source. */
     readonly config: RepositoryConfig;
-    /** Passed straight to `OrderingEvidenceOptions`; see that type for why. */
+    /** The declarations the shell ships; the adapter may not import them itself. */
+    readonly knownCapabilities: readonly AdmittedCapability[];
+    /** Passed straight to `OrderingEvidenceOptions`. */
     readonly onUnknownOrdering?: (detail: string) => void;
 }
 
-/**
- * One delivery's live externals: grants resolved now — they gate every
- * intent — and ordering evidence read per item on demand. Call once per
- * delivery: the ordering memo inside must not outlive it.
- */
+/** Call once per delivery: the ordering memo inside must not outlive it. */
 export async function liveExternalsForDelivery(
-    { tokenSource, http, repository, config, onUnknownOrdering }: LiveExternalsOptions,
+    {
+        tokenSource,
+        http,
+        repository,
+        config,
+        knownCapabilities,
+        onUnknownOrdering,
+    }: LiveExternalsOptions,
     payload: unknown,
 ): Promise<LiveExternalsOutcome> {
     const grants = await installationGrants(tokenSource);
@@ -331,6 +309,7 @@ export async function liveExternalsForDelivery(
                 http,
                 repository,
                 config,
+                knownCapabilities,
             }),
         },
     };

@@ -3,17 +3,17 @@
  * contributor's open claims, reading who holds one item, reading a pull
  * request's commits, and asking whether it merges cleanly.
  *
- * The subject that runs through every case is the matrix gate. Two of the four
- * read endpoints `design/findings/endpoint-permission-matrix.md` has no row
- * for — `GET /repos/{o}/{r}/issues/{n}` for `assigneesOf` and
- * `GET /repos/{o}/{r}/pulls/{n}/commits` for `commitAttestations` — so the gate
- * answers them `unavailable` without sending anything, while their readers sit
- * here complete and tested against the day a sandbox run cites the row. That
- * is what is tested here: the refusal, that it costs no call, and that the
- * reader behind it is right anyway.
+ * The subject that runs through every case is the matrix gate, and since
+ * protocol 6.9 all four are through it: `GET /repos/{o}/{r}/issues/{n}` for
+ * `assigneesOf` and `GET /repos/{o}/{r}/pulls/{n}/commits` for
+ * `commitAttestations` are rows in
+ * `design/findings/endpoint-permission-matrix.md` now. So each reader is tested
+ * by number, and each is tested again through the dispatch, which is the only
+ * place the item's KIND is judged — an `assigneesOf` about a pull request is
+ * refused, because the cited row is the issue's.
  */
 
-import type { PermissionGrant } from "@hiero-hackers/automation-core";
+import type { AdmittedCapability, PermissionGrant } from "@hiero-hackers/automation-core";
 import { describe, expect, it } from "vitest";
 import {
     CONFIRMED_RESOLVER_READS,
@@ -48,6 +48,9 @@ mappings:
 
 const CONFIG = configWith();
 
+/** No declarations: nothing in this file asks the resolver that reads them. */
+const KNOWN: readonly AdmittedCapability[] = [];
+
 function source(steps: readonly ResponseStep[], grants: readonly PermissionGrant[] = GRANTS) {
     const harness = httpHarness(steps, {
         outcomes: [{ ok: true, token: { ...installationToken("resolver-token"), grants } }],
@@ -57,6 +60,7 @@ function source(steps: readonly ResponseStep[], grants: readonly PermissionGrant
             http: harness.client,
             repository: REPOSITORY,
             config: CONFIG,
+            knownCapabilities: KNOWN,
         }),
         calls: harness.scripted.calls,
     };
@@ -77,8 +81,11 @@ const list = (items: readonly unknown[], headers?: Record<string, string>) =>
     success(JSON.stringify(items), headers);
 
 describe("the matrix gate over the resolver surface", () => {
-    it("names the reads the matrix confirmed, and not the two it has not", () => {
+    it("names every read the matrix confirmed, which since 6.9 is all seven", () => {
         expect([...CONFIRMED_RESOLVER_READS].sort()).toEqual([
+            "assigneesOf",
+            "commitAttestations",
+            "configAtHead",
             "isAutomationActor",
             "linkedIssues",
             "mergeability",
@@ -87,18 +94,25 @@ describe("the matrix gate over the resolver surface", () => {
     });
 
     it.each([
-        ["assigneesOf", { item: ITEM }],
-        ["commitAttestations", { item: PULL }],
-    ] as const)("answers %s `unavailable`, and sends nothing", async (query, input) => {
-        const { resolve, calls } = source([]);
+        ["assigneesOf", { item: PULL }, "assigneesOf requires a valid issue item"],
+        [
+            "commitAttestations",
+            { item: ITEM },
+            "commitAttestations requires a valid pull request item",
+        ],
+    ] as const)(
+        "refuses %s an item of the wrong kind, and sends nothing",
+        async (query, input, detail) => {
+            const { resolve, calls } = source([]);
 
-        expect(await resolve(query, input)).toEqual({
-            ok: false,
-            reason: "unavailable",
-            detail: `"${query}" reads an endpoint the permission matrix has not confirmed`,
-        });
-        expect(calls).toHaveLength(0);
-    });
+            expect(await resolve(query, input)).toEqual({
+                ok: false,
+                reason: "unavailable",
+                detail,
+            });
+            expect(calls).toHaveLength(0);
+        },
+    );
 });
 
 describe("openAssignments", () => {
@@ -181,16 +195,34 @@ describe("openAssignments", () => {
         expect(calls).toHaveLength(2);
     });
 
-    it("refuses a successor GitHub advertised without naming the last page", async () => {
-        const { resolve } = source([
-            list([listed(11)], { link: '<https://api.github.com/x?page=2>; rel="next"' }),
+    it("walks on through next-only headers, the shape cursor pagination sends", async () => {
+        const { resolve, calls } = source([
+            list([listed(11)], { link: '<https://api.github.com/x?after=c1>; rel="next"' }),
+            list([listed(12)], { link: '<https://api.github.com/x?after=c2>; rel="next"' }),
+            list([listed(13)], { link: '<https://api.github.com/x?page=2>; rel="prev"' }),
+        ]);
+
+        expect(await resolve("openAssignments", { login: "alice" })).toMatchObject({
+            ok: true,
+            value: [{ item: { number: 11 } }, { item: { number: 12 } }, { item: { number: 13 } }],
+        });
+        expect(calls).toHaveLength(3);
+    });
+
+    it("gives up on a next-only list that runs past the walk", async () => {
+        const { resolve, calls } = source([
+            () =>
+                success(JSON.stringify([listed(11)]), {
+                    link: '<https://api.github.com/x?after=c>; rel="next"',
+                }),
         ]);
 
         expect(await resolve("openAssignments", { login: "alice" })).toEqual({
             ok: false,
             reason: "unavailable",
-            detail: "GitHub advertised a next assignment page without naming the last",
+            detail: "GitHub assignment pagination exceeded 10 pages",
         });
+        expect(calls).toHaveLength(10);
     });
 
     it.each([
@@ -243,7 +275,12 @@ function reader(steps: readonly ResponseStep[]) {
         outcomes: [{ ok: true, token: { ...installationToken("resolver-token"), grants: GRANTS } }],
     });
     return {
-        options: { http: harness.client, repository: REPOSITORY, config: CONFIG },
+        options: {
+            http: harness.client,
+            repository: REPOSITORY,
+            config: CONFIG,
+            knownCapabilities: KNOWN,
+        },
         urls: () => harness.scripted.calls.map((call) => call.url),
     };
 }
@@ -380,6 +417,16 @@ describe("the commit reader", () => {
 
         expect(await readCommitAttestations(options, 136)).toMatchObject({ ok: false });
     });
+
+    it("is reachable through the dispatch, which sends the item's number", async () => {
+        const { resolve, calls } = source([success(JSON.stringify([commitRow()]))]);
+
+        expect(await resolve("commitAttestations", { item: PULL })).toMatchObject({
+            ok: true,
+            value: [{ sha: "abc1234def", signedOff: true, verified: true, merge: false }],
+        });
+        expect(calls[0]?.url).toContain(`/pulls/${String(PULL.number)}/commits`);
+    });
 });
 
 describe("the assignee reader", () => {
@@ -414,5 +461,17 @@ describe("the assignee reader", () => {
         const { options } = reader([failure(403, "no")]);
 
         expect(await readAssigneesOf(options, 1632)).toMatchObject({ ok: false });
+    });
+
+    it("is reachable through the dispatch, which sends the item's number", async () => {
+        const { resolve, calls } = source([
+            success(JSON.stringify({ number: ITEM.number, assignees: [{ login: "alice" }] })),
+        ]);
+
+        expect(await resolve("assigneesOf", { item: ITEM })).toEqual({
+            ok: true,
+            value: ["alice"],
+        });
+        expect(calls[0]?.url).toContain(`/issues/${String(ITEM.number)}`);
     });
 });

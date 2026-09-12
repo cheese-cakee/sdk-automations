@@ -9,7 +9,7 @@ Set up in two minutes: one file, one merge, no per-repository installation.
 **1.** Create `automations.yml` in your repository root:
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 mode: dry-run
 
 capabilities:
@@ -34,9 +34,15 @@ at a local copy.
 
 That is the whole setup.
 
+**For autocomplete**, put
+`# yaml-language-server: $schema=https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json`
+on the first line of `automations.yml`. Any editor with a YAML language server then completes every
+key, shows the sentence beside it, and underlines a misspelt one as you type. It checks shape and
+spelling; the App's parser is still the authority on the rest.
+
 ## What happens next
 
-The App wakes on two things: a webhook from GitHub, and its own daily schedule, which sweeps every
+The App wakes on two things: a webhook from GitHub, and its own hourly schedule, which sweeps every
 open issue and pull request for the capabilities that judge clocks. Either way it records a report
 per delivery naming every decision and why. Writes happen only in `active`, and only when the
 endpoint was started with a write path wired, which is not the default; anything the App would
@@ -63,7 +69,7 @@ be is named.
 **Triage only** — label incoming issues, touch nothing else:
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 mode: dry-run
 capabilities:
   intake:
@@ -76,15 +82,17 @@ mappings:
 **Full workflow with pull-request checks:**
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 mode: dry-run
 capabilities:
   intake:
     enabled: true
-    settings:
-      announce: true
+    announce: true
   prQuality:
     enabled: true
+    checks:
+      linkedIssues:
+        enabled: true
 mappings:
   labels:
     awaitingTriage: "status: triage"

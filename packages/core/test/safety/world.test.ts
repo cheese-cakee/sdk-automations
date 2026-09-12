@@ -135,6 +135,45 @@ describe("expectedHolds — the claim against the world", () => {
     });
 });
 
+/**
+ * The mode arm. A native mode is not a label and not a meaning, so it is
+ * claimed on its own and judged against what an observation READ — which is
+ * the whole reason `ObservedModes` leaves an unread mode out rather than
+ * calling it `false`.
+ */
+describe("expectedHolds — the claim against a native mode", () => {
+    const open = projectPullRequest({ closedBy: null, meanings: [] });
+    const claiming = (mode: "draft" | "changesRequested") =>
+        ({ meaningsPresent: [], meaningsAbsent: [], closed: null, pullRequestMode: mode }) as const;
+
+    it("holds when the mode the decision saw is still the mode", () => {
+        expect(expectedHolds(claiming("draft"), open, { draft: true })).toBe(true);
+        expect(expectedHolds(claiming("changesRequested"), open, { changesRequested: true })).toBe(
+            true,
+        );
+    });
+
+    it("fails when the mode moved — marked ready, or the request lifted", () => {
+        expect(expectedHolds(claiming("draft"), open, { draft: false })).toBe(false);
+        expect(expectedHolds(claiming("changesRequested"), open, { changesRequested: false })).toBe(
+            false,
+        );
+    });
+
+    it("fails when nobody read the mode, and when somebody read the other one", () => {
+        expect(expectedHolds(claiming("draft"), open, {})).toBe(false);
+        expect(expectedHolds(claiming("draft"), open, { changesRequested: true })).toBe(false);
+        // The default is the same answer: a caller that read no mode at all.
+        expect(expectedHolds(claiming("draft"), open)).toBe(false);
+    });
+
+    it("leaves an unclaimed mode alone, whatever was read", () => {
+        const vacuous = { meaningsPresent: [], meaningsAbsent: [], closed: null } as const;
+        expect(expectedHolds(vacuous, open, { draft: false })).toBe(true);
+        expect(expectedHolds(vacuous, open, {})).toBe(true);
+    });
+});
+
 describe("deriveWorld authoritative preconditions", () => {
     const emptyClaims = { meaningsPresent: [], meaningsAbsent: [], closed: null } as const;
 
@@ -200,5 +239,23 @@ describe("deriveWorld authoritative preconditions", () => {
             deriveWorld(clean, { meaningsPresent: [], meaningsAbsent: ["ready"], closed: null })
                 .preconditionHolds,
         ).toBe(false);
+    });
+
+    it("carries what was read of the native modes, and judges a mode claim by it", () => {
+        const open = projectPullRequest({ closedBy: null, meanings: [] });
+        const claim = {
+            meaningsPresent: [],
+            meaningsAbsent: [],
+            closed: null,
+            pullRequestMode: "draft",
+        } as const;
+
+        expect(deriveWorld(open, claim, { draft: true })).toMatchObject({
+            modes: { draft: true },
+            preconditionHolds: true,
+        });
+        expect(deriveWorld(open, claim, { draft: false }).preconditionHolds).toBe(false);
+        // Nothing read is the default, and it is not a pass.
+        expect(deriveWorld(open, claim)).toMatchObject({ modes: {}, preconditionHolds: false });
     });
 });

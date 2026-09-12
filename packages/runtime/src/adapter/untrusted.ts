@@ -1,21 +1,6 @@
-/**
- * Reading bytes GitHub sent, without trusting them.
- *
- * Every reader here is total: a bad shape answers `null` or `undefined`,
- * never a throw. Response-body parsers across the package read in this one
- * idiom, so a shape surprise is a value a pipeline can refuse — and the
- * next operation does not invent a second dialect.
- */
+/** Reading bytes GitHub sent, without trusting them; every reader is total, never a throw. */
 
-/**
- * A property read that cannot throw, whatever shape arrived.
- *
- * Own properties only. A plain `[name]` read walks the prototype chain, so
- * `field(response, "__proto__")` answers `Object.prototype` and
- * `"constructor"` or `"toString"` answer functions — values GitHub never
- * sent, arriving as if it had. The caller checks the type it wants next,
- * but "absent" is the honest answer, and it is the one a caller can refuse.
- */
+/** A property read that cannot throw; own properties only. */
 export function field(value: unknown, name: string): unknown {
     if (typeof value !== "object" || value === null) return undefined;
     try {

@@ -1,12 +1,10 @@
 /**
  * Which moves are legal: the two workflow diagrams from
- * `design/contracts/taxonomy.md` §4–§5 as edge tables, and the question asked of
- * them. The table is the answer; `canTransition*` is how you ask.
+ * `design/contracts/taxonomy.md` §4–§5 as edge tables. The table is the answer;
+ * `canTransition*` is how you ask.
  *
- * `packages/dev/checks/test/doc-drift.test.ts` parses the diagrams out of that document and
- * asserts these tables match them edge for edge, in both directions — the
- * tables ARE the design, transcribed, and a transcription with nothing
- * checking it is how D48's missing edge survived in both artifacts at once.
+ * `packages/dev/checks/test/doc-drift.test.ts` asserts these tables match the
+ * diagrams edge for edge, in both directions.
  */
 
 import type { EntityKind, IssueMeaning, PrMeaning } from "./positions.js";
@@ -19,11 +17,8 @@ export interface Edge<M, C extends TransitionCause> {
 }
 
 /**
- * taxonomy.md §4, verbatim as edges.
- *
- * No manual-entry edges, deliberately. Applying a label by hand is observed
- * reality to reconcile (`design/contracts/safety.md` §3), not a transition
- * anyone requests (D29).
+ * taxonomy.md §4, verbatim as edges. No manual-entry edges: a label applied by
+ * hand is observed reality to reconcile, not a transition anyone requests (D29).
  */
 export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: null, to: "awaitingTriage", causes: ["intakeObserved"] },
@@ -40,12 +35,8 @@ export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
 ];
 
 /**
- * taxonomy.md §5, verbatim as edges.
- *
- * Three of these came from reading the audit rather than the prose, and §5
- * has been corrected to match (D48). The one naming rule worth carrying:
- * a cause names the CONSEQUENCE, not the trigger — `approvalInvalidated`
- * covers new commits, a dismissed review and a changed base alike.
+ * taxonomy.md §5, verbatim as edges. One naming rule: a cause names the
+ * CONSEQUENCE, not the trigger (D48).
  */
 export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
@@ -75,8 +66,6 @@ export const PROFILE_EDGES: {
     pullRequest: PR_EDGES.map((e) => ({ from: e.from, to: e.to })),
 };
 
-// ─── Asking the tables ───────────────────────────────────────────────
-
 /** A move somebody wants: from where, to where, and why. */
 export interface TransitionRequest<M, C extends TransitionCause = TransitionCause> {
     readonly from: M | null;
@@ -85,9 +74,8 @@ export interface TransitionRequest<M, C extends TransitionCause = TransitionCaus
 }
 
 /**
- * Machine-readable refusal cause — telemetry and managed
- * explanations branch on `code`; `reason` is prose for humans only.
- * Same convention as `FailureClass` in failures.ts.
+ * Machine-readable refusal cause — telemetry and managed explanations branch
+ * on `code`; `reason` is prose for humans only.
  */
 export type TransitionRefusalCode =
     | "noSuchEdge"

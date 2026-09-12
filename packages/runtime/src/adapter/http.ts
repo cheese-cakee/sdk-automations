@@ -1,26 +1,8 @@
 /**
- * The one authenticated GitHub call path used by every adapter operation.
- *
- * This file deliberately owns the mechanics that would otherwise drift
- * between operations: request headers, timeouts, the bounded ETag cache, the
- * bounded body read, rate-limit state and the pacing it feeds, refusal of
- * redirects, and how long a failure is waited on before it is handed back.
- * Waiting is this file's job because nothing below it may hold a claimed
- * delivery, and nothing above it can see a `retry-after` (D20).
- *
- * Core owns the vocabulary for GitHub responses and the retry advice for each
- * class. The shapes every operation speaks, and the two results core cannot
- * have, are `contract.ts`. Whether a request may be sent at all is
- * `admission.ts` — the pinned origin, the one admitted GraphQL query, the four
- * write endpoints, and the grants a request needs — and this file is its only
- * caller. Which token to send is `token.ts`.
- *
- * Writes travel this same path behind that gate. What each answer MEANS is
- * `writes.ts`; this file only decides how often an admitted write may be sent
- * again, and what its landing makes untrustworthy in the cache.
- *
- * In order below: the chosen bounds, the retry policy, the representation
- * cache, the client.
+ * The one authenticated GitHub call path every adapter operation uses.
+ * It owns the mechanics that would otherwise drift between operations: headers,
+ * timeouts, the bounded ETag cache, the bounded body read, rate-limit pacing,
+ * refused redirects, and how long a failure is waited on before it is handed back (D20).
  */
 
 import {
@@ -69,11 +51,7 @@ export const DEFAULT_ETAG_CACHE_ENTRY_BYTES = 512 * 1024;
 
 /**
  * The largest response body this client will read.
- *
- * Eight times the per-entry cache bound above: a body too large to retain is
- * still read whole and classified, and anything past this is abandoned
- * mid-stream rather than buffered. The largest response any operation here
- * asks for is a hundred-entry timeline page.
+ * Anything past it is abandoned mid-stream rather than buffered.
  */
 export const MAX_RESPONSE_BODY_BYTES = 8 * DEFAULT_ETAG_CACHE_ENTRY_BYTES;
 
@@ -84,67 +62,31 @@ const TOKEN_REFRESH_ATTEMPTS = 2;
 
 /**
  * Attempts per request on weather, where core's backoff list would allow four.
- *
- * The shell already re-runs the whole delivery up to five times with its own
- * doubling backoff, so an in-request retry only has to clear a blip a second
- * send clears. Further attempts duplicate that machinery while holding a claim.
+ * The shell re-runs the whole delivery, so an in-request retry need only clear a blip.
  */
 const TRANSIENT_ATTEMPTS = 2;
 
 /**
  * Everything one `request()` may spend asleep, across all of its retries.
- *
- * The caller sits inside a claimed delivery, and a claim older than the
- * shell's `STALE_CLAIM_MINUTES` (15) is presumed dead and taken over. Thirty
- * seconds is three percent of that window: long enough for the one wait worth
- * taking in process — a primary budget whose reset is already seconds away —
- * and far too short for a secondary limit's sixty-second floor or a distant
- * reset. Those return at once, into the shell's counted-attempt retry and
- * dead-letter machinery, rather than camping on the claim.
- *
- * Per request rather than per delivery, because a wait long enough to matter
- * ends the delivery's reading anyway: every caller in this package returns on
- * its first failed request.
+ * A longer wait returns at once rather than camping on a claimed delivery.
  */
 export const MAX_RETRY_WAIT_MS = 30_000;
 
 /**
  * How much of a backoff this package CHOSE is spent spreading it out.
- *
- * Jitter is added only where the advice carries no wait signal of its own. An
- * instant GitHub dictated is the same for every worker and waiting past it is
- * already required; a chosen constant fires every worker that failed together
- * back in lockstep. The spread comes from the clock rather than a random
- * source, so a wait stays reproducible in a report and is still decorrelated:
- * two workers that fail on different milliseconds wait different amounts.
+ * Added only where the advice carries no wait signal of its own.
  */
 const BACKOFF_JITTER_FRACTION = 0.25;
 
 /**
- * Primary-budget requests held back rather than spent.
- *
- * The shared rate budget is a protected asset, and one repository must not be
- * able to make every installation unavailable (threat model §2). One percent
- * of GitHub's hourly five thousand. Under it this client stops as if already
- * exhausted, so work ends countably in the shell's retry machinery instead of
- * at the hard wall, halfway through a delivery.
+ * Primary-budget requests held back rather than spent (threat model §2).
+ * Under it this client stops as if already exhausted, countably in the shell.
  */
 export const PRIMARY_BUDGET_RESERVE = 50;
 
 /**
- * The smallest gap between two comment creations this client will leave.
- *
- * Experiment 6.4 tripped an UNSIGNALLED secondary limit at roughly eighty
- * writes a minute (~71 at concurrency 20, no `retry-after`), and core's advice
- * for a limit with no wait signal is a sixty-second floor — so tripping it
- * costs a minute and returns nothing to wait on. Two seconds is thirty a
- * minute, under forty percent of the observed threshold, and a delivery that
- * writes a handful of comments never notices it. The number is a floor to stay
- * far below, not a target to approach.
- *
- * Two honest limits. It is per client instance, so a second process doubles
- * the real rate. And it spaces CREATION only: 6.4 measured content creation,
- * and a label call is not content.
+ * Experiment 6.4 tripped an unsignalled secondary limit near eighty writes a minute.
+ * Per client instance, and it spaces CREATION only: a label call is not content.
  */
 export const CONTENT_CREATION_SPACING_MS = 2_000;
 
@@ -167,12 +109,7 @@ function responseClassOf(failure: GitHubHttpFailureClass): FailureClass | null {
 
 /**
  * Sends one request may make on this class, counting the first.
- *
- * The rate classes get core's bound, which was measured: a limit surviving
- * three full waits is a pacing problem for an operator, not a wait problem.
- * The other two are this file's, and both are tighter than core's — see their
- * constants for why a process holding a claim spends less than a caller with
- * no deadline. A class core refuses to retry never reaches its cap.
+ * A class core refuses to retry never reaches its cap.
  */
 function attemptCap(kind: FailureClass["kind"]): number {
     if (kind === "tokenExpired") return TOKEN_REFRESH_ATTEMPTS;
@@ -182,24 +119,7 @@ function attemptCap(kind: FailureClass["kind"]): number {
 
 /**
  * May this request be sent again inside one `request()` call?
- *
- * Reads and idempotent writes retry under the caps above. A NON-IDEMPOTENT
- * write gets zero in-client retries of any class, and the exception list is
- * empty on purpose.
- *
- * The tempting version keeps the classes that prove nothing happened — a 401,
- * a rate limit — and drops only the ambiguous ones. It is wrong in the way
- * that matters. The dangerous class is `transient`, which covers a timeout and
- * a dropped socket, and those are exactly the failures where GitHub may have
- * applied the change and lost the answer on the way back. Experiment 6.5
- * turned that into a duplicated comment on the first attempt at a blind retry.
- * A per-class exemption also has to stay right forever: the day a new class
- * lands in `classifyFailure`, a list of safe ones silently admits it.
- *
- * So the rule is one rule with no arms. A failure returns immediately, with
- * its class intact, to the journal and read-back layer above — which owns
- * recovery because it is the only layer that can look at GitHub and see
- * whether the effect landed (D46).
+ * A NON-IDEMPOTENT write gets zero of any class; recovery is the read-back layer's (D46).
  */
 function mayRetryInClient(request: GitHubRequest): boolean {
     return !isWrite(request) || request.idempotency === "idempotent";
@@ -213,12 +133,8 @@ function jitterMs(kind: FailureClass["kind"], advisedMs: number, now: Date): num
 }
 
 /**
- * What to do about `failure` after `attempt` earlier failures of this request,
- * given the `waitedMs` the request has already spent asleep.
- *
- * The delay is core's; what this adds is the two bounds a process holding a
- * claim needs. A wait that would breach the ceiling returns the failure
- * WITHOUT sleeping first: a partial wait spends the claim and still fails.
+ * What to do about `failure` after `attempt` earlier failures of this request.
+ * A wait that would breach the ceiling returns the failure WITHOUT sleeping first.
  */
 function nextStep(failure: FailureClass, attempt: number, now: Date, waitedMs: number): NextStep {
     if (attempt + 1 >= attemptCap(failure.kind)) return { step: "return" };
@@ -264,8 +180,9 @@ function createRepresentationCache(): RepresentationCache {
     return {
         lookup(url: string, variant: string): CachedRepresentation | undefined {
             const entry = entries.get(url);
-            if (entry === undefined || entry.variant !== variant) return undefined;
             // Reading an entry makes it newest in the bounded LRU.
+
+            if (entry === undefined || entry.variant !== variant) return undefined;
             entries.delete(url);
             entries.set(url, entry);
             return entry;
@@ -279,8 +196,8 @@ function createRepresentationCache(): RepresentationCache {
                 entries.size > DEFAULT_ETAG_CACHE_ENTRIES ||
                 retainedBytes > DEFAULT_ETAG_CACHE_BYTES
             ) {
-                // `size > a non-negative limit` proves an entry exists, and the
-                // per-entry byte cap proves a one-entry cache is under the total.
+                // `size > a non-negative limit` proves an entry exists.
+
                 remove(entries.keys().next().value as string);
             }
         },
@@ -298,22 +215,17 @@ function representationHeaders(headers: Readonly<Record<string, string>>): Recor
     return link === undefined ? {} : { link };
 }
 
-// ─── The client ──────────────────────────────────────────────────────
-
 function rateLimitHeaders(headers: Readonly<Record<string, string>>): Record<string, string> {
     return Object.fromEntries(
         Object.entries(headers).filter(([name]) => name.startsWith("x-ratelimit-")),
     );
 }
 
+// ─── The client ──────────────────────────────────────────────────────
+
 /**
  * The response body as text, or `null` when it passed the bound.
- *
- * Read chunk by chunk rather than through `response.text()`: the bound has to
- * stop an oversized body from being buffered, and a length checked after the
- * fact has already cost the memory it was meant to refuse. The decoder is
- * driven in streaming mode so a multi-byte character split across two chunks
- * survives.
+ * Read chunk by chunk: a length checked after the fact has already cost the memory.
  */
 async function boundedText(response: Response): Promise<string | null> {
     const stream = response.body;
@@ -345,9 +257,7 @@ type PreparedHeaders =
 
 /**
  * The operation's headers with the controlled fields installed.
- *
- * Controlled fields never select a representation: caller values for them
- * are deleted before the variant is derived, then ours are installed.
+ * Controlled fields never select a representation: caller values are deleted first.
  */
 function prepareHeaders(request: GitHubRequest, token: InstallationToken): PreparedHeaders {
     let headers: Headers;
@@ -361,8 +271,8 @@ function prepareHeaders(request: GitHubRequest, token: InstallationToken): Prepa
     headers.delete("if-none-match");
     headers.delete("user-agent");
     headers.delete("x-github-api-version");
-    // A content type describes a body. The label removal is a DELETE with
-    // none, and declaring one there would describe nothing.
+    // A content type describes a body; the label removal is a DELETE with none.
+
     if (bodyOf(request) !== undefined) {
         headers.delete("content-length");
         headers.set("content-type", "application/json");
@@ -373,8 +283,8 @@ function prepareHeaders(request: GitHubRequest, token: InstallationToken): Prepa
         headers.set("user-agent", USER_AGENT);
         headers.set("x-github-api-version", GITHUB_API_VERSION);
     } catch {
-        // Our two constants are known-good header values; only the token
-        // value can make this throw.
+        // Only the token value can make this throw.
+
         return { ok: false, refusal: brokenSeamFailure("tokenValue") };
     }
     return { ok: true, headers, variant };
@@ -403,14 +313,8 @@ export function createGitHubHttpClient({
     };
 
     /**
-     * The exhaustion the NEXT request should assume, from what the last
-     * response said — the one consumer of the rate snapshot.
-     *
-     * `remaining` is parsed with the seconds parser because GitHub spells it
-     * with the same whole-number grammar, and permissive coercion would turn
-     * a malformed count into a confident zero. A count with no usable reset is
-     * ignored: pacing on it could never expire, and would wedge the client
-     * behind a response it has stopped sending.
+     * The exhaustion the NEXT request should assume — the rate snapshot's one consumer.
+     * A count with no usable reset is ignored: pacing on it could never expire.
      */
     const pacingClass = (): FailureClass | null => {
         if (latestRateLimit === null) return null;
@@ -432,18 +336,18 @@ export function createGitHubHttpClient({
         const requestBody = bodyOf(request);
 
         // A write is never a GET, so it never carries a validator.
+
         const cached = request.method === "GET" ? cache.lookup(request.url, variant) : undefined;
         if (cached !== undefined) headers.set("if-none-match", cached.etag);
 
-        // Capture the local age at send time. A later clock read could turn a
-        // live request into a false `tokenExpired` diagnosis.
+        // Capture the local age at send time; a later clock read could diagnose a false expiry.
+
         let tokenPastExpiry: boolean;
         try {
             tokenPastExpiry = isPastExpiry(token, clock());
         } catch {
             return brokenSeamFailure("clock");
         }
-        // A throwing timeout factory is a wiring defect, not retriable weather.
         let signal: AbortSignal;
         try {
             signal = timeoutSignal(timeoutMs);
@@ -453,9 +357,8 @@ export function createGitHubHttpClient({
         const init: RequestInit = {
             method: request.method,
             headers,
-            // Following is deliberately not delegated to fetch: hidden 3xx
-            // calls would evade origin validation, rate tracking, failure
-            // classification, and the two-attempt bound.
+            // Following is not delegated to fetch: a hidden 3xx would evade every check here.
+
             redirect: "manual",
             signal,
             ...(requestBody === undefined ? {} : { body: requestBody }),
@@ -472,8 +375,8 @@ export function createGitHubHttpClient({
         rememberRateLimit(request.url, response.status, responseHeaders);
 
         if (response.status === 304) {
-            // A 304 with nothing to reuse: the entry was evicted mid-flight,
-            // or the server misbehaved. Either way a full re-read fixes it.
+            // A 304 with nothing to reuse: a full re-read fixes it.
+
             if (cached === undefined) {
                 return {
                     ok: false,
@@ -514,8 +417,8 @@ export function createGitHubHttpClient({
         const body = read;
 
         if (response.ok) {
-            // Only a 200 speaks about the representation; a 202 or 204 must
-            // not evict a validator that is still good.
+            // Only a 200 speaks about the representation.
+
             if (response.status === 200 && request.method === "GET") {
                 const etag = response.headers.get("etag");
                 if (etag !== null && body.length <= DEFAULT_ETAG_CACHE_ENTRY_BYTES) {
@@ -527,6 +430,7 @@ export function createGitHubHttpClient({
                     });
                 } else {
                     // A 200 with no retainable validator leaves any kept entry stale.
+
                     cache.remove(request.url);
                 }
             }
@@ -554,16 +458,8 @@ export function createGitHubHttpClient({
     };
 
     /**
-     * The content-creation lane: one comment creation at a time, spaced by at
-     * least `CONTENT_CREATION_SPACING_MS`.
-     *
-     * The lane holds until the request FINISHES, not until the spacing wait
-     * ends, so two creations never overlap in flight — a burst is what 6.4
-     * tripped, and spacing alone would still let a burst leave together.
-     *
-     * The wait is not retry budget: it happens before anything is sent, so it
-     * cannot spend a claim on a failure, and it is bounded by the spacing
-     * itself rather than by `MAX_RETRY_WAIT_MS`.
+     * The content-creation lane: one comment creation at a time, spaced by the constant above.
+     * The lane holds until the request FINISHES, so two creations never overlap in flight.
      */
     let creationLane: Promise<void> = Promise.resolve();
     let lastCreationAt: number | null = null;
@@ -597,8 +493,8 @@ export function createGitHubHttpClient({
             const broken = await spaceCreation();
             return broken ?? work();
         });
-        // The lane tracks completion, not success: a failure is this request's
-        // outcome, and must not wedge the next creation either way.
+        // The lane tracks completion, not success.
+
         creationLane = run.then(settled, settled);
         return run;
     };
@@ -635,10 +531,8 @@ export function createGitHubHttpClient({
 
             /** Pace, then send until this request's own policy says stop. */
             const deliver = async (): Promise<GitHubOutcome> => {
-                // Pacing runs once, before the first send: inside a request the
-                // server's own advice already governs, and a retry that paused
-                // twice would spend the ceiling on one failure. It is not a
-                // retry, so a non-idempotent write waits here like anything else.
+                // Pacing runs once, before the first send; it is not a retry.
+
                 const paced = pacingClass();
                 if (paced !== null) {
                     const step = move(paced, 0);
@@ -675,15 +569,15 @@ export function createGitHubHttpClient({
                     try {
                         outcome = await sendOnce(safeRequest, tokenOutcome.token);
                     } catch {
-                        // `sendOnce()` contains expected transport failures itself;
-                        // what escapes it is a response object that broke mid-read.
+                        // What escapes `sendOnce()` is a response object that broke mid-read.
+
                         return brokenSeamFailure("response");
                     }
                     if (outcome.ok) return outcome;
                     const responseClass = responseClassOf(outcome.failure);
                     if (responseClass === null) return outcome;
-                    // A rejected token is dropped even on the final attempt, so
-                    // the next `request()` starts on a fresh mint.
+                    // A rejected token is dropped even on the final attempt.
+
                     if (responseClass.kind === "tokenExpired") {
                         try {
                             tokenSource.invalidate(tokenOutcome.token);
@@ -707,13 +601,9 @@ export function createGitHubHttpClient({
                     ? await throughCreationLane(deliver)
                     : await deliver();
 
-            // Drop the validators a landed write staled — see the shapes'
-            // `invalidates` in `operations/`.
-            // The test is "may have reached GitHub", not "succeeded": an
-            // ambiguous outcome is exactly when a read-back runs next, and a
-            // 304 answered from a PRE-write body would let it conclude
-            // "absent" about a change that landed. That is the duplicate D46
-            // exists to prevent, so the one full re-read is the price.
+            // Drop the validators a landed write staled; the test is "may have reached
+            // GitHub", not "succeeded" — a 304 from a pre-write body would hide it (D46).
+
             if (write !== null && (outcome.ok || outcome.failure.kind !== "notSent")) {
                 for (const url of write.invalidates) cache.removeResource(url);
             }
