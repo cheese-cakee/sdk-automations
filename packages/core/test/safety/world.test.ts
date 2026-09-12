@@ -9,11 +9,11 @@ import {
     deriveWorld,
     expectedHolds,
     observedMeaningsOf,
-    projectIssueObservation,
-    projectPrObservation,
+    projectIssue,
+    projectPullRequest,
 } from "../../src/index.js";
 
-const project = projectIssueObservation;
+const project = projectIssue;
 
 describe("observedMeaningsOf reassembles what projection split", () => {
     it("a bare item observes nothing", () => {
@@ -77,20 +77,20 @@ describe("expectedHolds — the claim against the world", () => {
     });
 
     it("present must be present", () => {
-        const expected = { meaningsPresent: ["ready"], meaningsAbsent: [], closed: null } as const;
-        expect(expectedHolds(expected, at(["ready"]))).toBe(true);
-        expect(expectedHolds(expected, at([]))).toBe(false);
+        const claims = { meaningsPresent: ["ready"], meaningsAbsent: [], closed: null } as const;
+        expect(expectedHolds(claims, at(["ready"]))).toBe(true);
+        expect(expectedHolds(claims, at([]))).toBe(false);
     });
 
     it("absent must be absent — the intake case", () => {
-        const expected = {
+        const claims = {
             meaningsPresent: [],
             meaningsAbsent: ["awaitingTriage"],
             closed: false,
         } as const;
-        expect(expectedHolds(expected, project({ closedBy: null, meanings: [] }))).toBe(true);
+        expect(expectedHolds(claims, project({ closedBy: null, meanings: [] }))).toBe(true);
         expect(
-            expectedHolds(expected, project({ closedBy: null, meanings: ["awaitingTriage"] })),
+            expectedHolds(claims, project({ closedBy: null, meanings: ["awaitingTriage"] })),
         ).toBe(false);
     });
 
@@ -113,7 +113,7 @@ describe("expectedHolds — the claim against the world", () => {
     });
 
     it("cross-flow noise neither satisfies nor violates an own-flow claim wrongly", () => {
-        const projection = projectPrObservation({
+        const projection = projectPullRequest({
             closedBy: null,
             meanings: ["needsReview", "awaitingTriage"],
         });
@@ -161,6 +161,36 @@ describe("deriveWorld authoritative preconditions", () => {
         // every paused item.
         const paused = project({ closedBy: null, meanings: ["ready", "blocked"] });
         expect(deriveWorld(paused, emptyClaims).observedMeanings).toEqual(["ready", "blocked"]);
+    });
+
+    /**
+     * The fact the `itemClosed` rule reads. It is derived from the
+     * observation, never from `claims.closed` — the claim defaults to `null`,
+     * so a world that took closure from the capability would report every
+     * silent capability's target as open.
+     */
+    it("carries the observed closure, from either projection branch", () => {
+        expect(
+            deriveWorld(project({ closedBy: "merged", meanings: [] }), emptyClaims).closure,
+        ).toBe("merged");
+        const conflicted = project({
+            closedBy: "closedByHuman",
+            meanings: ["awaitingTriage", "inProgress"],
+        });
+        expect(conflicted.kind).toBe("conflict");
+        expect(deriveWorld(conflicted, emptyClaims).closure).toBe("closedByHuman");
+        expect(
+            deriveWorld(project({ closedBy: null, meanings: [] }), emptyClaims).closure,
+        ).toBeNull();
+    });
+
+    it("invents no closure without a projection, and cannot be reached with one", () => {
+        const world = deriveWorld(null, emptyClaims);
+        expect(world.closure).toBeNull();
+        // The pair is what makes `null` honest rather than a claim of
+        // openness: no projection means the preflight refuses
+        // `preconditionStale` before any rule reads `closure`.
+        expect(world.preconditionHolds).toBe(false);
     });
 
     it("checks requested facts against a clean authoritative projection", () => {

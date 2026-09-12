@@ -110,7 +110,7 @@ records them as D48.
   no path to `needsRevision`, so the only way out asserted that new commits had arrived. Checks break with
   no push at all: the audited Sibling Conflict Re-check re-reads every open pull request's `mergeable`
   state whenever a *different* pull request merges, and swaps its status label
-  (`design/audit/services-cpp.md`).
+  (`design/audit/services.md` §2, the sibling-conflict recheck row).
 - **`needsReview → needsRevision` needs a review cause, not only a failing check.** The audited PR Review
   Label Applicator performs exactly this move on a `changes_requested` review. Observing it requires the
   `pull_request_review` subscription the App currently lacks (experiment 6.6), so the cause exists in the
@@ -125,19 +125,22 @@ Closing is not a position and reopening is not a transition.
 
 Closing records **why** (§2: `merged`, `closedByHuman`, `completedByLinkedMerge`) and leaves every position
 label untouched, because the App does not clean up labels on close — see
-[`../guides/manual-edits.md`](../guides/manual-edits.md) §3 and the
-`status:*` strip that the audit found removing human-set `status: blocked` labels as a side effect
-(`design/audit/labels-cpp.md`). Downstream policy needs the reason: contributor progression credits a merged
-linked pull request and not an abandoned one (`design/guides/capabilities/progression.md`), and the audited post-merge
-cleanup is gated on `merged == true`.
+[`safety.md`](safety.md) §3, which owns only the values its mappings name, and the
+`status:*` strip the C++ post-merge cleanup runs, which the 2026-07 fieldwork audit found removing
+human-set `status: blocked` labels as a side effect. Downstream policy needs the reason: contributor
+progression credits a merged linked pull request and not an abandoned one
+(`design/guides/capabilities/advancement.md`), and the audited post-merge cleanup is gated on
+`merged == true`.
 
 Reopening therefore **clears the closure and restores nothing else** — the position labels were never
 removed, so the item comes back exactly where it was. One invariant falls out of the reason: a **merged
 pull request can never reopen**, which GitHub enforces and the profile refuses rather than omits.
 
-An automation-initiated close has no cause or operation of its own yet. It must not borrow
-`closedByHuman`; adding such an operation requires its own catalogue and destructive-safety review. The
-current inactivity probe can only request a comment or unassignment and cannot close an item.
+An automation-initiated close now has an operation of its own — `closePullRequest`, the clock-triggered
+destructive act `inactivity` requests once its grace has run (`design/guides/grace.md`) — but no closure
+reason of its own: a pull request the App closed reads back as `closedByHuman`, the conservative reason,
+and giving it a reason of its own is a workflow-model change with its own destructive-safety review.
+No operation closes an issue.
 
 ## 6. Issue and pull request links
 
@@ -155,9 +158,10 @@ the current state before a write and refuses an operation when a newer human cha
 precondition.
 
 The profile may provide coherence checks for repositories that want a single mapped position. Those checks
-must not touch unrelated labels or force a repository to adopt the full profile. The detailed candidate
-behavior is recorded in [`../guides/manual-edits.md`](../guides/manual-edits.md) and remains subject to
-profile ratification.
+must not touch unrelated labels or force a repository to adopt the full profile. There is no automatic
+repair in the first version: more than one mapped position is a conflict that changes nothing, and a
+repository wanting a stricter policy configures it, explained and tested as a policy of its own rather
+than as an undocumented platform default. The rule the refusals encode is [`safety.md`](safety.md) §3.
 
 ## 8. Optional skill policy
 

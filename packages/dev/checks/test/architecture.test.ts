@@ -13,7 +13,7 @@ import { join, posix, resolve } from "node:path";
 import { cruise } from "dependency-cruiser";
 import type { ICruiseOptions, ICruiseResult, IConfiguration } from "dependency-cruiser";
 import { describe, expect, it } from "vitest";
-import { normalizeRepoPath, repoRoot, trackedFiles, workspacePackages } from "./repository.js";
+import { normalizeRepoPath, repoRoot, repositoryFiles, workspacePackages } from "./repository.js";
 
 /** Part of the edge: `testkit` is legal from `devDependencies` and nowhere else. */
 type Section = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
@@ -48,20 +48,24 @@ interface Manifest {
     readonly peerDependencies?: Readonly<Record<string, string>>;
 }
 
-/** Layer policy, not a copied workspace list. D93 owns shell -> probes. */
+/**
+ * Layer policy, not a copied workspace list. D93 owns runtime -> capabilities:
+ * the shell decides nothing, so composing the capabilities it runs is a
+ * legitimate edge. The store/adapter/shell directions the runtime absorbed in
+ * G4 are directory rules now, enforced by the cruiser below rather than by a
+ * manifest that no longer names them separately.
+ */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     core: new Set(),
-    store: new Set(["core"]),
-    adapter: new Set(["core"]),
-    shell: new Set(["core", "store", "probes", "adapter"]),
-    probes: new Set(["core"]),
-    checks: new Set(["core"]),
+    runtime: new Set(["core", "capabilities"]),
+    capabilities: new Set(["core"]),
+    checks: new Set(["core", "capabilities"]),
     lab: new Set(["core"]),
     // A leaf on purpose: a builder here would need core, and core's tests need
     // the testkit — the cycle this empty set refuses in advance.
     testkit: new Set(),
 };
-const NON_PRODUCTION = new Set(["checks", "lab", "probes", "testkit"]);
+const NON_PRODUCTION = new Set(["checks", "lab", "capabilities", "testkit"]);
 
 /**
  * Test-only in two directions, each half checked where it is written down: a
@@ -251,10 +255,10 @@ describe("workspace manifests declare the allowed dependency directions", () => 
                     : candidate,
             );
         for (const [from, to] of [
-            ["core", "store"],
-            ["store", "shell"],
-            ["shell", "checks"],
-            ["shell", "lab"],
+            ["core", "runtime"],
+            ["capabilities", "runtime"],
+            ["runtime", "checks"],
+            ["runtime", "lab"],
         ]) {
             expect(messages(manifestViolations(declare(from!, to!)))).toEqual(
                 expect.arrayContaining([
@@ -272,12 +276,12 @@ describe("workspace manifests declare the allowed dependency directions", () => 
                       dependencies: [
                           ...candidate.dependencies,
                           [
-                              "store-workspace-alias",
-                              `workspace:${packageName("store")}@*`,
+                              "runtime-workspace-alias",
+                              `workspace:${packageName("runtime")}@*`,
                               "dependencies",
                           ] as const,
-                          ["store-link-alias", "link:../store", "dependencies"] as const,
-                          ["store-file-alias", "file:../store", "dependencies"] as const,
+                          ["runtime-link-alias", "link:../runtime", "dependencies"] as const,
+                          ["runtime-file-alias", "file:../runtime", "dependencies"] as const,
                       ],
                   }
                 : candidate,
@@ -289,7 +293,7 @@ describe("workspace manifests declare the allowed dependency directions", () => 
         expect(
             actual.filter((message) =>
                 message.includes(
-                    `${packageName("core")} -> ${packageName("store")}: core may import only external packages`,
+                    `${packageName("core")} -> ${packageName("runtime")}: core may import only external packages`,
                 ),
             ),
         ).toHaveLength(3);
@@ -297,7 +301,7 @@ describe("workspace manifests declare the allowed dependency directions", () => 
 
     it("detects a workspace dependency that resolves to no package", () => {
         const dangling = packages.map((candidate) =>
-            role(candidate) === "shell"
+            role(candidate) === "runtime"
                 ? {
                       ...candidate,
                       dependencies: [
@@ -312,13 +316,13 @@ describe("workspace manifests declare the allowed dependency directions", () => 
                 : candidate,
         );
         expect(messages(manifestViolations(dangling))).toEqual([
-            `packages/shell/package.json: ${packageName("shell")} -> workspace:*: workspace dependency target cannot be resolved`,
+            `packages/runtime/package.json: ${packageName("runtime")} -> workspace:*: workspace dependency target cannot be resolved`,
         ]);
     });
 
     it("detects a testkit dependency declared outside devDependencies", () => {
         const asRuntime = packages.map((candidate) =>
-            role(candidate) === "shell"
+            role(candidate) === "runtime"
                 ? {
                       ...candidate,
                       dependencies: [
@@ -331,7 +335,7 @@ describe("workspace manifests declare the allowed dependency directions", () => 
                 : candidate,
         );
         expect(messages(manifestViolations(asRuntime))).toEqual([
-            `packages/shell/package.json: ${packageName("shell")} -> ${packageName("testkit")}: testkit is test-only; declare it under devDependencies`,
+            `packages/runtime/package.json: ${packageName("runtime")} -> ${packageName("testkit")}: testkit is test-only; declare it under devDependencies`,
         ]);
     });
 
@@ -407,12 +411,13 @@ describe("source imports follow the layer policy, checked by dependency-cruiser"
         expect([...fired].sort()).toEqual([
             "adapter-imported-at-shell-main-only",
             "adapter-imports-core-only",
+            "core-and-capabilities-stay-pure",
             "core-imports-no-internal-package",
             "no-circular",
             "no-import-past-the-barrel",
             "not-to-unresolvable",
             "production-imports-no-checks-or-lab",
-            "shell-imports-core-store-probes-adapter",
+            "shell-imports-core-store-capabilities-adapter",
             "store-imports-core-only",
             "testkit-imports-no-internal-package",
             "testkit-is-test-only",
@@ -428,8 +433,8 @@ describe("source imports follow the layer policy, checked by dependency-cruiser"
                 .sort(),
         ).toEqual(
             [
-                "adapter-imported-at-shell-main-only: packages/core/src/imports-adapter.ts -> packages/adapter/src/index.ts",
-                "adapter-imported-at-shell-main-only: packages/shell/src/imports-adapter.ts -> packages/adapter/src/index.ts",
+                "adapter-imported-at-shell-main-only: packages/core/src/imports-adapter.ts -> packages/runtime/src/adapter/index.ts",
+                "adapter-imported-at-shell-main-only: packages/runtime/src/shell/imports-adapter.ts -> packages/runtime/src/adapter/index.ts",
             ].sort(),
         );
     });
@@ -458,7 +463,7 @@ const RESOLVE_REACH = /import\.meta\.resolve\(\s*["'`]@hiero-hackers\//;
  * directory so a `node:worker_threads` contender can import it. An exact set
  * rather than an empty one, so the array empties itself when it stops.
  */
-const RESOLVE_REACH_ALLOWED: readonly string[] = ["packages/store/test/worker-build.ts"];
+const RESOLVE_REACH_ALLOWED: readonly string[] = ["packages/runtime/test/store/worker-build.ts"];
 
 function resolveReaches(sources: readonly { path: string; text: string }[]): string[] {
     return sources
@@ -469,7 +474,7 @@ function resolveReaches(sources: readonly { path: string; text: string }[]): str
 
 describe("no new module reaches into another package by resolving its specifier", () => {
     it("finds import.meta.resolve of a workspace package nowhere else", () => {
-        const sources = trackedFiles()
+        const sources = repositoryFiles()
             .filter((path) => path.endsWith(".ts"))
             .map((path) => ({ path, text: readFileSync(join(repoRoot, path), "utf8") }));
         expect(sources.length).toBeGreaterThan(20);
@@ -478,16 +483,63 @@ describe("no new module reaches into another package by resolving its specifier"
 
     it("proves the check can fail", () => {
         // The specifier is assembled rather than written out, so this file —
-        // which `trackedFiles()` also reads — does not report itself.
+        // which `repositoryFiles()` also reads — does not report itself.
         const scope = "@hiero-hackers";
         expect(
             resolveReaches([
                 {
-                    path: "packages/shell/src/reach.ts",
+                    path: "packages/runtime/src/shell/reach.ts",
                     text: `const core = import.meta.resolve("${scope}/automation-core");`,
                 },
-                { path: "packages/shell/src/fine.ts", text: 'import.meta.resolve("./local.js");' },
+                {
+                    path: "packages/runtime/src/shell/fine.ts",
+                    text: 'import.meta.resolve("./local.js");',
+                },
             ]),
-        ).toEqual(["packages/shell/src/reach.ts"]);
+        ).toEqual(["packages/runtime/src/shell/reach.ts"]);
+    });
+});
+
+/**
+ * Names that describe what a file IS instead of what it answers. The list is
+ * the same offence catalogue the source tree bans at directory level (D111);
+ * it lives here because where a thing goes and what it is called are the one
+ * question. Naming only — whether a module's behaviour dies in some sibling's
+ * suite is mutation coverage's question, not this one's.
+ */
+const KIND_NAMES = new Set([
+    "helpers",
+    "helper",
+    "utils",
+    "util",
+    "lib",
+    "common",
+    "shared",
+    "misc",
+]);
+
+function kindNamed(repoPath: string): boolean {
+    return KIND_NAMES.has(
+        repoPath
+            .split("/")
+            .pop()!
+            .replace(/\.test\.ts$|\.ts$/, ""),
+    );
+}
+
+describe("every test file answers to a findable name", () => {
+    it("no file under a package's test/ is named by kind", () => {
+        const files = repositoryFiles().filter((path) =>
+            workspacePackages().some(
+                (pkg) => path.startsWith(`${pkg}/test/`) && path.endsWith(".ts"),
+            ),
+        );
+        // A walk that silently returned nothing makes the rule below vacuous.
+        expect(files.filter((file) => file.endsWith(".test.ts")).length).toBeGreaterThan(25);
+        expect(files.filter(kindNamed)).toEqual([]);
+        // The detector must actually flag a kind name, and leave a name that
+        // answers a question alone.
+        expect(kindNamed("packages/core/test/helpers.ts")).toBe(true);
+        expect(kindNamed("packages/core/test/world.test.ts")).toBe(false);
     });
 });

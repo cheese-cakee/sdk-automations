@@ -1,0 +1,29 @@
+capabilities:
+  inactivity:
+    enabled: true
+    settings:
+      exemptBlocked: true # the blocked mapping skips every warning and action
+      remindAfterDays: 14 # defaults — any ladder or reason may override
+      reapAfterDays: 21 # reap = unassign (issues) · close + unassign (PRs)
+      issues: # warns, then unassigns assigned issues with no open PR
+        enabled: true
+      pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
+        enabled: true
+        reapAfterDays: 60 # ladder override
+        reapWhen: # reminders and actions apply only to PRs in:
+          draft: # GitHub draft mode
+            enabled: true
+          changesRequested: # GitHub review state
+            enabled: true
+          needsRevision: # the label pr-quality's label mode applies for DCO, GPG, linked-issue and assignment failures
+            enabled: true
+            remindAfterDays: 2 # reason override — quality failures reap fast
+            reapAfterDays: 5
+
+mappings:
+  labels: # needed only by the label-based reasons and exemptions — native draft and changes-requested modes work unmapped
+    needsReview: "status: needs review"
+    needsRevision: "status: changes requested"
+    blocked: "status: blocked" # read only when exemptBlocked is true
+  commands:
+    working: "/working" # the one clock reset; spelling is the repo's

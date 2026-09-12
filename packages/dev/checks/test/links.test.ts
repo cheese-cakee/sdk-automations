@@ -3,13 +3,15 @@
  * repo-rooted paths, and a relative link is what a directory move breaks
  * silently: the text still reads correctly and the target is gone.
  *
- * Resolution is per-file, the way a reader's click resolves it.
+ * Resolution is per-file, the way a reader's click resolves it, and over every
+ * document except the register's two files (`referenceDocuments`): a row is
+ * never edited and links to the tree as it stood.
  */
 
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { lines, markdownDocuments, normalizeRepoPath, repoRoot } from "./repository.js";
+import { lines, normalizeRepoPath, referenceDocuments, repoRoot } from "./repository.js";
 
 /** `[text](target)` — the target only, before any `#anchor` or title. */
 const LINK = /\]\(([^)\s]+)/g;
@@ -27,7 +29,7 @@ export function danglingLinks(doc: string, text: string): string[] {
     for (const match of text.matchAll(LINK)) {
         const target = match[1]!.split("#")[0]!;
         if (target === "" || !isLocal(target)) continue;
-        // A root-relative target ("/docs/x.md") resolves from the root;
+        // A root-relative target ("/docs/quickstart.md") resolves from the root;
         // everything else resolves from the document's own directory.
         const resolved = target.startsWith("/")
             ? join(repoRoot, target.slice(1))
@@ -38,7 +40,7 @@ export function danglingLinks(doc: string, text: string): string[] {
 }
 
 describe("markdown links resolve from the document that carries them", () => {
-    const docs = markdownDocuments();
+    const docs = referenceDocuments();
 
     it("finds documents and links to check", () => {
         expect(docs.length).toBeGreaterThan(5);

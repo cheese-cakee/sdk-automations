@@ -133,7 +133,8 @@ together in SQLite.
 
 The live path also supplies linked-issue and automation-actor resolvers. Credential-free development
 and CI deliberately use local configuration and stubbed external facts. The shell supports `disabled`,
-`observe`, and `dry-run`; it rejects `active`, and no running code changes a repository.
+`observe`, and `dry-run` — `dry-run` naming each change it would make — and rejects `active` unless the
+endpoint was started with the App's identity as well as its credentials, which is not the default.
 
 > [!NOTE]
 > This boundary is intentional. Active mode will be enabled only with a narrow GitHub write
@@ -156,8 +157,8 @@ mappings:
 
 The [quickstart](docs/quickstart.md) explains the shape of the configuration, and every file in
 [`docs/examples/`](docs/examples/README.md) is parsed by the test suite. These documents describe the
-current contract; they are not hosted-service installation instructions yet. The capability names
-used today are disposable boundary probes, not promised product scope.
+current contract; they are not hosted-service installation instructions yet. The capabilities shipped
+today are the ones [docs/capabilities.md](docs/capabilities.md) lists, not promised product scope.
 
 ## Run the workspace
 
@@ -176,8 +177,9 @@ All tracked tests run offline. No GitHub credentials or GitHub App configuration
   <tr>
     <td width="50%">
       <strong>Understand the system</strong><br><br>
-      Read the <a href="design/architecture.md">architecture</a>, then the
-      <a href="design/decisions.md">decision register</a>. The
+      Start with <a href="design/trace.md">the trace</a> — one label from the
+      webhook to the API call, and the recipe for a capability — then the
+      <a href="design/architecture.md">architecture</a>. The
       <a href="packages/core/README.md">core README</a> holds the glossary.
     </td>
     <td width="50%">

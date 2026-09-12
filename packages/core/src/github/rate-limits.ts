@@ -1,6 +1,11 @@
 /**
  * Parsing and automatic-wait bounds for GitHub rate-limit headers.
  *
+ * PROBED by experiment 6.4, 2026-07-23. Goes stale when the header semantics
+ * or the secondary-limit floor change; the first symptom is waits that are
+ * far too short, or absent. It degrades rather than failing loudly, so only
+ * the re-probe closes the gap (D40).
+ *
  * GitHub documents these fields as whole seconds. JavaScript's
  * `Number("") === 0` coercion is therefore unsafe here: a malformed
  * response must not turn into an immediate retry.

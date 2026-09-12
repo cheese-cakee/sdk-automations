@@ -1,269 +1,87 @@
 # Architecture
 
-> Drawings. One italic line under each names the code or test that falsifies it.
-> Why: [`decisions.md`](decisions.md). Vocabulary: [`packages/core/README.md`](../packages/core/README.md).
+> The map. [`trace.md`](trace.md) is the route — one label from GitHub's POST to GitHub's API call —
+> and it is the page to read first; this one says what the pieces are and which rule holds each edge
+> in place. The italic line under each drawing names the code or test that falsifies it. Why:
+> [`constraints.md`](constraints.md). Vocabulary: [`packages/core/README.md`](../packages/core/README.md).
 
-## Part 1 — The system
-
-
-### 1. Context
-
-```mermaid
-flowchart LR
-    subgraph GitHub
-        WH["Webhook deliveries"]
-        REST["REST and GraphQL APIs"]
-        CFG["automations.yml on the default branch — intended source"]
-    end
-    subgraph App["The App — one process, one disk"]
-        SH["shell"]
-        AD["read-only adapter"]
-        DB[("SQLite, single file")]
-    end
-    M["Maintainers"] -->|review and merge config| CFG
-    WH -->|HTTP POST| SH
-    CFG -->|credentialed default-branch read| AD
-    AD --> SH
-    SH <--> DB
-    AD -->|"live reads; no repository writes exist (P5, D46)"| REST
-```
-
-*Sources: `packages/shell/src/receiver.ts`, `config.ts`, `main.ts`, `packages/adapter/src/` · [`decisions.md`](decisions.md)
-P5, D46, D93, D110. Credential-free development and CI retain the local `CONFIG_FILE` source.*
-
-### 2. Packages — runtime and development edges
+## 1. Three packages, and the rules between them
 
 ```mermaid
 flowchart TD
-    subgraph runtime ["runnable path"]
-        shell["shell — transport"] --> core["core — pure logic"]
-        shell --> adapter["adapter: GitHub reads"]
-        shell --> store["store — SQLite"]
-        shell --> probes["probes — disposable capability stubs"]
-        adapter --> core
-        store --> core
-        probes --> core
+    subgraph runtime ["runtime — the runnable path"]
+        shell["shell — transport, applier, sweep"]
+        adapter["adapter — GitHub reads and writes"]
+        store["store — SQLite, one file"]
     end
-    subgraph development ["development-only packages"]
-        checks["checks — repository invariants"]
-        lab["lab — GitHub experiments"]
-        testkit["testkit — fixtures and test support"]
-    end
-    checks -.-> core
-    checks -.-> testkit
-    lab -.-> core
-    core -. "tests" .-> testkit
-    store -. "tests" .-> testkit
-    shell -. "tests" .-> testkit
+    capabilities["capabilities — the capability folders"]
+    core["core — pure logic, no I/O"]
+    shell --> adapter
+    shell --> store
+    shell --> capabilities
+    adapter --> core
+    store --> core
+    capabilities --> core
 ```
 
-*Solid edges are runtime dependencies; dotted edges exist only in development/test packages. The exact
-layer policy, public-barrel rule, testkit test-only rule, and cycle ban are enforced by
-`.dependency-cruiser.cjs` via `packages/dev/checks/test/architecture.test.ts`.*
+Three more sit under `packages/dev/` and never ship: `checks` (repository invariants), `lab` (GitHub
+experiments) and `testkit` (fixtures). Store, shell and adapter are DIRECTORIES of `runtime` rather
+than packages, and the layer policy did not change when they were filed that way (G4). The rules, as
+`.dependency-cruiser.cjs` states them:
 
-## Part 2 — Inside each package
-
-### 3. shell — what the shell actually does
-
-```mermaid
-flowchart LR
-    L["load config text"] --> P["core parses it"]
-    P -->|"rejected"| REC["configRejected"]
-    P -->|"active"| MU["modeUnsupported<br/>intercepted BEFORE decide()"]
-    P -->|"disabled · observe · dry-run"| D["decide()"]
-    D --> DEC["decision"]
-    REC --> C["atomic completion"]
-    MU --> C
-    DEC --> C
-```
-
-Three steps: hand the text to core, intercept `active`, complete atomically whatever happened. Note
-`disabled` is **not** intercepted — it runs through `decide()` and the `modeDisabled` gate refuses each
-intent, which is why it sits with `observe` and `dry-run` rather than with `active`.
-
-The outcome families, which are data rather than flow:
-
-| Configuration | Mode | Record |
-|---|---|---|
-| absent · empty document · no `mode` key | `observe` | `decision` |
-| `disabled` · `observe` · `dry-run` | as written | `decision` |
-| `active` | — | `modeUnsupported` |
-| any YAML or semantic rejection — including capability, mapping, and principal errors | — | `configRejected` |
-
-Every rejection in `ConfigErrorCode` **fails closed and still completes** — no retry loop, and a redelivery
-produces no second record. [`contracts/config-schema.md`](contracts/config-schema.md) is the exhaustive code
-table; this architecture table deliberately groups it rather than copying it.
-
-*Sources: `packages/shell/src/processor.ts` · the parse outcomes are core's
-(`packages/core/src/config/parse.ts`, `sections.ts`) — pinned by
-`packages/core/test/config/parse.test.ts` and `packages/shell/test/shell.test.ts`.*
-
-### 4. core — inside `decide()`
-
-```mermaid
-flowchart TD
-    IN["input: delivery or observation"] --> K{"kind?"}
-    K -->|delivery| N["normalizeDelivery — GitHub's wire format dies here"]
-    K -->|observation| OBS
-    N -->|ignored| FI["finding: deliveryIgnored (info)"]
-    N -->|malformed| FM["finding: problem — one of seven malformed codes"]
-    N -->|observation| OBS["observation + projection, computed once"]
-    OBS --> LOOP{{"for each capability"}}
-    LOOP -->|"not enabled, or observation undeclared"| SKIP["skip — no finding, zero trace"]
-    LOOP --> VIEW["projectCapabilityView + EngineHandle"]
-    VIEW --> EV["capability.evaluate → intents"]
-    EV --> IL{{"for each intent: gateIntent"}}
-    IL --> SC["screen"] --> DW["derive world"] --> GT["gate"]
-    GT --> D["Decision — report + approved"]
-    FI --> D
-    FM --> D
-    SKIP --> D
-```
-
-*Source: `packages/core/src/engine/decide.ts` — total by construction; zero-trace skip proven by
-`packages/probes/test/engine-matrix.test.ts`.*
-
-### 5. core — the capability boundary (probes plug in here)
-
-```mermaid
-flowchart LR
-    subgraph engine ["engine — per admitted capability"]
-        CFG["RepositoryConfig"]
-        OB["observation"]
-        RES["externals.resolve"]
-    end
-    subgraph crosses ["the three values that cross"]
-        O["observation — positions and meanings, never labels"]
-        V["config view — own settings + mappedMeanings (names only)"]
-        P["platform — resolve (declared only) + explain"]
-    end
-    CFG -->|projectCapabilityView| V
-    OB --> O
-    RES -->|EngineHandle| P
-    O --> CAP["capability.evaluate()"]
-    V --> CAP
-    P --> CAP
-    CAP -->|returns| INT["intents — asking, never doing"]
-    subgraph absent ["absent by shape — no type to reach for"]
-        X1["✕ GitHub client / HTTP"]
-        X2["✕ raw webhook payload"]
-        X3["✕ a sibling capability's settings"]
-        X4["✕ repository label strings"]
-        X5["✕ mode, enabled, permissions"]
-        X6["✕ a claimable DerivedWorld"]
-    end
-```
-
-*Sources: `packages/core/src/capability/boundary.ts` · the three probes (`prQuality`, `intake`,
-`inactivity`) are today's capabilities behind this boundary · leaks refuted by
-`packages/probes/test/boundary.test.ts` · independence (P3) by
-`packages/probes/test/engine-matrix.test.ts`.*
-
-### 6. core — safety: how an intent becomes a verdict
-
-```mermaid
-flowchart TD
-    I["intent"] --> SC{"screen — eight refusal codes"}
-    SC -->|"foreignCapability, undeclaredIntent, invalidCause, authoritativePositionUnavailable, positionConflict, pauseNotCapabilityWritable, meaningWrongEntity, transitionNotOnMap"| SF["finding (problem) — the gate never runs"]
-    SC -->|ok| DW["deriveWorld(projection, expected) — claims are checked, never trusted"]
-    DW --> PRE{"preflight"}
-    PRE -->|"killSwitch, preconditionStale"| R
-    PRE --> DOOR{"door policy"}
-    DOOR -->|"wrongEntryPoint, preventiveGateUnavailable"| R
-    DOOR --> GEN["general rules, in order — precedence is contract"]
-    GEN -->|observation| RO["record-only"]
-    GEN -->|"capabilityDisabled, permissionMissing, itemBlocked, humanOrderingUnknown, invalidTimestamp, newerHumanChange, modeDisabled"| R["refuse + SafetyRefusalCode"]
-    GEN -->|modeRecordsOnly| RO
-    GEN -->|"no rule fired"| AP["apply"]
-    AP --> APPR["Decision.approved"]
-    R --> F["verdictFinding — severity from one table"]
-    RO --> F
-    AP --> F
-    SF --> F
-```
-
-*Sources: `packages/core/src/safety/rules.ts` · `packages/core/src/safety/write.ts` ·
-`packages/core/src/report/convert.ts`. The destructive door
-(`packages/core/src/safety/destructive.ts`) is unreachable from `decide()` today.*
-
-### 7. core — the workflow state machine
-
-Drawn once, in [`contracts/taxonomy.md`](contracts/taxonomy.md), where
-`packages/dev/checks/test/doc-drift.test.ts` holds its every edge equal to `PROFILE_EDGES` in
-`packages/core/src/workflow/transitions.ts`. Not copied here — a second drawing would be the
-unchecked one.
-
-### 8. store — five tables, five questions
-
-| Table | The question it answers |
+| Rule | What it forbids |
 |---|---|
-| `seen_delivery` | is this delivery durable, claimed, or done? |
-| `delivery_report` | what did we decide for this delivery? |
-| `effect_journal` | did this call reach GitHub? |
-| `effect_claim` | who holds this effect's lease right now? |
-| `schedule` | what clock-triggered work is due now? |
+| `no-circular` | any cycle — a cycle makes the table unreadable in either direction |
+| `core-imports-no-internal-package` | core reaching any workspace neighbour; its TESTS may reach the testkit |
+| `core-and-capabilities-stay-pure` | sockets, files and timers in core and capabilities; `node:crypto` is the one argued exception |
+| `store-imports-core-only`, `adapter-imports-core-only` | either one reaching the other, the shell, or a capability |
+| `shell-imports-core-store-capabilities-adapter` | the shell reaching a development package; composing capabilities is legitimate because the shell decides nothing (D93) |
+| `adapter-imported-at-shell-main-only` | credentials entering anywhere but the composition root |
+| `testkit-is-test-only`, `testkit-imports-no-internal-package`, `production-imports-no-checks-or-lab` | shipping code importing the testkit, the checks or the lab; the testkit importing anything |
+| `no-import-past-the-barrel`, `not-to-unresolvable` | reaching past a barrel, and the named subpath that would resolve to nothing at all |
 
-```mermaid
-erDiagram
-    seen_delivery {
-        TEXT delivery_id PK
-        TEXT event_name
-        BLOB payload "NULL iff done"
-        TEXT payload_digest "sha256 hex"
-        TEXT received_at
-        TEXT state "pending, processing, done"
-        TEXT claim_worker
-        TEXT claim_token
-        TEXT claimed_at
-        TEXT completed_at
-    }
-    delivery_report {
-        TEXT delivery_id PK
-        TEXT claim_token "the committing token"
-        TEXT report_json
-        TEXT completed_at
-    }
-    effect_journal {
-        TEXT effect_id PK
-        INTEGER call_seq PK
-        TEXT intent
-        TEXT status "sent, done"
-        TEXT at
-        INTEGER attempt
-        TEXT revision
-    }
-    effect_claim {
-        TEXT effect_id PK
-        TEXT worker
-        TEXT at "lease stamp"
-    }
-    schedule {
-        TEXT schedule_id PK
-        TEXT due_at
-        TEXT effect
-        TEXT status "pending, running, done"
-        TEXT claimed_at
-        TEXT claim_token
-    }
-    seen_delivery ||..o| delivery_report : "same GUID, no FK, one transaction"
-```
+*Enforced by `packages/dev/checks/test/architecture.test.ts`, which cruises the real tree with these
+rules and a deliberately-violating fixture tree to prove they still fire.*
 
-*Source: `packages/store/src/schema.ts` — schema version 4; drift rejected by the D110 fingerprint.*
+## 2. One item is the unit of decision
 
-## Part 3 — How they interact
+Everything narrows to this. A producer builds one fact record about ONE item; `decide()` calls each
+enabled capability once per record; a capability returns intents about that item and nothing else.
+No cross-item read, no durable capability state, no subject that is not an item — a capability
+needing one has found a platform gap to write down, never a workaround ([`trace.md`](trace.md)).
 
-### 9. One delivery, in time
+Three values cross into a capability and no more: the facts (positions and meanings, never label
+strings), a view of its own settings plus the mapped names, and a handle offering only the resolvers
+it declared. A GitHub client, a raw payload, a sibling's settings, the repository mode and a
+claimable world are absent BY SHAPE — there is no type to reach for.
+
+*Sources: `packages/core/src/engine/decide.ts`, `packages/core/src/capability/boundary.ts` · leaks
+refuted by `packages/capabilities/test/boundary.test.ts`, P3 by `engine-matrix.test.ts` beside it.*
+
+## 3. Two producers, one shape of record
+
+| Producer | Wakes on | Reads |
+|---|---|---|
+| webhook (`issues`, `issue_comment`, `pull_request`) | GitHub telling us something | the projection, `readiness`, `actor`, `author`, and `command` on a comment |
+| sweep | a due schedule row — nobody told us anything | every group the endpoint-permission matrix has confirmed, one record per open item |
+
+The registry in `packages/core/src/capability/producers.ts` is the promise: a capability declaring a
+need no producer of its trigger reads does not boot. The record is judged again on the day — a group
+that failed to read, or that the matrix has not confirmed, arrives `"unread"` and `decide()` skips
+the capability with `factsUnread`, so it never branches on what woke the platform.
+
+*Contract: [`contracts/facts.md`](contracts/facts.md), generated from the registry ·
+the sweep's own reads and their confirmation status: [`guides/sweep.md`](guides/sweep.md).*
+
+## 4. One delivery, in time
 
 ```mermaid
 sequenceDiagram
-    autonumber
     participant GH as GitHub
     participant R as receiver
     participant S as store
     participant P as processor
     participant E as core decide()
-
-    rect rgb(235,235,235)
     note over GH,S: synchronous — inside the HTTP request
     GH->>R: POST bytes + delivery, event, signature headers
     R->>R: verifyBody — HMAC-SHA256 of the raw bytes (fail → 401)
@@ -271,59 +89,62 @@ sequenceDiagram
     S-->>R: accepted, duplicate, or conflict — INSERT ON CONFLICT is the dedup
     R-->>GH: 202 (conflict → 409)
     note over R,GH: P9 — the durable row exists before the ack, so a crash one millisecond later loses nothing
-    end
-
-    rect rgb(247,247,247)
     note over R,E: decoupled — after the response has flushed
     R->>P: onAccepted fires drain (fire-and-forget)
     P->>S: claimNextDelivery — 256-bit claim token, 15-minute stale takeover
     P->>P: loadConfig, then parseConfigDocument (text + sha256 revision)
-    alt config rejected
-        P->>P: record kind 'configRejected' — fail closed, still completed
-    else mode active
-        P->>P: record kind 'modeUnsupported' — before decide()
-    else disabled, observe, or dry-run
-        P->>E: decide(delivery, config, capabilities, externals)
-        E-->>P: report → record kind 'decision'
+    alt rejected config, or active mode with no write path composed
+        P->>P: record 'configRejected' or 'modeUnsupported' — before decide()
+    else disabled, observe, dry-run, or active with an applier
+        P->>E: decide(facts, config, capabilities, externals)
+        E-->>P: report → record 'decision'; approved effects go to the applier
     end
     P->>S: completeDeliveryWithReport — report row + 'done', one transaction
     note over P,S: any failure before commit releases the claim
-    end
 ```
 
-*Sources: `packages/shell/src/receiver.ts` · `packages/shell/src/processor.ts` — pinned end to end
-by `packages/shell/test/shell.test.ts`.*
+Every rejection fails closed and still completes, so a redelivery produces no second record.
+`disabled` is deliberately not intercepted: it runs through `decide()` and the `modeDisabled` gate
+refuses each intent, which is why it sits with `observe` and `dry-run` rather than with `active`. The
+sweep reaches `decide()` through this same path — mode gate, applier, journal and recovery are all
+this lane's.
 
-## Part 4 — The goal
+*Sources: `packages/runtime/src/shell/receiver.ts`, `processor.ts`, `sweep.ts` — pinned end to end by
+`packages/runtime/test/shell/shell.test.ts`. The exhaustive rejection-code table is
+[`contracts/config-schema.md`](contracts/config-schema.md); it is deliberately not copied here.*
 
-### 10. What remains — solid is built, dashed is gated
+## 5. Safety, and the path a destructive act takes
 
-```mermaid
-flowchart LR
-    subgraph today ["built and live"]
-        IN["intake → decide() → report"]
-        DORM["store: effect_journal, effect_claim, schedule<br/>(built, dormant — nothing reachable writes them)"]
-        DOOR["destructive door<br/>(built, unreachable from decide())"]
-    end
-    subgraph goal ["gated — each piece names its gate"]
-        ACT["active mode<br/>(D46 + stage-six evidence)"]
-        WP["one write path per effect<br/>(adoption record, decisions §3)"]
-        ADP["narrow adapter<br/>(operation list fixed by Q16 matrix)"]
-        REC["effect recovery + reconciliation<br/>(consumes the dormant journal and claim tables)"]
-        SWEEP["schedule sweeps → staleItemsDue<br/>(consumes the dormant schedule table)"]
-    end
-    IN -.-> ACT
-    ACT -.-> WP
-    WP -.-> ADP
-    ADP -.->|"writes, verified postconditions"| GH["GitHub REST"]
-    WP -.-> REC
-    DORM -.-> REC
-    DORM -.-> SWEEP
-    SWEEP -.-> IN
-    DOOR -.->|"first destructive capability"| WP
-```
+An intent passes the screen (its own capability, a declared operation, its own item, a legal
+transition), then the world is DERIVED from the facts rather than asserted, then the ladder judges
+it: kill switch, precondition, door policy, then the general rules in a fixed order. Precedence is
+contract, not style — [`contracts/safety.md`](contracts/safety.md) holds both vocabularies and the
+order, and the drift test freezes them.
 
-*The goal is drawn only where a register row supports it: gates and order in
-[`build-plan.md`](build-plan.md), stages five to eight · adapter operations in
-[`endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md) · everything else is
-an open question in [`decisions.md`](decisions.md) §4, deliberately not drawn.*
+A `clockTriggeredDestructive` act is refused at the general door on purpose: it goes through grace
+instead. On first sight the platform approves its OWN warning comment and the act waits; the applier
+records the warning when it lands; a later occasion is judged against that record — grace elapsed, no
+qualifying activity — and the notice follows the act ([`guides/grace.md`](guides/grace.md)).
+
+## 6. Store — six tables, six questions
+
+| Table | The question it answers |
+|---|---|
+| `seen_delivery` | is this delivery durable, claimed, done, or dead-lettered? |
+| `delivery_report` | what did we decide for this delivery? |
+| `effect_journal` | did this call reach GitHub? |
+| `effect_claim` | who holds this effect's lease right now? |
+| `schedule` | what clock-triggered work is due now? |
+| `destructive_warning` | was this act warned, when, and under what plan? |
+
+*Source: `packages/runtime/src/store/schema.ts` — schema version 6; drift rejected by the D110
+fingerprint.*
+
+## 7. What is not built
+
+Active mode runs only where the process was composed with the App's identity as well as its
+credentials; anything else records `modeUnsupported`. Every read and write with no cited row in
+[`findings/endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md) — two resolvers,
+four operations, three of the sweep's facts — is implemented and refuses at the send. Installation-wide
+suspension has no code path. Everything else absent here is an open question in
+[`constraints.md`](constraints.md), deliberately not drawn.

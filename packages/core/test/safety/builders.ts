@@ -41,7 +41,7 @@ export const config = (over?: Partial<RepositoryConfig>): RepositoryConfig => ({
         inactivity: { enabled: true, settings: {} },
         intake: { enabled: true, settings: {} },
     },
-    mappings: { labels: {} },
+    mappings: { labels: {}, commands: {}, skills: {}, alerts: {}, types: {} },
     principals: {},
     ...over,
 });

@@ -11,8 +11,9 @@ rather than aspirationally.
 - No production credentials live in tracked code. `packages/dev/lab/` keeps credentials and
   raw evidence in local-only, untracked paths, and `.env` is never tracked.
 - `packages/core/` is pure logic: no I/O and no clock reads; the shell supplies
-  observations. The owned operational store lives in `packages/store/`, and `packages/probes/`
-  are deliberately disposable capability stubs.
+  observations. The owned operational store lives in `packages/runtime/src/store/`, beside the
+  GitHub adapter and the transport shell, and `packages/capabilities/` holds the capabilities
+  the shell composes, one folder each.
 - GitHub remains authoritative for visible repository facts. Configuration is fail-closed: the shell
   persists one `configRejected` record, completes that delivery, and never calls the decision engine with a
   partial or fallback configuration.
@@ -20,7 +21,7 @@ rather than aspirationally.
   [`packages/core/src/github/signatures.ts`](packages/core/src/github/signatures.ts).
 - The store schema contains effect claims and a journal for future recovery. No effect executor is wired
   today; the overlap contract and retention windows are still open decisions in
-  [`design/decisions.md`](design/decisions.md).
+  [`design/constraints.md`](design/constraints.md) (D41, Q17).
 
 ## Supply chain
 
@@ -31,7 +32,7 @@ rather than aspirationally.
 - `pnpm install --frozen-lockfile` keeps dependency resolution reproducible;
   `pnpm audit --audit-level moderate` runs on every push and pull request.
 - The test pipeline runs typecheck and tests on Node 24 and 25, plus line and mutation gates for the
-  packages that declare them (`core`, `probes`, `shell`, and `store` currently).
+  packages that declare them (`capabilities`, `core`, and `runtime` currently).
 - Contributions are signed off with `git commit -s`; maintainers enforce the
   DCO.
 

@@ -1,122 +1,222 @@
 # assignment — let a contributor claim work, and release it again
 
-> **Candidate — not ranked, not built.** Status changes here when the register does (Q2).
+`/assign` claims an issue for the commenter; `/unassign` releases their own claim. Optional skill
+gates make the ladder self-service: a tier's issues can be claimed only after completing enough of
+the tier below.
 
-A public issue attracts several contributors, abandoned claims, and repeated requests. C++ and Python
-both automate it and both are marked 🟢 (`design/audit/services.md` §2 group 2); other repositories
-prefer GitHub's own assignee with no gate. So this is a configurable capability, not one universal rule.
+Every refusal is explained; a person using GitHub's native assignment controls is never fought —
+they have team permissions. Commands gate everyone alike, whatever their role: a team member with
+triage or higher never needs `/assign`, because GitHub's own assignee control is their ungated
+path — the command exists for contributors GitHub will not let assign themselves.
 
-## 1. Declaration
+Every guard is a meaning-set or a number, so different repositories express different policies
+with the same schema. An unknown answer refuses politely — never assigns, never releases.
 
-| Field | Value | Why |
-|---|---|---|
-| `triggers` | `issue_comment` (created), `issues` (assigned, unassigned) | the command path and the native-UI path both have to reach the same evaluator, or the App fights the UI |
-| `observations` | `issueUpdated` | the issue's projection. The draft also wanted a command observation and an actor observation; neither is in the closed catalogue, and today's payload carries no assignee, comment body, or actor — this capability is **not buildable on the catalogue as it stands** (D61, §8) |
-| `resolvers` | `isAutomationActor` | never treat a bot as a claimant. The draft's `mayPerform` and `eligibleForAssignment` are not in the catalogue; the eligibility one also crosses the repository boundary (§8) |
-| `intents` | `applyMappedLabel`, `postManagedComment`, `unassign` | the catalogue has `unassign` and **no assign operation**, so the headline write — adding an assignee — is an extension by review (§8). The draft's remove-label intent is deleted (D80) |
-| Permission impact — repository | `issues:read`, `issues:write`, `metadata:read` | proposed reads plus the catalogued comment/unassign operations; assignment itself is not yet catalogued |
-| Permission impact — organization | none | a limit counted across repositories would require new organization-wide reads (§8) |
-| `operationalNeeds` | `schedule: false`, `durableState: "candidate"`, `crossItemCoordination: true`, `externalDelivery: false` | §6 |
+## What the output looks like
 
-Defaults to disabled (P2). A repository may configure the exact assign and unassign commands, the
-authorized actor roles, the maximum open assignments per contributor, whether self-assignment is
-allowed, whether several assignees are allowed, and whether a skill policy applies. Skill checking is
-optional and is never a platform default (Q3).
+Claim accepted:
 
-## 2. Decision
+> ✅ @alice you are assigned to this issue — thank you for picking it up. Comment `/unassign` if
+> you need to step away.
+
+Claim accepted, at a tier with a support team:
+
+> ✅ @alice you are assigned to this good first issue — welcome, and thank you for picking it up!
+> @gfi-support will keep an eye out if you need a hand. Comment `/unassign` if you need to step
+> away.
+
+Claim refused — at the cap:
+
+> Hi @alice — you already have 2 open assignments, which is this repository's limit.
+
+Claim refused — skill gate:
+
+> Hi @alice — this is an **intermediate** issue, which unlocks after 3 completed **beginner**
+> issues (you have 1).
+
+Already claimed:
+
+> Hi @alice — this issue is already assigned to @bob so cannot be claimed.
+
+Release:
+
+> @alice has been unassigned from this issue at their request. The issue is open for anyone to
+> pick up.
+
+## What the config looks like
+
+A config enabling auto-assign and unassign with some guards but no skill progression:
+```yaml
+capabilities:
+  assignment:
+    enabled: true
+    settings:
+      autoAssign: # the /assign command
+        enabled: true
+        maxOpen: 2 # default cap; 0 = uncapped
+        maxPerDay: 1 # claims per person per day
+        minAccountAgeDays: 7 # refuses brand-new accounts
+      unassign: # the self /unassign command
+        enabled: true
+      skillGates:
+        enabled: false
+
+mappings:
+  commands:
+    assign: "/assign"
+    unassign: "/unassign"
+```
+
+A config enabling auto-assignment only to issues marked as `status: ready for dev`, within their relevant skill level, with assignment caps only applying to assignments not in `status: needs review`.
+
+```yaml
+capabilities:
+  assignment:
+    enabled: true
+    settings:
+      autoAssign: # the /assign command
+        enabled: true
+        claimableOnlyWhen: [ready] # empty = any open issue
+        notClaimableWhen: [blocked, awaitingTriage, inProgress]
+        maxOpen: 2 # default cap; 0 = uncapped
+        capIgnores: [needsReview, blocked] # assignments in these states do not count — review waits and blocks are not the contributor's fault
+        maxPerDay: 1 # claims per person per day
+        minAccountAgeDays: 7 # refuses brand-new accounts
+      unassign: # the self /unassign command
+        enabled: true
+      skillGates:
+        enabled: true
+        goodFirstIssue:
+          maxCompletions: 2 # after this many, GFIs are for newer contributors
+          supportTeam: gfiSupportTeam # cc'd on every claim at this tier — the mentor ping
+        beginner:
+          requiresPrevious: 1 # completed goodFirstIssue issues
+        intermediate:
+          requiresPrevious: 3
+        advanced:
+          requiresPrevious: 10
+
+principals:
+  gfiSupportTeam: "hiero-ledger/hiero-sdk-good-first-issue-support"
+
+mappings:
+  labels:
+    ready: "status: ready for dev"
+    blocked: "status: blocked"
+    awaitingTriage: "status: needs triage"
+    inProgress: "status: in development"
+    needsReview: "status: needs review"
+  skills: # required when skillGates is enabled; the ladder order is fixed
+    goodFirstIssue: "skill: good first issue"
+    beginner: "skill: beginner"
+    intermediate: "skill: intermediate"
+    advanced: "skill: advanced"
+  commands:
+    assign: "/assign"
+    unassign: "/unassign"
+```
+
+A config where any open issue is claimable, guarding by progression:
+
+```yaml
+capabilities:
+  assignment:
+    enabled: true
+    settings:
+      autoAssign:
+        enabled: true
+        claimableOnlyWhen: [] # any open issue
+        notClaimableWhen: [blocked]
+        maxOpen: 3
+      unassign:
+        enabled: true
+      skillGates:
+        enabled: true
+        goodFirstIssue:
+          maxOpen: 1 # tier override of the cap
+          maxCompletions: 2
+        beginner:
+          requiresPrevious: 1
+        intermediate:
+          requiresPrevious: 5
+        advanced:
+          requiresPrevious: 10
+```
+
+Completions are counted in this repository: closed issues carrying the tier's skill label that the
+contributor was assigned to. An issue with no skill label is gated only by the cap. An issue with
+two skill labels resolves to the higher tier.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    O["issueUpdated + command"] --> CF{"conflict, or closed?"}
-    CF -->|yes| N0["no intent — explain()"]
-    CF -->|no| K{"claim or release?"}
-    K -->|claim| AU{"actor authorized, not a bot?"}
-    AU -->|"no, or ok: false"| N1["no intent — explain()"]
-    AU -->|yes| P{"position is ready?"}
-    P -->|no| N2["no intent — explain()"]
-    P -->|yes| L{"under the assignment limit?"}
-    L -->|"no, or unknown"| C1["postManagedComment — rate-limited refusal"]
-    L -->|yes| I1["assign (§1) + applyMappedLabel inProgress / contributorAssigned"]
-    K -->|release| RA{"actor is the assignee, or may remove others?"}
-    RA -->|no| N3["no intent — explain()"]
-    RA -->|yes| I2["unassign + applyMappedLabel ready / lastContributorUnassigned"]
+    O["commandIssued: assign / unassign"] --> B{"a PR, a bot, closed, or a claimability meaning fails?"}
+    B -->|yes| N["no intent — explain()"]
+    B -->|no| K{"claim or release?"}
+    K -->|claim| A{"already assigned?"}
+    A -->|yes| C1["managed comment — already claimed"]
+    A -->|no| L{"caps and skill gate pass?"}
+    L -->|"no, or unknown"| C2["managed comment — the refusal, and the fix"]
+    L -->|yes| W["assign the commenter"]
+    K -->|release| R{"commenter is an assignee?"}
+    R -->|no| N2["no intent — explain()"]
+    R -->|yes| W2["unassign the commenter"]
 ```
 
-A person may also use GitHub's native assignment controls. That is a valid manual decision: the
-capability either accepts it or advises about a configured violation, and never silently fights the UI —
-which is why the `issues.assigned` trigger exists and produces no counter-write.
+Native GitHub assignment is a valid manual
+decision: the capability observes it and never counter-writes — a maintainer assigning someone
+bypasses every gate on purpose. 
 
-## 3. Meanings
+## Phases
 
-| Meaning | Reads | Writes |
+| Phase | Ships | Needs first |
 |---|---|---|
-| `ready` | from the projection — a claim is only legal from here | `lastContributorUnassigned`, `inProgress → ready` on a release. This is the draft's `assignmentAvailable`, and one of two current candidate writers of `ready`, with `intake`; inactivity has no mapped-position intent (D116) |
-| `inProgress` | from the projection — a second claim on claimed work is refused, not queued | `contributorAssigned`, `ready → inProgress`. This is the draft's `assignmentActive` |
-| `awaitingTriage` | from the projection — an untriaged issue is explained, not claimed | never; `awaitingTriage → inProgress` is not a documented edge |
-| `blocked` | from the projection | never (D79) |
-| `needsReview`, `needsRevision`, `readyToMerge` | — | never — it observes no pull request |
+| 1 | `/assign` + `/unassign`, claimability meanings, the caps | the command observation + actor model (vocabulary PR) · the assignee write family (shared with inactivity) · an open-assignments count resolver that carries each assignment's meanings (for `capIgnores` and per-tier caps) |
+| 2 | skill gates · `maxPerDay` · `minAccountAgeDays` · `reclaimCooldownDays` | the `skills` mapping family (the config meaning-family reader) · a completed-count-by-skill resolver, repo-local · recent-claim times and App-release events (timeline reads, or the durable-state candidate) · account age on the actor |
+| 3 | position pairing — claim writes `inProgress`, release writes `ready`, when those meanings are mapped | the two-write recovery record (§operational needs); the `ready`-ownership conversation with intake |
+| 4 | next-issue recommendation on merge — designed as its own capability, `merged.md` | demand evidence first; unranked. Role-readiness recognition is `advancement.md`'s job |
 
-Assignee and position move together on both edges. That is A3's exact pair, mutated by separately
-togglable features (`design/audit/lessons-learned.md`), which is why §6 exists.
+## Declaration
 
-## 4. Refuses
-
-| Never | Enforced by |
+| Field | Value |
 |---|---|
-| Close, lock, or comment-moderate an issue | absent from `intents`; closure is a reason read from GitHub, never written (D47, D61) |
-| Pause an item | `screenIntent` refuses a capability writing `blocked`, code `pauseNotCapabilityWritable` (D79) |
-| Claim an issue that is untriaged, already claimed, or conflicted | `screenIntent` returns `transitionNotOnMap` for the first two and `positionConflict` for the third (D35, D78) |
-| Overwrite a newer human assignment or label edit | the `newerHumanChange` rule, ties to the human (`packages/core/src/safety/rules.ts`) |
-| Bulk-remove assignees because a search result was incomplete | an unknown answer is a distinct value, not `[]` (`ResolverAnswer`, §5); each `unassign` names one login |
-| Take a position off without replacing it | `removeMappedLabel` is deleted from the catalogue (D80) |
-| Execute an edited comment as a new command | the declared trigger is `issue_comment` **created**; `edited` is not subscribed |
-| Reply to every refused command | [`postManagedComment` is `nonIdempotent`](../../contracts/catalogue.md), so one marker per occasion; refusal replies are rate-limited so the App does not amplify spam |
-| Call `inactivity` when work goes stale, or be called by it | P3 — no capability names a sibling; `inactivity` reclaims through its own declared `unassign` |
+| `triggers` | `issue_comment` (created — an edited comment is never executed) · `issues` (assigned, unassigned; observe-only, for later position sync) |
+| `facts` / `needs` | a `command` fact kind (new — the commands vocabulary PR) |
+| `resolvers` | `isAutomationActor` (exists) · open-assignments with meanings (new) · completed-count by skill (new, phase 2) · recent-claim times, account age, and App-release events for one item (new, phase 2) |
+| `intents` | `postManagedComment` · `assign` (new — the assignee write family) · `unassign` (same family) · `applyMappedLabel` (phase 3) |
+| Permissions | repository: `issues:read`, `pull_requests:read` (the `capIgnores` look at linked PRs), `issues:write` · organization: none — counting stays in this repository |
+| `operationalNeeds` | schedule: false · durableState: candidate — `maxPerDay` if the timeline read proves too costly, and phase 3's assignee+label pair (two GitHub calls; a crash between them needs a record, never a guess from the label-and-assignee shape) · crossItemCoordination: true — the caps count across issues · externalDelivery: false |
 
-## 5. When evidence is unknown
-
-An eligibility or actor resolver answering `ok: false` produces no assignment write and one `explain()`
-naming the reason — a rate limit is never read as "under the limit", and an undetermined actor is never
-read as "a human" (D51). Search-backed limit queries are the sharp case: they paginate and are eventually
-consistent, so an incomplete page is unknown, not zero. An ambiguous command, an unauthorized actor, an
-unavailable GitHub user, a missing permission, or a stale observation all produce no write; a concise
-managed response may explain the next step. A conflicted projection has no position to move from, so the
-intent is refused rather than repaired. Unassignment is reversible but disrupts a person's work, so it
-is the one edge where unknown must read as "do not act".
-
-## 6. Operational needs
-
-`durableState: "candidate"`, `crossItemCoordination: true`. Adding an assignee and setting the position
-are separate GitHub calls, so a crash between them leaves a partial effect. The safest first milestone
-manages only the native assignee; the alternative is a durable operation record holding the expected
-state, the completed step, the cause, and the configuration revision — and the App must never infer a
-pending operation from an unusual label-and-assignee combination. Per-actor command budgets and
-per-contributor limits are the cross-item part: they need short-lived state or an equivalent counter,
-with a named retention and tenant boundary. Disabling stops command handling and assignment writes
-immediately and removes no existing assignee.
-
-## 7. Verification
+## Verified by
 
 | Scenario | Proves |
 |---|---|
-| Self-assignment, maintainer assignment, an unauthorized command, an ambiguous command | the authorization gate, and that a refusal is explained rather than silent |
-| A limit query spanning more than one page, and a stale search result | pagination and eventual consistency; unknown is not "under the limit" |
-| Crash between the assignee call and the label call | the partial effect is recoverable from the record, not guessed from the label-plus-assignee shape |
-| Redelivered `issue_comment` and two concurrent commands on one issue | one effect per occasion — the key is derived from capability, item, operation and cause (`packages/core/src/capability/intent.ts`) |
-| Native UI assignment and unassignment while the capability is enabled | the manual decision survives; the App does not counter-write |
-| Several assignees; fork, outside-collaborator, suspended, renamed, and deleted users | the identity edge cases GitHub actually produces |
-| Missing `issues:write` | `forbidden`, and the capability does not retry it |
-| Sandbox: dry-run decisions before any real assignee write | the destructive half is seen before it happens |
-
-## 8. Open
-
-| Question | Closed by |
-|---|---|
-| Is assignment self-service? Does native assignment bypass policy? Are several assignees allowed? | maintainer conversation |
-| Do limits cross repositories, and is skill eligibility useful at all? | maintainer conversation (Q3) |
-| `ready` has two current candidate writers, assignment and intake — who owns it, and what is assignment's documented edge? Inactivity joins only if a later catalogue review gives it a mapped-position operation (D116) | maintainer conversation against `intake` §3 |
-| Does an assign operation enter the closed catalogue? Without one there is no claim write, only a release | catalogue review (D61) |
-| Do a command observation, an actor observation, and a `mayPerform` resolver enter the catalogue? The current `issueUpdated` payload carries none of the facts a command needs | catalogue review (D61) |
-| Does an `eligibleForAssignment` resolver enter it, and what is its privacy boundary and cost when the limit spans repositories? | catalogue review, then App experiment |
-| What is the minimum safe recovery record for a two-call effect? | App experiment |
-| An older bot accepting the same commands means both answer one comment — it must stop before this one becomes active | per-repository migration plan (Q7) |
+| `/assign` on an open, claimable, in-gate issue | assigned, one welcome comment |
+| `/assign` on an issue without the `claimableOnlyWhen` meaning | refused with the fix — C++'s ready-for-dev rule, expressed as config |
+| At the cap, but one assignment sits in `needsReview` | the claim succeeds — `capIgnores` skipped it |
+| Assigned to a `blocked` issue, `blocked` in `capIgnores` | does not count toward the cap; remove it from the set and it does — the meaning-set decides |
+| Maintainer natively assigns someone past the cap | it counts; their next `/assign` is refused — native bypasses the gates, never the arithmetic |
+| At a tier's `maxOpen`, under the default cap | refused — the tier override governs |
+| Issue closed as not-planned | not a completion; the gate count is unchanged |
+| Skill or block label added after a claim | nothing — gates run at claim time, and this capability never releases |
+| Issue carrying both `ready` and `blocked` | not claimable — deny wins |
+| `/unassign` then `/assign` the same day | `maxPerDay` counts the earlier claim; releasing is not a refund |
+| Second `/assign` by the same person, same occasion | no duplicate comment — managed identity |
+| Two contributors race `/assign` | one wins; the loser gets the already-claimed comment — apply-time re-check |
+| `/assign` by a bot | nothing — `isAutomationActor` |
+| `/assign` in a PR comment | nothing — claims are issue claims |
+| `/assign` from a 2-day-old account, `minAccountAgeDays: 7` | refused, naming the age rule |
+| Reaped for inactivity, `/assign` the same issue next day | refused for `reclaimCooldownDays` — a different issue claims fine |
+| Count resolver fails or paginates incompletely | polite refusal, never an assignment (unknown ≠ under the cap) |
+| Skill-unlabelled issue | caps apply, the gate does not |
+| Claim at a tier with `supportTeam` | the welcome cc's the team — one comment, no roster, no rotation; other tiers stay quiet |
+| Maintainer assigns via the UI over every gate | untouched — no counter-write |
+| `/unassign` by a non-assignee | explained, nothing released |
+| `/unassign` naming someone else | only the commenter's own claim ever releases — self-only is definitional; reaping stays inactivity's own `unassign` (P3) |
+| A maintainer types `/assign` at the cap | refused like anyone — no role exemptions exist; the sidebar is their ungated path |
+| An edit adds `/assign` to an old comment | never executed — the trigger is `created` only |
+| Contributor with open assignments in a sibling repo | uncounted — caps and completions are repo-local (D57) |
+| Released by inactivity, then `/assign` again | a fresh claim; the capabilities compose without naming each other |
+| Missing `issues:write` | `forbidden`, not retried |
+| `mode: dry-run` | the exact assign/unassign named as `wouldApply`; nothing written |

@@ -3,4 +3,4 @@
 *.yaml
 *.json
 packages/dev/lab/harness/
-packages/shell/data/**
+packages/runtime/data/**

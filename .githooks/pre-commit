@@ -17,8 +17,7 @@
 set -euo pipefail
 
 # `packages/*.ts` is a git pathspec (`*` crosses `/`), so this is the same
-# tree as package.json's format:check glob — CI and the hook cannot disagree
-# about which files Prettier owns. checks/ locks the two together.
+# tree as package.json's format:check glob.
 files=()
 while IFS= read -r -d '' f; do
     files+=("$f")

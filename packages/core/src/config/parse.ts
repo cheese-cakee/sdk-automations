@@ -8,6 +8,7 @@
 import type { ParseConfigOptions, RepositoryConfig } from "./schema.js";
 import { err, type ConfigResult } from "./results.js";
 import {
+    checkRequiredMappings,
     checkSchemaVersion,
     checkTopLevelKeys,
     isPlainObject,
@@ -44,7 +45,7 @@ export const NO_CONFIG: RepositoryConfig = {
     schemaVersion: 1,
     mode: "observe",
     capabilities: cleanRecord([]),
-    mappings: { labels: {} },
+    mappings: { labels: {}, commands: {}, skills: {}, alerts: {}, types: {} },
     principals: cleanRecord([]),
 };
 
@@ -68,6 +69,20 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
     // all, whole-file (D38).
     const structural = [...checkTopLevelKeys(raw), ...checkSchemaVersion(raw)];
 
+    /**
+     * Whether an enabled capability's declared needs are met is a question
+     * about its block AND the mapping families, so it is asked only when both
+     * parsed. When one did not, the file is rejected anyway and an unmet-need
+     * error read off a broken family would point at the wrong line.
+     *
+     * It comes last in the error list because it is the only rule a maintainer
+     * cannot see by looking at one section (D84).
+     */
+    const unmet =
+        capabilities.ok && mappings.ok
+            ? checkRequiredMappings(capabilities.value, mappings.value, options.knownCapabilities)
+            : [];
+
     // One test doing two jobs: it reports every failed section and narrows
     // all four results, so the success path below needs no cast.
     if (!mode.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
@@ -79,10 +94,13 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
                 ...(capabilities.ok ? [] : capabilities.errors),
                 ...(mappings.ok ? [] : mappings.errors),
                 ...(principals.ok ? [] : principals.errors),
+                ...unmet,
             ],
         };
     }
-    if (structural.length > 0) return { ok: false, errors: structural };
+    if (structural.length > 0 || unmet.length > 0) {
+        return { ok: false, errors: [...structural, ...unmet] };
+    }
 
     return {
         ok: true,
@@ -91,7 +109,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
             schemaVersion: 1,
             mode: mode.value,
             capabilities: cleanRecord(capabilities.value),
-            mappings: { labels: mappings.value },
+            mappings: mappings.value,
             principals: cleanRecord(principals.value),
         },
     };

@@ -1,0 +1,18 @@
+capabilities:
+  notifications:
+    enabled: true
+    settings:
+      subscriptions:
+        p0:
+          notify: maintainerTeam
+        security:
+          notify: securityTeam
+
+mappings:
+  alerts:
+    p0: { label: "P0-🔥" }
+    security: { label: "Security" }
+
+principals:
+  maintainerTeam: "hiero-ledger/solo-maintainers"
+  securityTeam: "hiero-ledger/solo-security"

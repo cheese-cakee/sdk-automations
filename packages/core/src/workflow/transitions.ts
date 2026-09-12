@@ -22,8 +22,8 @@ export interface Edge<M, C extends TransitionCause> {
  * taxonomy.md §4, verbatim as edges.
  *
  * No manual-entry edges, deliberately. Applying a label by hand is observed
- * reality to reconcile (manual-edits.md), not a transition anyone requests
- * (D29).
+ * reality to reconcile (`design/contracts/safety.md` §3), not a transition
+ * anyone requests (D29).
  */
 export const ISSUE_EDGES: readonly Edge<IssueMeaning, IssueCause>[] = [
     { from: null, to: "awaitingTriage", causes: ["intakeObserved"] },

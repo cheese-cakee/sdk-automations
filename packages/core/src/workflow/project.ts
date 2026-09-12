@@ -1,13 +1,13 @@
 /**
- * Observed labels to workflow position — the projection step that
- * `design/guides/manual-edits.md` §3 implies but no document owns.
+ * Observed labels to workflow position — the projection step that human
+ * sovereignty implies (`design/contracts/safety.md` §3) but no document owns.
  *
  * GitHub's reality is a SET of labels; the state machine's is a scalar
  * position. The shell turns label strings into meanings through the
  * validated mapping, which the config layer guarantees is injective, and
  * passes the meanings here.
  *
- * More than one own-flow position is a conflict, never a repair (§3). A
+ * More than one own-flow position is a conflict, never a repair. A
  * conflicted item has no `WorkItemState`, so it can never reach
  * `applyTransition` — the no-write rule is structural, not a check.
  */
@@ -33,7 +33,7 @@ export interface LabelObservation {
  * judge whether it needs attention (D59). `ignored` is the other flow's
  * meanings, reported but never a conflict (D35).
  */
-export type ObservationProjection<M> =
+export type Projection<M> =
     | {
           readonly kind: "position";
           readonly state: WorkItemState<M>;
@@ -50,7 +50,7 @@ export type ObservationProjection<M> =
 function projectWith<M extends IssueMeaning | PrMeaning>(
     own: readonly M[],
     observation: LabelObservation,
-): ObservationProjection<M> {
+): Projection<M> {
     const distinct = [...new Set(observation.meanings)];
     const ownSet: ReadonlySet<MappableMeaning> = new Set(own);
     const positions = distinct.filter((m): m is M => ownSet.has(m));
@@ -78,16 +78,12 @@ function projectWith<M extends IssueMeaning | PrMeaning>(
 }
 
 /** Project an issue's observed mapped meanings. Pure. */
-export function projectIssueObservation(
-    observation: LabelObservation,
-): ObservationProjection<IssueMeaning> {
+export function projectIssue(observation: LabelObservation): Projection<IssueMeaning> {
     return projectWith(ISSUE_MEANINGS, observation);
 }
 
 /** Project a pull request's observed mapped meanings. Pure. */
-export function projectPrObservation(
-    observation: LabelObservation,
-): ObservationProjection<PrMeaning> {
+export function projectPullRequest(observation: LabelObservation): Projection<PrMeaning> {
     return projectWith(PR_MEANINGS, observation);
 }
 
@@ -99,11 +95,11 @@ export function projectPrObservation(
  * silently treats every conflicted, closed item as open, which is the
  * mistake the first capability to consume a projection made.
  */
-export function closureOf<M>(projection: ObservationProjection<M>): ClosureReason | null {
+export function closureOf<M>(projection: Projection<M>): ClosureReason | null {
     return projection.kind === "position" ? projection.state.closedBy : projection.closedBy;
 }
 
 /** Is this item paused, whichever branch the projection took? See `closureOf`. */
-export function isPausedByProjection<M>(projection: ObservationProjection<M>): boolean {
+export function isPausedByProjection<M>(projection: Projection<M>): boolean {
     return projection.kind === "position" ? projection.state.blocked : projection.blocked;
 }

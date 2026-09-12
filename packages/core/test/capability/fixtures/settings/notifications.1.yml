@@ -1,0 +1,18 @@
+capabilities:
+  notifications:
+    enabled: true
+    settings:
+      subscriptions: # alert name → who gets pinged
+        critical:
+          notify: maintainerTeam
+        high:
+          notify: triageTeam
+
+mappings:
+  alerts: # repo-defined alert names → the label or native field value that triggers each
+    critical: { field: Priority, value: Critical }
+    high: { field: Priority, value: High }
+
+principals:
+  maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers"
+  triageTeam: "hiero-ledger/hiero-sdk-python-triage"

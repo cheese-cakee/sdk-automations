@@ -1,0 +1,3 @@
+capabilities:
+  intake:
+    enabled: false # Default

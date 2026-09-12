@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { trackedFiles, workspacePackages } from "./repository.js";
+import { repositoryFiles, workspacePackages } from "./repository.js";
 
 /** The first segment of every workspace entry — today, just `packages`. */
 export function packageRoots(entries: readonly string[]): Set<string> {
@@ -33,7 +33,7 @@ describe("the top level holds packages and two knowledge roots", () => {
 
     it("every top-level directory is a package root or a named root", () => {
         const packages = packageRoots(workspacePackages());
-        expect(topLevelOffenders(trackedFiles(), packages, KNOWLEDGE)).toEqual([]);
+        expect(topLevelOffenders(repositoryFiles(), packages, KNOWLEDGE)).toEqual([]);
     });
 
     it("the package root is read from the workspace file, not assumed", () => {

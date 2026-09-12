@@ -56,7 +56,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
      * leaves the sweep exhaustive in every dimension but the one where
      * `clockTriggeredDestructive` reaches `apply` (D52).
      */
-    it("2,560 (class × context) combinations: apply exactly when nothing refuses and mode is active", () => {
+    it("5,120 (class × context) combinations: apply exactly when nothing refuses and mode is active", () => {
         let applies = 0;
         let checked = 0;
         for (const actionClass of ACTION_CLASSES)
@@ -64,85 +64,97 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                 for (const capabilityEnabled of bools)
                     for (const installationHasPermission of bools)
                         for (const itemBlocked of bools)
-                            for (const preconditionHolds of bools)
-                                for (const latestHumanChangeAt of humanChanges)
-                                    for (const mode of REPOSITORY_MODES) {
-                                        const config: RepositoryConfig = {
-                                            revision: "rev-test",
-                                            schemaVersion: 1,
-                                            mode,
-                                            capabilities: {
-                                                [CAPABILITY]: {
-                                                    enabled: capabilityEnabled,
-                                                    settings: {},
+                            for (const itemClosed of bools)
+                                for (const preconditionHolds of bools)
+                                    for (const latestHumanChangeAt of humanChanges)
+                                        for (const mode of REPOSITORY_MODES) {
+                                            const config: RepositoryConfig = {
+                                                revision: "rev-test",
+                                                schemaVersion: 1,
+                                                mode,
+                                                capabilities: {
+                                                    [CAPABILITY]: {
+                                                        enabled: capabilityEnabled,
+                                                        settings: {},
+                                                    },
                                                 },
-                                            },
-                                            mappings: { labels: {} },
-                                            principals: {},
-                                        };
-                                        const context: WriteContext = {
-                                            installationGrants: installationHasPermission
-                                                ? (["issues:write"] as const)
-                                                : [],
-                                            killSwitchActive,
-                                            world: assertedWorld(
-                                                itemBlocked ? (["blocked"] as const) : [],
-                                                preconditionHolds,
-                                            ),
-                                            latestHumanChangeAt,
-                                        };
-                                        const verdict = evaluateWrite(
-                                            requestFor(actionClass),
-                                            config,
-                                            context,
-                                        );
-                                        checked += 1;
-                                        // Every non-apply carries prose for humans.
-                                        if (verdict.outcome !== "apply") {
-                                            expect(verdict.reason.length).toBeGreaterThan(0);
-                                        }
-                                        if (verdict.outcome === "apply") applies += 1;
+                                                mappings: {
+                                                    labels: {},
+                                                    commands: {},
+                                                    skills: {},
+                                                    alerts: {},
+                                                    types: {},
+                                                },
+                                                principals: {},
+                                            };
+                                            const context: WriteContext = {
+                                                installationGrants: installationHasPermission
+                                                    ? (["issues:write"] as const)
+                                                    : [],
+                                                killSwitchActive,
+                                                world: assertedWorld(
+                                                    itemBlocked ? (["blocked"] as const) : [],
+                                                    preconditionHolds,
+                                                    itemClosed ? "closedByHuman" : null,
+                                                ),
+                                                latestHumanChangeAt,
+                                            };
+                                            const verdict = evaluateWrite(
+                                                requestFor(actionClass),
+                                                config,
+                                                context,
+                                            );
+                                            checked += 1;
+                                            // Every non-apply carries prose for humans.
+                                            if (verdict.outcome !== "apply") {
+                                                expect(verdict.reason.length).toBeGreaterThan(0);
+                                            }
+                                            if (verdict.outcome === "apply") applies += 1;
 
-                                        const actionMayApply =
-                                            actionClass !== "observation" &&
-                                            actionClass !== "clockTriggeredDestructive" &&
-                                            actionClass !== "immediatePreventive";
-                                        const humanOrderingAllowsWrite =
-                                            latestHumanChangeAt === null ||
-                                            (latestHumanChangeAt !== "unknown" &&
-                                                latestHumanChangeAt.getTime() < CAUSE_AT.getTime());
-                                        const everyRulePasses =
-                                            actionMayApply &&
-                                            !killSwitchActive &&
-                                            capabilityEnabled &&
-                                            installationHasPermission &&
-                                            !itemBlocked &&
-                                            preconditionHolds &&
-                                            humanOrderingAllowsWrite &&
-                                            mode === "active";
-                                        expect(verdict.outcome === "apply").toBe(everyRulePasses);
+                                            const actionMayApply =
+                                                actionClass !== "observation" &&
+                                                actionClass !== "clockTriggeredDestructive" &&
+                                                actionClass !== "immediatePreventive";
+                                            const humanOrderingAllowsWrite =
+                                                latestHumanChangeAt === null ||
+                                                (latestHumanChangeAt !== "unknown" &&
+                                                    latestHumanChangeAt.getTime() <
+                                                        CAUSE_AT.getTime());
+                                            const everyRulePasses =
+                                                actionMayApply &&
+                                                !killSwitchActive &&
+                                                capabilityEnabled &&
+                                                installationHasPermission &&
+                                                !itemClosed &&
+                                                !itemBlocked &&
+                                                preconditionHolds &&
+                                                humanOrderingAllowsWrite &&
+                                                mode === "active";
+                                            expect(verdict.outcome === "apply").toBe(
+                                                everyRulePasses,
+                                            );
 
-                                        // A destructive request can NEVER apply here,
-                                        // whatever the context (D52).
-                                        if (
-                                            actionClass === "clockTriggeredDestructive" &&
-                                            !killSwitchActive &&
-                                            preconditionHolds
-                                        ) {
-                                            expect(verdict).toMatchObject({
-                                                outcome: "refuse",
-                                                code: "wrongEntryPoint",
-                                            });
+                                            // A destructive request can NEVER apply here,
+                                            // whatever the context (D52).
+                                            if (
+                                                actionClass === "clockTriggeredDestructive" &&
+                                                !killSwitchActive &&
+                                                preconditionHolds
+                                            ) {
+                                                expect(verdict).toMatchObject({
+                                                    outcome: "refuse",
+                                                    code: "wrongEntryPoint",
+                                                });
+                                            }
+                                            // Unestablished ordering can never apply (D51).
+                                            if (
+                                                latestHumanChangeAt === "unknown" &&
+                                                actionClass !== "observation"
+                                            ) {
+                                                expect(verdict.outcome).not.toBe("apply");
+                                            }
                                         }
-                                        // Unestablished ordering can never apply (D51).
-                                        if (
-                                            latestHumanChangeAt === "unknown" &&
-                                            actionClass !== "observation"
-                                        ) {
-                                            expect(verdict.outcome).not.toBe("apply");
-                                        }
-                                    }
-        expect(checked).toBe(2_560); // 5 classes × 2^5 flags × 4 orderings × 4 modes
+        expect(checked).toBe(5_120); // 5 classes × 2^6 flags × 4 orderings × 4 modes
         // 2 currently authorized write classes × active mode ×
         // {null, older} ordering = 4. Immediate preventive actions stay
         // fail-closed until their explanation/reversal gate exists.
@@ -158,6 +170,7 @@ describe("evaluateWrite (contracts/safety.md)", () => {
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
         ["missing permission (rule 2)", { installationGrants: [] as const }, "permissionMissing"],
         ["blocked item (pause)", { world: assertedWorld(["blocked"], true) }, "itemBlocked"],
+        ["closed item (terminal)", { world: assertedWorld([], true, "merged") }, "itemClosed"],
         [
             "failed precondition recheck (rule 4)",
             { world: assertedWorld([], false) },
@@ -218,6 +231,35 @@ describe("evaluateWrite (contracts/safety.md)", () => {
         }
     });
 
+    /**
+     * Closure is platform-enforced, not a capability's favour to ask. A
+     * capability may claim `claims.closed: false`, but the claim is
+     * optional and `intentFactory` defaults it to no claim — so before this
+     * rule a closed item was protected only by the capabilities that
+     * remembered. Nothing in the request below mentions closure at all.
+     */
+    it("refuses on a closed item and names the closure GitHub reported", () => {
+        for (const closure of ["merged", "closedByHuman", "completedByLinkedMerge"] as const) {
+            const verdict = evalWrite(
+                request(),
+                context({ world: assertedWorld([], true, closure) }),
+            );
+            expect(verdict).toMatchObject({ outcome: "refuse", code: "itemClosed" });
+            if (verdict.outcome === "refuse") expect(verdict.reason).toContain(closure);
+        }
+    });
+
+    /**
+     * Closure ahead of the pause. Both refuse, so only the CODE distinguishes
+     * them, and telling a maintainer a merged pull request is "paused" names
+     * the fact they can undo and hides the one they cannot.
+     */
+    it("a closed and blocked item reports the closure, not the pause", () => {
+        expect(
+            evalWrite(request(), context({ world: assertedWorld(["blocked"], true, "merged") })),
+        ).toMatchObject({ outcome: "refuse", code: "itemClosed" });
+    });
+
     it("the check precedence is contract: the earliest failing rule names the code", () => {
         // Everything fails at once; the kill switch is reported.
         const verdict = evalWrite(
@@ -275,6 +317,23 @@ describe("evaluateWrite (contracts/safety.md)", () => {
         expect(verdict.outcome).toBe("refuse");
     });
 
+    it("uses the evaluation instant when the cause marks an older stable occasion", () => {
+        const verdict = evalWrite(
+            request({ evaluatedAt: new Date("2026-07-10T00:00:00Z") }),
+            context({ latestHumanChangeAt: new Date("2026-07-05T00:00:00Z") }),
+        );
+        expect(verdict.outcome).toBe("apply");
+    });
+
+    it("gives a human change tied with evaluation priority", () => {
+        const instant = new Date("2026-07-10T00:00:00Z");
+        const verdict = evalWrite(
+            request({ evaluatedAt: instant }),
+            context({ latestHumanChangeAt: instant }),
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "newerHumanChange" });
+    });
+
     it.each([
         [
             "an invalid cause timestamp",
@@ -289,6 +348,11 @@ describe("evaluateWrite (contracts/safety.md)", () => {
             context({
                 latestHumanChangeAt: new Date("invalid"),
             }),
+        ],
+        [
+            "an invalid evaluation timestamp",
+            request({ evaluatedAt: new Date("invalid") }),
+            context(),
         ],
     ] as const)("fails closed on %s", (_name, badRequest, badContext) => {
         const verdict = evalWrite(badRequest, badContext);
@@ -337,7 +401,7 @@ describe("audit findings, pinned (D51-D53)", () => {
     });
 
     // D51 — unknown ordering is a conflict, not an absence.
-    it("unestablished human-change ordering refuses (manual-edits.md §2)", () => {
+    it("unestablished human-change ordering refuses (contracts/safety.md §3)", () => {
         expect(evalWrite(request(), context({ latestHumanChangeAt: "unknown" }))).toMatchObject({
             outcome: "refuse",
             code: "humanOrderingUnknown",

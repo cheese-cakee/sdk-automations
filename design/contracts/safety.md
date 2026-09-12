@@ -1,9 +1,10 @@
 # Safety Engine Contract
 
 > **Built as policy logic** — `packages/core/src/safety/`, with both verdict vocabularies locked by
-> `packages/dev/checks/test/safety-drift.test.ts`. Repository effect application, postcondition
-> verification, recovery, and rollback are unbuilt and live in [`../guides/effects.md`](../guides/effects.md).
-> The destructive door exists, but no catalogued operation reaches it today.
+> `packages/dev/checks/test/safety-drift.test.ts`. Repository effect application and postcondition
+> verification are the write operation's own contract ([`../guides/write-operations.md`](../guides/write-operations.md));
+> the warning-and-grace path a destructive act reaches a repository through is
+> [`../guides/grace.md`](../guides/grace.md). Recovery and rollback are unbuilt.
 
 What the engine enforces today: two entry points, one shared rule list, and a closed vocabulary of
 verdict codes. A capability never decides whether its own write may happen.
@@ -32,15 +33,17 @@ reported, and the tests freeze the sequence (D39, D52).
    recorded warning, warning-to-request match, plan validity, grace floor, grace elapsed, cancelling
    activity.
 3. **General rules**, shared by both doors, in the order `GENERAL_RULES` lists them: observation,
-   capability enabled, permissions, item paused, human ordering known, timestamps valid, no newer
-   human change, mode not disabled, mode not record-only.
+   capability enabled, permissions, item open, item paused, human ordering known, timestamps valid,
+   no newer human change, mode not disabled, mode not record-only.
 4. Nothing objected — `apply`.
 
 ## 3. Refusal codes
 
-The closed vocabulary of `SafetyRefusalCode`. Severity is `packages/core/src/report/convert.ts`'s
-table, not this document's.
+The closed vocabulary of `SafetyRefusalCode`, generated — `pnpm contracts` rewrites the block and
+the drift test fails on anything else. Severity is `packages/core/src/report/convert.ts`'s table,
+not this document's.
 
+<!-- generated: refusal-codes -->
 | Code | Raised by | Meaning |
 |---|---|---|
 | `killSwitch` | intent preflight | An operator pulled the brake; every returned intent is refused, including observation-class intents. Capability and resolver evaluation has already occurred (D117). |
@@ -48,6 +51,7 @@ table, not this document's.
 | `preventiveGateUnavailable` | `write.ts` | The immediate-preventive class has no gate yet. |
 | `capabilityDisabled` | general rules | The repository did not enable this capability. |
 | `permissionMissing` | general rules | The installation lacks a grant the request requires. |
+| `itemClosed` | general rules | The observed item is closed; a closed item accepts no capability write. Reported ahead of `itemBlocked`, because closure is terminal where a pause is not. |
 | `itemBlocked` | general rules | A mapped `blocked` meaning pauses capability writes for this item. |
 | `preconditionStale` | preflight | The authoritative precondition is unavailable, conflicted, or no longer holds. |
 | `newerHumanChange` | general rules | A human changed the item at or after the cause; ties go to the human. |
@@ -61,27 +65,42 @@ table, not this document's.
 | `graceBelowFloor` | `destructive.ts` | The grace period is below `MIN_GRACE_DAYS`. |
 | `graceRunning` | `destructive.ts` | The grace period has not fully elapsed. |
 | `activityCancelled` | `destructive.ts` | The affected person provided qualifying activity during the grace period. |
+<!-- /generated -->
+
+Three of those rows are one rule wearing three names, and it is the rule the App exists to keep:
+**a person with repository permission may put an item wherever they like, and automation yields to
+them.** `newerHumanChange` is the rule itself — a human change at or after the intent's cause wins,
+and a tie goes to the human, because the alternative is a stale scheduled evaluation quietly undoing
+a maintainer's deliberate move. `humanOrderingUnknown` is the same rule where the evidence ran out:
+unavailable ordering is a CONFLICT and never an absence, which is why the value is three-valued and
+why a webhook's delivery time is not evidence — deliveries are delayed and reordered (D51).
+`invalidTimestamp` is the third: a cause the platform cannot date cannot be compared with a human's.
+The App also owns only the exact values its mappings name, never every value under a prefix such as
+`status:`, so an unrelated or unknown label is left alone rather than repaired, and a position no
+capability can prove is safe to change is a conflict that changes nothing.
 
 ## 4. Record-only codes
 
 Not refusals. The decision was reached and the effect was written down instead of performed.
 
+<!-- generated: record-only-codes -->
 | Code | Raised when |
 |---|---|
 | `observation` | The request's class is `observation`. |
 | `modeRecordsOnly` | The repository mode is `observe` or `dry-run`. |
+<!-- /generated -->
 
 ## 5. Which document rule maps to which code
 
 The write rules the engine can decide from a single request. Rules 6–10 cannot be, and belong to
-[`../guides/effects.md`](../guides/effects.md).
+[`../guides/write-operations.md`](../guides/write-operations.md) §7.
 
 | Rule | Code when it objects |
 |---|---|
 | 1 — the repository enabled the capability and an active mode | `capabilityDisabled`, `modeDisabled`, `modeRecordsOnly` |
 | 2 — the installation has the required permission | `permissionMissing` |
-| 3 — the capability supplied a dated cause and expected state | `invalidTimestamp` |
+| 3 — the capability supplied a dated cause and claimed state | `invalidTimestamp` |
 | 4 — mutable preconditions rechecked before the write | `preconditionStale` |
 | 5 — a newer human change is a conflict, and so is unknown ordering | `newerHumanChange`, `humanOrderingUnknown` |
-| pause and kill switches | `itemBlocked`, `killSwitch` |
+| closure, pause and kill switches | `itemClosed`, `itemBlocked`, `killSwitch` |
 | class routing | `wrongEntryPoint`, `preventiveGateUnavailable`, `wrongActionClass` |

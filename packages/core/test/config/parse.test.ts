@@ -168,7 +168,13 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         expect(NO_CONFIG.mode).toBe("observe");
         expect(Object.keys(NO_CONFIG.capabilities)).toHaveLength(0);
         expect(Object.keys(NO_CONFIG.principals)).toHaveLength(0);
-        expect(NO_CONFIG.mappings).toEqual({ labels: {} });
+        expect(NO_CONFIG.mappings).toEqual({
+            labels: {},
+            commands: {},
+            skills: {},
+            alerts: {},
+            types: {},
+        });
         expect(NO_CONFIG.schemaVersion).toBe(1);
     });
 
@@ -232,6 +238,57 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         );
         expect(result.ok).toBe(true);
         if (result.ok) expect(result.config.mappings.labels.ready).toBe("Status: Ready");
+    });
+
+    /**
+     * The other half of D84's rule, and the one the corpus cannot hold: a
+     * DISABLED capability demands nothing. Rejecting this file would make
+     * `enabled: false` harder to write than deleting the block, which is the
+     * opposite of what a blast-radius lever should cost.
+     */
+    it("a disabled capability requires none of its meanings", () => {
+        const result = parseConfig(
+            { schemaVersion: 1, capabilities: { intake: { enabled: false } } },
+            {
+                revision: "rev-test",
+                knownCapabilities: [
+                    {
+                        name: "intake",
+                        configKeys: ["announce"],
+                        requiredMappings: { labels: ["awaitingTriage"] },
+                    },
+                ],
+            },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.capabilities.intake?.enabled).toBe(false);
+    });
+
+    /**
+     * The settings rule judges NAMES only. Values stay the capability's own
+     * business (config-schema.md §3), so a declared key holding nonsense is
+     * accepted here and refused — if at all — by the capability that owns it.
+     */
+    it("a declared settings key is accepted whatever its value", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { intake: { enabled: false, settings: { announce: [1, { a: 2 }] } } },
+            },
+            {
+                revision: "rev-test",
+                knownCapabilities: [
+                    {
+                        name: "intake",
+                        configKeys: ["announce"],
+                        requiredMappings: { labels: ["awaitingTriage"] },
+                    },
+                ],
+            },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok)
+            expect(result.config.capabilities.intake?.settings.announce).toEqual([1, { a: 2 }]);
     });
 
     // D56 — an absent key defaults; the corpus holds the present-but-empty

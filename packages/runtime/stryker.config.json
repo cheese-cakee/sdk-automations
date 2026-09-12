@@ -1,0 +1,14 @@
+{
+    "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+    "testRunner": "vitest",
+    "plugins": ["@stryker-mutator/vitest-runner"],
+    "vitest": { "related": false },
+    "mutate": ["src/**/*.ts"],
+    "reporters": ["clear-text", "progress", "json"],
+    "jsonReporter": { "fileName": "reports/stryker-incremental.json" },
+    "concurrency": 6,
+    "thresholds": { "high": 96, "low": 90, "break": 90 },
+    "tsconfigFile": "tsconfig.json",
+    "tempDirName": ".stryker-tmp",
+    "cleanTempDir": true
+}

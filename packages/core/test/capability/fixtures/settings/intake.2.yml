@@ -1,0 +1,27 @@
+capabilities:
+  intake:
+    enabled: true
+    settings:
+      onOpen:
+        label: true
+        welcome: false
+      approval:
+        when: [ready]
+        confirm: true
+        checklist: # advisory — named in the confirmation when missing
+          skillTier: true # any tier from mappings.skills
+          issueType: true # a native issue type, or any label from mappings.types
+
+mappings:
+  labels:
+    awaitingTriage: "status: awaiting triage"
+    ready: "status: ready for dev"
+  skills:
+    goodFirstIssue: "skill: good first issue"
+    beginner: "skill: beginner"
+    intermediate: "skill: intermediate"
+    advanced: "skill: advanced"
+  types: # only for label-based repos (solo-style: Bug, enhancement, Documentation…)
+    bug: "Bug"
+    enhancement: "enhancement"
+    docs: "Documentation"

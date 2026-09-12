@@ -12,9 +12,8 @@ import {
 describe("mutation invalidation policy guarantees safe incremental reuse", () => {
     const workspaceDeps: WorkspaceDependencyMap = {
         core: { dependencies: [], consumesTestkit: true },
-        probes: { dependencies: ["core"], consumesTestkit: false },
-        shell: { dependencies: ["adapter", "core", "probes", "store"], consumesTestkit: true },
-        store: { dependencies: ["core"], consumesTestkit: true },
+        capabilities: { dependencies: ["core"], consumesTestkit: false },
+        runtime: { dependencies: ["capabilities", "core"], consumesTestkit: true },
     };
 
     it("discovers workspace dependencies accurately from repository manifests", () => {
@@ -22,14 +21,11 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
         expect(discovered.core?.dependencies).toEqual([]);
         expect(discovered.core?.consumesTestkit).toBe(true);
 
-        expect(discovered.store?.dependencies).toEqual(["core"]);
-        expect(discovered.store?.consumesTestkit).toBe(true);
+        expect(discovered.runtime?.dependencies).toEqual(["capabilities", "core"]);
+        expect(discovered.runtime?.consumesTestkit).toBe(true);
 
-        expect(discovered.shell?.dependencies).toEqual(["adapter", "core", "probes", "store"]);
-        expect(discovered.shell?.consumesTestkit).toBe(true);
-
-        expect(discovered.probes?.dependencies).toEqual(["core"]);
-        expect(discovered.probes?.consumesTestkit).toBe(false);
+        expect(discovered.capabilities?.dependencies).toEqual(["core"]);
+        expect(discovered.capabilities?.consumesTestkit).toBe(false);
     });
 
     // Control 1: an ordinary changed mutated source file may use incremental mode
@@ -50,10 +46,10 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
             reason: "package-local helper, fixture, or configuration changed: packages/core/test/config/builders.ts",
         });
 
-        const storeHelperChanged = ["packages/store/test/worker-build.ts"];
-        expect(shouldForceMutation("store", storeHelperChanged, workspaceDeps)).toEqual({
+        const storeHelperChanged = ["packages/runtime/test/store/worker-build.ts"];
+        expect(shouldForceMutation("runtime", storeHelperChanged, workspaceDeps)).toEqual({
             force: true,
-            reason: "package-local helper, fixture, or configuration changed: packages/store/test/worker-build.ts",
+            reason: "package-local helper, fixture, or configuration changed: packages/runtime/test/store/worker-build.ts",
         });
 
         const configDocumentChanged = ["packages/core/test/config/documents.ts"];
@@ -95,16 +91,12 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
             force: true,
             reason: "shared testkit changed: packages/dev/testkit/src/index.ts",
         });
-        expect(shouldForceMutation("store", testkitCodeChanged, workspaceDeps)).toEqual({
+        expect(shouldForceMutation("runtime", testkitCodeChanged, workspaceDeps)).toEqual({
             force: true,
             reason: "shared testkit changed: packages/dev/testkit/src/index.ts",
         });
-        expect(shouldForceMutation("shell", testkitCodeChanged, workspaceDeps)).toEqual({
-            force: true,
-            reason: "shared testkit changed: packages/dev/testkit/src/index.ts",
-        });
-        // probes does not consume testkit
-        expect(shouldForceMutation("probes", testkitCodeChanged, workspaceDeps)).toEqual({
+        // capabilities does not consume testkit
+        expect(shouldForceMutation("capabilities", testkitCodeChanged, workspaceDeps)).toEqual({
             force: false,
         });
 
@@ -119,20 +111,14 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
     it("forces a full run on dependent packages when a workspace dependency changes", () => {
         const coreChanged = ["packages/core/src/types.ts"];
 
-        // store depends on core
-        expect(shouldForceMutation("store", coreChanged, workspaceDeps)).toEqual({
+        // the runtime depends on core
+        expect(shouldForceMutation("runtime", coreChanged, workspaceDeps)).toEqual({
             force: true,
             reason: "workspace dependency 'core' changed: packages/core/src/types.ts",
         });
 
-        // shell depends on core
-        expect(shouldForceMutation("shell", coreChanged, workspaceDeps)).toEqual({
-            force: true,
-            reason: "workspace dependency 'core' changed: packages/core/src/types.ts",
-        });
-
-        // probes depends on core
-        expect(shouldForceMutation("probes", coreChanged, workspaceDeps)).toEqual({
+        // capabilities depends on core
+        expect(shouldForceMutation("capabilities", coreChanged, workspaceDeps)).toEqual({
             force: true,
             reason: "workspace dependency 'core' changed: packages/core/src/types.ts",
         });
@@ -142,16 +128,13 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
             force: false,
         });
 
-        // store changed: forces shell (which depends on store), but not core or probes
-        const storeChanged = ["packages/store/src/index.ts"];
-        expect(shouldForceMutation("shell", storeChanged, workspaceDeps)).toEqual({
+        // capabilities changed: forces the runtime (which composes them), but not core
+        const capabilitiesChanged = ["packages/capabilities/src/index.ts"];
+        expect(shouldForceMutation("runtime", capabilitiesChanged, workspaceDeps)).toEqual({
             force: true,
-            reason: "workspace dependency 'store' changed: packages/store/src/index.ts",
+            reason: "workspace dependency 'capabilities' changed: packages/capabilities/src/index.ts",
         });
-        expect(shouldForceMutation("core", storeChanged, workspaceDeps)).toEqual({
-            force: false,
-        });
-        expect(shouldForceMutation("probes", storeChanged, workspaceDeps)).toEqual({
+        expect(shouldForceMutation("core", capabilitiesChanged, workspaceDeps)).toEqual({
             force: false,
         });
     });
@@ -162,15 +145,18 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
             "README.md",
             "CONTRIBUTING.md",
             "design/architecture.md",
-            "design/operations/threat-model.md",
-            "docs/guide.md",
+            "design/guides/threat-model.md",
+            "docs/quickstart.md",
             "packages/dev/lab/protocols/6.2-webhook-delivery.md",
             "packages/dev/checks/README.md",
         ];
         expect(shouldForceMutation("core", docChanges, workspaceDeps)).toEqual({ force: false });
-        expect(shouldForceMutation("probes", docChanges, workspaceDeps)).toEqual({ force: false });
-        expect(shouldForceMutation("shell", docChanges, workspaceDeps)).toEqual({ force: false });
-        expect(shouldForceMutation("store", docChanges, workspaceDeps)).toEqual({ force: false });
+        expect(shouldForceMutation("capabilities", docChanges, workspaceDeps)).toEqual({
+            force: false,
+        });
+        expect(shouldForceMutation("runtime", docChanges, workspaceDeps)).toEqual({
+            force: false,
+        });
     });
 
     it("forces all packages when global lockfile or root configuration changes", () => {
@@ -184,7 +170,7 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
                 force: true,
                 reason: `global dependency or configuration file changed: ${file}`,
             });
-            expect(shouldForceMutation("store", [file], workspaceDeps)).toEqual({
+            expect(shouldForceMutation("runtime", [file], workspaceDeps)).toEqual({
                 force: true,
                 reason: `global dependency or configuration file changed: ${file}`,
             });

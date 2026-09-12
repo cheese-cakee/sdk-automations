@@ -1,12 +1,16 @@
 /**
  * A failed GitHub call, from response to next action.
  *
- * The body regexes are DATED SNAPSHOTS, not contract. When GitHub rewords a
- * message the match fails and the response degrades to
- * `forbiddenUnrecognized` rather than being confidently misdiagnosed. Green
- * tests here mean the fixtures still agree with themselves
- * (`FINDING(failures-prose-snapshot)`, D40 — see [README.md](README.md) for
- * the re-probe obligation).
+ * The body regexes are DATED SNAPSHOTS, not contract: each `BODY_PATTERNS`
+ * entry stamps the experiment that probed it and the date it was probed.
+ * Goes stale when GitHub rewords its error bodies; the first symptom is a
+ * rise in `forbiddenUnrecognized` classifications. It degrades rather than
+ * failing loudly — when a match fails the response becomes
+ * `forbiddenUnrecognized` rather than being confidently misdiagnosed, the
+ * tests keep passing against the recorded fixtures, and only the re-probe
+ * closes the gap. Green tests here mean the fixtures still agree with
+ * themselves (`FINDING(failures-prose-snapshot)`, D40 — the directory's
+ * `index.ts` carries the re-probe obligation).
  *
  * The retry bounds in the last section are chosen, not observed, which by
  * this directory's inclusion test argues for a different home. They stay

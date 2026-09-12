@@ -4,7 +4,9 @@
  *
  * DOCUMENTED knowledge, not perishable. The scheme is GitHub's published
  * contract, so it carries no `probedAt` — unlike `failures.ts`, whose facts
- * GitHub never promised. It is shared rather than held privately by each
+ * GitHub never promised. It goes stale only if the signing scheme changes,
+ * and it fails loudly when it does: every delivery rejected at the door.
+ * It is shared rather than held privately by each
  * verifier because two copies of a signature scheme is how one of them
  * quietly stops rejecting (D89, P9).
  *

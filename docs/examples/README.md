@@ -13,10 +13,13 @@ point the shell will use on a real repository.
 | `empty.yml` | A file with nothing in it. Identical to having no file: `observe`, no writes. |
 | `minimal.yml` | The smallest configuration that says anything — three lines. |
 | `observe-only.yml` | A real repository with mappings and a capability, still writing nothing. |
-| `active.yml` | A reserved active configuration that the runnable shell rejects. |
+| `full.yml` | Every shipped capability on, every mapping family filled, every option commented — the catalogue. The suite holds it to that: a capability the App gains and this file does not is a failing check. |
+| `inactivity.yml` | The scheduled capability alone, at its defaults, with the two optional mappings it reads. |
+| `active.yml` | A reserved active configuration. Rejected unless the endpoint wires a write path. |
 
 `active.yml` remains parseable because active mode stays in Core's general vocabulary. The runnable shell
-rejects it before `decide()` because active GitHub writes are not implemented.
+records `modeUnsupported` before `decide()` unless it was started with an applier, which is not the default
+composition.
 
 ## Where the rejections live
 
@@ -32,4 +35,6 @@ testing. As files here they ran, passed, and measured nothing.
 
 These files show the SHAPE of a configuration at the decided repository-root path, `automations.yml`.
 They do not implement the future default-branch fetch. `capabilities.*.settings` is opaque to the shared
-parser, and the probe settings shown here are currently consumed without capability-specific validation.
+parser, which checks the key names against each capability's declaration and nothing more; the values
+are read by the capability's own spec, and `packages/capabilities/test/examples.test.ts` holds every
+file here to those specs, enabled or not.

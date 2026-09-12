@@ -1,17 +1,16 @@
 /**
  * The capability runtime boundary, tested from inside its own package.
  *
- * These assertions existed before, in `packages/probes/test/boundary.test.ts` — and
- * only there. `probes/` is deliberately disposable and its README gives the
- * procedure for deleting it once stage four names a real capability, so the
- * boundary's only tests were scheduled for deletion along with the scaffold
- * that happened to exercise them. The 2026-08-05 mutation run made it
- * visible: `runtime.ts` scored 0.00 with 98 uncovered mutants, because
- * Stryker runs this package's suite and this package tested none of it.
+ * These assertions existed before, and only in the capabilities package —
+ * which was then deliberately disposable, so the boundary's only tests were
+ * scheduled for deletion along with the scaffold that happened to exercise
+ * them. The 2026-08-05 mutation run made it visible: `runtime.ts` scored 0.00
+ * with 98 uncovered mutants, because Stryker runs this package's suite and
+ * this package tested none of it.
  *
- * The probe suites stay. They test the boundary in COMPOSITION — a real
- * capability, the planner, the store. This file tests it in ISOLATION, which
- * is what has to survive the probes being deleted.
+ * The capabilities package's suites stay. They test the boundary in
+ * COMPOSITION — a real capability, the planner, the store. This file tests it
+ * in ISOLATION, which is what had to survive that scaffold being deleted.
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,6 +18,7 @@ import {
     declareCapability,
     deriveIdempotencyKey,
     idempotencyOf,
+    intentFactoryFor,
     INTENT_OPERATIONS,
     projectCapabilityView,
     screenIntent,
@@ -30,7 +30,9 @@ const declaration = declareCapability({
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: ["announce"],
-    observations: ["issueUpdated"],
+    requiredMappings: {},
+    facts: ["issue"],
+    needs: [],
     resolvers: ["linkedIssues"],
     intents: ["applyMappedLabel", "unassign"],
     operationalNeeds: {
@@ -43,19 +45,31 @@ const declaration = declareCapability({
 
 const AT = new Date("2026-08-05T09:00:00.000Z");
 
-const intent = (over: Record<string, unknown> = {}): AnyIntent =>
-    ({
+/**
+ * A well-formed intent, overridable field by field. The key is DERIVED from
+ * whatever the overrides produced, so every screen below is exercised against
+ * an intent the platform would accept — a literal key would refuse them all
+ * at `idempotencyKeyMismatch` instead. Pass `idempotencyKey` to test that
+ * screen itself.
+ */
+const intent = (over: Record<string, unknown> = {}): AnyIntent => {
+    const base = {
         capability: "fixture",
         repository: { owner: "o", repo: "r" },
         item: { kind: "issue", number: 1 },
         operation: "applyMappedLabel",
-        expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
+        claims: { meaningsPresent: [], meaningsAbsent: [], closed: false },
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: { cause: "someCause", observedAt: AT },
         explanation: { capability: "fixture", summary: "s", detail: [] },
-        idempotencyKey: "k",
+        grace: null,
         ...over,
-    }) as AnyIntent;
+    } as unknown as Omit<AnyIntent, "idempotencyKey"> & { readonly idempotencyKey?: string };
+    return {
+        ...base,
+        idempotencyKey: base.idempotencyKey ?? deriveIdempotencyKey(base),
+    } as AnyIntent;
+};
 
 describe("the operation catalogue owns platform facts", () => {
     /** Operation-owned facts cannot be restated by a capability. */
@@ -63,6 +77,8 @@ describe("the operation catalogue owns platform facts", () => {
         expect(idempotencyOf("postManagedComment")).toBe("nonIdempotent");
         expect(idempotencyOf("applyMappedLabel")).toBe("idempotent");
         expect(idempotencyOf("unassign")).toBe("idempotent");
+        expect(idempotencyOf("releaseAssignment")).toBe("idempotent");
+        expect(idempotencyOf("closePullRequest")).toBe("idempotent");
     });
 
     it("pins the action-class floor and required permission of every operation", () => {
@@ -78,6 +94,22 @@ describe("the operation catalogue owns platform facts", () => {
                 permission: "issues:write",
             });
         }
+        /**
+         * The clock's two, and the whole of D63's split: `releaseAssignment`
+         * takes the same person off the same list as `unassign` and is a
+         * different action class, so only one of them can reach GitHub without
+         * a warning behind it.
+         */
+        expect(INTENT_OPERATIONS.releaseAssignment).toEqual({
+            idempotencyClass: "idempotent",
+            actionClassFloor: "clockTriggeredDestructive",
+            permission: "issues:write",
+        });
+        expect(INTENT_OPERATIONS.closePullRequest).toEqual({
+            idempotencyClass: "idempotent",
+            actionClassFloor: "clockTriggeredDestructive",
+            permission: "pull_requests:write",
+        });
     });
 });
 
@@ -99,19 +131,86 @@ describe("screenIntent", () => {
         expect(screenIntent(intent(), declaration, position())).toEqual({ ok: true });
     });
 
+    it.each([null, {}, { operation: "applyMappedLabel" }])(
+        "refuses malformed runtime value %#",
+        (value) => {
+            expect(screenIntent(value, declaration, position())).toMatchObject({
+                ok: false,
+                code: "malformedIntent",
+            });
+        },
+    );
+
+    it.each([
+        { ...intent(), operation: "unknown" },
+        { ...intent(), desired: { meaning: "ready" } },
+        {
+            ...intent(),
+            claims: { meaningsPresent: new Array(1), meaningsAbsent: [], closed: false },
+        },
+        {
+            ...intent(),
+            grace: {
+                days: Number.POSITIVE_INFINITY,
+                warning: { body: "warn" },
+                notice: { body: "done" },
+                cancelledBy: "activity",
+                reversesWith: "retry",
+                activityAt: null,
+            },
+        },
+        {
+            ...intent(),
+            grace: {
+                days: 7,
+                warning: { body: "warn" },
+                notice: { body: "done" },
+                cancelledBy: "activity",
+                reversesWith: "retry",
+                activityAt: new Date("invalid"),
+            },
+        },
+    ])("refuses malformed nested value %#", (value) => {
+        expect(screenIntent(value, declaration, position())).toMatchObject({
+            ok: false,
+            code: "malformedIntent",
+        });
+    });
+
+    it("contains hostile property access", () => {
+        const value = new Proxy(
+            {},
+            {
+                getOwnPropertyDescriptor: () => {
+                    throw new Error("no");
+                },
+            },
+        );
+        expect(screenIntent(value, declaration, position())).toMatchObject({
+            ok: false,
+            code: "malformedIntent",
+        });
+    });
+
     it("refuses foreign, undeclared, and malformed intents with distinct reasons", () => {
         const candidates = [
             screenIntent(intent({ capability: "other" }), declaration, position()),
             screenIntent(
                 intent({
                     operation: "postManagedComment",
-                    desired: { marker: "<!-- m -->", body: "b" },
+                    desired: { kind: "summary", body: "b" },
                 }),
                 declaration,
                 position(),
             ),
+            // An explicit key, because deriving one from this cause is what
+            // the screen order exists to avoid: `toISOString()` throws on an
+            // invalid date, so `invalidCause` must answer first.
             screenIntent(
-                intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
+                intent({
+                    cause: { cause: "c", observedAt: new Date(Number.NaN) },
+                    idempotencyKey: "k",
+                }),
                 declaration,
                 position(),
             ),
@@ -127,6 +226,48 @@ describe("screenIntent", () => {
         }
     });
 
+    /**
+     * The key is the store's `effect_id` (D65), and the screen exists for the
+     * same reason the others do: a capability is ordinary code that can be
+     * built from `unknown`, so the boundary re-derives rather than trusting
+     * what came back. A capability free to name its own key could merge two
+     * effects into one, or split a redelivery into two comments.
+     */
+    it("refuses an intent whose idempotency key is not the derived one", () => {
+        const screen = screenIntent(intent({ idempotencyKey: "k" }), declaration, position());
+        expect(screen).toMatchObject({ ok: false, code: "idempotencyKeyMismatch" });
+        if (!screen.ok) expect(screen.reason.length).toBeGreaterThan(0);
+    });
+
+    /** A key derived from a DIFFERENT occasion is as wrong as an invented one. */
+    it("refuses a key derived from another occasion", () => {
+        const elsewhere = deriveIdempotencyKey({
+            capability: "fixture",
+            repository: { owner: "o", repo: "r" },
+            item: { kind: "issue", number: 2 },
+            operation: "applyMappedLabel",
+            cause: { cause: "someCause", observedAt: AT },
+        });
+        expect(
+            screenIntent(intent({ idempotencyKey: elsewhere }), declaration, position()),
+        ).toMatchObject({ ok: false, code: "idempotencyKeyMismatch" });
+    });
+
+    it("passes an intent the factory built, key and all", () => {
+        const built = intentFactoryFor(declaration, {
+            repository: { owner: "o", repo: "r" },
+            item: { kind: "issue", number: 1 },
+            observedAt: AT,
+        })({
+            operation: "applyMappedLabel",
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+            cause: "someCause",
+            claims: { closed: false },
+            explain: { summary: "s" },
+        });
+        expect(screenIntent(built, declaration, position())).toEqual({ ok: true });
+    });
+
     it("refuses a mapped-label intent when authoritative position is unavailable", () => {
         expect(screenIntent(intent(), declaration, null)).toEqual({
             ok: false,
@@ -138,7 +279,7 @@ describe("screenIntent", () => {
     it("uses an observed conflict even when the capability claims a clean state", () => {
         const screen = screenIntent(
             intent({
-                expected: {
+                claims: {
                     meaningsPresent: [],
                     meaningsAbsent: ["ready", "inProgress"],
                     closed: false,
@@ -158,7 +299,7 @@ describe("screenIntent", () => {
         expect(
             screenIntent(
                 intent({
-                    expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
+                    claims: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
                 }),
                 declaration,
                 position(),
@@ -167,7 +308,7 @@ describe("screenIntent", () => {
         expect(
             screenIntent(
                 intent({
-                    expected: { meaningsPresent: [], meaningsAbsent: ["ready"], closed: false },
+                    claims: { meaningsPresent: [], meaningsAbsent: ["ready"], closed: false },
                     desired: { meaning: "inProgress", cause: "contributorAssigned" },
                 }),
                 declaration,
@@ -264,14 +405,20 @@ describe("projectCapabilityView (contract.md §2)", () => {
     /** D71 — availability of a meaning, never the repository's word for it. */
     it("reports mapped meanings without exposing a label string", () => {
         const view = projectCapabilityView(declaration, config);
-        expect([...view.mappedMeanings].sort()).toEqual(["awaitingTriage", "blocked"]);
+        expect([...view.mapped.labels].sort()).toEqual(["awaitingTriage", "blocked"]);
         expect(JSON.stringify(view)).not.toContain("status: triage");
     });
 
     it("reports no mapped meanings when the repository mapped none", () => {
         const bare = configWith({ mode: "observe", known: ["fixture"] });
         const view = projectCapabilityView(declaration, bare);
-        expect(view.mappedMeanings).toEqual([]);
+        expect(view.mapped).toEqual({
+            labels: [],
+            commands: [],
+            skills: [],
+            alerts: [],
+            types: [],
+        });
         expect(view.settings).toEqual({});
     });
 });

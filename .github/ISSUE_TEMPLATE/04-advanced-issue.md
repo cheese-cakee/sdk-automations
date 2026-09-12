@@ -35,7 +35,7 @@ labels: "advanced"
 code — it is carefully considering what we have and building from it, or if needed, improving or changing it.
 
 - [architecture](https://github.com/hiero-hackers/sdk-automations/blob/main/design/architecture.md) — what exists, drawn; [contracts](https://github.com/hiero-hackers/sdk-automations/blob/main/design/contracts) — what the code must keep satisfying; [guides](https://github.com/hiero-hackers/sdk-automations/blob/main/design/guides) — what is not built yet
-- [decision register](https://github.com/hiero-hackers/sdk-automations/blob/main/design/decisions.md) — every non-obvious choice, its costs, and what would reopen it
+- [decision register](https://github.com/hiero-hackers/sdk-automations/blob/main/design/constraints.md) — every non-obvious choice, its costs, and what would reopen it
 - [findings](https://github.com/hiero-hackers/sdk-automations/blob/main/design/findings) — what was measured against real GitHub, and therefore what you cannot assume
 
 **Before opening your PR:**

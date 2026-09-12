@@ -20,7 +20,7 @@ Pick the tier from what the work demands, not from how much you write — then w
 
 ## Body conventions (all tiers)
 
-- Open with a one-paragraph **Context** that says why this matters *here* — cite the file, the D-row in `design/decisions.md`, or the incident that motivates it. This repo's issues carry their own justification.
+- Open with a one-paragraph **Context** that says why this matters *here* — cite the file, the D-row in `design/constraints.md`, or the incident that motivates it. This repo's issues carry their own justification.
 - **Acceptance criteria as checkboxes.** Where the work adds a check or guard, one criterion must be its negative control ("proves the check can fail") — house rule.
 - **Pointers, not prose dumps**: name 1–3 files or a working reference to crib from. Org sibling repos are good references (e.g. `hiero-hackers/hiero-x402` for CI workflows, `hiero-hackers/analytics` for issue templates) — link the exact file.
 - **One fact, one place**: link to where a rule lives (`.prettierignore`, a D-row, `ci.yml`'s conventions) rather than restating it. An issue that restates a rule will outlive the rule.
@@ -38,8 +38,8 @@ gh api -X POST repos/hiero-hackers/sdk-automations/issues/<N>/dependencies/block
 
 ## House context worth citing
 
-- `design/decisions.md` — the register; rows D1–D89+. An issue implementing a row's "notes" column should cite the row.
-- `docs/to-do.md` — recorded gaps with their unblocking conditions; check an issue isn't already recorded there with a different trigger.
+- `design/constraints.md` — the register's binding subset. An issue implementing a row's "notes" column should cite the row; `design/history/decisions.md` holds every row ever written, for a row that has stopped binding.
+- `design/findings/` — the measurements and studies; a gap one of them names, with its unblocking condition, is usually already an issue, so search before opening a second.
 - `packages/dev/checks/` — the invariant package; issues adding "keep X true" checks belong there, one file per invariant or watched target.
 - CI conventions: SHA-pinned actions with version comments, least-privilege permissions per job, never `pull_request_target` (`.github/workflows/ci.yml` explains each).
 

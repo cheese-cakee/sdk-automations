@@ -1,5 +1,5 @@
-# The lab's local-only layer: era-1 harness (disposable, holds its own
-# node_modules), capture staging, and sandbox App credentials. Tracked:
+# The lab's local-only layer: era 1's private evidence archive and its
+# retired runner, capture staging, and sandbox App credentials. Tracked:
 # protocols/, src/, test/. Reviewed captures go STRAIGHT to
 # testkit/fixtures/, reaching their packages through the testkit's
 # exports — see lab/README.md and D88.
@@ -11,6 +11,9 @@ node_modules/
 coverage/
 reports/
 
-# The shell's operational home: SQLite store, the operator's config copy,
+# The runtime shell's operational home: SQLite store, the operator's config copy,
 # and the decision journal. Local state, never tracked.
-packages/shell/data/
+packages/runtime/data/
+
+# agent worktrees live here; never content
+.claude/worktrees/

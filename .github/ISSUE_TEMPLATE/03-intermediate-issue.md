@@ -41,7 +41,7 @@ labels: "intermediate"
 review than it saves to write, so read before you decide:
 
 - [architecture](https://github.com/hiero-hackers/sdk-automations/blob/main/design/architecture.md) — the system as diagrams, each naming the code that falsifies it
-- [decision register](https://github.com/hiero-hackers/sdk-automations/blob/main/design/decisions.md) — why things are the way they are, and what would reopen them
+- [decision register](https://github.com/hiero-hackers/sdk-automations/blob/main/design/constraints.md) — why things are the way they are, and what would reopen them
 - the README of every package you plan to touch — each states its own boundary
 
 **Before opening your PR:**

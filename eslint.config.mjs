@@ -7,12 +7,13 @@ export default tseslint.config(
             "**/dist/**",
             "**/.stryker-tmp/**",
             "**/coverage/**",
+            ".claude/worktrees/**",
             "pnpm-lock.yaml",
             // Never-tracked local-only trees. CI never sees them, so
             // linting them made `pnpm lint` disagree with CI on exactly
             // the machines that do the work (D95).
             "packages/dev/lab/harness/**",
-            "packages/shell/data/**",
+            "packages/runtime/data/**",
         ],
     },
     ...tseslint.configs.recommended,

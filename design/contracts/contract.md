@@ -1,28 +1,38 @@
 # Capability Runtime Contract
 
-> **Built for the probe boundary** — `packages/core/src/capability/` implements the declaration,
-> projected view, resolver handle, intent factory, and runtime screens. Three disposable probes exercise
-> the boundary and P3 isolation. `packages/dev/checks/test/contract-drift.test.ts` locks §1's interfaces.
+> **Built for the capability boundary** — `packages/core/src/capability/` implements the declaration,
+> projected view, resolver handle, intent factory, and runtime screens. The three capabilities in
+> `packages/capabilities/` exercise the boundary and P3 isolation.
+> `packages/dev/checks/test/contract-drift.test.ts` locks §1's interfaces.
 
-This contract says what the current implementation can enforce. It does not promise an effect executor,
-multi-call plans, rollback, or a generic conformance kit; those do not exist in this workspace.
+This contract says what the boundary can enforce. What happens to an approved intent after the engine —
+the journal, the apply, the read-back — is the write path's contract, `design/guides/write-operations.md`.
+Neither page promises rollback or a generic conformance kit; those do not exist in this workspace.
 
 ## 1. Declaration
 
 ```ts
 interface CapabilityDeclaration {
   readonly name: string;
-  readonly triggers: readonly Trigger[];
+  readonly triggers: readonly DeclaredTrigger[];
   readonly configKeys: readonly string[];
-  readonly observations: readonly string[];
+  readonly requiredMappings: DeclaredMappings;
+  readonly facts: readonly string[];
+  readonly needs: readonly string[];
   readonly resolvers: readonly string[];
   readonly intents: readonly string[];
   readonly operationalNeeds: OperationalNeeds;
 }
 
-type Trigger =
+type DeclaredTrigger =
   | { readonly kind: "event"; readonly event: string }
   | { readonly kind: "schedule"; readonly description: string };
+
+interface DeclaredMappings {
+  readonly labels?: readonly string[];
+  readonly commands?: readonly string[];
+  readonly skills?: readonly string[];
+}
 
 interface OperationalNeeds {
   readonly schedule: boolean;
@@ -34,7 +44,16 @@ interface OperationalNeeds {
 
 - `validateCapabilityDeclarations` validates the complete directly admitted set: name syntax, at least one
   trigger, schedule consistency, duplicates, catalogue membership, and duplicate capability names.
-- `TypedDeclaration` narrows observation, resolver, and intent names to the closed platform catalogues.
+- `configKeys` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first says
+  which `settings` names are legal, the second which meanings must be mapped, by family, before the
+  capability may be enabled. Both are empty rather than absent for a capability that wants neither, and a
+  required meaning outside its family's closed catalogue is a boot error (D84). A family the object omits
+  demands nothing.
+- `facts` and `needs` are the two the ENGINE reads ([`facts.md`](facts.md) §3): which item kinds this
+  capability is handed a record for, and which groups of that record it reads. A need no declared kind
+  carries — `review` on an issue-only declaration — is a boot error.
+- `TypedDeclaration` narrows mapping, fact, group, resolver, and intent names to the closed platform
+  catalogues, which is also what lets a declaration serve as an `AdmittedCapability` uncast.
 - `declareCapability<const D>` preserves those lists as literal tuples so the boundary can project exact
   types instead of widening them to every name.
 - There is no runtime retirement registry, `describe`, or tombstone lookup. The application passes one
@@ -50,7 +69,7 @@ widening its authority (D62).
 interface Capability<D extends TypedDeclaration> {
   readonly declaration: D;
   evaluate(
-    observation: ObservationFor<D>,
+    facts: FactsFor<D>,
     config: CapabilityView<D>,
     platform: PlatformHandle<D>,
   ): Promise<readonly IntentFor<D>[]>;
@@ -60,7 +79,15 @@ interface CapabilityView<D extends TypedDeclaration> {
   readonly settings: {
     readonly [K in D["configKeys"][number]]?: unknown;
   };
-  readonly mappedMeanings: readonly MappableMeaning[];
+  readonly mapped: {
+    readonly labels: readonly MappableMeaning[];
+    readonly commands: readonly Command[];
+    readonly skills: readonly Skill[];
+    /** The OPEN families: the repository names these meanings too, so they are strings. */
+    readonly alerts: readonly string[];
+    readonly types: readonly string[];
+  };
+  readonly principals: readonly string[];
 }
 
 interface PlatformHandle<D extends TypedDeclaration> {
@@ -72,9 +99,13 @@ interface PlatformHandle<D extends TypedDeclaration> {
 }
 ```
 
+`FactsFor<D>` is the declared kinds with every declared group's `| Unread` removed and every undeclared
+group typed `Unread` — the type is the guarantee, not a promise the engine keeps.
+
 The platform supplies normalized facts, the capability's own declared settings, the **names** of mapped
-meanings, and only its declared resolvers. The boundary exposes no Octokit client, HTTP, raw webhook body,
-repository label string, mode, enabled flag, installation grant, or sibling capability.
+meanings in each family and of declared principals, and only its declared resolvers. The boundary exposes no
+Octokit client, HTTP, raw webhook body, repository label string, command word, team string behind a
+principal, mode, enabled flag, installation grant, or sibling capability.
 
 `toEngine()` performs the one internal type erasure needed to run unlike declarations through one engine
 loop. It does not expand what a capability can see.
@@ -87,7 +118,7 @@ interface Intent<K extends IntentOperation> {
   readonly repository: RepositoryRef;
   readonly item: ItemRef;
   readonly operation: K;
-  readonly expected: ExpectedFacts;
+  readonly claims: ClaimedFacts;
   readonly desired: IntentCatalogue[K];
   readonly cause: DatedCause;
   readonly explanation: StructuredExplanation;
@@ -97,45 +128,51 @@ interface Intent<K extends IntentOperation> {
 
 - An intent requests an outcome; it is never proof that the outcome happened.
 - `intentFactoryFor` restricts the operation to the declaration, binds repository, item, capability, and
-  observation time once, requires an explanation, fills a vacuous expected-state default, and derives the
+  observation time once, requires an explanation, fills a vacuous `claims` default, and derives the
   idempotency key.
 - `screenIntent` rechecks capability identity, declared operation, dated cause, authoritative projection,
   entity/meaning compatibility, pause authority, position conflicts, and transition legality at runtime.
 - The engine derives action class and required permission from `INTENT_OPERATIONS`, then derives an
-  unforgeable safety world from the observation and the intent's claims.
+  unforgeable safety world from the record's own projection and the intent's claims.
 - A passed screen can still be refused or recorded-only by the safety contract.
 
 ## 4. Isolation and composition
 
 - A disabled capability is not invoked and leaves no finding.
-- A capability whose declaration does not include the current observation is not invoked.
+- A capability whose declaration does not include the record's kind is not invoked, and one needing a
+  group the producer left unread is skipped with a `factsUnread` finding.
 - Resolver names are restricted both by TypeScript and by the engine handle at runtime.
 - The engine sees capabilities only through their declarations and projected views; there is no sibling
   reference to call.
-- `packages/probes/test/engine-matrix.test.ts` runs every subset of three unlike probes and asserts each
-  probe's approved intents and findings are identical to its alone-run. This proves the boundary's current
-  P3 isolation property, not that any probe is a product capability.
+- `packages/capabilities/test/engine-matrix.test.ts` runs every subset of the three unlike seeds over four
+  records — a webhook-shaped and a sweep-shaped one of each kind — and asserts
+  each one's approved intents and findings are identical to its alone-run. This proves the boundary's current
+  P3 isolation property, not that any seed is a finished product capability.
 
 ## 5. What the current tests cover
 
 | Property | Evidence |
 |---|---|
 | declaration structure and catalogue admission | core declaration tests |
-| undeclared settings, resolvers, observations, and intents stay unavailable | core boundary tests and probe boundary tests |
+| undeclared settings, resolvers, observations, and intents stay unavailable | core boundary tests and the capabilities package's boundary tests |
 | intent keys, claims, transition screens, and refusal codes | core capability tests |
-| disabled capabilities leave zero trace; neighbours do not change a decision | probe engine matrix |
+| disabled capabilities leave zero trace; neighbours do not change a decision | the capabilities package's engine matrix |
 | repository modes, permission grants, pause state, and newer-human precedence gate intents | core safety and engine tests |
 
 There is no declaration-derived suite that automatically proves rollback, effect convergence, or every
-compatibility rule. Each real capability must add policy-specific tests, and later write-path work must add
-adapter and recovery tests at its own boundary.
+compatibility rule. Each capability adds its own policy tests — the rows of its design's Verified-by
+table — and the write path's tests sit at its own boundary (`design/guides/write-operations.md`).
 
 ## 6. Deliberately deferred
 
-- Select and implement the first real capability; the probes are disposable (Q2).
-- Decide whether `OperationalNeeds` is sufficient after a real capability and scheduler use it.
-- Add capability-owned validation for opaque `settings` and declare required mapped meanings.
-- Define compatibility/ownership rules without introducing sibling calls.
-- Build adapter commands, postcondition verification, effect results, recovery, and any multi-call plan.
-- Resolve how unprojected scheduled observations obtain authoritative act-time facts; the current inactivity
-  probe is refused `preconditionStale` by the engine.
+- Decide whether `OperationalNeeds` is sufficient now that a scheduled capability and the sweep use it.
+- Define compatibility/ownership rules between capabilities without introducing sibling calls.
+- Rollback and a generic conformance kit: a capability's reversal is rehearsed in the rings
+  `CONTRIBUTING.md` names, not proved by a declaration-derived suite.
+
+Earlier versions of this list also deferred what the platform has since built: the first seed promoted
+against its design (`inactivity`, D141); capability-owned settings validation and declared required
+mappings (D84, `design/guides/capability-kits.md`); adapter commands, postcondition verification, effect
+results and recovery (`design/guides/write-operations.md`); and the sweep's per-item records, which hand
+a scheduled capability authoritative facts instead of a `preconditionStale` refusal
+(`design/guides/sweep.md`).

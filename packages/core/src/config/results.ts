@@ -26,8 +26,19 @@ export type ConfigErrorCode =
     | "capabilityEnabledNotBoolean"
     | "capabilityUnknown"
     | "meaningNotMappable"
+    | "meaningRequired"
     | "labelInvalid"
     | "labelNotInjective"
+    | "commandNotMappable"
+    | "commandInvalid"
+    | "commandNotInjective"
+    | "skillNotMappable"
+    | "skillInvalid"
+    | "skillNotInjective"
+    | "alertInvalid"
+    | "alertNotInjective"
+    | "typeInvalid"
+    | "typeNotInjective"
     | "principalNotAString";
 
 /**

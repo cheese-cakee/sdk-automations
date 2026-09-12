@@ -1,0 +1,42 @@
+capabilities:
+  advancement:
+    enabled: true
+    settings:
+      noticeOn: latestActivity # comment on the contributor's most recent authored item, cc maintainerTeam
+      reference: "https://github.com/hiero-ledger/governance/blob/main/roles/advancement-qualifications.md"
+      roles: # any names, any number — each is a set of pillar thresholds
+        juniorCommitter:
+          enabled: true
+          pillars:
+            activeWeeks: { atLeast: 8, window: 12 }
+            mergedPRs: { atLeast: 5, minTier: beginner }
+            reviews: { atLeast: 9 }
+            issuesAuthored: { atLeast: 3, outcome: accepted }
+          uncounted: [review substance, triage judgement, community support, responsiveness]
+        committer:
+          enabled: true
+          pillars:
+            activeWeeks: { atLeast: 20, window: 40 }
+            mergedPRs: { atLeast: 20, minTier: intermediate }
+            reviews: { atLeast: 20 }
+            issuesAuthored: { atLeast: 6, outcome: completed }
+          uncounted: [standing as junior committer, review depth, breadth, judgement, mentorship]
+        maintainer:
+          enabled: true
+          pillars:
+            activeWeeks: { atLeast: 30, window: 52 }
+            mergedPRs: { atLeast: 10, minTier: advanced }
+            reviews: { atLeast: 40 }
+          uncounted: [standing as committer, technical mastery, design leadership,
+            review depth and judgement, API and compatibility judgement, debugging depth,
+            stewardship, mentorship, community leadership, escalation]
+
+mappings:
+  skills: # only needed by pillars with minTier
+    goodFirstIssue: "skill: good first issue"
+    beginner: "skill: beginner"
+    intermediate: "skill: intermediate"
+    advanced: "skill: advanced"
+
+principals:
+  maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers"

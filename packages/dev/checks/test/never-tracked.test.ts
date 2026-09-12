@@ -37,7 +37,7 @@ const LAYERS: readonly Layer[] = [
         holds: "the sandbox App's credentials",
     },
     {
-        rule: "packages/shell/data/",
+        rule: "packages/runtime/data/",
         holds: "the operational store — RAW webhook payload bytes — and the decision journal naming real repositories",
     },
 ];
@@ -69,7 +69,7 @@ describe("the local-only layers stay out of the repository", () => {
     it("covers every layer that exists", () => {
         // A silently emptied table would pass every assertion below.
         expect(LAYERS.length).toBeGreaterThanOrEqual(4);
-        expect(LAYERS.map((l) => l.rule)).toContain("packages/shell/data/");
+        expect(LAYERS.map((l) => l.rule)).toContain("packages/runtime/data/");
     });
 
     it.each(LAYERS)("$rule is still ignored by rule", ({ rule }) => {

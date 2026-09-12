@@ -1,5 +1,5 @@
 /**
- * The other write door — the effects.md ladder `evaluateDestructive` climbs: a
+ * The other write door — the grace.md ladder `evaluateDestructive` climbs: a
  * recorded warning, a warning that authorizes THIS request, a plan whose
  * metadata is coherent, the grace floor, the grace fully elapsed, no
  * qualifying activity. Each rung is refused on its own and the two grace
@@ -120,7 +120,7 @@ describe("audit findings, pinned (D51-D53)", () => {
     });
 });
 
-describe("evaluateDestructive (guides/effects.md)", () => {
+describe("evaluateDestructive (guides/grace.md)", () => {
     /**
      * These plans are from the `inactivity` capability, so the rechecked
      * context must describe that same capability — D53's link check

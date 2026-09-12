@@ -1,4 +1,9 @@
 /**
+ * PROBED by experiment 6.2, 2026-07-23. Goes stale when the delivery id
+ * format changes; the first symptom is duplicate deliveries surviving dedup.
+ * It degrades rather than failing loudly, so only the re-probe closes the
+ * gap (D40).
+ *
  * GitHub exposes two different webhook-delivery identifiers:
  *
  * - `X-GitHub-Delivery` and a delivery record's `guid` identify the
@@ -21,7 +26,12 @@ export type DeliveryRecordId = string & {
     readonly [deliveryRecordIdBrand]: true;
 };
 
-const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lowercase only, deliberately: GitHub sends lowercase, and the store keys
+// deliveries by BINARY comparison, so a case-variant of a seen GUID would be
+// admitted as a SECOND delivery rather than deduplicated against the first.
+// Refusing the case nobody sends is cheaper than teaching every comparison
+// about case folding.
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function asDeliveryGuid(raw: string): DeliveryGuid | undefined {
     return typeof raw === "string" && GUID_PATTERN.test(raw) ? (raw as DeliveryGuid) : undefined;

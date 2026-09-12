@@ -34,6 +34,14 @@ pnpm lint
 pnpm format
 ```
 
+```bash
+pnpm contracts
+```
+
+`pnpm contracts` regenerates the tables in `design/contracts/catalogue.md`, `design/contracts/facts.md`,
+`design/contracts/safety.md` and `docs/capabilities.md` from the registries and folders that own them —
+run it when a drift check reports one of those blocks, rather than editing the markdown by hand.
+
 CI runs `pnpm format:check` and fails the build on a formatting difference, so run `pnpm format`
 before pushing — or let your editor do it. Prettier is formatter-only here and markdown is excluded;
 what it covers is [`.prettierignore`](.prettierignore)'s business, not this page's.
@@ -84,7 +92,9 @@ These are here because each one has actually cost this project time.
 - **A large change divides so that every piece merges green with the system still running.** Isolation
   comes from seams that already exist and from environment gates, not from feature flags. Measurement
   is its own piece and carries no code. Removing the scaffolding is the last piece, and it is what
-  closes the issue. [`design/guides/adapter.md`](design/guides/adapter.md) is the worked example.
+  closes the issue. [`packages/runtime/src/adapter/`](packages/runtime/src/adapter/README.md) is the
+  worked example: auth, then the client, then one seam at a time behind the composition root's
+  environment gate, and choosing the live path last.
 
 ## Ground rules for changes
 
@@ -92,19 +102,57 @@ Each of these is a rule the register earned the hard way; follow the link for th
 than taking it on faith.
 
 - **One fact, one place.** If a value, list, or rule already exists somewhere, derive it — do not
-  restate it. This is the single most repeated finding in the project ([`design/decisions.md`](design/decisions.md)).
+  restate it. This is the single most repeated finding in the project ([`design/constraints.md`](design/constraints.md), D76 and D77).
 - **Every check gets a negative control.** A test that cannot fail is not a check; each invariant in
   [`packages/dev/checks/`](packages/dev/checks/) carries a "proves the check can fail" case, and yours should too.
 - **Never weaken a gate to make it pass.** The mutation threshold in
   [`packages/core/stryker.config.json`](packages/core/stryker.config.json) breaks the build below 90 — if you
   cannot reach it, the answer is a better test, not a lower number.
-- **A claim in a document becomes an invariant.** If your change asserts something is true of this
-  repository, expect to be asked which check keeps it true ([`packages/dev/checks/`](packages/dev/checks/)).
+- **A claim about code becomes an invariant; a claim about prose stays prose.** If your change asserts
+  something the compiler or a test can hold — a vocabulary, a table of codes, a layer rule — add or
+  extend the check in `packages/dev/checks`. A sentence that only another sentence could check is
+  review's job, not a test's (the register rule in `design/constraints.md`).
 - **Credentials and raw captures are never tracked.** The lab's local-only layer holds sandbox
   secrets and unscrubbed payloads; a test enforces this and a `git add -f` will fail the build
   ([`packages/dev/lab/README.md`](packages/dev/lab/README.md)).
 - **Comments carry constraints, not narration.** Say what must stay true and cite the decision; the
-  story belongs in the register ([`design/guides/testing.md`](design/guides/testing.md)).
+  story belongs in the register ([`.claude/skills/docstrings/SKILL.md`](.claude/skills/docstrings/SKILL.md)).
+
+## How the tests are built
+
+The suite is the argument that this App may be trusted with someone else's repository, so its shape
+is a rule rather than a habit.
+
+- **A test follows its subject's reach.** There is one GitHub model: a capability's tests consume the
+  same normalized facts the capability does, never a private Octokit response fake. Recorded external
+  shapes live at the testkit/adapter boundary, promoted from a scrubbed capture with its provenance,
+  and a hand-written fixture is labelled synthetic — it can prove a fault is handled and can never be
+  cited as evidence of how GitHub behaves.
+- **A fake must say where it is kinder or harsher than GitHub.** A stateful fake that remembers what a
+  write did is honest, because "did the write land?" is the only question the applier asks; a scripted
+  reader is a kindness you cannot see. Every departure — a read that refuses, a write that dies
+  mid-call — is set by the test that needs it, one line above the assertion.
+- **"Exhaustive" names its dimensions.** D52 survived an earlier exhaustive sweep because action class
+  was held fixed. Property tests run on fixed seeds so a reproduced counterexample is distinguishable
+  from a load-dependent timeout, and a fault test asserts that the fault it asked for actually fired.
+- **The store keeps both of its suites.** Sequential histories against a reference model, and
+  separately connected worker threads contending for real rows: neither substitutes for the other, and
+  a SQLite claim cannot cancel an in-flight GitHub request, so the effect path owes its own oracle
+  (D41).
+- **Journal rows are pinned as bytes.** Every operation spells its call one way in
+  `packages/runtime/test/shell/effects.test.ts`, because a resend reads those bytes back and an
+  operator greps them. A new operation adds a row pin.
+- **Coverage and mutation are gates, not reports.** CI runs the suite on Node 24 and 25, line coverage
+  for every package that declares a threshold, and Stryker per owning package.
+- **The checks read the working tree, not the index.** A file is judged before it is committed (D143),
+  so a new module is cited, placed and covered on the run that introduces it.
+
+What each ring owes before the App touches a repository it does not own: **every pull request** — the
+affected unit, property and model tests, the repository invariants, typecheck, lint, format, the
+coverage and mutation gates, and the security workflow checks; **the personal sandbox** — a real
+installation and token path, an active reversible write, loss recovery, the kill switch, rollback;
+**a volunteer pilot** — maintainer approval, a shadow comparison, a rehearsed rollback, and a named
+operator with alerts.
 
 ## Where the "why" lives
 
@@ -112,8 +160,9 @@ than taking it on faith.
   **Start here** if the vocabulary is new.
 - [`design/architecture.md`](design/architecture.md) — the system as diagrams, each naming the code
   or test that falsifies it.
-- [`design/decisions.md`](design/decisions.md) — the register: every non-obvious choice, its
-  reasoning, its costs, and what would reopen it.
+- [`design/constraints.md`](design/constraints.md) — the register's binding subset: the rules a
+  change can break, each with its reasoning, its costs, and what would reopen it. Its history —
+  every row ever written — is [`design/history/decisions.md`](design/history/decisions.md).
 - [`docs/`](docs/README.md) — user-facing configuration guide, with its closed code vocabularies
   guarded by repository checks and its explanatory prose owned by review.
 

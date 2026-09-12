@@ -5,7 +5,7 @@ name: codeql
 # be reviewable in a pull request, not configured out of band (#42).
 #
 # The timing is the argument. This workspace was pure logic with almost no
-# sink surface until `packages/shell/` landed an HTTP endpoint that parses
+# sink surface until the runtime shell landed an HTTP endpoint that parses
 # webhook bodies from anyone and handles a signing secret; the adapter brings
 # credential handling next. Scanning starts now so that code is born scanned
 # rather than retrofitted.
@@ -66,7 +66,7 @@ jobs:
           config: |
             paths-ignore:
               - packages/dev/lab/harness
-              - packages/shell/data
+              - packages/runtime/data
 
       - name: Analyze
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8

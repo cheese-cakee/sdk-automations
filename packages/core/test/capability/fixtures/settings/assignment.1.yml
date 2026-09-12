@@ -1,0 +1,18 @@
+capabilities:
+  assignment:
+    enabled: true
+    settings:
+      autoAssign: # the /assign command
+        enabled: true
+        maxOpen: 2 # default cap; 0 = uncapped
+        maxPerDay: 1 # claims per person per day
+        minAccountAgeDays: 7 # refuses brand-new accounts
+      unassign: # the self /unassign command
+        enabled: true
+      skillGates:
+        enabled: false
+
+mappings:
+  commands:
+    assign: "/assign"
+    unassign: "/unassign"

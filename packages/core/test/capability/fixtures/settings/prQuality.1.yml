@@ -1,0 +1,31 @@
+schemaVersion: 1
+mode: dry-run # disabled | observe | dry-run | active — rehearse, then arm
+
+capabilities:
+  prQuality:
+    enabled: true # explicit true only; anything else is off
+    settings:
+      checks: # a check runs only with an explicit enabled: true
+        dcoSignoff:
+          enabled: true
+          guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide" # optional; shown on failure
+        gpgSignature:
+          enabled: true
+          guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide"
+        mergeConflicts:
+          enabled: true
+        linkedIssues:
+          enabled: true
+          guide: "https://github.com/<org>/<repo>/wiki/Linked-Issues"
+          assignedIssues: # sub-check — the dependency is the structure
+            enabled: true
+            guide: "https://github.com/<org>/<repo>/wiki/Assignment"
+      applyLabels: true # requires mappings.labels below
+
+mappings:
+  labels: # read only in label mode
+    needsReview: "status: needs review"
+    needsRevision: "status: needs revision"
+
+principals:
+  maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers" # pinged on App-side errors

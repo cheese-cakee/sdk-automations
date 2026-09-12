@@ -39,12 +39,22 @@ describe("a refusal is not automatically a problem", () => {
         "capabilityDisabled",
         "modeDisabled",
         "itemBlocked",
-        "graceRunning",
         "activityCancelled",
         "newerHumanChange",
         "preconditionStale",
     ])("%s is a notice — the system working, not failing", (code) => {
         expect(verdictFinding(refuse(code), item).severity).toBe("notice");
+    });
+
+    /**
+     * The one refusal that is `info` rather than `notice` (grace.md §2).
+     * `notice` says nothing happened and that was intended; a running grace is
+     * something HAPPENING — the platform warned, and is waiting exactly as long
+     * as it said it would. An operator reading the report should see the plan
+     * in progress, not a decision to stand still.
+     */
+    it("graceRunning is info — the wait is the design working", () => {
+        expect(verdictFinding(refuse("graceRunning"), item).severity).toBe("info");
     });
 
     it.each([

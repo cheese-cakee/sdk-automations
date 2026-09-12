@@ -7,7 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { MAPPABLE_MEANINGS, meaningOfLabel, meaningsOfLabels } from "../../src/config/index.js";
+import {
+    alertsOfLabels,
+    commandInComment,
+    MAPPABLE_MEANINGS,
+    meaningOfLabel,
+    meaningsOfLabels,
+} from "../../src/config/index.js";
 import { configWith } from "./builders.js";
 
 const config = configWith({
@@ -97,5 +103,61 @@ describe("meaningsOfLabels", () => {
             }),
             { numRuns: 300 },
         );
+    });
+});
+
+/**
+ * The open family's reverse reading. The walk is over the CONFIGURED entries
+ * rather than a platform list, because the alert names are the repository's —
+ * which is the whole difference between an open family and a closed one.
+ */
+describe("alertsOfLabels", () => {
+    const alerting = configWith({
+        labels: { blocked: "status: blocked" },
+        alerts: { p0: { label: "P0-🔥" }, security: { label: "Security" } },
+    });
+
+    it("names the alerts the labels carry, in the file's own declaration order", () => {
+        expect(alertsOfLabels(alerting, ["Security", "P0-🔥"])).toEqual(["p0", "security"]);
+    });
+
+    it("judges sameness as every other family does — trimmed, case-insensitive", () => {
+        expect(alertsOfLabels(alerting, ["  security  "])).toEqual(["security"]);
+    });
+
+    it("is blind to a label this repository mapped to no alert", () => {
+        expect(alertsOfLabels(alerting, ["status: blocked", "whatever"])).toEqual([]);
+        expect(alertsOfLabels(configWith({}), ["P0-🔥"])).toEqual([]);
+    });
+});
+
+/**
+ * A command is a whole LINE, not a substring: quoting someone else's `/assign`
+ * must not execute it, and a repository whose word is `/take` must not be
+ * defeated by "/take please".
+ */
+describe("commandInComment", () => {
+    const commanding = configWith({ commands: { assign: "/take", working: "/working" } });
+
+    it("reads the repository's word as the platform's meaning, never the reverse", () => {
+        expect(commandInComment(commanding, "/take")).toBe("assign");
+        expect(commandInComment(commanding, "/assign")).toBeNull();
+    });
+
+    it("takes the first token of any line, ignoring case and trailing words", () => {
+        expect(commandInComment(commanding, "hello\n  /TAKE please  \nthanks")).toBe("assign");
+    });
+
+    it("refuses a command that is not a line's first token", () => {
+        expect(commandInComment(commanding, "> /take")).toBeNull();
+        expect(commandInComment(commanding, "you could try /take here")).toBeNull();
+    });
+
+    it("skips blank lines rather than reading one as a word", () => {
+        expect(commandInComment(commanding, "\n\n   \n/working")).toBe("working");
+    });
+
+    it("finds nothing at all in a repository that mapped no command", () => {
+        expect(commandInComment(configWith({}), "/take")).toBeNull();
     });
 });

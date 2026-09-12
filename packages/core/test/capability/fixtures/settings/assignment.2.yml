@@ -1,0 +1,44 @@
+capabilities:
+  assignment:
+    enabled: true
+    settings:
+      autoAssign: # the /assign command
+        enabled: true
+        claimableOnlyWhen: [ready] # empty = any open issue
+        notClaimableWhen: [blocked, awaitingTriage, inProgress]
+        maxOpen: 2 # default cap; 0 = uncapped
+        capIgnores: [needsReview, blocked] # assignments in these states do not count — review waits and blocks are not the contributor's fault
+        maxPerDay: 1 # claims per person per day
+        minAccountAgeDays: 7 # refuses brand-new accounts
+      unassign: # the self /unassign command
+        enabled: true
+      skillGates:
+        enabled: true
+        goodFirstIssue:
+          maxCompletions: 2 # after this many, GFIs are for newer contributors
+          supportTeam: gfiSupportTeam # cc'd on every claim at this tier — the mentor ping
+        beginner:
+          requiresPrevious: 1 # completed goodFirstIssue issues
+        intermediate:
+          requiresPrevious: 3
+        advanced:
+          requiresPrevious: 10
+
+principals:
+  gfiSupportTeam: "hiero-ledger/hiero-sdk-good-first-issue-support"
+
+mappings:
+  labels:
+    ready: "status: ready for dev"
+    blocked: "status: blocked"
+    awaitingTriage: "status: needs triage"
+    inProgress: "status: in development"
+    needsReview: "status: needs review"
+  skills: # required when skillGates is enabled; the ladder order is fixed
+    goodFirstIssue: "skill: good first issue"
+    beginner: "skill: beginner"
+    intermediate: "skill: intermediate"
+    advanced: "skill: advanced"
+  commands:
+    assign: "/assign"
+    unassign: "/unassign"

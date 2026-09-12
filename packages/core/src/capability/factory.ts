@@ -8,7 +8,7 @@
  * - **Every intent explains itself.** `explain.summary` is required: the
  *   report's story for applied and recorded effects comes from here, and a
  *   capability that cannot say why it acts should not act (contracts/safety.md).
- * - **The claimed world defaults to no claim.** An omitted `expected` is
+ * - **The claimed world defaults to no claim.** An omitted `claims` is
  *   vacuous (`closed: null`), never an accidental assertion. Claims are
  *   CHECKED under the engine's derived preconditions, so the default must be
  *   the one that cannot be wrong.
@@ -17,7 +17,8 @@
 import type { TypedDeclaration } from "./declaration.js";
 import type { ItemRef, RepositoryRef } from "./catalogue.js";
 import type { IntentCatalogue, IntentOperation } from "./catalogue.js";
-import { deriveIdempotencyKey, type ExpectedFacts, type Intent } from "./intent.js";
+import { deriveIdempotencyKey, type DestructiveGrace, type Intent } from "./intent.js";
+import type { ClaimedFacts } from "../safety/index.js";
 
 /** Where and when — bound once per evaluation, not restated per intent. */
 export interface IntentOccasion {
@@ -33,8 +34,15 @@ export interface IntentSpec<K extends IntentOperation> {
     /** What occasioned this — free text identifying the trigger, dated by the occasion. */
     readonly cause: string;
     /** Omitted fields claim nothing; `closed` defaults to no-claim, not open. */
-    readonly expected?: Partial<ExpectedFacts>;
+    readonly claims?: Partial<ClaimedFacts>;
     readonly explain: { readonly summary: string; readonly detail?: readonly string[] };
+    /**
+     * The grace terms, stated once by a clock-triggered destructive act and by
+     * nothing else (grace.md §1). Omitted is `null`, which is what every other
+     * class must carry — the screen refuses both mistakes, so the default here
+     * is the one that cannot be wrong for the operations that are not graced.
+     */
+    readonly grace?: DestructiveGrace;
 }
 
 /** A spec-to-intent function with one occasion already bound. */
@@ -48,10 +56,10 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
             repository: occasion.repository,
             item: occasion.item,
             operation: spec.operation,
-            expected: {
-                meaningsPresent: spec.expected?.meaningsPresent ?? [],
-                meaningsAbsent: spec.expected?.meaningsAbsent ?? [],
-                closed: spec.expected?.closed ?? null,
+            claims: {
+                meaningsPresent: spec.claims?.meaningsPresent ?? [],
+                meaningsAbsent: spec.claims?.meaningsAbsent ?? [],
+                closed: spec.claims?.closed ?? null,
             },
             desired: spec.desired,
             cause: { cause: spec.cause, observedAt: occasion.observedAt },
@@ -60,6 +68,7 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
                 summary: spec.explain.summary,
                 detail: spec.explain.detail ?? [],
             },
+            grace: spec.grace ?? null,
         };
         return {
             ...base,

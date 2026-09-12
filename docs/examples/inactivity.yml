@@ -1,0 +1,29 @@
+# One capability on the schedule, and nothing driven by a webhook.
+#
+# inactivity needs no label meaning to run: draft and changes-requested are
+# GitHub's own states. The two mappings here are the optional ones it reads —
+# `blocked`, because exemptBlocked is on by default, and the `working`
+# command, the one way a contributor resets their own clock without pushing.
+# Every clock is per assignee, and every unstated day is the default: remind
+# at 14, release at 21.
+
+schemaVersion: 1
+mode: dry-run
+
+capabilities:
+  inactivity:
+    enabled: true
+    settings:
+      issues: # assigned, no open pull request: remind at 14 days, release at 21
+        enabled: true
+      pullRequests:
+        enabled: true
+        reapWhen:
+          draft: # drafts only; changesRequested and needsRevision stay off
+            enabled: true
+
+mappings:
+  labels:
+    blocked: "status: blocked"
+  commands:
+    working: "/working"

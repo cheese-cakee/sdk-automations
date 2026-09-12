@@ -36,22 +36,27 @@ That is the whole setup.
 
 ## What happens next
 
-The runnable shell observes deliveries and records a report explaining what it found. Active GitHub
-writes and effect recovery are not implemented.
+The App wakes on two things: a webhook from GitHub, and its own daily schedule, which sweeps every
+open issue and pull request for the capabilities that judge clocks. Either way it records a report
+per delivery naming every decision and why. Writes happen only in `active`, and only when the
+endpoint was started with a write path wired, which is not the default; anything the App would
+close or release is warned about first, and the warning is honoured. [Capabilities](capabilities.md)
+says what each automation does and what it may write.
 
 ## Choosing a mode
 
 The runnable shell supports `disabled`, `observe` and `dry-run`. It rejects `active` configuration before
-making a decision because no real GitHub effect path is connected yet.
+making a decision unless the endpoint was started with a write path wired, which is not the default.
 
 | Mode | Use it when |
 |---|---|
 | `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
 | `observe` | You want a non-writing decision record; today it includes record-only requested effects |
-| `dry-run` | Today, the same decision path as `observe`; a distinct rollout/report treatment is deferred |
-| `active` | Unsupported by the runnable shell |
+| `dry-run` | You want the same non-writing record, plus a `wouldApply` line naming each change the App would make |
+| `active` | Unsupported unless the endpoint wires a write path |
 
-Active behavior will return only with a real GitHub effect and durable recovery path.
+`dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
+be is named.
 
 ## Common setups
 
@@ -100,12 +105,15 @@ copy the one closest to what you want and edit the label names:
 
 | File | What you get |
 |---|---|
-| [`active.yml`](examples/active.yml) | A reserved active configuration that the runnable shell rejects |
+| [`full.yml`](examples/full.yml) | Every capability on, every mapping family filled, every option with a comment — the catalogue |
+| [`inactivity.yml`](examples/inactivity.yml) | The scheduled capability alone: reminders and releases, with the defaults |
+| [`active.yml`](examples/active.yml) | A reserved active configuration; rejected unless the endpoint wires a write path |
 | [`observe-only.yml`](examples/observe-only.yml) | The same repository, reporting instead of acting |
 | [`minimal.yml`](examples/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
 | [`empty.yml`](examples/empty.yml) | Nothing at all, spelled out |
 
 ## What's next
 
+- **[Capabilities](capabilities.md)** — each automation, what it needs mapped, and what it may write
 - **[Configuration](configuration.md)** — every key defined, with types, defaults, and every error code
 - **[Troubleshooting](troubleshooting.md)** — what each reported code means, and what to do about it

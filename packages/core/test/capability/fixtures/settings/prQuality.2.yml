@@ -1,0 +1,15 @@
+schemaVersion: 1
+mode: active
+
+capabilities:
+  prQuality:
+    enabled: true
+    settings:
+      checks:
+        dcoSignoff:
+          enabled: true
+        mergeConflicts:
+          enabled: true
+
+principals:
+  maintainerTeam: "hiero-ledger/hiero-sdk-python-maintainers"

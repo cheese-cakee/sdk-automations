@@ -29,6 +29,10 @@ export interface ConfigOptions {
     readonly mode?: RepositoryMode;
     /** Meaning → label, spelt as a maintainer would write it in the file. */
     readonly labels?: Record<string, string>;
+    /** Command → the word this repository answers to, as a maintainer writes it. */
+    readonly commands?: Record<string, string>;
+    /** Alert name → the label carrying it, in the open family's entry shape. */
+    readonly alerts?: Record<string, { readonly label: string }>;
     /** The capability names the document declares, each with `enabled`. */
     readonly capabilities?: readonly string[];
     /** The consent every declared capability carries. Boolean, never truthy (§2.4). */
@@ -61,6 +65,8 @@ export interface ConfigOptions {
 export function configWith({
     mode = "active",
     labels = {},
+    commands = {},
+    alerts = {},
     capabilities = [],
     enabled = true,
     settings = {},
@@ -74,7 +80,7 @@ export function configWith({
             capabilities: Object.fromEntries(
                 capabilities.map((name) => [name, { enabled, settings: settings[name] ?? {} }]),
             ),
-            mappings: { labels },
+            mappings: { labels, commands, alerts },
         },
         { revision, knownCapabilities: known },
     );

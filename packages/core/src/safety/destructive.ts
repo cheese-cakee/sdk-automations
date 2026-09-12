@@ -1,5 +1,5 @@
 /**
- * Clock-triggered destructive actions — `design/guides/effects.md`.
+ * Clock-triggered destructive actions — `design/guides/grace.md`.
  *
  * Separate from `write.ts` because it answers a different question. The
  * general rules ask "may this write happen"; this asks "has the warning,
@@ -12,7 +12,7 @@ import type { RepositoryConfig } from "../config/index.js";
 import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
 import type { ActionClass, SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
-// ─── Clock-triggered destructive actions (effects.md) ────────────────
+// ─── Clock-triggered destructive actions (grace.md) ──────────────────
 
 /**
  * A recorded warning, the precondition of every destructive action:
@@ -54,11 +54,23 @@ export interface DestructiveWarning {
     readonly gracePeriodDays: number;
     /** Stated in the warning; may be later than the configured grace floor. */
     readonly earliestActionAtMs: number;
-    /** What cancels the plan, stated in the warning (effects.md). */
+    /** What cancels the plan, stated in the warning (grace.md). */
     readonly cancelledBy: string;
     /** How a maintainer reverses the action after it occurs. */
     readonly reversesWith: string;
 }
+
+/**
+ * A warning that has been AUTHORED but not yet posted — everything a minted
+ * warning needs except the two instants only the applier can supply.
+ *
+ * The engine approves the warning comment; the applier learns `warnedAt` when
+ * GitHub says the comment landed, and derives `earliestActionAt` from it
+ * (grace.md §3). So this is exactly `DestructiveWarningInput` minus those two,
+ * and it is written that way rather than restated, so a field added to the
+ * input arrives here without a second edit.
+ */
+export type PendingWarning = Omit<DestructiveWarningInput, "warnedAt" | "earliestActionAt">;
 
 /**
  * Capture authority at warning time. Numeric timestamps and copied strings
@@ -93,7 +105,7 @@ export interface DestructivePlan {
 }
 
 /**
- * FINDING(safety-grace-floor): `design/guides/effects.md` requires the schema
+ * FINDING(safety-grace-floor): `design/guides/grace.md` requires the schema
  * to "set safe minimums and prevent a zero-day or negative grace period" but names no
  * floor. This module enforces `>= MIN_GRACE_DAYS`; the exact number is a
  * register decision — 1 is the weakest defensible reading, encoded here so
@@ -117,7 +129,7 @@ function warningMatchesRequest(
     );
 }
 
-/** effects.md — every condition core can confirm before a future write. */
+/** grace.md — every condition core can confirm before a future write. */
 export function evaluateDestructive(
     plan: DestructivePlan,
     config: RepositoryConfig,
@@ -140,7 +152,7 @@ export function evaluateDestructive(
         return {
             outcome: "refuse",
             code: "noWarning",
-            reason: "no recorded warning — a destructive action never occurs on first observation (effects.md)",
+            reason: "no recorded warning — a destructive action never occurs on first observation (grace.md)",
         };
     }
     if (!warningMatchesRequest(plan.warning.requestSnapshot, plan.request)) {
@@ -169,7 +181,7 @@ export function evaluateDestructive(
         return {
             outcome: "refuse",
             code: "graceBelowFloor",
-            reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (effects.md)`,
+            reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (grace.md)`,
         };
     }
     const minimumActionAt = plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
@@ -187,14 +199,14 @@ export function evaluateDestructive(
         return {
             outcome: "refuse",
             code: "graceRunning",
-            reason: "the grace period has not fully elapsed (effects.md)",
+            reason: "the grace period has not fully elapsed (grace.md)",
         };
     }
     if (plan.qualifyingActivitySinceWarning) {
         return {
             outcome: "refuse",
             code: "activityCancelled",
-            reason: "the affected person provided qualifying activity during the grace period (effects.md)",
+            reason: "the affected person provided qualifying activity during the grace period (grace.md)",
         };
     }
     // All destructive-specific gates passed; the general write rules

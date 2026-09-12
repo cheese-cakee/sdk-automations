@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { lines, repoRoot, trackedFiles } from "./repository.js";
+import { lines, repoRoot, repositoryFiles } from "./repository.js";
 
-const workflows = trackedFiles().filter(
+const workflows = repositoryFiles().filter(
     (path) => path.startsWith(".github/workflows/") && /\.ya?ml$/.test(path),
 );
 

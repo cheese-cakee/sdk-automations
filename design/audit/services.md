@@ -1,15 +1,19 @@
 # Cross-SDK Service and Label Architecture
 
+> **The one surviving map from the old bots to the capabilities**, and the page the Python migration
+> reads. The twelve per-repository fieldwork audits it was synthesized from — labels, services,
+> coupling and testing for C++, JavaScript and Python, frozen 2026-07-17 — are in git history, and a
+> correction to any of them is a new decision row rather than an edit to evidence.
+>
 > **Phase 2 synthesis:** a cross-SDK view of the maintainer automation. It covers what each SDK offers,
 > how the services group together, how an issue or PR moves through them, and a normalized view of the
-> labels that already exist across the SDKs. It draws on the Phase 1, 2, and 3 audit files and lines up
-> with `design/goals.md` (decoupled by function, config-driven, opt-in).
+> labels that already exist across the SDKs. It lines up with `design/goals.md` (decoupled by function,
+> config-driven, opt-in).
 >
 > **Third codebase added.** The JavaScript SDK (`hiero-ledger/hiero-sdk-js`), the most used Hiero SDK, was
-> audited as a third data point (`design/audit/services-js.md`, `design/audit/labels-js.md`, `design/audit/coupling-js.md`). Its
-> result is mostly absence: it runs no maintainer issue or PR lifecycle automation, so it appears in the
-> comparison below as a near-empty column. That absence is itself the finding, and it is summarized at the
-> end of section 2.
+> audited as a third data point. Its result is mostly absence: it runs no maintainer issue or PR
+> lifecycle automation, so it appears in the comparison below as a near-empty column. That absence is
+> itself the finding, and it is summarized at the end of section 2.
 >
 > **This is descriptive, not prescriptive.** It records what the two existing systems do today. What the
 > shared app should build, and what labels should mean, are goals questions decided separately (see the
@@ -127,8 +131,7 @@ formatting gate (title plus assignee), generic event-to-Slack notifications, and
 Every group 1 to 5 capability is absent. The contributor never meets a bot on an issue or PR in the
 JavaScript SDK: no moderation, no `/assign`, no skill ladder, no status labels, no inactivity sweep, no
 recommendation. So across the three SDKs, the lifecycle automation surface is a C++ and Python concern; the
-most used SDK carries none of it. The detail is in `design/audit/services-js.md`, `design/audit/labels-js.md`, and
-`design/audit/coupling-js.md`.
+most used SDK carries none of it.
 
 ## 3. The end-to-end maintainer-automation flow
 
@@ -157,16 +160,16 @@ flowchart TD
     RECO --> POOL
 ```
 
-The label-level state machines behind these stops are written up in `design/audit/labels-cpp.md` (the issue and
-PR `status:` machines) and `design/audit/labels-python.md` (the moderation and review-queue machines). How these
+The label-level state machines behind these stops — the C++ issue and PR `status:` machines, and Python's
+moderation and review-queue machines — are in the frozen per-repository audits, as is the map of how these
 services depend on each other through shared state (labels, comments, assignees, config, cross-entity
-links, and shared workflow files), and where that coupling sits, is mapped in `design/audit/coupling-cpp.md`.
+links, and shared workflow files).
 
 ## 4. A normalized view of the labels that exist today
 
 This lines up the label strings that already exist across the two SDKs so the same idea sits in one row.
 It is a summary and a check-in, **not a proposal**: it shows where the two agree and where they diverge
-(including the four Python drift sets from `design/audit/labels-python.md`). What each namespace should ultimately
+(including the four Python drift sets, listed below). What each namespace should ultimately
 do is an open question, listed below.
 
 | Namespace | Values across both SDKs | Where the two SDKs differ |
@@ -217,6 +220,5 @@ completeness; they sit outside the maintainer-automation surface.
 ## Appendix Z: out of scope (a non-goal)
 
 CI, build, release, and security stay as native Actions per repo and are a project non-goal
-(`goals.md`, Non-goals). In both SDKs these workflows were verified to touch no labels (see
-`design/audit/labels-cpp.md` Appendix C and `design/audit/labels-python.md` Appendix D). They are left out of the
-classification and flow work here.
+(`goals.md`, Non-goals). In both SDKs these workflows were verified to touch no labels, appendix by appendix,
+in the frozen per-repository audits. They are left out of the classification and flow work here.

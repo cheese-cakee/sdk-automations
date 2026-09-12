@@ -1,11 +1,12 @@
 # A reserved active configuration.
 #
 # Core retains active in its configuration vocabulary, but the runnable shell
-# rejects this mode before deciding. It performs no GitHub effect.
+# records `modeUnsupported` and rejects this mode before deciding. It performs
+# no GitHub effect.
 #
-# `assignment` demonstrates the opaque settings shape while disabled. The
-# shared parser confirms only that `settings` is a mapping; safe activation
-# still requires a shipped capability and its capability-owned validator.
+# `inactivity` shows a nested settings block while disabled — two ladders and a
+# per-reason clock. The shared parser confirms only that `settings` is a
+# mapping; the capability's own spec reads the keys and reports what it cannot.
 
 schemaVersion: 1
 mode: active
@@ -18,13 +19,27 @@ capabilities:
 
   prQuality:
     enabled: true
-    settings:
-      marker: "<!-- hiero-automation:prQuality -->"
 
-  assignment:
+  inactivity:
     enabled: false
     settings:
-      maxOpenAssignments: 2
+      exemptBlocked: true # the blocked mapping skips every warning and action
+      remindAfterDays: 14 # defaults — any ladder or reason may override
+      reapAfterDays: 21 # reap = release the assignment (issues) or close the PR
+      issues: # warns, then releases assigned issues with no open PR
+        enabled: true
+      pullRequests: # any PR, linked or not — warns, then closes and releases any stale assignees
+        enabled: true
+        reapAfterDays: 60 # ladder override
+        reapWhen: # reminders and actions apply only to PRs in:
+          draft: # GitHub draft mode
+            enabled: true
+          changesRequested: # GitHub review state
+            enabled: true
+          needsRevision: # the label pr-quality's label mode applies for quality failures
+            enabled: true
+            remindAfterDays: 2 # reason override — quality failures reap fast
+            reapAfterDays: 5
 
 mappings:
   labels:
@@ -35,6 +50,8 @@ mappings:
     needsRevision: "status: needs revision"
     readyToMerge: "status: ready to merge"
     blocked: "status: blocked"
+  commands:
+    working: "/working" # the one clock reset inactivity reads
 
 principals:
   maintainerTeam: hiero-sdk-js-maintainers

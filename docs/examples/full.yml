@@ -1,0 +1,72 @@
+# Everything the App reads today, in one file: every shipped capability on,
+# every mapping family filled, a principal, and inactivity's clocks overridden
+# at each of the three levels they can be. Not a recommendation — a catalogue
+# of the options, each with the sentence that says what it is for. Copy the
+# parts you want. The test suite holds this file to that claim: a capability
+# the App gains and this file does not is a failing check.
+#
+# `dry-run` is the rehearsal: the report names each change the App would make,
+# and nothing is written.
+
+schemaVersion: 1
+mode: dry-run
+
+capabilities:
+  intake: # a new issue is labelled awaitingTriage
+    enabled: true
+    settings:
+      announce: true # and told so in a comment (default: false)
+
+  prQuality: # one comment per pull request, kept current: what stops it being reviewable
+    enabled: true # reads no settings today
+
+  inactivity: # on the daily schedule: remind about stalled work, then release it
+    enabled: true
+    settings:
+      exemptBlocked: true # default: true — an item carrying `blocked` is never reminded or reaped
+      remindAfterDays: 14 # default: 14 — the capability-wide clocks …
+      reapAfterDays: 21 # default: 21 — … which every ladder and reason may override
+      issues: # assigned issues with no open pull request
+        enabled: true
+        remindAfterDays: 21 # ladder override
+        reapAfterDays: 30 # reap = release the assignment
+      pullRequests: # any pull request, linked or not
+        enabled: true
+        reapAfterDays: 60 # ladder override; remindAfterDays inherits 14. reap = close and release
+        reapWhen: # the ladder applies only to pull requests in one of these states
+          draft: # GitHub's draft state — no mapping needed
+            enabled: true
+          changesRequested: # GitHub's review state — no mapping needed
+            enabled: true
+          needsRevision: # your needsRevision label, mapped below
+            enabled: true
+            remindAfterDays: 2 # reason override — a quality failure moves fast
+            reapAfterDays: 5
+
+mappings:
+  labels: # the App names the meaning; you supply the label it is spelled with
+    awaitingTriage: "status: triage"
+    ready: "status: ready for dev"
+    inProgress: "status: in progress"
+    needsReview: "status: needs review"
+    needsRevision: "status: needs revision"
+    readyToMerge: "status: ready to merge"
+    blocked: "status: blocked" # human authority — the App reads it and never sets it
+  commands: # the words contributors type in a comment
+    assign: "/assign"
+    unassign: "/unassign"
+    working: "/working" # "still on it" — resets inactivity's clock
+  skills: # the difficulty ladder, as labels
+    goodFirstIssue: "good first issue"
+    beginner: "skill: beginner"
+    intermediate: "skill: intermediate"
+    advanced: "skill: advanced"
+  alerts: # names are yours; each is carried by a label
+    p0: { label: "P0-🔥" }
+    security: { label: "Security" }
+  types: # names are yours
+    bug: { label: "Bug" }
+    docs: { label: "Documentation" }
+
+principals: # roles a capability may address, one name each
+  maintainerTeam: hiero-sdk-js-maintainers

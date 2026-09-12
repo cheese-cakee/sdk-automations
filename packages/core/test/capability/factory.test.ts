@@ -23,7 +23,9 @@ const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: [],
-    observations: ["issueUpdated"],
+    requiredMappings: {},
+    facts: ["issue"],
+    needs: [],
     resolvers: [],
     intents: ["applyMappedLabel"],
     operationalNeeds: {
@@ -69,13 +71,13 @@ describe("what the factory stamps", () => {
     it("the key identifies the occasion, not the payload — a reworded comment is one effect", () => {
         const a = make({
             operation: "postManagedComment",
-            desired: { marker: "<!-- m -->", body: "first wording" },
+            desired: { kind: "summary", body: "first wording" },
             cause: "prWithoutLinkedIssue",
             explain: { summary: "s" },
         });
         const b = make({
             operation: "postManagedComment",
-            desired: { marker: "<!-- m -->", body: "second wording" },
+            desired: { kind: "summary", body: "second wording" },
             cause: "prWithoutLinkedIssue",
             explain: { summary: "s" },
         });
@@ -84,23 +86,23 @@ describe("what the factory stamps", () => {
 });
 
 describe("what the factory defaults", () => {
-    it("an omitted expected claims NOTHING — closed is no-claim, not open", () => {
-        expect(label().expected).toEqual({
+    it("omitted `claims` claims NOTHING — closed is no-claim, not open", () => {
+        expect(label().claims).toEqual({
             meaningsPresent: [],
             meaningsAbsent: [],
             closed: null,
         });
     });
 
-    it("a partial expected fills only the stated clause", () => {
+    it("a partial `claims` fills only the stated clause", () => {
         const intent = make({
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
             cause: "c",
-            expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
+            claims: { meaningsAbsent: ["awaitingTriage"], closed: false },
             explain: { summary: "s" },
         });
-        expect(intent.expected).toEqual({
+        expect(intent.claims).toEqual({
             meaningsPresent: [],
             meaningsAbsent: ["awaitingTriage"],
             closed: false,

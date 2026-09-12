@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
     closureOf,
     isPausedByProjection,
-    projectIssueObservation,
-    projectPrObservation,
+    projectIssue,
+    projectPullRequest,
     type LabelObservation,
 } from "../../src/workflow/index.js";
 import { ISSUE_MEANINGS, PR_MEANINGS, type ClosureReason } from "../../src/workflow/index.js";
@@ -26,8 +26,8 @@ describe("projection: total and exclusive over every meaning subset", () => {
     }
 
     it.each([
-        ["issue", projectIssueObservation, ISSUE_MEANINGS],
-        ["pr", projectPrObservation, PR_MEANINGS],
+        ["issue", projectIssue, ISSUE_MEANINGS],
+        ["pr", projectPullRequest, PR_MEANINGS],
     ] as const)("all 128 subsets project coherently for %s", (_name, project, own) => {
         const ownSet = new Set<MappableMeaning>(own);
         for (const meanings of subsets) {
@@ -57,9 +57,9 @@ describe("projection: total and exclusive over every meaning subset", () => {
     });
 });
 
-describe("observation projection (manual-edits.md §3, §8)", () => {
+describe("observation projection (contracts/safety.md §3)", () => {
     it.each(ISSUE_MEANINGS)("a single issue position %s projects to that position", (m) => {
-        expect(projectIssueObservation(observed([m]))).toEqual({
+        expect(projectIssue(observed([m]))).toEqual({
             kind: "position",
             state: { meaning: m, blocked: false, closedBy: null },
             ignored: [],
@@ -67,7 +67,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it.each(PR_MEANINGS)("a single PR position %s projects to that position", (m) => {
-        expect(projectPrObservation(observed([m]))).toEqual({
+        expect(projectPullRequest(observed([m]))).toEqual({
             kind: "position",
             state: { meaning: m, blocked: false, closedBy: null },
             ignored: [],
@@ -75,7 +75,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("no mapped meanings projects to no position", () => {
-        expect(projectIssueObservation(observed([]))).toEqual({
+        expect(projectIssue(observed([]))).toEqual({
             kind: "position",
             state: { meaning: null, blocked: false, closedBy: null },
             ignored: [],
@@ -83,7 +83,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("two own-flow positions are a conflict, never a repair (§8 test 3)", () => {
-        const projection = projectIssueObservation(observed(["ready", "inProgress"]));
+        const projection = projectIssue(observed(["ready", "inProgress"]));
         expect(projection).toEqual({
             kind: "conflict",
             positions: ["ready", "inProgress"],
@@ -95,7 +95,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 
     it("a conflict still reports cross-entity meanings as ignored", () => {
         expect(
-            projectPrObservation(observed(["needsReview", "needsRevision", "ready", "blocked"])),
+            projectPullRequest(observed(["needsReview", "needsRevision", "ready", "blocked"])),
         ).toEqual({
             kind: "conflict",
             positions: ["needsReview", "needsRevision"],
@@ -106,7 +106,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("all three own-flow positions conflict with all three reported", () => {
-        const projection = projectPrObservation(
+        const projection = projectPullRequest(
             observed(["needsReview", "needsRevision", "readyToMerge"]),
         );
         expect(projection.kind).toBe("conflict");
@@ -116,13 +116,11 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("blocked does not rescue a conflict", () => {
-        expect(projectIssueObservation(observed(["ready", "inProgress", "blocked"])).kind).toBe(
-            "conflict",
-        );
+        expect(projectIssue(observed(["ready", "inProgress", "blocked"])).kind).toBe("conflict");
     });
 
     it("duplicate observations of one meaning are one position, not a conflict", () => {
-        expect(projectIssueObservation(observed(["ready", "ready"]))).toEqual({
+        expect(projectIssue(observed(["ready", "ready"]))).toEqual({
             kind: "position",
             state: { meaning: "ready", blocked: false, closedBy: null },
             ignored: [],
@@ -133,7 +131,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     it.each(PR_MEANINGS)(
         "PR meaning %s on an issue is ignored, not a position or conflict",
         (m) => {
-            expect(projectIssueObservation(observed([m]))).toEqual({
+            expect(projectIssue(observed([m]))).toEqual({
                 kind: "position",
                 state: { meaning: null, blocked: false, closedBy: null },
                 ignored: [m],
@@ -142,7 +140,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     );
 
     it("a cross-entity meaning coexists with an own position without conflict", () => {
-        expect(projectPrObservation(observed(["needsReview", "inProgress"]))).toEqual({
+        expect(projectPullRequest(observed(["needsReview", "inProgress"]))).toEqual({
             kind: "position",
             state: { meaning: "needsReview", blocked: false, closedBy: null },
             ignored: ["inProgress"],
@@ -151,7 +149,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 
     // FINDING(observe-blocked-alone)
     it("blocked with no position is legal: no position, paused (D28)", () => {
-        expect(projectIssueObservation(observed(["blocked"]))).toEqual({
+        expect(projectIssue(observed(["blocked"]))).toEqual({
             kind: "position",
             state: { meaning: null, blocked: true, closedBy: null },
             ignored: [],
@@ -159,7 +157,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("blocked alongside a position keeps the position and sets the flag", () => {
-        expect(projectPrObservation(observed(["blocked", "needsRevision"]))).toEqual({
+        expect(projectPullRequest(observed(["blocked", "needsRevision"]))).toEqual({
             kind: "position",
             state: { meaning: "needsRevision", blocked: true, closedBy: null },
             ignored: [],
@@ -168,7 +166,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 
     // FINDING(observe-closed-position)
     it("a closed item keeps its position labels unchanged", () => {
-        expect(projectIssueObservation(observed(["inProgress"], "closedByHuman"))).toEqual({
+        expect(projectIssue(observed(["inProgress"], "closedByHuman"))).toEqual({
             kind: "position",
             state: { meaning: "inProgress", blocked: false, closedBy: "closedByHuman" },
             ignored: [],
@@ -181,7 +179,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 // to judge whether the conflict is worth anyone's attention.
 describe("conflict verdicts carry blocked and closedBy (D59)", () => {
     it("reports the pause alongside the conflict", () => {
-        expect(projectIssueObservation(observed(["ready", "inProgress", "blocked"]))).toEqual({
+        expect(projectIssue(observed(["ready", "inProgress", "blocked"]))).toEqual({
             kind: "conflict",
             positions: ["ready", "inProgress"],
             blocked: true,
@@ -191,7 +189,7 @@ describe("conflict verdicts carry blocked and closedBy (D59)", () => {
     });
 
     it("reports the closure alongside the conflict", () => {
-        expect(projectPrObservation(observed(["needsReview", "readyToMerge"], "merged"))).toEqual({
+        expect(projectPullRequest(observed(["needsReview", "readyToMerge"], "merged"))).toEqual({
             kind: "conflict",
             positions: ["needsReview", "readyToMerge"],
             blocked: false,

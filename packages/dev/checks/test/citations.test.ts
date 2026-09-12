@@ -1,18 +1,26 @@
 /**
  * References resolve: cited paths, bare filenames in prose, and cited decision
  * rows all point at something that exists. A reference that points at nothing
- * breaks nothing and warns nobody, while the register's method is that a row
- * cites the code proving it — so only a test can see the rot.
+ * breaks nothing and warns nobody, so only a test can see the rot.
+ *
+ * The corpus is every document EXCEPT the register's two files, the
+ * constraints page and its history (`referenceDocuments`): a row is never
+ * edited and names the tree as it was on the day it was taken.
  * One invariant per file (D89).
+ *
+ * A document path is checked in one more corpus: `src/` and `test/`. Moving a
+ * design page into its folder left an operator-facing error string and a
+ * `describe` title naming the old path, and nothing fired — a citation is a
+ * citation whether a document or a module carries it.
  */
 
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { markdownDocuments, repoRoot, sourceFiles } from "./repository.js";
+import { REGISTER_HISTORY, referenceDocuments, repoRoot, sourceFiles } from "./repository.js";
 
 describe("documents cite files that exist", () => {
-    const docs = markdownDocuments();
+    const docs = referenceDocuments();
 
     // Layout-independent on purpose: any packages/…/(src|test)/….ts shape is a
     // citation, and existence is the only judge. Building this from the
@@ -25,22 +33,6 @@ describe("documents cite files that exist", () => {
     // path; `docs/examples/…` still matches here.
     const DOC_PATH = /\b((?:design|docs)\/[A-Za-z0-9._/-]+\.(?:md|yml))\b/g;
 
-    /**
-     * Paths the register cites DELIBERATELY before they exist: the executor is
-     * designed, not built. Self-cleaning — the arrival test fails the day one
-     * of these lands, so an entry cannot outlive its future.
-     */
-    const PLANNED_PATHS = new Set([
-        "packages/executor/src/planner.ts",
-        "packages/executor/src/policy.ts",
-        "packages/executor/src/recovery.ts",
-    ]);
-
-    it("no planned path has quietly started existing", () => {
-        const arrived = [...PLANNED_PATHS].filter((path) => existsSync(join(repoRoot, path)));
-        expect(arrived).toEqual([]);
-    });
-
     it("finds documents and citations to check", () => {
         expect(docs.length).toBeGreaterThan(5);
         const total = docs.reduce((n, d) => n + [...d.text.matchAll(PATH)].length, 0);
@@ -52,7 +44,7 @@ describe("documents cite files that exist", () => {
         for (const { doc, text } of docs) {
             for (const match of text.matchAll(PATH)) {
                 const cited = match[1]!;
-                if (!PLANNED_PATHS.has(cited) && !existsSync(join(repoRoot, cited))) {
+                if (!existsSync(join(repoRoot, cited))) {
                     dangling.push(`${doc} -> ${cited}`);
                 }
             }
@@ -73,18 +65,60 @@ describe("documents cite files that exist", () => {
         expect([...new Set(dangling)]).toEqual([]);
     });
 
+    /**
+     * The same regex, one more corpus. A design page moved into its folder
+     * left an operator-facing error string and a `describe` title naming the
+     * old path, and nothing fired: a citation is a citation whether a document
+     * or a module carries it. Source is matched whole rather than lexed —
+     * `//` inside a string and a backtick inside a comment both defeat a
+     * regex lexer, and a comment naming a page that moved is the same rot.
+     */
+    const sources = sourceFiles().map((file) => ({
+        file,
+        text: readFileSync(join(repoRoot, file), "utf8"),
+    }));
+
+    it("every document path named in source resolves to a real file", () => {
+        const cited = sources.flatMap(({ file, text }) =>
+            [...text.matchAll(DOC_PATH)].map((match) => ({ file, path: match[1]! })),
+        );
+        // A corpus that matched nothing would pass this check forever.
+        expect(cited.length).toBeGreaterThan(20);
+        const dangling = cited
+            .filter(({ path }) => !existsSync(join(repoRoot, path)))
+            .map(({ file, path }) => `${file} -> ${path}`);
+        expect([...new Set(dangling)]).toEqual([]);
+    });
+
     it("proves the check can fail", () => {
         // Negative control, both directions: the matcher must find a path, and
         // the existence check must reject one that is not there.
-        const fake = "see `packages/core/src/nonexistent.ts` and `design/audit/nope.md`";
+        //
+        // Every missing path here is ASSEMBLED, never written: `sourceFiles()`
+        // reads this file too, so a written one would report itself against
+        // the source check above — the same reason `architecture.test.ts`
+        // assembles the specifier its own control needs.
+        const goneDesign = ["design", "audit", "nope.md"].join("/");
+        const goneDoc = ["docs", "missing.md"].join("/");
+        const fake = `see \`packages/core/src/nonexistent.ts\` and \`${goneDesign}\``;
         expect([...fake.matchAll(PATH)].map((m) => m[1])).toEqual([
             "packages/core/src/nonexistent.ts",
         ]);
-        expect([...fake.matchAll(DOC_PATH)].map((m) => m[1])).toEqual(["design/audit/nope.md"]);
+        expect([...fake.matchAll(DOC_PATH)].map((m) => m[1])).toEqual([goneDesign]);
         expect(existsSync(join(repoRoot, "packages/core/src/nonexistent.ts"))).toBe(false);
-        expect(existsSync(join(repoRoot, "design/audit/nope.md"))).toBe(false);
+        expect(existsSync(join(repoRoot, goneDesign))).toBe(false);
         expect(existsSync(join(repoRoot, "packages/core/src/index.ts"))).toBe(true);
         expect(existsSync(join(repoRoot, "design/audit/services.md"))).toBe(true);
+
+        // The diary's pair, as source rather than prose: an operator-facing
+        // string and a `describe` title, both naming a page that is not there.
+        const module = [
+            `const advice = "see ${goneDoc} for the rule";`,
+            `describe("${goneDesign}", () => {});`,
+        ].join("\n");
+        const named = [...module.matchAll(DOC_PATH)].map((m) => m[1]!);
+        expect(named).toEqual([goneDoc, goneDesign]);
+        expect(named.filter((path) => existsSync(join(repoRoot, path)))).toEqual([]);
     });
 
     it("still matches a package's old home after a move", () => {
@@ -106,57 +140,29 @@ describe("documents cite files that exist", () => {
 describe("documents name files that exist", () => {
     const sourceNames = new Set(sourceFiles().map((path) => path.split("/").pop()!));
 
-    const docs = markdownDocuments();
+    const docs = referenceDocuments();
 
     // Dotted basenames are the majority of the tree — `shell.test.ts`,
     // `vitest.config.ts` — and a single-dot pattern could not match one at
     // all: its character class excluded the dot, and the lookbehind then
     // blocked the `test.ts` tail, so every spec this repository renamed was
-    // invisible to the check that exists to catch renames.
-    const NAME = /(?<![\w/.-])([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)*\.ts)(?![\w-])/g;
-
-    /**
-     * Files a document names DELIBERATELY before they exist, such as what
-     * `github/`'s README says the adapter will bring. Self-cleaning: the test
-     * below fails once an entry exists, so the exemption must be deleted
-     * rather than linger as a permanent hole in the check.
-     */
-    const PLANNED = new Set(["endpoints.ts", "subscriptions.ts"]);
-
-    it("no planned filename has quietly started existing", () => {
-        const arrived = [...PLANNED].filter((name) => sourceNames.has(name));
-        expect(arrived).toEqual([]);
-    });
+    // invisible to the check that exists to catch renames. The class admits
+    // capitals because the operation modules are camelCase
+    // (`postManagedComment.ts`), and a name the pattern cannot match is a
+    // name the check never resolves (D144).
+    const NAME = /(?<![\w/.-])([a-zA-Z][a-zA-Z0-9-]*(?:\.[a-zA-Z0-9-]+)*\.ts)(?![\w-])/g;
 
     it("knows the source filenames and finds names to check", () => {
         expect(sourceNames.size).toBeGreaterThan(15);
         expect(docs.length).toBeGreaterThan(5);
     });
 
-    /**
-     * Register rows that NARRATE a rename, split or deletion: each names the
-     * file as it was CALLED when the decision was taken — `lab.test.ts` became
-     * `never-tracked.test.ts` and the sentence saying so cannot be rewritten —
-     * and the register is immutable. Excised row by row rather than by name,
-     * so a stale mention of the same file anywhere else still fails, and
-     * active documentation stays checked throughout.
-     */
-    const HISTORIC_ROWS = ["D75", "D85", "D87", "D99", "D108"];
-    const HISTORIC = new RegExp(`^\\| (?:${HISTORIC_ROWS.join("|")}) \\|.*$`, "gm");
-
-    it("every excised row is still a row of the register", () => {
-        const register = readFileSync(join(repoRoot, "design", "decisions.md"), "utf8");
-        const excised = [...register.matchAll(HISTORIC)].length;
-        expect(excised).toBe(HISTORIC_ROWS.length);
-    });
-
     it("every bare source filename in a document resolves to a real file", () => {
         const unknown: string[] = [];
         for (const { doc, text } of docs) {
-            const activeText = doc === "design/decisions.md" ? text.replace(HISTORIC, "") : text;
-            for (const match of activeText.matchAll(NAME)) {
+            for (const match of text.matchAll(NAME)) {
                 const name = match[1]!;
-                if (!sourceNames.has(name) && !PLANNED.has(name)) {
+                if (!sourceNames.has(name)) {
                     unknown.push(`${doc} -> ${name}`);
                 }
             }
@@ -190,9 +196,13 @@ describe("documents name files that exist", () => {
 /**
  * A decision id is neither a path nor a filename, so the checks above cannot
  * see it: `D77` was cited three times in `core/src` before its row existed.
+ *
+ * Resolved against HISTORY, which holds every id ever written. The constraints
+ * page holds only the binding subset, so a source comment citing a row that
+ * has stopped binding still resolves.
  */
 describe("code cites decisions that exist", () => {
-    const register = readFileSync(join(repoRoot, "design", "decisions.md"), "utf8");
+    const register = readFileSync(join(repoRoot, REGISTER_HISTORY), "utf8");
     const recorded = new Set([...register.matchAll(/^\| (D\d+) \|/gm)].map((m) => m[1]!));
 
     const sources = sourceFiles(["src"]).map((file) => ({

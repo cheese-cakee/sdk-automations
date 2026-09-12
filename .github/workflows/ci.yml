@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         # 24 is the LTS floor we support; 25 is what development happens on.
-        # The matrix is not ceremony: `packages/store/` uses `node:sqlite`, which is
+        # The matrix is not ceremony: `packages/runtime/src/store/` uses `node:sqlite`, which is
         # still experimental and still emits a warning on 24 — an API that
         # can change between majors is one worth testing on both.
         node: [24, 25]
@@ -116,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [adapter, core, probes, shell, store]
+        package: [capabilities, core, runtime]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -180,7 +180,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [adapter, core, probes, shell, store]
+        package: [capabilities, core, runtime]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -236,6 +236,8 @@ jobs:
       # default, which is what the parity measurement (4m05s full on core
       # against 9s incremental with nothing changed) compares against.
       - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run --incremental${{ github.event_name == 'push' && ' --force' || steps.mode.outputs.flags }}
+      - if: matrix.package == 'runtime'
+        run: node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-incremental.json src/store/ 96
       # The other half of the restore above, and the reason the seed stays
       # authoritative: `push` is the same condition that adds `--force`, and
       # `on.push.branches` admits only main — so the single entry any run can

@@ -1,9 +1,10 @@
 # Threat Model for the Hosted GitHub App
 
-> **Draft, partly implemented.** Webhook verification, durable delivery acceptance/deduplication, strict
-> configuration parsing, SQLite storage, read-only GitHub adapter, safety refusals, and CI supply-chain
-> controls exist. The effect executor, production hosting/operator, retention, and every off-GitHub integration remain
-> open, so required controls below are not claims that all of them run today.
+> **The security argument, partly implemented.** Webhook verification, durable delivery
+> acceptance/deduplication, strict configuration parsing, SQLite storage, the GitHub adapter and its
+> four gated write endpoints, the effect path from journal to read-back, safety refusals, and CI
+> supply-chain controls exist. Production hosting and its operator, retention, and every off-GitHub
+> integration remain open, so the required controls below are not claims that all of them run today.
 
 ## 1. Trust boundaries
 
@@ -90,7 +91,7 @@ flowchart LR
 - A later inheritance design must restrict sources, pin revisions, detect loops and deletion, and
   fail closed before activation.
 - Capabilities receive normalized observations and narrow services, never raw tokens.
-- An intent names capability, repository, item, operation, causal observation, expected state, and stable
+- An intent names capability, repository, item, operation, causal observation, claimed state, and stable
   effect identity. The shell's durable report separately records the configuration revision. A future
   executor must bind and recheck both before a write; there is no installation field on `Intent` today.
 - Fair scheduling prevents one partition from taking every worker.
@@ -171,30 +172,35 @@ flowchart LR
 
 ## 9. Open decisions
 
-- The maximum webhook body size and rejection telemetry need measurement.
-- The retention period for delivery identifiers and canonical reports is an operations decision; the
-  SQLite storage boundary itself is selected and built.
-- Some ordering evidence requires timeline reads or operational versions.
-- Per-actor command budgets must be set within the measured ceilings.
-- Projection templates need focused abuse tests.
-- The project must decide who may approve active or destructive modes.
-- Whether any capability legitimately needs pull-request-ref reads, and how they are labeled.
-- Inheritance needs a separate design and review if repeated configuration shows a need.
-- Cross-repository capabilities should stay out of scope until a concrete need exists.
-- The useful tenant partition level needs load testing.
-- The reconciliation interval depends on rate limits and capability needs.
-- The rate reservation policy needs operational evidence.
-- The effect journal/claim schema is selected and built, but the future executor still needs an overlap and
-  recovery contract for how it uses that record.
-- The first shell uses the SQLite `seen_delivery` table as durable intake. Production hosting must decide
-  whether that single-writer shape remains the queue boundary.
-- A compromised maintainer account is a risk the App cannot remove.
-- Hosting and key custody have not been selected.
-- The exact build and deployment platform remains open.
-- Storage schema version 4 and its five tables are built; retention, backup, access, and deletion remain open.
-- No off-GitHub integration belongs in the first platform milestone.
-- Whether custom callbacks are ever needed remains open.
-- Still to choose: hosting · whether production keeps the SQLite intake shape · retention · backup · key custody.
-- Still to choose: tenant partition · final installation permission ceiling · operator roles.
-- Those choices must update this document.
-- This draft lists required properties, not evidence that the implementation has them.
+What is still unchosen, and who owes the choice. Where the register carries the question, the row is
+the owner and this list is only the security reading of it ([`../constraints.md`](../constraints.md)).
+
+- **Hosting, key custody, and the build and deployment platform.** Q1 names the organization that
+  must own them; Q17 is the deployment shape that owner has to provide.
+- **Retention, backup, access, and deletion** of delivery identifiers, canonical reports and warning
+  records — Q17's last sub-question. Pruning exists in the store and nothing calls it, so today the
+  answer is "everything is kept".
+- **Whether production keeps the SQLite `seen_delivery` table as the queue boundary.** Q17's
+  durable-queue sub-question. The storage decision requires a persistent single-writer disk, so what
+  is open is whether hosting can hold that shape, not whether the shape is right.
+- **The tenant partition level, the final installation permission ceiling, and the operator roles.**
+  Q11 owns the installation scope, Q13 owns the roles; the partition level needs load testing
+  whichever way those go.
+- **Who may approve active or destructive modes.** Answered for ring-zero by D126, whose scope
+  boundary is the pilot gate: past the personal sandbox this takes the volunteer repository's
+  maintainers and the named operator (Q1, Q13), per P8. Wider than that, it is unanswered.
+- **Whether configuration inheritance is ever needed.** Q14 defers it from the first version; it
+  earns a separate design and review only if repeated configuration shows the need.
+- **Per-actor command budgets**, which must be set within the measured ceilings.
+- **The reconciliation interval and the rate reservation policy**, both of which need operational
+  evidence. The client's one-percent primary reserve is a floor it chose for itself, not a policy
+  across installations.
+- **Focused abuse tests for projection templates.**
+- **Whether any capability legitimately needs pull-request-ref reads, and how they are labeled.**
+- **Whether custom callbacks are ever needed.**
+
+Three things here are not decisions and do not become one: a compromised maintainer account is a
+risk the App cannot remove, cross-repository capabilities stay out of scope until a concrete need
+exists, and no off-GitHub integration belongs in the first platform milestone. Making any choice
+above must update this document, which lists required properties rather than evidence that the
+implementation has them.

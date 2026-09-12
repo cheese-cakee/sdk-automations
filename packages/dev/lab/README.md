@@ -7,10 +7,13 @@ protocols stay here with the instrument that executes them.
 
 Three eras (D87, D88):
 
-1. **Feasibility (July 2026, closed — reopened once)** — protocols 6.1–6.7 below, run by the
-   throwaway `harness/`. Frozen as methods; their conclusions are in the register. **6.8 reopens it**:
-   D123 records the `readLinkedIssues` measurement that supplied its missing matrix row and
-   closes that. An era closes when its gate closes, not when its questions run out.
+1. **Feasibility (July 2026, closed — reopened once, runner retired)** — protocols 6.1–6.7 below.
+   Frozen as methods; their conclusions are in the register, which is the whole of what the era
+   produced. **6.8 reopened it**: D123 records the `readLinkedIssues` measurement that supplied its
+   missing matrix row and closes that. An era closes when its gate closes, not when its questions
+   run out — and when it closes its instrument goes with it, which is what "the harness is
+   disposable" meant. The throwaway `harness/` that executed 6.1–6.8 was never tracked, so no
+   clone ever had it; a protocol naming `harness/src/…` names the method, not a file to run.
 2. **Capture (first run complete; extend with new observation kinds)** — protocol 7.1: scrubbed webhook
    payloads for the `events.ts` normalizer.
    `src/scrub.ts` is the rules, `src/capture.ts` the receiver, and nothing unscrubbed can reach a
@@ -18,10 +21,11 @@ Three eras (D87, D88):
 3. **Conformance (when the adapter ships)** — scheduled probes re-verify the perishable facts in
    `packages/core/src/github/` and stamp a tracked result file a `checks/` lock reads.
 
-Tracked: `protocols/`, `src/`, `test/`. Never tracked: `harness/` (the era-1 code and private
-evidence archive), `evidence/` (capture staging), `.env` — enforced by `packages/dev/checks/test/never-tracked.test.ts`,
-not just `.gitignore`. The lab tracks no evidence: reviewed captures go straight into the testkit as
-fixtures, conclusions go to the register, and everything else stays local.
+Tracked: `protocols/`, `src/`, `test/`. Never tracked: `harness/` (era 1's private evidence
+archive, and the retired runner where a machine still has one), `evidence/` (capture staging),
+`.env` — enforced by `packages/dev/checks/test/never-tracked.test.ts`, not just `.gitignore`. The
+lab tracks no evidence: reviewed captures go straight into the testkit as fixtures, conclusions go
+to the register, and everything else stays local.
 
 ## The road ahead
 
@@ -33,7 +37,7 @@ flowchart LR
     end
     pending -->|"a human reads every file"| fixtures["packages/dev/testkit/fixtures/ — for events.ts"]
     results -.->|"lock reads"| checks["checks/: probedAt matches latest run"]
-    conclusions["every era's conclusions"] --> register["design/decisions.md"]
+    conclusions["every era's conclusions"] --> register["design/history/decisions.md"]
 ```
 
 Next, in order, each on its trigger:
@@ -50,7 +54,7 @@ Next, in order, each on its trigger:
 
 ## Era 1 — the feasibility experiments (frozen record)
 
-The falsification experiments from `design/build-plan.md`'s feasibility phase: a throwaway
+The falsification experiments of the platform's feasibility phase: a throwaway
 development GitHub App run against a **personal sandbox repository**,
 producing the evidence the stage-three exit gate required. The design's
 assumptions met real GitHub API behavior here for the first time.
@@ -76,12 +80,12 @@ pnpm --filter @hiero-hackers/automation-lab capture
   repository. The org sandbox is ring one and comes later, with its owner
   and entry criteria recorded first.
 - **The harness is disposable; the evidence is the product.** Nothing in
-  `harness/` is the future platform. Every API interaction is captured as
-  structured JSON so observations carry their own citations, in the same
-  spirit as the `design/audit/` file:line style.
-- **Bounded hostility.** Experiments that provoke failures (secondary rate
-  limits, forged webhooks) are capped in the harness; we measure GitHub's
-  behavior, we do not hammer GitHub's infrastructure.
+  `harness/` was the future platform, and the runner is retired now that its
+  gate is closed. Every API interaction was captured as structured JSON so
+  observations carry their own citations, and that archive is what survives.
+- **Bounded hostility.** A run that provokes failures (secondary rate limits,
+  forged webhooks) is capped in whatever instrument executes it; we measure
+  GitHub's behavior, we do not hammer GitHub's infrastructure.
 - **Fork code is never executed with App write credentials** (protocol 6.6).
 
 ## The experiments

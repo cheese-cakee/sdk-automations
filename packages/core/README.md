@@ -8,7 +8,8 @@ a unit test (`test/slice.test.ts`).
 **The front door is one verb.** A shell hands `decide()` a delivery, the
 parsed configuration, the enabled capabilities, and the few facts core
 cannot know (the clock, the kill switch, the installation's grants, human
-edit ordering); it gets back a `Report` and the approved intents. Everything
+edit ordering, and the warning already recorded for an effect); it gets back a
+`Report` and the approved intents. Everything
 else in this package is what that verb composes:
 
 ```mermaid
@@ -23,7 +24,10 @@ labels → position"]
 screens"]
     S --> W["safety/world.ts
 derive the world"]
-    W --> G["safety rules + gates"]
+    W --> G["safety rules + gates
+(a graced act meets the destructive door;
+with no warning recorded, the platform's
+own warning comment is approved instead)"]
     G --> R["report/ findings"]
     G --> A["approved intents
 (not executed by the runnable shell)"]
@@ -31,17 +35,18 @@ derive the world"]
 
 | Directory | The question it answers | Files |
 |---|---|---|
-| `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation), `invoke.ts` (how a capability is called, type erased) — and its own [README](src/engine/README.md) |
-| `src/config/` | What did this repository ask for? | `schema.ts`, `sections.ts`, `parse.ts`, `document.ts` (YAML in), `labels.ts` (label ↔ meaning, both directions) — and its own [README](src/config/README.md) with the path a file takes |
-| `src/workflow/` | What states exist, and how do they move? | `positions.ts` (derived from config), `causes.ts`, `state.ts`, `transitions.ts` (the tables and the legality question), `reference.ts` (the executable spec), `project.ts` — and its own [README](src/workflow/README.md) |
-| `src/capability/` | What may a capability declare and do? | `declaration.ts` (the sole direct-list validator), `catalogue.ts` (closed vocabulary and platform-owned operation facts), `boundary.ts` (how it is called), `intent.ts` (projection-aware screens), `factory.ts` (how one is built without ceremony) |
-| `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) — and its own [README](src/safety/README.md) |
-| `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — and its own [README](src/github/README.md) with the provenance table |
-| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) — and its own [README](src/report/README.md) |
+| `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → fact record), `invoke.ts` (how a capability is called, type erased) |
+| `src/config/` | What did this repository ask for? | `schema.ts`, `sections.ts`, `parse.ts`, `document.ts` (YAML in), `labels.ts` (label ↔ meaning, both directions) |
+| `src/workflow/` | What states exist, and how do they move? | `positions.ts` (derived from config), `causes.ts`, `state.ts`, `transitions.ts` (the tables and the legality question), `reference.ts` (the executable spec), `project.ts` |
+| `src/capability/` | What may a capability declare and do? | `declaration.ts` (the sole direct-list validator), `catalogue.ts` (closed vocabulary), `operations/` (the platform's facts and change wording, one module per operation), `boundary.ts` (how it is called), `intent.ts` (projection-aware screens), `factory.ts` (how one is built without ceremony) |
+| `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors, both reachable since `design/guides/grace.md`), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) |
+| `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — each stamping, in its own header, the date it was probed and the symptom that says it has rotted |
+| `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) |
 
-Directories are named for the question a maintainer arrives with, not for a
-technical kind. There is no `types/` or `utils/`: naming by kind forces you to
-already know the answer in order to find it.
+Each directory's `index.ts` header is its own documentation — what it owns,
+its rules and its traps. Directories are named for the question a maintainer
+arrives with, not for a technical kind. There is no `types/` or `utils/`:
+naming by kind forces you to already know the answer in order to find it.
 
 **Four stories, seven directories.** Read core as: *vocabulary* (catalogue +
 meanings + the facts tables), *rules* (safety + the screens + the map),
@@ -56,8 +61,9 @@ two aren't forced to coincide).
    ~180 lines; the parity test at its bottom is `decide()`'s specification.
    Start here if the glossary below feels like a wall — it is the same journey,
    runnable.
-1. [`src/capability/README.md`](src/capability/README.md) — what a capability
-   is, and the walkthrough of writing one.
+1. [`src/capability/index.ts`](src/capability/index.ts) — the barrel header
+   says what a capability may declare and why none of it is trusted; the three
+   seeds in `packages/capabilities/src/` are the worked examples.
 2. [`src/safety/rules.ts`](src/safety/rules.ts) — the ten rules as an ordered
    array; the order is contract and the tests assert it directly.
 
@@ -68,17 +74,17 @@ already seen working.
 
 | Term | One line |
 |---|---|
-| **observation** | A normalized fact about a repository item, from the catalogue — never a raw payload. |
+| **facts** | One normalized record per repository item, from the catalogue — never a raw payload. Each group beyond the projection is read or marked `"unread"`. |
 | **meaning** | A platform position word (`awaitingTriage`, `ready`, …); repositories map their own labels onto these. |
 | **mapping** | The reviewed label ↔ meaning table; the only bridge between a repository's words and the platform's. |
 | **position** | The single meaning an item occupies in its flow — or `null`, or a conflict. |
-| **projection** | The observed label set turned into a position (or a conflict): `ObservationProjection`. |
+| **projection** | The observed label set turned into a position (or a conflict): `Projection`. |
 | **blocked** | An orthogonal human-set pause flag — never a position, never capability-writable. |
 | **capability** | A unit of automation: a declaration plus a pure `evaluate` that returns intents. |
 | **declaration** | A capability's self-description — what it watches, asks, does, and needs. |
 | **intent** | A desired outcome a capability requests; never an API call. |
 | **occasion** | Where and when an intent arose (repository, item, observed time) — bound once by the factory. |
-| **claim / expected** | The facts a capability believes hold (`ClaimedFacts`); checked by derivation, or at act time. |
+| **claims** | The facts a capability believes hold (`ClaimedFacts`); checked by derivation, or at act time. |
 | **world** | The derived, unforgeable safety facts (`DerivedWorld`) — what was observed, whether the claim holds. |
 | **screen** | A runtime check on a returned intent (attribution, floors, the map) — enforcement, not ergonomics. |
 | **verdict** | The safety engine's answer: apply, record-only, or a coded refusal. |
@@ -115,7 +121,7 @@ the store owns persistence, which is why core can be pure.
 ```mermaid
 flowchart LR
     W["webhook"] --> N["shell: normalize"]
-    N --> O["observation"]
+    N --> O["facts"]
     O --> E["capability.evaluate()"]
     E --> I["intent[]"]
     I --> S["safety: verdict"]
@@ -129,9 +135,9 @@ flowchart LR
 Core decides; it never acts. Before core is invoked, the shell validates the
 complete direct capability list and refuses to construct a processor or HTTP
 server when any declaration is invalid. `evaluate` returns outcome requests;
-the engine gets current workflow position only from the authoritative
-observation projection and derives action class and required permission from
-`INTENT_OPERATIONS`. A capability's `expected` facts are requested
+the engine gets current workflow position only from the record's own
+projection and derives action class and required permission from
+`INTENT_OPERATIONS`. A capability's `claims` are requested
 preconditions, never current-state evidence. Missing, conflicted, or stale
 authority refuses before permissions and mode. The runnable shell rejects
 active mode rather than performing approved intents, keeping this package
@@ -185,7 +191,7 @@ The invariant tests prove the *decision logic* is coherent: given true
 inputs, the rules compose the way the design says they should. They do not
 prove the safety property itself. Two debts remain for any future write path:
 
-- **External observations can still be wrong.** `DerivedWorld` makes precondition claims unforgeable inside
+- **External readings can still be wrong.** `DerivedWorld` makes precondition claims unforgeable inside
   core. With App credentials, the shell supplies live installation grants and newer-human ordering. The
   credential-free path uses stubs and can overstate what would apply. D51 requires the adapter to distinguish
   “no human change” from “could not establish ordering”; reporting `null` for a failed lookup silently
@@ -193,8 +199,8 @@ prove the safety property itself. Two debts remain for any future write path:
 - **Verdicts are advisory until the write lands.** A future write path must
   recheck immediately before the GitHub write to close the usual
   time-of-check/time-of-use window
-  ([`design/guides/effects.md`](../../design/guides/effects.md): postcondition verification and unclear-outcome
-  reconciliation), not more pure logic.
+  ([`design/guides/write-operations.md`](../../design/guides/write-operations.md) §7: postcondition
+  verification and unclear-outcome reconciliation), not more pure logic.
 
 Green tests here mean the rules are consistent — not that the system is
 safe. The 2026-07-30 audit is the evidence: 152 tests were green, the
@@ -209,7 +215,7 @@ has to be written down.
 
 Coding the prose surfaced ambiguities; each is tagged `FINDING(...)` in the
 source at the exact place the assumption was made, and each is recorded in
-[`design/decisions.md`](../../design/decisions.md) §3 as a hypothesis with this
+[`design/history/decisions.md`](../../design/history/decisions.md) §3 as a hypothesis with this
 code as its evidence:
 
 - `FINDING(taxonomy-blocked)` → **D28** — `blocked` is an orthogonal
@@ -295,8 +301,9 @@ diagrams from the tables outright would close the rest and remains the
 cheaper long-term option.
 
 Every other table here is still unchecked, and drift is not hypothetical.
-The register's D8 row cited five conflict classes that `manual-edits.md`
-no longer contains (caught 2026-07-25, row now `replaced`), and D48 is
+The register's D8 row cited five conflict classes that the manual-edit
+guide no longer contained (caught 2026-07-25, row now `replaced`; the
+guide itself is gone, folded into `design/contracts/safety.md`), and D48 is
 worse: an edge the audit shows Hiero automation performing today was
 missing from the design document *and* the tables, so no comparison
 between them could have found it. Consistency checks catch copies that
