@@ -42,6 +42,7 @@ your file has to move.
 | Code | In plain terms |
 |---|---|
 | `leaseHeld` | A live worker holds this effect's lease, so this pass did nothing; the next one asks again |
+| `sweepRequestCap` | This tick had spent its shared GitHub request allowance, so the act was held back for the next sweep |
 | `sweepWriteCap` | This firing had spent the writes one sweep may send, so the act was held back; the next sweep decides it again |
 | `rowUnreadable` | The ledger's bytes for this call could not be read, so the call is closed and nothing was resent |
 | `ledgerInconsistent` | The ledger holds a history the App cannot read as one effect; `pnpm shell:explain` prints it, and clearing it is a person's job |

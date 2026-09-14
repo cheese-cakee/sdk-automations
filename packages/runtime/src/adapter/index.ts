@@ -70,4 +70,4 @@ export {
 } from "./client/contract.js";
 export { type WriteEndpoint } from "./client/endpoints.js";
 export { type WriteResult, type WriteVerbs } from "./writes/operations/transport.js";
-export { createGitHubHttpClient, wait } from "./client/http.js";
+export { createGitHubHttpClient, wait, withRequestBudget } from "./client/http.js";

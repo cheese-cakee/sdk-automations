@@ -14,7 +14,7 @@ import {
     type Composition,
 } from "../../../src/shell/compose/composition.js";
 import { DEFAULT_TICK_MS } from "../../../src/shell/compose/shell.js";
-import { SWEEP_READ_REQUESTS, SWEEP_WRITE_CALLS } from "../../../src/shell/sweep/budgets.js";
+import { SWEEP_REQUESTS, SWEEP_WRITE_CALLS } from "../../../src/shell/sweep/budgets.js";
 
 const STATE_HOME = "/var/lib/state";
 const DATA_DIR = join(STATE_HOME, "sdk-automations");
@@ -71,7 +71,7 @@ const CADENCE = "SWEEP_CADENCE_HOURS must be a whole number of hours, 1 or more.
 const CADENCE_UNBACKED =
     "SWEEP_CADENCE_HOURS arms the fact sweep and needs APP_ID, PRIVATE_KEY_PATH and INSTALLATION_ID to read GitHub with.";
 const WRITE_CAP = "SWEEP_WRITE_CALLS must be a whole number of calls, 1 or more.";
-const READ_BUDGET = "SWEEP_READ_REQUESTS must be a whole number of requests, 1 or more.";
+const READ_BUDGET = "SWEEP_REQUESTS must be a whole number of requests, 1 or more.";
 
 const absent = (name: string): Overrides => ({ [name]: undefined });
 
@@ -162,20 +162,20 @@ const TABLE: readonly Refusal[] = [
         env: { SWEEP_WRITE_CALLS: "twenty" },
         sentence: WRITE_CAP,
     },
-    { title: "SWEEP_READ_REQUESTS zero", env: { SWEEP_READ_REQUESTS: "0" }, sentence: READ_BUDGET },
+    { title: "SWEEP_REQUESTS zero", env: { SWEEP_REQUESTS: "0" }, sentence: READ_BUDGET },
     {
-        title: "SWEEP_READ_REQUESTS negative",
-        env: { SWEEP_READ_REQUESTS: "-1" },
+        title: "SWEEP_REQUESTS negative",
+        env: { SWEEP_REQUESTS: "-1" },
         sentence: READ_BUDGET,
     },
     {
-        title: "SWEEP_READ_REQUESTS fractional",
-        env: { SWEEP_READ_REQUESTS: "1.5" },
+        title: "SWEEP_REQUESTS fractional",
+        env: { SWEEP_REQUESTS: "1.5" },
         sentence: READ_BUDGET,
     },
     {
-        title: "SWEEP_READ_REQUESTS unreadable",
-        env: { SWEEP_READ_REQUESTS: "all" },
+        title: "SWEEP_REQUESTS unreadable",
+        env: { SWEEP_REQUESTS: "all" },
         sentence: READ_BUDGET,
     },
 ];
@@ -257,7 +257,7 @@ describe("an environment the composition accepts", () => {
                 TICK_SECONDS: "5",
                 SWEEP_CADENCE_HOURS: "6",
                 SWEEP_WRITE_CALLS: "3",
-                SWEEP_READ_REQUESTS: "40",
+                SWEEP_REQUESTS: "40",
                 KILL_SWITCH: "1",
                 SUSPENDED: "1",
             }),
@@ -270,7 +270,7 @@ describe("an environment the composition accepts", () => {
                 privateKeyPath: "/keys/app.pem",
             },
             writes: { appSlug: "hiero-hackers-sandbox" },
-            sweep: { cadenceMs: 6 * 60 * 60_000, writeCap: 3, readBudget: 40 },
+            sweep: { cadenceMs: 6 * 60 * 60_000, writeCap: 3, requestCap: 40 },
             switches: { killSwitch: true, suspended: true },
             paths: { configFile: "/etc/automations.yml", storeFile: "/var/shell.sqlite" },
             tickMs: 5_000,
@@ -282,8 +282,18 @@ describe("an environment the composition accepts", () => {
         expect(composed({ ...CREDENTIALS, SWEEP_CADENCE_HOURS: "1" }).sweep).toEqual({
             cadenceMs: 60 * 60_000,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
+            requestCap: SWEEP_REQUESTS,
         });
+    });
+
+    it("keeps the previous request-budget name as a compatibility alias", () => {
+        expect(
+            composed({
+                ...CREDENTIALS,
+                SWEEP_CADENCE_HOURS: "1",
+                SWEEP_READ_REQUESTS: "12",
+            }).sweep?.requestCap,
+        ).toBe(12);
     });
 
     /**

@@ -71,16 +71,14 @@ export interface SweepOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     /** One repository's processor; a due row's id names which (D169). */
-    readonly processorFor: (repository: RepositoryRef) => SweepProcessor;
+    readonly processorFor: (repository: RepositoryRef, budget: RequestBudget) => SweepProcessor;
     readonly clock: () => Date;
     /** How long until the next firing. sweep.md §2 step 4; the default is hourly. */
     readonly cadenceMs: number;
     /** How many writes one firing may send; the default is `SWEEP_WRITE_CALLS`. */
     readonly writeCap: number;
-    /** How many requests one firing may spend reading; the default is `SWEEP_READ_REQUESTS`. */
-    readonly readBudget: number;
-    /** What the budget above is spent against: the client's own count of requests sent. */
-    readonly requestsMade: () => number;
+    /** How many GitHub requests one tick may send; the default is `SWEEP_REQUESTS`. */
+    readonly requestCap: number;
     /** The installation switch (D171): a firing reads nothing, and still prunes and re-arms. */
     readonly suspended?: boolean;
     readonly log: Log;
@@ -118,12 +116,14 @@ interface Swept {
     readonly unread: number;
     readonly writes: number;
     readonly heldBack: number;
-    /** Items past the read budget, left for the next firing (D170). */
+    /** Items the request budget left for the next firing (D170). */
     readonly remaining: number;
     /** Where the next firing starts reading; null reads the list again from the beginning. */
     readonly resumeAfter: number | null;
-    /** Requests this firing's reading spent of the budget (D170). */
+    /** Requests this repository spent from the tick's budget (D170). */
     readonly requests: number;
+    /** This repository was left untouched for the next tick because the shared budget was spent. */
+    readonly deferred: boolean;
 }
 
 /**
@@ -139,12 +139,20 @@ const nothingRead = (row: ClaimedScheduleRow, requests = 0): Swept => ({
     remaining: 0,
     resumeAfter: row.resumeAfter,
     requests,
+    deferred: false,
+});
+
+const deferred = (row: ClaimedScheduleRow, requests = 0): Swept => ({
+    ...nothingRead(row, requests),
+    deferred: true,
 });
 
 /** How many of one item's effects the write cap turned away. */
 const heldBackIn = (decided: Decided): number =>
     decided.kind === "decided"
-        ? decided.outcomes.filter((outcome) => outcome.code === "sweepWriteCap").length
+        ? decided.outcomes.filter(
+              (outcome) => outcome.code === "sweepRequestCap" || outcome.code === "sweepWriteCap",
+          ).length
         : 0;
 
 /**
@@ -172,8 +180,7 @@ export function createSweep(options: SweepOptions): Sweep {
         clock,
         cadenceMs,
         writeCap,
-        readBudget,
-        requestsMade,
+        requestCap,
         suspended = false,
         log,
     } = options;
@@ -188,10 +195,11 @@ export function createSweep(options: SweepOptions): Sweep {
         row: ClaimedScheduleRow,
         config: RepositoryConfig,
         processor: SweepProcessor,
+        requestBudget: RequestBudget,
+        writeBudget: WriteBudget,
+        requestsBefore: number,
     ): Promise<Swept> => {
-        const before = requestsMade();
-        const spent = (): number => requestsMade() - before;
-        const requestBudget: RequestBudget = { remaining: readBudget, exhausted: false };
+        const spent = (): number => requestsBefore - requestBudget.remaining;
         const reader = processor.facts(config, requestBudget);
         const listed = await reader.openItems();
         if (!listed.ok) {
@@ -262,7 +270,7 @@ export function createSweep(options: SweepOptions): Sweep {
 
         // One budget for the firing: what it holds back is decided again next time.
 
-        const writeBudget: WriteBudget = { remaining: writeCap };
+        const writesBefore = writeBudget.remaining;
         let decided = 0;
         let unread = 0;
         let heldBack = 0;
@@ -291,11 +299,12 @@ export function createSweep(options: SweepOptions): Sweep {
             items: listed.items.length,
             decided,
             unread,
-            writes: writeCap - writeBudget.remaining,
+            writes: writesBefore - writeBudget.remaining,
             heldBack,
             remaining,
             resumeAfter,
             requests,
+            deferred: false,
         };
     };
 
@@ -324,40 +333,64 @@ export function createSweep(options: SweepOptions): Sweep {
     const readingOf = async (
         row: ClaimedScheduleRow,
         processor: SweepProcessor,
+        requestBudget: RequestBudget,
+        writeBudget: WriteBudget,
     ): Promise<Swept> => {
         if (suspended) {
             log({ event: "sweepSuspended", scheduleId: row.scheduleId });
             return nothingRead(row);
         }
+        if (requestBudget.remaining === 0 || writeBudget.remaining === 0) return deferred(row);
+        const requestsBefore = requestBudget.remaining;
         try {
             const config = await processor.configuration();
+            const requests = requestsBefore - requestBudget.remaining;
+            if (requestBudget.remaining === 0) return deferred(row, requests);
             // Neither an unreadable file nor a repository that wants no sweeping is a
             // reason to read twenty items: re-arm and ask again.
 
             if (config !== null && wantsSweeping(config, capabilities)) {
-                return await readRecords(row, config, processor);
+                return await readRecords(
+                    row,
+                    config,
+                    processor,
+                    requestBudget,
+                    writeBudget,
+                    requestsBefore,
+                );
             }
         } catch (error) {
             log({ event: "sweepFailed", detail: detailOf(error) });
         }
-        return nothingRead(row);
+        return nothingRead(row, requestsBefore - requestBudget.remaining);
     };
 
     /**
      * One firing, from claim to re-arm.
      * The re-arm happens whatever the reading came to: a row left `running` is one only a stale-claim redrive could free.
      */
-    const fire = async (row: ClaimedScheduleRow, repository: RepositoryRef): Promise<void> => {
+    const fire = async (
+        row: ClaimedScheduleRow,
+        repository: RepositoryRef,
+        requestBudget: RequestBudget,
+        writeBudget: WriteBudget,
+    ): Promise<void> => {
         log({ event: "sweepClaimed", scheduleId: row.scheduleId, dueAt: row.dueAt });
-        const swept = await readingOf(row, processorFor(repository));
+        const swept = await readingOf(
+            row,
+            processorFor(repository, requestBudget),
+            requestBudget,
+            writeBudget,
+        );
         pruneRetained();
-        const nextDueAt = nextDue();
+        const { deferred: wasDeferred, ...result } = swept;
+        const nextDueAt = wasDeferred ? clock().toISOString() : nextDue();
         if (
             !store.ledger.scheduleAgain(
                 row.scheduleId,
                 row.claimToken,
                 nextDueAt,
-                swept.resumeAfter,
+                result.resumeAfter,
             )
         ) {
             // A redrive took the claim over while this firing ran; whoever holds it now
@@ -366,7 +399,7 @@ export function createSweep(options: SweepOptions): Sweep {
             log({ event: "sweepFailed", detail: `the claim on "${row.scheduleId}" was lost` });
             return;
         }
-        log({ event: "sweepFinished", scheduleId: row.scheduleId, ...swept, nextDueAt });
+        log({ event: "sweepFinished", scheduleId: row.scheduleId, ...result, nextDueAt });
     };
 
     /**
@@ -376,10 +409,12 @@ export function createSweep(options: SweepOptions): Sweep {
     const fireDue = async (): Promise<void> => {
         try {
             const due: readonly ClaimedScheduleRow[] = store.ledger.claimDue(clock().toISOString());
+            const requestBudget: RequestBudget = { remaining: requestCap, exhausted: false };
+            const writeBudget: WriteBudget = { remaining: writeCap, requests: requestBudget };
             for (const row of due) {
                 const repository = repositoryOfScheduleId(row.scheduleId);
                 if (row.effect === SWEEP_EFFECT && repository !== null) {
-                    await fire(row, repository);
+                    await fire(row, repository, requestBudget, writeBudget);
                     continue;
                 }
                 // `claimDue` claims every due row, so this is a future effect's row with no

@@ -197,6 +197,13 @@ export function createCalls(options: CallOptions): Calls {
          * A write no endpoint realises is `unsent` instead, spending no attempt: the send closes and the next pass resumes at the same call.
          */
         async sendCall(pass, seq, call) {
+            if (pass.budget?.requests?.remaining === 0) {
+                return stop(
+                    "refused",
+                    "sweepRequestCap",
+                    "this tick's request budget is spent; resumed next sweep",
+                );
+            }
             if (pass.budget !== undefined && pass.budget.remaining <= 0) {
                 return stop(
                     "refused",

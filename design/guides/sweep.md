@@ -46,7 +46,7 @@ there has not changed: a read absent from the matrix is never sent, and the driv
 
 ## 3. Cost
 
-Per sweep, per open item: one timeline page, one comments page, and for a pull request one PR read,
+Per repository, per open item: one timeline page, one comments page, and for a pull request one PR read,
 one commits page, one reviews read, one GraphQL link query — about six points an item on a cold
 cache, most of them conditional thereafter. At the fleet design point (fifty repositories, twenty
 open items each) that is a thousand items an hour at the default cadence. The per-item reads are
@@ -54,8 +54,9 @@ conditional — every GET carries the ETag the adapter cached, and a 304 costs n
 steady-state price of a quiet hour is the one read that cannot be conditional: the GraphQL
 linked-issues query, one point per open pull request. The ETag cache is in-process and bounded
 (a thousand entries, twenty megabytes), so a repository past a few hundred open items evicts
-between firings and those reads cost a point each again. The secondary limit is about write
-concurrency and the sweep writes nothing itself.
+between firings and those reads cost a point each again. The reconciliation tick shares one request
+cap and one write cap across every due repository. This bounds outbound calls; GitHub still counts
+REST, GraphQL, search, and secondary limits separately.
 
 ## 4. What is still open
 

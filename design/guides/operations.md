@@ -53,8 +53,8 @@ still ahead: the promise outlives the window. Nothing prunes outside a firing, a
 - The adapter records primary and secondary rate-limit headers.
 - It uses conditional reads where supported and paginates every list operation.
 - It paces writes and applies bounded backoff.
-- One sweep firing sends at most `SWEEP_WRITE_CALLS` write requests, 20 by default (D167), and spends at
-  most `SWEEP_READ_REQUESTS` requests reading, 2,000 by default, resuming where it stopped (D170).
+- One reconciliation tick shares at most `SWEEP_WRITE_CALLS` writes and `SWEEP_REQUESTS` total
+  GitHub requests across every due repository, 20 and 2,000 by default (D167, D170).
 - It stops retrying when GitHub's response says waiting is required.
 - Measured budgets (Q10):
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).

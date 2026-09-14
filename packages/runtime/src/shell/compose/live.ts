@@ -18,6 +18,7 @@ import {
     liveExternalsForDelivery,
     orderingEvidenceSource,
     wait,
+    withRequestBudget,
     type FactsReader,
     type OrderingEvidenceOptions,
     type ReadBack,
@@ -25,7 +26,7 @@ import {
 } from "../../adapter/index.js";
 import type { EffectReader, EffectWriter } from "../apply/apply.js";
 import type { Log } from "../log.js";
-import type { SweepFacts } from "../sweep/sweep.js";
+import type { RequestBudget, SweepFacts } from "../sweep/sweep.js";
 import type { Credentials } from "./composition.js";
 import type { RepositorySeams } from "./shell.js";
 
@@ -40,9 +41,7 @@ type _SweepSeamIsTheAdapterSurface = Satisfies<SweepFacts, FactsReader>;
 
 export interface LiveGitHub {
     /** One set per repository, built on demand and held: the installation may deliver for any. */
-    readonly seamsFor: (repository: RepositoryRef) => RepositorySeams;
-    /** The client's own count, which the sweep's read budget is spent against (D170). */
-    readonly requestsMade: () => number;
+    readonly seamsFor: (repository: RepositoryRef, budget?: RequestBudget) => RepositorySeams;
 }
 
 /** The record's own fields, plus the seams a record cannot carry. */
@@ -83,7 +82,8 @@ export function liveGitHub({
     const http = createGitHubHttpClient({ tokenSource });
 
     /** One repository's seams, each built exactly as a one-repository process built them. */
-    const seamsIn = (repository: RepositoryRef): RepositorySeams => {
+    const seamsIn = (repository: RepositoryRef, requestBudget?: RequestBudget): RepositorySeams => {
+        const client = requestBudget === undefined ? http : withRequestBudget(http, requestBudget);
         const landed = ownWrites(repository);
 
         /**
@@ -101,7 +101,7 @@ export function liveGitHub({
                 killSwitchActive,
                 installationGrants: grants.grants,
                 latestHumanChangeAt: orderingEvidenceSource({
-                    http,
+                    http: client,
                     repository,
                     ownWrites: landed,
                 }),
@@ -111,23 +111,20 @@ export function liveGitHub({
         return {
             facts: (config, budget) =>
                 createFactsReader({
-                    http: {
-                        ...http,
-                        request: (request) => http.request(request, budget),
-                    },
+                    http: requestBudget === undefined ? withRequestBudget(http, budget) : client,
                     repository,
                     config,
                     clock,
                     knownCapabilities,
                 }),
-            configSource: githubConfigSource({ client: http, repository }),
+            configSource: githubConfigSource({ client, repository }),
             // One call per delivery, so the seam below is bound to that delivery.
 
             externals: async ({ payload, deliveryId, config }) => {
                 const outcome = await liveExternalsForDelivery(
                     {
                         tokenSource,
-                        http,
+                        http: client,
                         repository,
                         config,
                         knownCapabilities,
@@ -152,9 +149,9 @@ export function liveGitHub({
                 writes === null
                     ? null
                     : {
-                          writer: createWriteVerbs({ http, repository }),
+                          writer: createWriteVerbs({ http: client, repository }),
                           reader: createReadBack({
-                              http,
+                              http: client,
                               repository,
                               // Both halves of the one App registration this process already holds.
 
@@ -171,8 +168,8 @@ export function liveGitHub({
 
     const built = new Map<string, RepositorySeams>();
     return {
-        requestsMade: http.requestsMade,
-        seamsFor: (repository) => {
+        seamsFor: (repository, budget) => {
+            if (budget !== undefined) return seamsIn(repository, budget);
             const key = `${repository.owner}/${repository.repo}`;
             const held = built.get(key) ?? seamsIn(repository);
             built.set(key, held);

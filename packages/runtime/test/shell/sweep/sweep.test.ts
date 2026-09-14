@@ -19,7 +19,7 @@
  * barrel is how it crosses, the way the composition root does.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     asDeliveryGuid,
     parseConfigDocument,
@@ -42,7 +42,7 @@ import {
     stubbedExternals,
     SWEEP_EFFECT,
     repositoryOfScheduleId,
-    SWEEP_READ_REQUESTS,
+    SWEEP_REQUESTS,
     SWEEP_WRITE_CALLS,
     sweepScheduleId,
     type ConfigSource,
@@ -112,6 +112,12 @@ let logged: ShellEvent[];
 beforeEach(() => {
     store = new Store(temp.file("store.sqlite"));
     logged = [];
+});
+
+afterEach(() => {
+    try {
+        store.close();
+    } catch {}
 });
 
 const log = (event: ShellEvent): void => {
@@ -293,8 +299,7 @@ function driven(script: Script = {}, config = configFrom(CONFIG_TEXT, CAPABILITI
         clock: () => NOW,
         cadenceMs: DAY_MS,
         writeCap: SWEEP_WRITE_CALLS,
-        readBudget: SWEEP_READ_REQUESTS,
-        requestsMade: () => 0,
+        requestCap: SWEEP_REQUESTS,
         log,
     });
     return { reader, decided, run: () => sweep.runDue() };
@@ -424,8 +429,7 @@ describe("a firing that reads nothing", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -461,8 +465,7 @@ describe("a firing that reads nothing", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -494,8 +497,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -583,8 +585,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -629,8 +630,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -718,8 +718,7 @@ describe("the writes one firing may send", () => {
             clock: () => now,
             cadenceMs: DAY_MS,
             writeCap: 2,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -761,8 +760,7 @@ describe("the writes one firing may send", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: 2,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -772,7 +770,7 @@ describe("the writes one firing may send", () => {
     });
 });
 
-// ─── The read budget ─────────────────────────────────────────────────
+// ─── The request budget ──────────────────────────────────────────────
 
 /** Five open issues, listed out of order: the numbers a cursor walks through (D170). */
 const FIVE: readonly SweptItem[] = [13, 11, 15, 12, 14].map((number) =>
@@ -794,18 +792,16 @@ interface Budgeted {
     fire(days: number): Promise<void>;
 }
 
-/** One sweep under a read budget it spends in requests, fired as often as a case likes. */
-function budgeted(readBudget: number, items: readonly SweptItem[] = FIVE): Budgeted {
+/** One sweep under a request budget, fired as often as a case likes. */
+function budgeted(requestCap: number, items: readonly SweptItem[] = FIVE): Budgeted {
     const listing: { items: SweptItems } = { items: { ok: true, items } };
     const { processor, decided } = scriptedProcessor(configFrom(CONFIG_TEXT, CAPABILITIES));
-    let requests = 0;
     const cost = { item: ITEM_COST };
     /** The scripted reader, charging what the live one's reads would cost. */
     const counted = (config: RepositoryConfig, budget: RequestBudget): SweepFacts => {
         const reader = scriptedReader(listing).facts(config);
         const spend = (cost: number): void => {
             const sent = Math.min(cost, budget.remaining);
-            requests += sent;
             budget.remaining -= sent;
             if (sent < cost) budget.exhausted = true;
         };
@@ -832,8 +828,7 @@ function budgeted(readBudget: number, items: readonly SweptItem[] = FIVE): Budge
         clock: () => now,
         cadenceMs: DAY_MS,
         writeCap: SWEEP_WRITE_CALLS,
-        readBudget,
-        requestsMade: () => requests,
+        requestCap,
         log,
     });
     return {
@@ -853,6 +848,57 @@ const cursorAfter = (days: number): number | null | undefined =>
     store.ledger.claimDue(new Date(NOW.getTime() + days * DAY_MS).toISOString())[0]?.resumeAfter;
 
 describe("the requests one firing may spend", () => {
+    it("shares one request budget across one hundred repositories", async () => {
+        const repositories = Array.from({ length: 100 }, (_, index) => ({
+            owner: "hiero-hackers",
+            repo: `sdk-${String(index).padStart(3, "0")}`,
+        }));
+        for (const repository of repositories) {
+            store.ledger.schedule(sweepScheduleId(repository), DUE_AT, SWEEP_EFFECT);
+        }
+        const config = configFrom(CONFIG_TEXT, CAPABILITIES);
+        const budgets = new Set<RequestBudget>();
+        let configured = 0;
+        let requests = 0;
+        const sweep = createSweep({
+            store,
+            capabilities: CAPABILITIES,
+            processorFor: (_repository, requestBudget) => ({
+                configuration: () => {
+                    configured += 1;
+                    budgets.add(requestBudget);
+                    requestBudget.remaining -= 1;
+                    requests += 1;
+                    return Promise.resolve(config);
+                },
+                decideItem: () => Promise.reject(new Error("an empty repository decides nothing")),
+                facts: (_config, budget) => ({
+                    openItems: () => {
+                        budgets.add(budget);
+                        budget.remaining -= 1;
+                        requests += 1;
+                        return Promise.resolve({ ok: true, items: [] });
+                    },
+                    issueFacts: () => Promise.reject(new Error("an empty repository has no issue")),
+                    pullRequestFacts: () =>
+                        Promise.reject(new Error("an empty repository has no pull request")),
+                }),
+            }),
+            clock: () => NOW,
+            cadenceMs: DAY_MS,
+            writeCap: SWEEP_WRITE_CALLS,
+            requestCap: 10,
+            log,
+        });
+
+        await sweep.runDue();
+
+        expect(requests).toBe(10);
+        expect(configured).toBe(5);
+        expect(budgets.size).toBe(1);
+        expect(store.ledger.claimDue(NOW.toISOString())).toHaveLength(95);
+    });
+
     it("does not claim an issue has no linked pull request after a partial scan", async () => {
         armed();
         const firing = budgeted(LIST_COST + ITEM_COST, [listedItem(ISSUE), listedItem(PULL)]);
@@ -1013,6 +1059,63 @@ describe("the requests one firing may spend", () => {
     });
 });
 
+describe("the budgets shared by repositories", () => {
+    it("gives deferred repositories a fresh budget on later ticks", async () => {
+        const repositories = ["one", "two", "three"].map((repo) => ({ owner: "o", repo }));
+        for (const repository of repositories) {
+            store.ledger.schedule(sweepScheduleId(repository), DUE_AT, SWEEP_EFFECT);
+        }
+        const config = configFrom(CONFIG_TEXT, CAPABILITIES);
+        const written: string[] = [];
+        const budgets = new Set<WriteBudget>();
+        const sweep = createSweep({
+            store,
+            capabilities: CAPABILITIES,
+            processorFor: (repository) => ({
+                configuration: () => Promise.resolve(config),
+                decideItem: (_input, under, _at, budget) => {
+                    expect(budget).toBeDefined();
+                    budgets.add(budget!);
+                    budget!.remaining -= 1;
+                    written.push(repository.repo);
+                    return Promise.resolve(decidedAs(under, [effectOn(ISSUE, "applied")]));
+                },
+                facts: () => ({
+                    openItems: () => Promise.resolve({ ok: true, items: [listedItem(ISSUE)] }),
+                    issueFacts: (listed, links) =>
+                        Promise.resolve({
+                            kind: "issue",
+                            repository,
+                            item: listed.item,
+                            observedAt: NOW,
+                            trigger: { kind: "sweep" },
+                            author: listed.author,
+                            actor: null,
+                            position: POSITION,
+                            alerts: { carried: [], arrived: [] },
+                            assignees: CLOCK,
+                            links: links === UNREAD ? UNREAD : { openPullRequests: links },
+                            command: UNREAD,
+                        }),
+                    pullRequestFacts: () => Promise.reject(new Error("none is listed")),
+                }),
+            }),
+            clock: () => NOW,
+            cadenceMs: DAY_MS,
+            writeCap: 1,
+            requestCap: SWEEP_REQUESTS,
+            log,
+        });
+
+        await sweep.runDue();
+        await sweep.runDue();
+        await sweep.runDue();
+
+        expect(new Set(written)).toEqual(new Set(["one", "two", "three"]));
+        expect(budgets.size).toBe(3);
+    });
+});
+
 // ─── Retention ───────────────────────────────────────────────────────
 
 const OLD_DELIVERY = asDeliveryGuid("00000000-0000-0000-0000-0000000000d1")!;
@@ -1168,8 +1271,7 @@ describe("what one firing prunes", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -1210,8 +1312,7 @@ describe("a firing under a suspended installation", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: () => 0,
+            requestCap: SWEEP_REQUESTS,
             suspended: true,
             log,
         });
@@ -1385,8 +1486,7 @@ describe("the reader and the driver together", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: http.client.requestsMade,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 
@@ -1579,8 +1679,7 @@ describe("an item the platform released within the minute", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            readBudget: SWEEP_READ_REQUESTS,
-            requestsMade: http.client.requestsMade,
+            requestCap: SWEEP_REQUESTS,
             log,
         });
 

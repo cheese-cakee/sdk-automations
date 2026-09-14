@@ -65,10 +65,7 @@ const local: RepositorySeams = {
 };
 
 /** The fact sweep, armed or absent — what this process does when nobody is talking. */
-const sweep =
-    sweepRecord === null || live === null
-        ? undefined
-        : { requestsMade: live.requestsMade, ...sweepRecord };
+const sweep = sweepRecord === null || live === null ? undefined : sweepRecord;
 
 const shell = createShell({
     secret: endpoint.secret,
