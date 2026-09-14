@@ -4,7 +4,7 @@
 
 Maintainers face load to grow a contributor ecosystem: PRs pile up unassigned and unlinked, issues sit untriaged, stale work isn't reclaimed. Building and maintaining such contributor-facing automations takes maintainer time away from the repo's core goals. There is a use-case to abstract contributor-facing automations away from the repositories.
 
-What the audits established about maintainers is in [`audit/services.md`](audit/services.md): the
+What the audits established about maintainers is in [`findings/services.md`](findings/services.md): the
 three SDKs diverge sharply in what they automate, every one of them drives its workflow from labels
 with manual entry paths throughout, and one already runs its whole automation off a maintained
 config file. Those findings are why the model is opt-in capabilities over mapped label

@@ -13,9 +13,10 @@ import {
     people,
     REVERSES_WITH,
     type AssigneeClock,
+    type Clock,
     type IntentFor,
-} from "@hiero-hackers/automation-core";
-import type { LadderContext, MakeIntent } from "./context.js";
+} from "@hiero-hackers/automation-core/author";
+import type { LadderContext } from "./context.js";
 import type { InactivityDeclaration, IssueLadderFacts } from "./declaration.js";
 import {
     graceHoursOf,
@@ -36,27 +37,23 @@ export async function onIssue(
     if (!issues.enabled) return [];
     // With a pull request open, the pull-request ladder governs (design.md).
     if (facts.links.openPullRequests.length > 0) return [];
-    return await onLadder(facts, ladderOf(issues), context);
+    return await onIssueLadder(facts, ladderOf(issues), context);
 }
 
 /** What one issue past its ladder is worth saying and doing about. */
-async function onLadder(
+async function onIssueLadder(
     facts: IssueLadderFacts,
     ladder: Ladder,
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
-    const { observedAt } = context;
     const intents: IntentFor<InactivityDeclaration>[] = [];
-
     for (const assignee of await people(context.platform, facts.assignees)) {
-        const clock = assigneeClock(assignee, observedAt);
+        const clock = assigneeClock(assignee, context.observedAt);
         if (clock.idleHours < ladder.remindAfter) continue;
-        // Dated at the clock's start, not the sweep: the occasion is the idle run.
-        const make = context.make(facts.item, clock.idleSince);
         intents.push(
             reaps(ladder)
-                ? release(assignee, clock.idleHours, ladder, observedAt, make)
-                : remind(assignee, clock.idleHours, ladder, observedAt, make),
+                ? release(context, assignee, clock, ladder)
+                : remind(context, assignee, clock, ladder),
         );
     }
     return intents;
@@ -67,20 +64,23 @@ async function onLadder(
  * intent, so one name per warning.
  */
 function release(
+    { platform, observedAt }: LadderContext,
     assignee: AssigneeClock,
-    idleHours: number,
+    clock: Clock,
     ladder: Reaping,
-    observedAt: Date,
-    make: MakeIntent,
 ): IntentFor<InactivityDeclaration> {
-    return make({
+    return platform.intent({
         operation: "releaseAssignment",
         desired: { login: assignee.login },
         cause: "assignmentWentStale",
-        claims: { closed: false },
+        // Dated at the clock's start, not the sweep: the occasion is the idle run.
+        occasion: clock.idleSince,
         explain: {
             summary: `Warned ${assignee.login} about a stale assignment; the release follows the grace.`,
-            detail: [`idle ${lasting(idleHours)}`, `releases after ${lasting(ladder.reapAfter)}`],
+            detail: [
+                `idle ${lasting(clock.idleHours)}`,
+                `releases after ${lasting(ladder.reapAfter)}`,
+            ],
         },
         grace: {
             hours: graceHoursOf(ladder),
@@ -101,13 +101,12 @@ function release(
  * takes the identity the platform's own warning would have taken.
  */
 function remind(
+    { platform, observedAt }: LadderContext,
     assignee: AssigneeClock,
-    idleHours: number,
+    clock: Clock,
     ladder: Ladder,
-    observedAt: Date,
-    make: MakeIntent,
 ): IntentFor<InactivityDeclaration> {
-    return make({
+    return platform.intent({
         operation: "postManagedComment",
         desired: {
             kind: "warning",
@@ -115,10 +114,10 @@ function remind(
             body: issueReminder([assignee.login], ladder, observedAt),
         },
         cause: "assignmentWentStale",
-        claims: { closed: false },
+        occasion: clock.idleSince,
         explain: {
             summary: `Reminded ${assignee.login} about a stale assignment; this ladder releases nothing.`,
-            detail: [`idle ${lasting(idleHours)}`, "no reap block is enabled, so nothing follows"],
+            detail: [`idle ${lasting(clock.idleHours)}`],
         },
     });
 }

@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseConfigDocument } from "@hiero-hackers/automation-core";
 import { CAPABILITIES } from "../src/index.js";
-import { smallestValidSettings } from "./world.js";
+import { smallestValidSettings } from "@hiero-hackers/automation-core/author/testing";
 
 function repositoryRoot(): string {
     let dir = dirname(fileURLToPath(import.meta.url));

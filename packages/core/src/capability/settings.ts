@@ -21,7 +21,7 @@ import {
     type SettingsResult,
     type SettingsView,
     type Spec,
-} from "./spec.js";
+} from "../config/spec.js";
 
 // ─── Bounds ──────────────────────────────────────────────────────────
 

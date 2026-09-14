@@ -13,12 +13,17 @@ import {
     carriesFactGroup,
     FACT_GROUPS,
     FACT_KINDS,
+    type PullRequestFacts,
+    type Unread,
+} from "../../src/catalogue.js";
+import {
     PRODUCER_NAMES,
     PRODUCERS,
     producerReads,
     producersReading,
     producesKind,
     WEBHOOK_PRODUCERS,
+    type ProducedFacts,
 } from "../../src/capability/index.js";
 
 describe("the producer registry", () => {
@@ -73,5 +78,25 @@ describe("the producer registry", () => {
         expect(producerReads("pull_request", "pullRequest", "review")).toBe(false);
         expect(producerReads("sweep", "pullRequest", "review")).toBe(true);
         expect(producersReading("pullRequest", "review")).toEqual(["sweep"]);
+    });
+});
+
+/** Equality both ways, so a branch widened on either side fails rather than passes. */
+type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+type Delivered = ProducedFacts<"pull_request", "pullRequest">;
+
+describe("the record shape a row types", () => {
+    it("excludes the unread branch from a group the row reads", () => {
+        const reads: Exactly<
+            Delivered["readiness"],
+            Exclude<PullRequestFacts["readiness"], Unread>
+        > = true;
+        expect(reads).toBe(true);
+    });
+
+    it("leaves a group the row omits unread", () => {
+        const omits: Exactly<Delivered["review"], Unread> = true;
+        expect(omits).toBe(true);
     });
 });

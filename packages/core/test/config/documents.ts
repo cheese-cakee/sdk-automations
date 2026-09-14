@@ -576,7 +576,7 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     },
     /**
      * `principals:` is the one section a settings value turns into a
-     * `@`-mention (`packages/core/src/capability/managed.ts`), so an empty
+     * `@`-mention (`packages/core/src/intents/managed.ts`), so an empty
      * name is refused the way an empty label is: it renders an `@` that pings
      * nobody and says nothing about having done so.
      */

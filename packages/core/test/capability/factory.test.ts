@@ -29,12 +29,6 @@ const declaration = declareCapability({
     needs: [],
     resolvers: [],
     intents: ["applyMappedLabel"],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "none",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 const make = intentFactory("triage", occasion);

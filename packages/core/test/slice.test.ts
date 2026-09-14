@@ -61,12 +61,6 @@ const declaration = declareCapability({
     needs: [],
     resolvers: [],
     intents: ["applyMappedLabel"],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "none",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 /** The shared triage repository, stamped with this file's revision. */

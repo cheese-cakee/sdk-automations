@@ -86,12 +86,6 @@ const declarationFor = <const S extends Spec>(
         needs: [],
         resolvers: [],
         intents: ["postManagedComment"],
-        operationalNeeds: {
-            schedule: false,
-            durableState: "none",
-            crossItemCoordination: false,
-            externalDelivery: false,
-        },
     });
 
 const fixture = (name: string): string =>

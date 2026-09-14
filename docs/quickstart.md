@@ -19,14 +19,10 @@ capabilities:
 mappings:
   labels:
     awaitingTriage: "status: triage"
-    ready: "status: ready for dev"
-    inProgress: "status: in progress"
-    needsReview: "status: needs review"
-    blocked: "status: blocked"
 ```
 
-**2.** Edit the label names on the right to match your repository's labels. Only labels you list
-here are ever touched.
+**2.** Edit the label name on the right to match your repository's triage label. Only labels you
+list here are ever touched; the [common setups](#common-setups) below map more as they need them.
 
 **3.** Merge to your default branch; a config in an open pull request does not take effect. With App
 credentials the shell reads that branch. Credential-free development and CI may point `CONFIG_FILE`
@@ -44,22 +40,21 @@ spelling; the App's parser is still the authority on the rest.
 
 The App wakes on two things: a webhook from GitHub, and its own hourly schedule, which sweeps every
 open issue and pull request for the capabilities that judge clocks. Either way it records a report
-per delivery naming every decision and why. Writes happen only in `active`, and only when the
-endpoint was started with a write path wired, which is not the default; anything the App would
-close or release is warned about first, and the warning is honoured. [Capabilities](capabilities.md)
-says what each automation does and what it may write.
+per delivery naming every decision and why. Anything the App would close or release is warned about
+first, and the warning is honoured. [Capabilities](capabilities.md) says what each automation does
+and what it may write.
+
+**Today the App reports and does not write.** Whoever runs it turns writes on; until then `active`
+is rejected before any decision is made, and the other three modes behave exactly as below.
 
 ## Choosing a mode
-
-The runnable shell supports `disabled`, `observe` and `dry-run`. It rejects `active` configuration before
-making a decision unless the endpoint was started with a write path wired, which is not the default.
 
 | Mode | Use it when |
 |---|---|
 | `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
 | `observe` | You want a non-writing decision record; today it includes record-only requested effects |
 | `dry-run` | You want the same non-writing record, plus a `wouldApply` line naming each change the App would make |
-| `active` | Unsupported unless the endpoint wires a write path |
+| `active` | You want writes — not yet, see above |
 
 `dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
 be is named.
@@ -115,7 +110,7 @@ copy the one closest to what you want and edit the label names:
 |---|---|
 | [`full.yml`](examples/full.yml) | Every capability on, every mapping family filled, every option with a comment — the catalogue |
 | [`inactivity.yml`](examples/inactivity.yml) | The scheduled capability alone: reminders and releases, with the defaults |
-| [`active.yml`](examples/active.yml) | A reserved active configuration; rejected unless the endpoint wires a write path |
+| [`active.yml`](examples/active.yml) | An active configuration, for the day writes are turned on; rejected until then |
 | [`observe-only.yml`](examples/observe-only.yml) | The same repository, reporting instead of acting |
 | [`minimal.yml`](examples/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
 | [`empty.yml`](examples/empty.yml) | Nothing at all, spelled out |

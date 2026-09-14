@@ -5,7 +5,8 @@
 
 import type { ConfigResult } from "../config/index.js";
 import type { SafetyRefusalCode, SafetyVerdict } from "../safety/index.js";
-import type { IntentScreen, StructuredExplanation } from "../capability/index.js";
+import type { StructuredExplanation } from "../catalogue.js";
+import type { IntentScreen } from "../intents/index.js";
 import { finding, type Finding, type Severity, type Subject } from "./finding.js";
 
 /**

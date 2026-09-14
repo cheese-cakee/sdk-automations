@@ -25,14 +25,10 @@ export type ShellEvent =
           readonly writes: "armed" | "absent";
           /** Whether this composition reads the repository on a clock; `absent` is the default. */
           readonly sweep: "armed" | "absent";
+          /** Whether `SUSPENDED=1` holds this installation: nothing is decided or read (D171). */
+          readonly suspended: boolean;
       }
     | { readonly event: "shutdown"; readonly signal: string }
-    | {
-          /** The superseded default holds a store this run will not read. */
-          readonly event: "legacyStoreFound";
-          readonly legacyPath: string;
-          readonly storePath: string;
-      }
     | {
           readonly event: "deliveryAccepted";
           readonly deliveryId: string;
@@ -59,7 +55,14 @@ export type ShellEvent =
     | {
           readonly event: "deliveryCompleted";
           readonly deliveryId: string;
-          readonly kind: "decision" | "configRejected" | "modeUnsupported" | "repositoryMismatch";
+          readonly kind:
+              | "decision"
+              | "configRejected"
+              | "modeUnsupported"
+              | "repositoryMismatch"
+              | "installationSuspended";
+          /** What an undecided record found: the errors, the mismatch, the reason. */
+          readonly detail?: string;
       }
     | {
           readonly event: "deliveryAttemptFailed";
@@ -111,19 +114,54 @@ export type ShellEvent =
           readonly dueAt: string;
       }
     | {
+          /** The installation is suspended, so this firing read nothing at all (D171). */
+          readonly event: "sweepSuspended";
+          readonly scheduleId: string;
+      }
+    | {
           /** The open-item list could not be read, so this firing decided nothing. */
           readonly event: "sweepUnreadable";
           readonly scheduleId: string;
           readonly detail: string;
       }
     | {
+          /** The read budget stopped a firing short; the next one continues from the cursor (D170). */
+          readonly event: "sweepPartial";
+          readonly scheduleId: string;
+          /** Items this firing read facts for before the budget stopped it. */
+          readonly read: number;
+          readonly remaining: number;
+          /** The item number the next firing resumes after. */
+          readonly resumeAfter: number;
+          /** Requests this firing's reading spent (D170). */
+          readonly requests: number;
+      }
+    | {
+          /** A firing's retention pass removed something; it says nothing when it removed nothing. */
+          readonly event: "sweepPruned";
+          readonly deliveries: number;
+          readonly effects: number;
+          readonly decisions: number;
+      }
+    | {
           /** A firing ended and the next one is armed. */
           readonly event: "sweepFinished";
           readonly scheduleId: string;
+          /** Open items the list held; `decided` says how many of them this firing read. */
           readonly items: number;
           readonly decided: number;
           /** Records whose links went unread; see `sweep.ts` on the inverse. */
           readonly unread: number;
+          /** Writes this firing spent of its cap (D167). */
+          readonly writes: number;
+          /** Approved effects the cap held back; the next firing decides each again. */
+          readonly heldBack: number;
+          /** Items the read budget left for the next firing (D170). */
+          readonly remaining: number;
+          /** Where the next firing starts reading; null starts the list again. */
+          readonly resumeAfter: number | null;
+          /** Requests this firing's reading spent of the budget (D170). */
+          readonly requests: number;
           readonly nextDueAt: string;
       }
     | {
@@ -139,10 +177,9 @@ export type Log = (event: ShellEvent) => void;
 
 /**
  * The events an operator is meant to notice; everything else goes to stdout.
- * Each is a repository change this platform decided on, journalled, then did not make.
+ * Each is a repository change this platform decided on, recorded, then did not make.
  */
 const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
-    "legacyStoreFound",
     "deliveryConflict",
     "acceptFailed",
     "deliveryAttemptFailed",

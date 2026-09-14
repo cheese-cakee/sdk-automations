@@ -3,8 +3,13 @@
  * record. Each operation is worded by its own module, not here.
  */
 
-import { INTENT_OPERATIONS, type AnyIntent, type IntentOperation } from "../capability/index.js";
-import { OPERATIONS, type OperationModule } from "../capability/operations/index.js";
+import type { IntentOperation } from "../catalogue.js";
+import {
+    INTENT_OPERATIONS,
+    OPERATIONS,
+    type AnyIntent,
+    type OperationModule,
+} from "../intents/index.js";
 import type { WriteRequest } from "../safety/index.js";
 import { finding, type Finding, type Subject } from "../report/index.js";
 

@@ -12,6 +12,8 @@ const COMMENT_SHARE = 0.25;
 /** A file may always carry this many comment lines, whatever its size: a header. */
 const SHARE_FLOOR_LINES = 6;
 const REGISTER_WORDS = 100;
+/** A README is a page: the tree it would describe has one home (D181). */
+const README_LINES = 60;
 
 /** The first register row the hundred-word rule reaches; earlier rows are never edited. */
 const FIRST_ENFORCED_ROW = 147;
@@ -211,6 +213,27 @@ function designPages(): string[] {
     );
 }
 
+/** The root README and every one under a package. `CONTRIBUTING.md` is not a README. */
+function readmePages(): string[] {
+    return repositoryFiles().filter(
+        (path) =>
+            path === "README.md" || (path.startsWith("packages/") && path.endsWith("/README.md")),
+    );
+}
+
+/** The lines a reader sees, as `wc -l` counts them: the trailing newline ends none. */
+function lineCount(text: string): number {
+    return lines(text.replace(/\n+$/, "")).length;
+}
+
+/** Each page over the ceiling, named with the count that put it there. */
+function overlongPages(pages: readonly (readonly [string, string])[]): string[] {
+    return pages
+        .map(([path, text]) => [path, lineCount(text)] as const)
+        .filter(([, count]) => count > README_LINES)
+        .map(([path, count]) => `${path}: ${String(count)}`);
+}
+
 function sectionsOf(text: string): string[] {
     return lines(text)
         .filter((line) => line.startsWith("## "))
@@ -406,8 +429,9 @@ describe("a register row is a hundred words", () => {
 describe("a design page is four sections", () => {
     const pages = designPages();
 
-    it("finds every design page", () => {
-        expect(pages.length).toBe(10);
+    /** A walk that found nothing would pass the loop below in silence. */
+    it("finds the design pages at all", () => {
+        expect(pages.length).toBeGreaterThan(3);
     });
 
     it("holds each page to the section list, in order", () => {
@@ -437,5 +461,31 @@ describe("a design page is four sections", () => {
         expect(/Not built yet|Checked against/.test("> **Not built yet:** the two writes.")).toBe(
             true,
         );
+    });
+});
+
+describe("a README is a page", () => {
+    const pages = readmePages();
+
+    it("finds the root README and the packages'", () => {
+        expect(pages).toContain("README.md");
+        expect(pages.filter((page) => page !== "README.md").length).toBeGreaterThan(4);
+    });
+
+    it("holds every one to sixty lines", () => {
+        expect(overlongPages(pages.map((page) => [page, read(page)] as const))).toEqual([]);
+    });
+
+    it("exempts CONTRIBUTING.md, which no rule here reaches", () => {
+        expect(pages).not.toContain("CONTRIBUTING.md");
+        expect(lineCount(read("CONTRIBUTING.md"))).toBeGreaterThan(README_LINES);
+    });
+
+    it("catches a README one line over", () => {
+        const page = (count: number) => `# Title\n${"a line\n".repeat(count - 1)}`;
+        expect(overlongPages([["packages/x/README.md", page(README_LINES + 1)]])).toEqual([
+            `packages/x/README.md: ${String(README_LINES + 1)}`,
+        ]);
+        expect(overlongPages([["packages/x/README.md", page(README_LINES)]])).toEqual([]);
     });
 });

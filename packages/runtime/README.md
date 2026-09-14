@@ -1,22 +1,19 @@
-# runtime — everything that runs
+# automation-runtime — everything that runs
 
-The one package that touches the outside world, in three directories with the layer rules the
-dependency cruiser holds as directory rules:
+The one package that touches the outside world, as three directories: `src/store/` is the owned
+operational store, `src/adapter/` the only code that talks to GitHub, and `src/shell/` the transport
+that composes them. It may import core and the capabilities the shell composes, and nothing else.
+Inside it, the store and the adapter reach core alone, and only the shell's composition root may name
+the adapter — so no credential exists anywhere else.
 
-- [`src/store/`](src/store/README.md) — the owned operational store: deliveries, the effect journal,
-  schedules. Sits on core only.
-- [`src/adapter/`](src/adapter/README.md) — the only code that talks to GitHub. Sits on core only,
-  and is imported by the composition root alone.
-- [`src/shell/`](src/shell/README.md) — the transport: receiver, processor, applier, the fact sweep
-  that turns a due schedule row into one decision per open item, and `main.ts`, the composition root
-  where the seams meet.
+The tree, and the three layering locks that hold those directions in place, are
+[`design/architecture.md`](../../design/architecture.md) §1. Running the endpoint — the environment,
+what arms writes and what arms the sweep, the switches, the commands — is
+[`docs/running.md`](../../docs/running.md).
 
-The barrel re-exports the three; a consumer sees one package. Tests mirror the three under `test/`,
-with one exception that proves the rule: `test/sweep.test.ts` is about the seam BETWEEN the adapter
-and the shell, which neither directory may import the other across, so it sits above both and
-reaches each through its barrel — the way the composition root does. Run it from the repository
-root: `node --import tsx packages/runtime/src/shell/main.ts`.
+The barrel re-exports the three, so a consumer names one package, and `test/` mirrors `src/`.
 
-**The package mutation break threshold is 90**, the gate the adapter and shell carried before the
-merge. CI also enforces the store's existing 96 threshold from the same mutation report, so merging
-the packages does not lower its ratchet.
+```bash
+pnpm --filter @hiero-hackers/automation-runtime test
+pnpm start
+```

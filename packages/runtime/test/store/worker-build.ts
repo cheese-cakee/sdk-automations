@@ -2,20 +2,20 @@
  * The worker-side build of `Store`, in one place.
  *
  * A `node:worker_threads` contender cannot import our TypeScript, so both
- * contention suites transpiled `store.ts` and everything it reaches —
- * `schema.ts`, `instants.ts`, core's `ids.ts` — into a scratch directory and
+ * contention suites transpiled `store.ts` and every module it reaches — the
+ * store's own siblings plus core's `ids.ts` — into a scratch directory and
  * pointed the worker at the result. The two copies were identical down to
  * the compiler options. Two copies of a build step is two places to find out
  * it has broken.
  *
  * It breaks in one particular way, which is why it earns a home. It reaches
  * core's `github/ids.ts` BY PATH through `import.meta.resolve`, then rewrites
- * the `@hiero-hackers/automation-core` specifier out of the transpiled store
- * with a string replace. Neither step is an import, so neither the compiler
- * nor dependency-cruiser sees it. Move that file within core, or import the
- * package a second time from `store.ts`, and the failure is a worker that
- * cannot resolve a module at run time. `architecture.test.ts` allowlists this
- * path by name for the same reason, and now has one name to hold.
+ * the `@hiero-hackers/automation-core` specifier out of every transpiled
+ * module with a string replace. Neither step is an import, so neither the
+ * compiler nor dependency-cruiser sees it. Move that file within core, or
+ * import anything else of the package from the store, and the failure is a
+ * worker that cannot resolve a module at run time. `architecture.test.ts`
+ * allowlists this path by name for the same reason, and has one name to hold.
  *
  * The relative URLs survive the move because they are resolved against the
  * module doing the resolving, and this file sits in the same directory as the
@@ -35,6 +35,9 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript";
 
+/** Every sibling module `store.ts` reaches at run time; type-only imports are erased. */
+const STORE_SIBLINGS = ["guards", "schema", "fold", "inbox", "ledger"] as const;
+
 /**
  * Build into `<directory>/worker-build/` and return the store module's file
  * URL, which is what a worker can `import()`.
@@ -46,37 +49,24 @@ export function buildWorkerStoreModule(directory: string): string {
         target: ts.ScriptTarget.ES2022,
         module: ts.ModuleKind.ESNext,
     };
+    const transpile = (source: string): string =>
+        ts
+            .transpileModule(source, { compilerOptions })
+            .outputText.replaceAll("@hiero-hackers/automation-core", "./ids.js");
     const idsSource = readFileSync(
         new URL("github/ids.ts", import.meta.resolve("@hiero-hackers/automation-core")),
         "utf8",
     );
     const storeSource = readFileSync(new URL("../../src/store/store.ts", import.meta.url), "utf8");
-    const schemaSource = readFileSync(
-        new URL("../../src/store/schema.ts", import.meta.url),
-        "utf8",
-    );
-    const instantsSource = readFileSync(
-        new URL("../../src/store/instants.ts", import.meta.url),
-        "utf8",
-    );
-    writeFileSync(
-        join(buildDirectory, "ids.js"),
-        ts.transpileModule(idsSource, { compilerOptions }).outputText,
-    );
-    writeFileSync(
-        join(buildDirectory, "schema.js"),
-        ts.transpileModule(schemaSource, { compilerOptions }).outputText,
-    );
-    writeFileSync(
-        join(buildDirectory, "instants.js"),
-        ts.transpileModule(instantsSource, { compilerOptions }).outputText,
-    );
+    writeFileSync(join(buildDirectory, "ids.js"), transpile(idsSource));
+    for (const sibling of STORE_SIBLINGS) {
+        const source = readFileSync(
+            new URL(`../../src/store/${sibling}.ts`, import.meta.url),
+            "utf8",
+        );
+        writeFileSync(join(buildDirectory, `${sibling}.js`), transpile(source));
+    }
     const storeModule = join(buildDirectory, "store.js");
-    writeFileSync(
-        storeModule,
-        ts
-            .transpileModule(storeSource, { compilerOptions })
-            .outputText.replace("@hiero-hackers/automation-core", "./ids.js"),
-    );
+    writeFileSync(storeModule, transpile(storeSource));
     return pathToFileURL(storeModule).href;
 }

@@ -95,7 +95,7 @@ confirmation comment, never enforced by refusing the human's approval.
 
 ## How it works
 
-Two optional stations on every new issue's front door. **On open**: mark it awaiting triage,
+Two optional stations on every new issue's front gate. **On open**: mark it awaiting triage,
 welcome the author, and optionally lock it until a maintainer approves. **On approval**: a human
 with label rights applies the configured approval meaning — that label application *is* the
 authorized command, since GitHub only lets triage-and-up apply labels — and the capability
@@ -103,6 +103,11 @@ unlocks, confirms, and advises on anything the repository's triage checklist sti
 
 Reports and housekeeping only: it never rewrites a contributor's title or body, never decides an
 issue is invalid, and never fights a label a human set.
+
+Its own stops are three: a bot-authored issue, a conflicted position, and an issue that already
+holds one. The platform performs the rest — a closed issue never reaches intake, because intake does
+not declare `closed` (D59), and an unanswered `isAutomationActor` ends the evaluation with the
+platform's own explanation rather than a guard intake writes (D51).
 
 ```mermaid
 flowchart LR
@@ -120,11 +125,11 @@ welcome must be posted before the lock lands, in that order, so the author can r
 | Declaration | Value |
 |---|---|
 | `triggers` | `issues` (opened, labeled) |
-| `facts` / `needs` | `issue`, needing no group. The `issues` producer reads no group on an issue record and makes no pull-request record, so a declaration needing none is the only one that boots on this trigger |
+| `facts` / `needs` | Implied by the trigger: the `issues` producer yields an `issue` record and makes no pull-request one. It reads no group on that record, so a declaration needing none is the only one that boots on this trigger |
 | `resolvers` | `isAutomationActor` — declared, and asked about the AUTHOR, which is the bot guard the flowchart draws. It costs no call: every App actor carries the `[bot]` suffix, so the answer is the login |
 | `intents` | `applyMappedLabel` · `postManagedComment` (both declared) · `lockIssue` / `unlockIssue` (in `IntentCatalogue` with operations of their own; undeclared here until phase 2) |
+| `requiredMappings` | `labels: awaitingTriage` — the meaning the entry gate applies |
 | Permissions | repository: `issues:read`, `issues:write` (covers locking) · organization: none |
-| `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: false · externalDelivery: false |
 
 | Phase | Ships | Needs first |
 |---|---|---|
@@ -140,7 +145,7 @@ welcome must be posted before the lock lands, in that order, so the author can r
 | Approval meaning applied by a maintainer | unlocked, confirmed, checklist advisory if items missing |
 | Approval label applied then removed by a human | nothing re-locks; the removal stands |
 | Issue opened by a bot | untouched, and silently — a machine's issue is not a problem to report |
-| The actor lookup cannot answer who opened it | nothing happens and the skip says so: unknown is not "a person" (D51) |
+| The actor lookup cannot answer who opened it | nothing happens and the platform's skip says so: unknown is not "a person" (D51) |
 | Redelivered `opened` event | one welcome, one lock — journal + managed identity |
 | Approval applied before the sweep ever locked (race) | confirm still posts; unlock is a no-op the read-back proves |
 | `onOpen.lock: true` while phase 2 verbs are absent | rejected with the file, not silently ignored |

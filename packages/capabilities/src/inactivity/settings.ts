@@ -14,7 +14,7 @@ import {
     MIN_REAP_HOURS,
     section,
     spec,
-} from "@hiero-hackers/automation-core";
+} from "@hiero-hackers/automation-core/author";
 
 /** The reminder every level below the root inherits. */
 const remindAfter = duration({

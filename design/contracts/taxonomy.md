@@ -110,7 +110,7 @@ records them as D48.
   no path to `needsRevision`, so the only way out asserted that new commits had arrived. Checks break with
   no push at all: the audited Sibling Conflict Re-check re-reads every open pull request's `mergeable`
   state whenever a *different* pull request merges, and swaps its status label
-  (`design/audit/services.md` §2, the sibling-conflict recheck row).
+  (`design/findings/services.md` §2, the sibling-conflict recheck row).
 - **`needsReview → needsRevision` needs a review cause, not only a failing check.** The audited PR Review
   Label Applicator performs exactly this move on a `changes_requested` review. Observing it requires the
   `pull_request_review` subscription the App currently lacks (experiment 6.6), so the cause exists in the

@@ -3,7 +3,7 @@
 > The map. [`trace.md`](trace.md) is the route — one label from GitHub's POST to GitHub's API call —
 > and it is the page to read first; this one says what the pieces are and which rule holds each edge
 > in place. The italic line under each drawing names the code or test that falsifies it. Why:
-> [`constraints.md`](constraints.md). Vocabulary: [`packages/core/README.md`](../packages/core/README.md).
+> [`constraints.md`](constraints.md). Vocabulary: [`trace.md`](trace.md) §"What each noun is, once".
 
 ## 1. Three packages, and the rules between them
 
@@ -42,6 +42,55 @@ than packages, and the layer policy did not change when they were filed that way
 
 *Enforced by `packages/dev/checks/test/architecture.test.ts`, which cruises the real tree with these
 rules and a deliberately-violating fixture tree to prove they still fire.*
+
+Three directions hold inside those packages. The shell's directories are the boxes of its drawing
+(D172):
+
+| Directory | What it owns |
+|---|---|
+| `compose/` | the environment read into one record, the live seams, and the start |
+| `inbound/` | the webhook lane: the receiver, and the delivery it claims and completes |
+| `sweep/` | the sweep lane: one firing's budgets and the driver |
+| `decide/` | the one box both lanes call — the schedule row, decide one item, apply, write the rows |
+| `apply/` | the applier as a loop over a five-row table, one module per operation below it |
+| `jobs/` | the tick's four named jobs, and the shutdown order |
+| `observe/` | the read-only commands |
+| `log.ts`, `paths.ts`, `effects.ts` | the vocabulary every directory above may name |
+
+Core's are an AUDIENCE (D175):
+
+| Directory | Who arrives there |
+|---|---|
+| `catalogue.ts` | both audiences: the closed vocabulary — refs, facts, resolvers, operations, comment kinds |
+| `capability/` | an author: declaration, settings, facts, producers, boundary, factory, guards |
+| `author/` | an author, at the door: `index.ts` is the named surface a capability folder imports (`@hiero-hackers/automation-core/author`), `testing.ts` the fixture harness its tests import, and nothing that ships may name the second |
+| `intents/` | an effect once decided: the intent, the platform's managed comment, one module per operation |
+| `config/`, `workflow/`, `safety/`, `github/` | what the repository asked for and the spec it is read against, the states, the write rules, what we measured of GitHub |
+| `engine/` | the composition — normalize, call, screen, gate |
+| `report/` | what happened, and who must act |
+
+The adapter's are a JOB (D176):
+
+| Directory | What it does |
+|---|---|
+| `client/` | talks to GitHub: the contract, the credential chain, the admission gate, the confirmed endpoint shapes, the send |
+| `reads/` | reads it: the configuration, the sweep's facts, the resolvers, the live externals |
+| `writes/` | changes it: the send-and-classify, the read-back, one transport per operation |
+
+Each of the three is one lock. Each directory carries a rank, written below as a chain from the
+bottom up; every import lands strictly to the LEFT of its own directory, so two at one rank never
+name each other. A nested directory is named only by its parent: `apply/operations` from `apply`,
+`engine/normalize` from `engine`, `intents/operations` from `intents`, `writes/operations` from
+`writes`.
+
+| Lock | The rule it states | Enforced by |
+|---|---|---|
+| shell | `log.ts`, `paths.ts`, `effects.ts` < `observe` = `apply/operations` < `apply` < `decide` < `inbound` = `sweep` < `jobs` < `compose`; `apply/actions.ts` alone names the fold's five states, and `decide/item.ts` alone calls the applier | `packages/dev/checks/test/shell-layering.test.ts` |
+| core | `github` < `config` < `workflow` < `safety` < `catalogue.ts` < `intents/operations` < `intents` < `capability` < `author` < `report` < `engine/normalize` < `engine`; `intents/` never names `capability/`, so the check that an intent names the capability that returned it lives in `packages/core/src/engine/invoke.ts`, where intents are collected; nothing below the engine names `engine/` or `report/` | `packages/dev/checks/test/core-layering.test.ts` |
+| adapter | `client` < `reads` < `writes/operations` < `writes`, the writes above the reads because a read-back proves a write through the facts reader; the client names neither, which is why the admission gate reads the confirmed shapes from `packages/runtime/src/adapter/client/endpoints.ts` and never from the writes; nothing inside names the barrel | `packages/dev/checks/test/adapter-layering.test.ts` |
+
+*Each lock reads every import under its own directory and proves each of its rules can fail over
+fixture text.*
 
 ## 2. One item is the unit of decision
 
@@ -97,54 +146,62 @@ sequenceDiagram
         P->>P: record 'configRejected' or 'modeUnsupported' — before decide()
     else disabled, observe, dry-run, or active with an applier
         P->>E: decide(facts, config, capabilities, externals)
-        E-->>P: report → record 'decision'; approved effects go to the applier
+        E-->>P: report → record 'decision', and the approved effects go to the applier
     end
-    P->>S: completeDeliveryWithReport — report row + 'done', one transaction
+    P->>S: completeDelivery — 'done', one transaction
     note over P,S: any failure before commit releases the claim
 ```
 
-Every rejection fails closed and still completes, so a redelivery produces no second record.
+Every rejection fails closed and still completes, so a redelivery decides nothing a second time.
 `disabled` is deliberately not intercepted: it runs through `decide()` and the `modeDisabled` gate
 refuses each intent, which is why it sits with `observe` and `dry-run` rather than with `active`. The
 sweep reaches `decide()` through this same path — mode gate, applier, journal and recovery are all
 this lane's.
 
-*Sources: `packages/runtime/src/shell/receiver.ts`, `processor.ts`, `sweep.ts` — pinned end to end by
-`packages/runtime/test/shell/shell.test.ts`. The exhaustive rejection-code table is
+*Sources: `packages/runtime/src/shell/inbound/receiver.ts`, `inbound/deliveries.ts`,
+`decide/item.ts`, `sweep/sweep.ts` — pinned end to end by
+`packages/runtime/test/shell/compose/shell.test.ts`. The exhaustive rejection-code table is
 [`contracts/config-schema.md`](contracts/config-schema.md); it is deliberately not copied here.*
 
 ## 5. Safety, and the path a destructive act takes
 
 An intent passes the screen (its own capability, a declared operation, its own item, a legal
 transition), then the world is DERIVED from the facts rather than asserted, then the ladder judges
-it: kill switch, precondition, door policy, then the general rules in a fixed order. Precedence is
+it: kill switch, precondition, gate policy, then the general rules in a fixed order. Precedence is
 contract, not style — [`contracts/safety.md`](contracts/safety.md) holds both vocabularies and the
 order, and the drift test freezes them.
 
-A `clockTriggeredDestructive` act is refused at the general door on purpose: it goes through grace
+A `clockTriggeredDestructive` act is refused at the general gate on purpose: it goes through grace
 instead. On first sight the platform approves its OWN warning comment and the act waits; the applier
 records the warning when it lands; a later occasion is judged against that record — grace elapsed, no
 qualifying activity — and the notice follows the act ([`guides/grace.md`](guides/grace.md)).
 
-## 6. Store — six tables, six questions
+## 6. Store — five tables, five questions
+
+One file, two modules over one connection: `inbox.ts` is the delivery queue, whose rows move state
+in place; `ledger.ts` is appended and folded, and holds the leases and the schedule beside the facts
+(D164). It never reads the clock and owns no policy: every timestamp, retention window and lease
+duration is the caller's, and a timestamp that is not exactly `Date.toISOString()` throws rather than
+misorder silently (`packages/runtime/src/store/guards.ts`). The payload is opaque bytes here.
 
 | Table | The question it answers |
 |---|---|
 | `seen_delivery` | is this delivery durable, claimed, done, or dead-lettered? |
-| `delivery_report` | what did we decide for this delivery? |
-| `effect_journal` | did this call reach GitHub? |
+| `effect_fact` | what has been sent, landed, refused or promised for this effect? |
+| `decision` | what did each pass decide about this item, and why? |
 | `effect_claim` | who holds this effect's lease right now? |
 | `schedule` | what clock-triggered work is due now? |
-| `destructive_warning` | was this act warned, when, and under what plan? |
 
-*Source: `packages/runtime/src/store/schema.ts` — schema version 6; drift rejected by the D110
-fingerprint.*
+*Source: `packages/runtime/src/store/schema.ts` — schema version 1, one migration, no history before
+launch (D165); drift rejected by the fingerprint D110 established.*
 
 ## 7. What is not built
 
 Active mode runs only where the process was composed with the App's identity as well as its
 credentials; anything else records `modeUnsupported`. Every read and write with no cited row in
 [`findings/endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md) — two resolvers,
-four operations, three of the sweep's facts — is implemented and refuses at the send. Installation-wide
-suspension has no code path. Everything else absent here is an open question in
+four operations, three of the sweep's facts — is implemented and refuses at the send. Config schema
+migration is unbuilt: the live and local reads share today's schema deliberately. Nothing enumerates
+what an installation covers, so a repository that has never delivered is one this process has never
+heard of (D169). Everything else absent here is an open question in
 [`constraints.md`](constraints.md), deliberately not drawn.

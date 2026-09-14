@@ -20,7 +20,7 @@ The welcome, with a mentor team and three guides:
 
 The cc leads rather than trails: `postManagedComment`'s `mention` is a principal NAME, and the
 platform resolves it into a handle and addresses the comment with it
-(`packages/core/src/capability/managed.ts`). Without a mentor team or guides, the same comment stops
+(`packages/core/src/intents/managed.ts`). Without a mentor team or guides, the same comment stops
 after the first sentence and the commands. The commands are named only when `mappings.commands` maps
 them; an unmapped command is not mentioned rather than mentioned wrongly.
 
@@ -120,7 +120,7 @@ flowchart LR
 | `intents` | `postManagedComment` (`notice`, topic = the assignee's login) |
 | `requiredMappings` | none; `commands.working` and `commands.unassign` are read if mapped |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write` · organization: none |
-| `operationalNeeds` | schedule: true · durableState: none · crossItemCoordination: false · externalDelivery: false |
+| Platform needs | durableState: none · crossItemCoordination: false · externalDelivery: false |
 
 `sweep` reads `assignees` on an issue, the `issues` webhook reads no group at all, and needs are
 checked per trigger, so this declaration is one trigger or no needs.

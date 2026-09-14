@@ -286,8 +286,9 @@ describe("the shipped examples parse to the value they parsed to", () => {
         const result = parse(file);
         expect(result.ok).toBe(true);
         if (!result.ok) return;
-        await expect(snapshotText(result.config)).toMatchFileSnapshot(
-            join(repoRoot, snapshotPath(file)),
-        );
+        await expect(
+            snapshotText(result.config),
+            `${file} parses to a different value than its committed pin — if the change is meant, run \`pnpm contracts\` to rewrite the pin`,
+        ).toMatchFileSnapshot(join(repoRoot, snapshotPath(file)));
     });
 });

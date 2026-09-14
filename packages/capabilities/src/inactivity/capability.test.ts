@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
     createDestructiveWarning,
     decide as engineDecide,
+    handleFor,
     projectCapabilityView,
     toEngine,
     writeRequestFor,
@@ -17,12 +18,16 @@ import {
     type DestructiveWarning,
     type Externals,
     type MappableMeaning,
-    type PlatformHandle,
     type Projection,
 } from "@hiero-hackers/automation-core";
-import { inactivity, type InactivityDeclaration } from "./capability.js";
+import { inactivity } from "./capability.js";
 import type { InactivityFacts, IssueLadderFacts, PullLadderFacts } from "./declaration.js";
-import { configEnabling, sweptIssue, sweptPullRequest } from "../../test/world.js";
+import {
+    answering,
+    configEnabling,
+    sweptIssue,
+    sweptPullRequest,
+} from "@hiero-hackers/automation-core/author/testing";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -66,7 +71,7 @@ const viewWith = (settings: Readonly<Record<string, unknown>>) =>
         inactivity.declaration,
         configEnabling(
             ["inactivity"],
-            ["inactivity"],
+            [inactivity.declaration],
             { inactivity: settings },
             { labels: LABELS },
         ),
@@ -146,24 +151,44 @@ const pullRecord = (
     });
 };
 
-/** Inactivity speaks through its intents, so any skip explanation is a failure. */
-const handle = (
-    resolve: PlatformHandle<InactivityDeclaration>["resolve"],
-): PlatformHandle<InactivityDeclaration> => ({
-    resolve,
-    explain: () => {
-        throw new Error("inactivity explains through its intents, never a skip");
-    },
-});
-
-const answering = (
-    answer: Awaited<ReturnType<PlatformHandle<InactivityDeclaration>["resolve"]>>,
-): PlatformHandle<InactivityDeclaration> => handle(async () => answer);
-
 const human = answering({ ok: true, value: false });
 
-const decide = async (facts: InactivityFacts, on = view, platform = human) =>
-    await inactivity.evaluate(facts, on, platform);
+/**
+ * The engine's own handle, which every row below drives the capability through.
+ * Inactivity speaks in intents, so an explanation it recorded is a failure.
+ */
+const decide = async (facts: InactivityFacts, on = view, source = human) => {
+    const platform = handleFor(inactivity.declaration, facts, source);
+    const intents = await inactivity.evaluate(facts, on, platform);
+    expect(platform.explanations).toEqual([]);
+    return intents;
+};
+
+const ENGINE = [toEngine(inactivity)];
+
+const CONFIG = configEnabling(
+    ["inactivity"],
+    [inactivity.declaration],
+    { inactivity: DESIGN_SETTINGS },
+    { labels: LABELS },
+);
+
+/** The two facts the engine rows dial; everything else is the quiet default. */
+interface Dialled {
+    readonly killSwitchActive?: boolean;
+    readonly latestHumanChangeAt?: Date | null;
+    readonly warningFor?: NonNullable<Externals["warningFor"]>;
+}
+
+const externals = (over: Dialled): Externals => ({
+    killSwitchActive: over.killSwitchActive ?? false,
+    installationGrants: ["issues:write"],
+    latestHumanChangeAt: () => over.latestHumanChangeAt ?? null,
+    resolve: human,
+    // Spread rather than set: absent IS the "nobody was warned" answer, and
+    // an explicit `undefined` is a different thing to say (grace.md §2).
+    ...(over.warningFor === undefined ? {} : { warningFor: over.warningFor }),
+});
 
 describe("the clocks reset on development activity only", () => {
     it("`/working` after the reminder", async () => {
@@ -593,7 +618,7 @@ describe("a ladder with no reap block reminds and never releases", () => {
                     capability: "inactivity",
                     summary:
                         "Reminded alice about a stale assignment; this ladder releases nothing.",
-                    detail: ["idle 40 days", "no reap block is enabled, so nothing follows"],
+                    detail: ["idle 40 days"],
                 },
                 idempotencyKey: expect.any(String),
                 // No grace: there is no act to hold (grace.md §1).
@@ -625,7 +650,7 @@ describe("a ladder with no reap block reminds and never releases", () => {
                     capability: "inactivity",
                     summary:
                         "Reminded about a pull request stale in needsRevision; this reason closes nothing.",
-                    detail: ["idle 70 days", "no reap block is enabled, so nothing follows"],
+                    detail: ["idle 70 days"],
                 },
                 idempotencyKey: expect.any(String),
                 grace: null,
@@ -659,7 +684,7 @@ describe("what pauses or ends a ladder", () => {
         expect(await decide(pausedPull)).toEqual([]);
     });
 
-    /** Two shapes no ladder can read, and the same silence for both. */
+    /** A position no ladder can read. */
     it("says nothing about an item it cannot judge", async () => {
         const conflicted = issueRecord({
             position: {
@@ -670,10 +695,23 @@ describe("what pauses or ends a ladder", () => {
                 ignored: [],
             },
         });
-        const closed = issueRecord({ position: position({ closed: true }) });
 
         expect(await decide(conflicted)).toEqual([]);
-        expect(await decide(closed)).toEqual([]);
+    });
+
+    /** The closed item is the platform's stop: this ladder never sees one (D59). */
+    it("is not woken for a closed issue at all", async () => {
+        const closed = issueRecord({ position: position({ closed: true }) });
+
+        const decision = await engineDecide(
+            { kind: "facts", facts: closed },
+            CONFIG,
+            ENGINE,
+            externals({}),
+        );
+
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings).toEqual([]);
     });
 
     it("leaves a ladder the repository never enabled alone", async () => {
@@ -760,33 +798,8 @@ describe("nothing rides along with a close", () => {
  * through warn, wait and act (grace.md §2).
  */
 describe("the platform warns, waits, then acts", () => {
-    const ENGINE = [toEngine(inactivity)];
-    const CONFIG = configEnabling(
-        ["inactivity"],
-        ["inactivity"],
-        { inactivity: DESIGN_SETTINGS },
-        { labels: LABELS },
-    );
-
     /** Alice, forty days idle on a 14/21 ladder: seven days of grace. */
     const STALE = issueRecord();
-
-    /** The two facts these rows dial; everything else is the quiet default. */
-    interface Dialled {
-        readonly killSwitchActive?: boolean;
-        readonly latestHumanChangeAt?: Date | null;
-        readonly warningFor?: NonNullable<Externals["warningFor"]>;
-    }
-
-    const externals = (over: Dialled): Externals => ({
-        killSwitchActive: over.killSwitchActive ?? false,
-        installationGrants: ["issues:write"],
-        latestHumanChangeAt: () => over.latestHumanChangeAt ?? null,
-        resolve: (async () => ({ ok: true, value: false })) as NonNullable<Externals["resolve"]>,
-        // Spread rather than set: absent IS the "nobody was warned" answer, and
-        // an explicit `undefined` is a different thing to say (grace.md §2).
-        ...(over.warningFor === undefined ? {} : { warningFor: over.warningFor }),
-    });
 
     const decided = async (over: Dialled = {}) =>
         await engineDecide({ kind: "facts", facts: STALE }, CONFIG, ENGINE, externals(over));

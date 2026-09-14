@@ -4,6 +4,7 @@ import {
     spec,
     validateCapabilityDeclarations,
     type CapabilityDeclaration,
+    type DeclaredTrigger,
 } from "../../src/capability/index.js";
 
 const declaration: CapabilityDeclaration = {
@@ -20,12 +21,6 @@ const declaration: CapabilityDeclaration = {
     needs: [],
     resolvers: ["linkedIssues"],
     intents: ["postManagedComment", "applyMappedLabel"],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "required",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 };
 
 describe("validateCapabilityDeclarations", () => {
@@ -54,11 +49,8 @@ describe("validateCapabilityDeclarations", () => {
             {
                 ...declaration,
                 name: "scheduled",
-                triggers: [
-                    { kind: "event", event: "issues" },
-                    { kind: "schedule", description: "daily" },
-                ],
-                operationalNeeds: { ...declaration.operationalNeeds, schedule: false },
+                triggers: [{ kind: "schedule", description: "daily" }],
+                facts: [],
             },
         ]);
 
@@ -72,19 +64,11 @@ describe("validateCapabilityDeclarations", () => {
             'capability "PR-Quality": fact kind "unknownKind" is not in the fact catalogue',
         );
         /**
-         * Attribution is also what makes the schedule check a check. The
-         * mismatch belongs to `scheduled`, which declares a schedule trigger
-         * among two; `PR-Quality` declares no triggers at all and must not be
-         * accused of one. A quantifier slip over the trigger list moves the
-         * error from the first capability to the second and leaves the
-         * unattributed fragment above passing.
+         * Attribution is also what makes the kinds check a check: `scheduled`
+         * names none and must be the one accused; `PR-Quality` names two.
          */
-        expect(errors.join("\n")).toContain(
-            'capability "scheduled": declares a schedule trigger but operationalNeeds.schedule is false',
-        );
-        expect(errors.join("\n")).not.toContain(
-            'capability "PR-Quality": declares a schedule trigger',
-        );
+        expect(errors.join("\n")).toContain('capability "scheduled": names no fact kind');
+        expect(errors.join("\n")).not.toContain('capability "PR-Quality": names no fact kind');
         expect(errors.join("\n")).toContain(
             'duplicate requiredMappings.labels entry "almostReady"',
         );
@@ -106,7 +90,7 @@ describe("validateCapabilityDeclarations", () => {
         );
         expect(errors.join("\n")).toContain('resolver "unknownResolver"');
         expect(errors.join("\n")).toContain('intent "unknownOperation"');
-        expect(errors.join("\n")).toContain("operationalNeeds.schedule is false");
+        expect(errors.join("\n")).toContain("a schedule trigger must state `facts`");
     });
 
     /**
@@ -168,27 +152,16 @@ describe("validateCapabilityDeclarations", () => {
                     triggers: [{ kind: "schedule", description: "daily" }],
                     facts: ["issue", "pullRequest"],
                     needs: ["review"],
-                    operationalNeeds: { ...declaration.operationalNeeds, schedule: true },
                 },
             ]),
         ).toEqual([]);
     });
 
-    /**
-     * A trigger naming an event no producer wakes on is the same defect one
-     * step earlier: nothing ever delivers, so the capability is dead code
-     * whatever it needs. `issue_comment` was the real example until the study
-     * built its producer; `pull_request_review` is the next one — an event two
-     * designs want and no producer wakes on, not a typo.
-     */
-    it("refuses a trigger no producer wakes on", () => {
-        expect(
-            validateCapabilityDeclarations([
-                { ...declaration, triggers: [{ kind: "event", event: "pull_request_review" }] },
-            ]),
-        ).toEqual([
-            'capability "prQuality": no producer wakes on the "pull_request_review" trigger — the events the platform consumes are issues, issue_comment, pull_request',
-        ]);
+    /** An event IS a producer: one nobody wakes on does not compile, so no boot check judges it. */
+    it("names its events out of the producer registry", () => {
+        // @ts-expect-error — `pull_request_review` is an event no producer wakes on.
+        const trigger: DeclaredTrigger = { kind: "event", event: "pull_request_review" };
+        expect(trigger.kind).toBe("event");
     });
 
     it("keeps operation facts out of the declaration shape", () => {
@@ -198,7 +171,6 @@ describe("validateCapabilityDeclarations", () => {
             "intents",
             "name",
             "needs",
-            "operationalNeeds",
             "requiredMappings",
             "resolvers",
             "settings",

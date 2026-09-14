@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { declareCapability, RESOLVER_NAMES, spec, type ResolverName } from "../../src/index.js";
 import { EngineHandle } from "../../src/engine/invoke.js";
+import { webhookIssue } from "../../src/author/testing.js";
 
 const declaration = declareCapability({
     name: "fixture",
@@ -19,16 +20,13 @@ const declaration = declareCapability({
         "configAtHead",
     ],
     intents: [],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "none",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 const resolve = async (query: ResolverName, answer: unknown) =>
-    await new EngineHandle(declaration, async () => answer as never).resolve(query, {});
+    await new EngineHandle(declaration, webhookIssue(), async () => answer as never).resolve(
+        query,
+        {},
+    );
 
 const commit = {
     sha: "abc",
@@ -191,7 +189,7 @@ describe("resolver answers", () => {
         { ok: false, reason: "unavailable", detail: 1 },
         null,
     ])("rejects a malformed failure envelope", async (answer) => {
-        const handle = new EngineHandle(declaration, async () => answer as never);
+        const handle = new EngineHandle(declaration, webhookIssue(), async () => answer as never);
         await expect(handle.resolve("linkedIssues", {})).resolves.toEqual({
             ok: false,
             reason: "unavailable",

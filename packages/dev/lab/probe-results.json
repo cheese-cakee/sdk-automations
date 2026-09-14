@@ -1,0 +1,66 @@
+{
+    "probedAt": "2026-09-12T12:49:04.502Z",
+    "sandbox": "exploreriii/automation-sandbox",
+    "results": [
+        {
+            "name": "openItems",
+            "ok": true
+        },
+        {
+            "name": "assignedAt",
+            "ok": true
+        },
+        {
+            "name": "lastWorkingAt",
+            "ok": true
+        },
+        {
+            "name": "draft",
+            "ok": true
+        },
+        {
+            "name": "linkedIssues",
+            "ok": true
+        },
+        {
+            "name": "changesRequested",
+            "ok": true
+        },
+        {
+            "name": "reapableSince",
+            "ok": true
+        },
+        {
+            "name": "lastCommitAt",
+            "ok": true
+        },
+        {
+            "name": "isAutomationActor",
+            "ok": true
+        },
+        {
+            "name": "mergeability",
+            "ok": true
+        },
+        {
+            "name": "openAssignments",
+            "ok": true
+        },
+        {
+            "name": "configAtHead",
+            "ok": true
+        },
+        {
+            "name": "commitAttestations",
+            "ok": true
+        },
+        {
+            "name": "assigneesOf",
+            "ok": true
+        },
+        {
+            "name": "config",
+            "ok": true
+        }
+    ]
+}

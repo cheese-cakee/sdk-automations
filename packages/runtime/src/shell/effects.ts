@@ -1,4 +1,4 @@
-/** The vocabulary the write path speaks: one call, its journal row, and its outcome words. */
+/** The vocabulary the write path speaks: one call, its recorded bytes, and its outcome words. */
 
 import type {
     IntentOperation,
@@ -12,7 +12,7 @@ import type {
 
 /**
  * What one apply pass made of one effect.
- * `refused` is FINAL and closes the row; `retryLater` and `unknown` leave it open.
+ * `refused` closes the row, `writeUnsupported` excepted; `retryLater` and `unknown` leave it open.
  */
 export const EFFECT_OUTCOMES = ["applied", "already", "refused", "retryLater", "unknown"] as const;
 
@@ -21,7 +21,9 @@ export type EffectOutcomeName = (typeof EFFECT_OUTCOMES)[number];
 /** Why an outcome is what it is, for everything that happens BELOW a verdict. */
 export const EFFECT_CODES = [
     "leaseHeld",
+    "sweepWriteCap",
     "rowUnreadable",
+    "ledgerInconsistent",
     "configurationChanged",
     "identityMissing",
     "labelUnmapped",
@@ -31,6 +33,7 @@ export const EFFECT_CODES = [
     "writeForbidden",
     "writeRetryLater",
     "writeUnknown",
+    "writeUnsupported",
     "postconditionUnconfirmed",
 ] as const;
 
@@ -68,7 +71,7 @@ export type Call =
     | { readonly verb: "lockIssue"; readonly reason: string }
     | { readonly verb: "unlockIssue"; readonly reason: string };
 
-/** One call as its journal row spells it — the row's `intent` column, parsed. */
+/** One call as its `sent` fact spells it — the fact's `payload`, parsed. */
 export interface JournaledCall {
     readonly capability: string;
     readonly item: ItemRef;

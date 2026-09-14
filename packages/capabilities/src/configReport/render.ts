@@ -11,7 +11,7 @@ import {
     type ConfigError,
     type ConfigResult,
     type RepositoryConfig,
-} from "@hiero-hackers/automation-core";
+} from "@hiero-hackers/automation-core/author";
 
 /** Two spaces a level, the indentation every example in `docs/` uses. */
 const indent = (depth: number): string => "  ".repeat(depth);
@@ -28,6 +28,7 @@ const SHORTENED = "_Report shortened to fit in a GitHub comment._";
 /** The lines as one body. Blank entries are markdown's paragraph breaks. */
 const join = (lines: readonly string[]): string => lines.join("\n");
 
+/** The body within GitHub's limit, cut on a whole character and never inside an escape. */
 function fitComment(body: string): string {
     if (body.length <= MAX_COMMENT_CHARS) return body;
     const ending = `\n\n${SHORTENED}\n\n${FOOTER}`;

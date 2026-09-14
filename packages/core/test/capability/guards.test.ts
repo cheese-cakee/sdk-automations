@@ -29,12 +29,6 @@ const fixture = declareCapability({
     needs: [],
     resolvers: [],
     intents: ["applyMappedLabel", "postManagedComment"],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "none",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 /** A handle that records what it was told, and refuses to be resolved through. */
@@ -48,6 +42,13 @@ function watch(): {
             resolve: async () => {
                 throw new Error("the fixture declares no resolvers");
             },
+            ask: async () => {
+                throw new Error("the fixture declares no resolvers");
+            },
+            intent: () => {
+                throw new Error("the fixture builds no intents");
+            },
+            skip: () => [],
             explain: (explanation) => {
                 explained.push(explanation);
             },

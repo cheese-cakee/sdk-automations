@@ -1,12 +1,7 @@
 /** Everything inactivity says, and the words it says it in. */
 
-import { lasting, mentions, on } from "@hiero-hackers/automation-core";
-import { deadlineOf, graceHoursOf, reaps, type Ladder } from "./ladder.js";
-
-/** The three contributor-side modes, in the order the design reads them. */
-export const REAP_REASONS = ["needsRevision", "changesRequested", "draft"] as const;
-
-export type ReapReason = (typeof REAP_REASONS)[number];
+import { lasting, mentions, on } from "@hiero-hackers/automation-core/author";
+import { deadlineOf, graceHoursOf, reaps, type Ladder, type ReapReason } from "./ladder.js";
 
 /** The state a reminder names: the meaning's name, never a label (contract.md §2). */
 const REASON_PHRASE: Readonly<Record<ReapReason, string>> = {

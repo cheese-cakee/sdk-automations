@@ -16,13 +16,14 @@ import { CAPABILITIES, inactivity, intake, prQuality } from "../src/index.js";
 import { INACTIVITY_SETTINGS } from "../src/inactivity/settings.js";
 import { INTAKE_SETTINGS } from "../src/intake/settings.js";
 import { PR_QUALITY_SETTINGS } from "../src/prQuality/settings.js";
-import { configEnabling } from "./world.js";
+import { configEnabling } from "@hiero-hackers/automation-core/author/testing";
 
 // Derived, not listed: the isolation claim below covers a capability the day
 // it joins the registry, with no edit here. The three pinned shapes are the
 // suite's other half and are named one by one on purpose.
 const ALL = CAPABILITIES;
 const NAMES = ALL.map((c) => c.declaration.name);
+const DECLARATIONS = ALL.map((c) => c.declaration);
 
 /**
  * A declaration is the whole of what the platform will let a capability see,
@@ -45,12 +46,6 @@ describe("declared shape", () => {
             needs: [],
             resolvers: ["linkedIssues"],
             intents: ["postManagedComment"],
-            operationalNeeds: {
-                schedule: false,
-                durableState: "none",
-                crossItemCoordination: false,
-                externalDelivery: false,
-            },
         });
     });
 
@@ -69,12 +64,6 @@ describe("declared shape", () => {
             needs: [],
             resolvers: ["isAutomationActor"],
             intents: ["applyMappedLabel", "postManagedComment"],
-            operationalNeeds: {
-                schedule: false,
-                durableState: "none",
-                crossItemCoordination: false,
-                externalDelivery: false,
-            },
         });
     });
 
@@ -88,12 +77,6 @@ describe("declared shape", () => {
             needs: ["assignees", "links", "review", "readiness"],
             resolvers: ["isAutomationActor"],
             intents: ["postManagedComment", "releaseAssignment", "closePullRequest"],
-            operationalNeeds: {
-                schedule: true,
-                durableState: "required",
-                crossItemCoordination: false,
-                externalDelivery: false,
-            },
         });
     });
     /**
@@ -107,7 +90,7 @@ describe("declared shape", () => {
      * keys any capability should have.
      */
     it("declares the settings keys each repository may write", () => {
-        const config = configEnabling(NAMES, NAMES);
+        const config = configEnabling(NAMES, DECLARATIONS);
         for (const { declaration } of ALL) {
             expect(
                 Object.keys(config.capabilities[declaration.name]?.settings ?? {}),
@@ -119,9 +102,9 @@ describe("declared shape", () => {
         expect(ALL.some(({ declaration }) => Object.keys(declaration.settings).length > 0)).toBe(
             true,
         );
-        expect(() => configEnabling(NAMES, NAMES, { [NAMES[0]!]: { notASetting: true } })).toThrow(
-            /notASetting/,
-        );
+        expect(() =>
+            configEnabling(NAMES, DECLARATIONS, { [NAMES[0]!]: { notASetting: true } }),
+        ).toThrow(/notASetting/);
     });
 });
 
@@ -141,7 +124,7 @@ describe("declarations", () => {
      * refuses, which is what makes this an assertion and not a formality.
      */
     it("uses the same names as configuration", () => {
-        expect(Object.keys(configEnabling(NAMES, NAMES).capabilities).sort()).toEqual(
+        expect(Object.keys(configEnabling(NAMES, DECLARATIONS).capabilities).sort()).toEqual(
             [...NAMES].sort(),
         );
     });
@@ -158,7 +141,7 @@ describe("declarations", () => {
 describe("configuration isolation (contract.md §2)", () => {
     const config = configEnabling(
         NAMES,
-        NAMES,
+        DECLARATIONS,
         { intake: { announce: true } },
         {
             labels: {
@@ -184,7 +167,7 @@ describe("configuration isolation (contract.md §2)", () => {
      */
     it("refuses an undeclared key rather than dropping it on the way in", () => {
         expect(() =>
-            configEnabling(NAMES, NAMES, { intake: { secretKnob: "not declared" } }),
+            configEnabling(NAMES, DECLARATIONS, { intake: { secretKnob: "not declared" } }),
         ).toThrow(/unknown setting "secretKnob"/);
     });
 

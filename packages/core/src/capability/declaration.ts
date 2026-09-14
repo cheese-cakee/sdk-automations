@@ -11,34 +11,21 @@ import {
     SKILL_TIERS,
 } from "../config/schema.js";
 import type { MappingFamily, RequiredMappings } from "../config/schema.js";
-import type { FactGroup, FactKind, IntentOperation, ResolverName } from "./catalogue.js";
-import { carriesFactGroup, FACT_GROUPS, FACT_KINDS, RESOLVER_NAMES } from "./catalogue.js";
-import { INTENT_OPERATIONS } from "./operations/index.js";
-import type { ProducerName } from "./producers.js";
-import type { Spec } from "./spec.js";
-import {
-    isWebhookProducer,
-    producerReads,
-    producersReading,
-    producesKind,
-    WEBHOOK_PRODUCERS,
-} from "./producers.js";
+import type { FactGroup, FactKind, IntentOperation, ResolverName } from "../catalogue.js";
+import { carriesFactGroup, FACT_GROUPS, FACT_KINDS, RESOLVER_NAMES } from "../catalogue.js";
+import { INTENT_OPERATIONS } from "../intents/index.js";
+import type { PRODUCERS, ProducerName, WebhookProducer } from "./producers.js";
+import type { Spec } from "../config/spec.js";
+import { producerReads, producersReading, producesKind } from "./producers.js";
 
 /**
- * contract.md §1 triggers: what a capability wants to be woken for. A trigger
- * names a producer, so a declared need is answerable at boot (`producers.ts`).
+ * contract.md §1 triggers: what a capability wants to be woken for. An event
+ * IS a webhook producer, so a typo is a compile error and a need is answerable
+ * at boot (`producers.ts`).
  */
 export type DeclaredTrigger =
-    | { readonly kind: "event"; readonly event: string }
+    | { readonly kind: "event"; readonly event: WebhookProducer }
     | { readonly kind: "schedule"; readonly description: string };
-
-/** What a capability needs from the platform to run at all — contract.md §1. */
-export interface OperationalNeeds {
-    readonly schedule: boolean;
-    readonly durableState: "none" | "candidate" | "required";
-    readonly crossItemCoordination: boolean;
-    readonly externalDelivery: boolean;
-}
 
 /** The three mapping families a declaration may demand, unnarrowed. */
 export interface DeclaredMappings {
@@ -54,13 +41,14 @@ export interface DeclaredMappings {
 export interface CapabilityDeclaration {
     readonly name: string;
     readonly triggers: readonly DeclaredTrigger[];
+    /** Also woken for a closed item; absent means open items only (D59). */
+    readonly closed?: boolean;
     readonly settings: Spec;
     readonly requiredMappings: DeclaredMappings;
     readonly facts: readonly string[];
     readonly needs: readonly string[];
     readonly resolvers: readonly string[];
     readonly intents: readonly string[];
-    readonly operationalNeeds: OperationalNeeds;
 }
 
 /** A declaration whose names are catalogue keys — the shape `parseConfig` admits. */
@@ -72,12 +60,67 @@ export interface TypedDeclaration extends CapabilityDeclaration {
     readonly intents: readonly IntentOperation[];
 }
 
+/** What an author writes: the three lists an event trigger can imply are optional. */
+export interface DeclarationInput {
+    readonly name: string;
+    readonly triggers: readonly DeclaredTrigger[];
+    readonly closed?: boolean;
+    readonly settings: Spec;
+    readonly requiredMappings?: RequiredMappings;
+    readonly facts?: readonly FactKind[];
+    readonly needs?: readonly FactGroup[];
+    readonly resolvers: readonly ResolverName[];
+    readonly intents: readonly IntentOperation[];
+}
+
+/** The kinds one webhook producer yields, read off its registry row. */
+type KindsOfEvent<E> = E extends WebhookProducer
+    ? { [K in FactKind]: (typeof PRODUCERS)[E][K] extends null ? never : K }[FactKind]
+    : never;
+
+/** The kinds every event trigger in a tuple implies; a schedule trigger implies none. */
+type KindsOfTriggers<T extends readonly DeclaredTrigger[]> = {
+    [I in keyof T]: T[I] extends { readonly kind: "event"; readonly event: infer E }
+        ? KindsOfEvent<E>
+        : never;
+}[number];
+
+/** The input with its defaults filled, each list kept as the literal tuple written. */
+export type Declared<D extends DeclarationInput> = Omit<
+    D,
+    "facts" | "needs" | "requiredMappings"
+> & {
+    readonly facts: D["facts"] extends readonly FactKind[]
+        ? D["facts"]
+        : readonly KindsOfTriggers<D["triggers"]>[];
+    readonly needs: D["needs"] extends readonly FactGroup[] ? D["needs"] : readonly [];
+    readonly requiredMappings: D["requiredMappings"] extends RequiredMappings
+        ? D["requiredMappings"]
+        : Record<never, never>;
+};
+
+function kindsImpliedBy(triggers: readonly DeclaredTrigger[]): readonly FactKind[] {
+    const kinds = new Set<FactKind>();
+    for (const trigger of triggers) {
+        if (trigger.kind !== "event") continue;
+        for (const kind of FACT_KINDS) if (producesKind(trigger.event, kind)) kinds.add(kind);
+    }
+    return FACT_KINDS.filter((kind) => kinds.has(kind));
+}
+
 /**
- * Pins `facts`, `needs`, `resolvers`, and `intents` as literal tuples. Declare
- * capabilities through this, never by annotating them `: TypedDeclaration`.
+ * Fill the defaults and pin every list as a literal tuple. Declare capabilities
+ * through this, never by annotating them `: TypedDeclaration`.
  */
-export function declareCapability<const D extends TypedDeclaration>(d: D): D {
-    return d;
+export function declareCapability<const D extends DeclarationInput>(d: D): Declared<D> {
+    const filled = {
+        ...d,
+        facts: d.facts ?? kindsImpliedBy(d.triggers),
+        needs: d.needs ?? [],
+        requiredMappings: d.requiredMappings ?? {},
+    };
+    // THE ONE CAST: the conditional types above are these three defaults, as types.
+    return filled as unknown as Declared<D>;
 }
 
 function duplicates(values: readonly string[]): string[] {
@@ -105,8 +148,10 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
             `${at}: at least one trigger (event or schedule) is required — an untriggerable capability is dead code`,
         );
     }
-    if (d.triggers.some((t) => t.kind === "schedule") && !d.operationalNeeds.schedule) {
-        errors.push(`${at}: declares a schedule trigger but operationalNeeds.schedule is false`);
+    if (d.facts.length === 0) {
+        errors.push(
+            `${at}: names no fact kind — an event trigger implies its kind, a schedule trigger must state \`facts\``,
+        );
     }
 
     if (Object.hasOwn(d.settings, "enabled")) {
@@ -220,12 +265,6 @@ function checkAgainstProducers(declaration: CapabilityDeclaration): readonly str
     for (const trigger of declaration.triggers) {
         if (trigger.kind === "schedule") {
             errors.push(...needsUnreadBy(declaration, "sweep", "the schedule trigger"));
-            continue;
-        }
-        if (!isWebhookProducer(trigger.event)) {
-            errors.push(
-                `capability "${declaration.name}": no producer wakes on the "${trigger.event}" trigger — the events the platform consumes are ${WEBHOOK_PRODUCERS.join(", ")}`,
-            );
             continue;
         }
         errors.push(...needsUnreadBy(declaration, trigger.event, `the "${trigger.event}" trigger`));

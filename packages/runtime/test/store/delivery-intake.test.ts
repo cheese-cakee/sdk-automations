@@ -41,16 +41,15 @@ function accept(
     payload: Uint8Array = Buffer.from("work"),
     receivedAt = RECEIVED,
 ) {
-    return store.acceptDelivery({ deliveryId, eventName, payload, receivedAt });
+    return store.inbox.acceptDelivery({ deliveryId, eventName, payload, receivedAt });
 }
 
 function complete(store: Store, claim: ClaimedDelivery, completedAt: string) {
-    return store.completeDeliveryWithReport({
+    return store.inbox.completeDelivery({
         deliveryId: claim.deliveryId,
         eventName: claim.eventName,
         payloadDigest: claim.payloadDigest,
         claimToken: claim.claimToken,
-        reportJson: JSON.stringify({ deliveryId: claim.deliveryId }),
         completedAt,
     });
 }
@@ -69,13 +68,13 @@ const { parentPort, workerData } = require("node:worker_threads");
     let value;
     try {
         value = workerData.operation === "accept"
-            ? store.acceptDelivery({
+            ? store.inbox.acceptDelivery({
                   deliveryId: workerData.deliveryId,
                   eventName: "issues",
                   payload: Buffer.from("same bytes"),
                   receivedAt: workerData.receivedAt,
               })
-            : store.claimNextDelivery(
+            : store.inbox.claimNextDelivery(
                   workerData.worker,
                   "2026-08-01T10:01:00.000Z",
                   "2026-08-01T09:00:00.000Z",
@@ -177,7 +176,7 @@ describe("durable delivery acceptance", () => {
         before.close();
 
         const restarted = new Store(path);
-        const claim = restarted.claimNextDelivery(
+        const claim = restarted.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:56:00.000Z",
@@ -254,7 +253,7 @@ describe("durable delivery acceptance", () => {
             payloadMismatch: false,
         });
 
-        const claim = store.claimNextDelivery(
+        const claim = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
@@ -262,7 +261,7 @@ describe("durable delivery acceptance", () => {
         expect(claim?.eventName).toBe("issues");
         expect(Buffer.from(claim!.payload)).toEqual(original);
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-b",
                 "2026-08-01T10:01:00.000Z",
                 "2026-08-01T09:00:00.000Z",
@@ -281,7 +280,7 @@ describe("delivery claims and recovery", () => {
 
         const order: DeliveryGuid[] = [];
         for (let index = 0; index < 3; index++) {
-            const claim = store.claimNextDelivery(
+            const claim = store.inbox.claimNextDelivery(
                 "worker-a",
                 `2026-08-01T10:01:0${String(index)}.000Z`,
                 "2026-08-01T09:00:00.000Z",
@@ -298,7 +297,7 @@ describe("delivery claims and recovery", () => {
     it("takes over a stale claim after restart and rejects the old token", () => {
         const before = new Store(path);
         accept(before);
-        const first = before.claimNextDelivery(
+        const first = before.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
@@ -307,13 +306,13 @@ describe("delivery claims and recovery", () => {
 
         const restarted = new Store(path);
         expect(
-            restarted.claimNextDelivery(
+            restarted.inbox.claimNextDelivery(
                 "worker-b",
                 "2026-08-01T10:04:00.000Z",
                 "2026-08-01T10:00:00.000Z",
             ),
         ).toBeUndefined();
-        const second = restarted.claimNextDelivery(
+        const second = restarted.inbox.claimNextDelivery(
             "worker-b",
             "2026-08-01T10:10:00.000Z",
             "2026-08-01T10:05:00.000Z",
@@ -332,25 +331,25 @@ describe("delivery claims and recovery", () => {
     it("releases and requeues only work owned by the matching token", () => {
         const store = new Store(path);
         accept(store);
-        const first = store.claimNextDelivery(
+        const first = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
-        expect(store.releaseDelivery(FIRST_ID, "wrong-token")).toEqual({
+        expect(store.inbox.releaseDelivery(FIRST_ID, "wrong-token")).toEqual({
             outcome: "notOwned",
         });
-        expect(store.releaseDelivery(FIRST_ID, first.claimToken)).toEqual({
+        expect(store.inbox.releaseDelivery(FIRST_ID, first.claimToken)).toEqual({
             outcome: "released",
         });
 
-        const second = store.claimNextDelivery(
+        const second = store.inbox.claimNextDelivery(
             "worker-b",
             "2026-08-01T10:02:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
-        expect(store.requeueStuckDeliveries("2026-08-01T10:01:59.999Z")).toEqual([]);
-        expect(store.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([FIRST_ID]);
+        expect(store.inbox.requeueStuckDeliveries("2026-08-01T10:01:59.999Z")).toEqual([]);
+        expect(store.inbox.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([FIRST_ID]);
         expect(complete(store, second, "2026-08-01T10:03:00.000Z")).toEqual({
             outcome: "notOwned",
         });
@@ -362,14 +361,14 @@ describe("delivery claims and recovery", () => {
         accept(store, FIRST_ID, "issues", Buffer.from("first"));
         accept(store, SECOND_ID, "issues", Buffer.from("second"), "2026-08-01T10:00:01.000Z");
 
-        const first = store.claimNextDelivery(
+        const first = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
         expect(first).toMatchObject({ deliveryId: FIRST_ID, attempts: 0 });
         expect(
-            store.releaseDeliveryAfterFailure({
+            store.inbox.releaseDeliveryAfterFailure({
                 deliveryId: FIRST_ID,
                 claimToken: first.claimToken,
                 failedAt: "2026-08-01T10:01:00.000Z",
@@ -383,7 +382,7 @@ describe("delivery claims and recovery", () => {
         });
 
         // The oldest row is waiting, so the queue serves the one behind it.
-        const second = store.claimNextDelivery(
+        const second = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:01.000Z",
             "2026-08-01T09:00:00.000Z",
@@ -394,7 +393,7 @@ describe("delivery claims and recovery", () => {
         });
 
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-a",
                 "2026-08-01T10:01:29.999Z",
                 "2026-08-01T09:00:00.000Z",
@@ -402,7 +401,7 @@ describe("delivery claims and recovery", () => {
         ).toBeUndefined();
         // Due to the millisecond, and claimed carrying its spent attempt.
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-a",
                 "2026-08-01T10:01:30.000Z",
                 "2026-08-01T09:00:00.000Z",
@@ -414,7 +413,7 @@ describe("delivery claims and recovery", () => {
     it("counts a failed attempt only for the token that holds the claim", () => {
         const store = new Store(path);
         accept(store);
-        const claim = store.claimNextDelivery(
+        const claim = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
@@ -428,26 +427,26 @@ describe("delivery claims and recovery", () => {
         };
 
         expect(
-            store.releaseDeliveryAfterFailure({ ...failure, claimToken: "wrong-token" }),
+            store.inbox.releaseDeliveryAfterFailure({ ...failure, claimToken: "wrong-token" }),
         ).toEqual({ outcome: "notOwned" });
         // A refused failure spends nothing: the claim is still held.
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-b",
                 "2026-08-01T10:01:20.000Z",
                 "2026-08-01T09:00:00.000Z",
             ),
         ).toBeUndefined();
 
-        expect(store.releaseDeliveryAfterFailure(failure)).toEqual({
+        expect(store.inbox.releaseDeliveryAfterFailure(failure)).toEqual({
             outcome: "retryScheduled",
             attempts: 1,
             retryNotBefore: "2026-08-01T10:01:40.000Z",
         });
         // The same token cannot count its attempt twice.
-        expect(store.releaseDeliveryAfterFailure(failure)).toEqual({ outcome: "notOwned" });
+        expect(store.inbox.releaseDeliveryAfterFailure(failure)).toEqual({ outcome: "notOwned" });
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-b",
                 "2026-08-01T10:01:40.000Z",
                 "2026-08-01T09:00:00.000Z",
@@ -467,14 +466,14 @@ describe("delivery claims and recovery", () => {
         accept(store, FIRST_ID, "issues", Buffer.from("work"), "2026-08-01T10:00:02.000Z");
         for (const worker of ["worker-a", "worker-b", "worker-c"]) {
             expect(
-                store.claimNextDelivery(
+                store.inbox.claimNextDelivery(
                     worker,
                     "2026-08-01T10:02:00.000Z",
                     "2026-08-01T09:00:00.000Z",
                 ),
             ).toBeDefined();
         }
-        expect(store.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([
+        expect(store.inbox.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([
             FIRST_ID,
             SECOND_ID,
             THIRD_ID,
@@ -488,7 +487,7 @@ describe("delivery completion and retention", () => {
         const store = new Store(path);
         const payload = Buffer.from("discard after completion");
         const accepted = accept(store, FIRST_ID, "issues", payload);
-        const claim = store.claimNextDelivery(
+        const claim = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
@@ -547,13 +546,13 @@ describe("delivery completion and retention", () => {
         accept(store, SECOND_ID, "issues", Buffer.from("processing"), "2026-01-01T00:00:00.000Z");
         accept(store, THIRD_ID, "issues", Buffer.from("done"), "2026-01-01T00:00:00.000Z");
 
-        const processing = store.claimNextDelivery(
+        const processing = store.inbox.claimNextDelivery(
             "worker-a",
             "2026-01-02T00:00:00.000Z",
             "2025-01-01T00:00:00.000Z",
         )!;
         expect(processing.deliveryId).toBe(FIRST_ID);
-        const done = store.claimNextDelivery(
+        const done = store.inbox.claimNextDelivery(
             "worker-b",
             "2026-01-02T00:00:00.000Z",
             "2025-01-01T00:00:00.000Z",
@@ -563,10 +562,10 @@ describe("delivery completion and retention", () => {
             outcome: "completed",
         });
 
-        expect(store.pruneCompletedDeliveries("2026-01-31T23:59:59.999Z")).toBe(0);
-        expect(store.pruneCompletedDeliveries("2026-02-01T00:00:00.000Z")).toBe(1);
+        expect(store.inbox.pruneCompletedDeliveries("2026-01-31T23:59:59.999Z")).toBe(0);
+        expect(store.inbox.pruneCompletedDeliveries("2026-02-01T00:00:00.000Z")).toBe(1);
         expect(
-            store.claimNextDelivery(
+            store.inbox.claimNextDelivery(
                 "worker-c",
                 "2026-03-01T00:00:00.000Z",
                 "2025-01-01T00:00:00.000Z",
@@ -581,6 +580,43 @@ describe("delivery completion and retention", () => {
 });
 
 describe("delivery intake boundaries", () => {
+    it.each(["g" + "0".repeat(63), "0".repeat(63) + "g"])(
+        "refuses a payload digest with a non-hex character at %s",
+        (digest) => {
+            const store = new Store(path);
+            expect(() =>
+                store.inbox.completeDelivery({
+                    deliveryId: FIRST_ID,
+                    eventName: "issues",
+                    payloadDigest: digest,
+                    claimToken: "token",
+                    completedAt: RECEIVED,
+                }),
+            ).toThrow(/payloadDigest/);
+            store.close();
+        },
+    );
+
+    it("refuses to redrive a delivery whose id is not a GUID", () => {
+        const store = new Store(path);
+        expect(() => store.inbox.redriveDelivery("nope" as never)).toThrow(/deliveryId/);
+        store.close();
+    });
+
+    it("rolls back an accept that dies before its commit, and takes it again", () => {
+        let arm = true;
+        const store = new Store(path, {
+            injectFault(point) {
+                if (point === "intake:accepted" && arm) throw new Error("boom");
+            },
+        });
+        expect(() => accept(store)).toThrow("boom");
+        expect(store.inbox.counts().pending).toBe(0);
+        arm = false;
+        expect(accept(store)).toMatchObject({ outcome: "accepted" });
+        store.close();
+    });
+
     it("fails closed on malformed identifiers, empty names, non-bytes, and invalid timestamps", () => {
         expect(asDeliveryGuid("")).toBeUndefined();
         expect(asDeliveryGuid("123")).toBeUndefined();
@@ -588,7 +624,7 @@ describe("delivery intake boundaries", () => {
         expect(() => accept(store, "" as DeliveryGuid)).toThrow(/deliveryId/);
         expect(() => accept(store, FIRST_ID, " ")).toThrow(/eventName/);
         expect(() =>
-            store.acceptDelivery({
+            store.inbox.acceptDelivery({
                 deliveryId: FIRST_ID,
                 // @ts-expect-error Runtime callers can violate the typed boundary.
                 eventName: 42,
@@ -597,7 +633,7 @@ describe("delivery intake boundaries", () => {
             }),
         ).toThrow(/eventName/);
         expect(() =>
-            store.acceptDelivery({
+            store.inbox.acceptDelivery({
                 deliveryId: FIRST_ID,
                 eventName: "issues",
                 // @ts-expect-error Runtime callers can violate the typed boundary.
@@ -613,32 +649,33 @@ describe("delivery intake boundaries", () => {
         } catch (error) {
             expect(String(error)).not.toContain("secret-payload");
         }
-        expect(() => store.claimNextDelivery("worker", "invalid", RECEIVED)).toThrow(/now/);
-        expect(() => store.claimNextDelivery("worker", RECEIVED, "invalid")).toThrow(/staleBefore/);
-        expect(() => store.requeueStuckDeliveries("invalid")).toThrow(/claimedBefore/);
+        expect(() => store.inbox.claimNextDelivery("worker", "invalid", RECEIVED)).toThrow(/now/);
+        expect(() => store.inbox.claimNextDelivery("worker", RECEIVED, "invalid")).toThrow(
+            /staleBefore/,
+        );
+        expect(() => store.inbox.requeueStuckDeliveries("invalid")).toThrow(/claimedBefore/);
         const validCompletion = {
             deliveryId: FIRST_ID,
             eventName: "issues",
             payloadDigest: "0".repeat(64),
             claimToken: "token",
-            reportJson: "{}",
             completedAt: RECEIVED,
         };
         expect(() =>
-            store.completeDeliveryWithReport({
+            store.inbox.completeDelivery({
                 ...validCompletion,
                 completedAt: "invalid",
             }),
         ).toThrow(/completedAt/);
         expect(() =>
-            store.completeDeliveryWithReport({
+            store.inbox.completeDelivery({
                 ...validCompletion,
                 claimToken: "",
             }),
         ).toThrow(/claimToken/);
-        expect(() => store.pruneCompletedDeliveries("invalid")).toThrow(/before/);
-        expect(() => store.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(/worker/);
-        expect(() => store.releaseDelivery(FIRST_ID, "")).toThrow(/claimToken/);
+        expect(() => store.inbox.pruneCompletedDeliveries("invalid")).toThrow(/before/);
+        expect(() => store.inbox.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(/worker/);
+        expect(() => store.inbox.releaseDelivery(FIRST_ID, "")).toThrow(/claimToken/);
         const validFailure = {
             deliveryId: FIRST_ID,
             claimToken: "token",
@@ -647,20 +684,23 @@ describe("delivery intake boundaries", () => {
             maxAttempts: 5,
         };
         expect(() =>
-            store.releaseDeliveryAfterFailure({ ...validFailure, deliveryId: "" as DeliveryGuid }),
+            store.inbox.releaseDeliveryAfterFailure({
+                ...validFailure,
+                deliveryId: "" as DeliveryGuid,
+            }),
         ).toThrow(/deliveryId/);
         expect(() =>
-            store.releaseDeliveryAfterFailure({ ...validFailure, claimToken: "" }),
+            store.inbox.releaseDeliveryAfterFailure({ ...validFailure, claimToken: "" }),
         ).toThrow(/claimToken/);
         expect(() =>
-            store.releaseDeliveryAfterFailure({ ...validFailure, failedAt: "invalid" }),
+            store.inbox.releaseDeliveryAfterFailure({ ...validFailure, failedAt: "invalid" }),
         ).toThrow(/failedAt/);
         expect(() =>
-            store.releaseDeliveryAfterFailure({ ...validFailure, retryNotBefore: "invalid" }),
+            store.inbox.releaseDeliveryAfterFailure({ ...validFailure, retryNotBefore: "invalid" }),
         ).toThrow(/retryNotBefore/);
         for (const maxAttempts of [0, -1, 1.5, Number.NaN]) {
             expect(() =>
-                store.releaseDeliveryAfterFailure({ ...validFailure, maxAttempts }),
+                store.inbox.releaseDeliveryAfterFailure({ ...validFailure, maxAttempts }),
             ).toThrow("maxAttempts must be a positive integer");
         }
         store.close();

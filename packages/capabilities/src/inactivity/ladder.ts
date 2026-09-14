@@ -3,9 +3,14 @@
  * capability's settings. The platform, not a ladder, holds the grace.
  */
 
-import { HOUR_MS, isConflicted, isOpen, isPaused } from "@hiero-hackers/automation-core";
+import { HOUR_MS, isConflicted, isPaused } from "@hiero-hackers/automation-core/author";
 import type { InactivitySettings } from "./context.js";
 import type { InactivityFacts } from "./declaration.js";
+
+/** The three contributor-side modes a pull request can be stale in, in the order the design reads them. */
+export const REAP_REASONS = ["needsRevision", "changesRequested", "draft"] as const;
+
+export type ReapReason = (typeof REAP_REASONS)[number];
 
 /** A resolved level, in hours. `reapAfter` is `null` where it never acts. */
 export interface Ladder {
@@ -43,9 +48,8 @@ export function deadlineOf(ladder: Reaping, observedAt: Date): Date {
     return new Date(observedAt.getTime() + graceHoursOf(ladder) * HOUR_MS);
 }
 
-/** The three stops both ladders share, in order: paused, conflicted, closed. */
+/** The two stops both ladders share, in order: paused, then conflicted. */
 export function stillOnTheLadder(facts: InactivityFacts, settings: InactivitySettings): boolean {
     if (settings.exemptBlocked && isPaused(facts)) return false;
-    if (isConflicted(facts)) return false;
-    return isOpen(facts);
+    return !isConflicted(facts);
 }

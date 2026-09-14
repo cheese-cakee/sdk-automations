@@ -87,7 +87,7 @@ in-repo ping, and nothing here ever holds a secret.
 | `resolvers` | `isAutomationActor` (exists) — only to skip the App's own label writes |
 | `intents` | `postManagedComment` only |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write` · organization: none |
-| `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: false · externalDelivery: false |
+| Platform needs | durableState: none · crossItemCoordination: false · externalDelivery: false |
 
 `issues` reads no group on an issue record and `pull_request` reads `readiness` on a pull-request
 record, so a declaration needing no group boots on both triggers.

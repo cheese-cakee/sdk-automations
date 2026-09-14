@@ -26,6 +26,9 @@ const WRITE_ALLOWLIST = new Set([
     // CodeQL's SARIF upload, declared on the analyze job only so no other
     // step can inherit it (D101, #42).
     ".github/workflows/codeql.yml:security-events",
+    // The conformance stamp travels by pull request (D158).
+    ".github/workflows/conformance.yml:contents",
+    ".github/workflows/conformance.yml:pull-requests",
 ]);
 
 function workflowText(path: string): string {

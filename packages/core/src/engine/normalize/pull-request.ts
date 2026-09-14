@@ -4,7 +4,8 @@
  * carries whole; every other is `UNREAD`, never invented.
  */
 
-import { UNREAD, type ProducedFacts } from "../../capability/index.js";
+import { UNREAD } from "../../catalogue.js";
+import type { ProducedFacts } from "../../capability/index.js";
 import { projectPullRequest, type ClosureReason } from "../../workflow/index.js";
 import type { DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";

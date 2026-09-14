@@ -13,7 +13,8 @@
  *    both pollutes the prototype and loses the entry).
  */
 import { describe, it, expect } from "vitest";
-import { addressManagedComment, flag, spec } from "../../src/capability/index.js";
+import { flag, spec } from "../../src/capability/index.js";
+import { addressManagedComment } from "../../src/intents/index.js";
 import { parseConfig } from "../../src/config/index.js";
 import { admitting } from "./builders.js";
 

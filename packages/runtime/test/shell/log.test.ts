@@ -83,7 +83,7 @@ describe("one line per event", () => {
  * name the events they happen to use.
  *
  * `ROUTING` is exhaustive by construction: `ShellEvent["event"]` keys it, so
- * a twenty-third event fails to compile here until this table admits it.
+ * a twenty-fifth event fails to compile here until this table admits it.
  */
 const ROUTING: Record<
     ShellEvent["event"],
@@ -100,14 +100,11 @@ const ROUTING: Record<
             storePath: "shell.sqlite",
             writes: "absent",
             sweep: "absent",
+            suspended: false,
         },
         problem: false,
     },
     shutdown: { event: { event: "shutdown", signal: "SIGTERM" }, problem: false },
-    legacyStoreFound: {
-        event: { event: "legacyStoreFound", legacyPath: "old", storePath: "new" },
-        problem: true,
-    },
     deliveryAccepted: {
         event: { event: "deliveryAccepted", deliveryId: "guid-1", eventName: "issues" },
         problem: false,
@@ -192,6 +189,10 @@ const ROUTING: Record<
         },
         problem: false,
     },
+    sweepSuspended: {
+        event: { event: "sweepSuspended", scheduleId: "sweep:owner/repo" },
+        problem: false,
+    },
     sweepUnreadable: {
         event: {
             event: "sweepUnreadable",
@@ -200,6 +201,21 @@ const ROUTING: Record<
         },
         problem: true,
     },
+    sweepPartial: {
+        event: {
+            event: "sweepPartial",
+            scheduleId: "sweep:owner/repo",
+            read: 330,
+            remaining: 12,
+            resumeAfter: 512,
+            requests: 2000,
+        },
+        problem: false,
+    },
+    sweepPruned: {
+        event: { event: "sweepPruned", deliveries: 1, effects: 2, decisions: 3 },
+        problem: false,
+    },
     sweepFinished: {
         event: {
             event: "sweepFinished",
@@ -207,6 +223,11 @@ const ROUTING: Record<
             items: 2,
             decided: 2,
             unread: 0,
+            writes: 2,
+            heldBack: 0,
+            remaining: 0,
+            resumeAfter: null,
+            requests: 14,
             nextDueAt: "2026-09-10T10:00:00.000Z",
         },
         problem: false,

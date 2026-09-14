@@ -108,17 +108,24 @@ module.exports = {
             name: "adapter-imported-at-shell-main-only",
             severity: "error",
             comment:
-                "GitHub credentials enter at the runnable composition root. No other package, " +
-                "and no other directory of the runtime, may reach into the adapter. The " +
+                "GitHub credentials enter at the runnable composition root: the start, and the " +
+                "live fill it builds. Not the record they read, which is pure; not another " +
+                "directory of the runtime; and no other package. The " +
                 "runtime's own `src/index.ts` is absent from the FROM side because it is the " +
                 "package's public surface rather than a consumer of the adapter: it re-exports " +
-                "three barrels and reaches into none of them.",
+                "three barrels and reaches into none of them. The sweep's test directory is the " +
+                "one other exemption: the sweep is the seam between the shell and the adapter, so " +
+                "its test needs the adapter's real reader and the fake it answers with, and it " +
+                "takes both through the barrel the way the composition root does.",
             from: {
                 path: [
                     `${P}(?:core|capabilities|checks|lab|testkit)/(?:src|test)/`,
                     R("store|shell"),
                 ],
-                pathNot: ["^packages/runtime/src/shell/main\\.ts$"],
+                pathNot: [
+                    "^packages/runtime/src/shell/compose/(?:live|main)\\.ts$",
+                    "^packages/runtime/test/shell/sweep/",
+                ],
             },
             to: { path: R("adapter") },
         },
@@ -174,8 +181,34 @@ module.exports = {
                     "^packages/$1/(?:src|test)/$2/",
                     `${P}[^/]+/src/index\\.ts$`,
                     "^packages/$1/src/(?:store|shell|adapter)/index\\.ts$",
+                    // core's two named doors, the ones its exports map names.
+                    `${P}core/src/author/(?:index|testing)\\.ts$`,
                 ],
             },
+        },
+        {
+            name: "harness-is-test-only",
+            severity: "error",
+            comment:
+                "core's `author/testing` is the fixture harness: record and configuration " +
+                "builders for a capability's own tests. It is reachable from a test file and " +
+                "nowhere else, whichever package the test belongs to.",
+            from: { path: `${P}[^/]+/src/`, pathNot: "\\.test\\.ts$" },
+            to: { path: `${P}core/src/author/testing\\.ts$` },
+        },
+        {
+            name: "capabilities-enter-by-the-author-door",
+            severity: "error",
+            comment:
+                "A capability names core through `author/`, the door sized to what an author " +
+                "needs, never through the root barrel that also exposes the engine, the write " +
+                "rules and the report. Its tests may still reach the root, because they drive " +
+                "the engine, and so may the registry, `src/index.ts`, which hands the folders to it.",
+            from: {
+                path: `${P}capabilities/src/`,
+                pathNot: ["\\.test\\.ts$", `${P}capabilities/src/index\\.ts$`],
+            },
+            to: { path: `${P}core/src/index\\.ts$` },
         },
         {
             name: "not-to-unresolvable",
@@ -183,7 +216,8 @@ module.exports = {
             comment:
                 "The other half of the rule above, and the reason it is not decoration: a named " +
                 "subpath like `@hiero-hackers/automation-core/private` never resolves at all, " +
-                "because every package's exports map exposes exactly '.'. Without this rule such " +
+                "because an exports map names only what it exposes — '.' everywhere, plus core's " +
+                "two author doors. Without this rule such " +
                 "an import produces no edge and therefore no violation — silence where the " +
                 "loudest possible error belongs.",
             from: {},

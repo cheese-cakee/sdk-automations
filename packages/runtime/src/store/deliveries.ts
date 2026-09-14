@@ -54,23 +54,21 @@ export interface ClaimedDelivery {
     readonly attempts: number;
 }
 
-/** Everything the store must bind to one report-and-completion commit. */
-export interface CompleteDeliveryWithReportInput {
+/** Everything the store must bind to one completion commit (D173). */
+export interface CompleteDeliveryInput {
     readonly deliveryId: DeliveryGuid;
     readonly eventName: string;
     readonly payloadDigest: string;
     readonly claimToken: string;
-    readonly reportJson: string;
     readonly completedAt: string;
 }
 
-/** The closed result of attempting the report-and-completion commit. */
-export type CompleteDeliveryWithReportResult =
+/** The closed result of attempting the completion commit. */
+export type CompleteDeliveryResult =
     | { readonly outcome: "completed" }
     | { readonly outcome: "alreadyCompleted" }
     | { readonly outcome: "notOwned" }
-    | { readonly outcome: "identityMismatch" }
-    | { readonly outcome: "reportConflict" };
+    | { readonly outcome: "identityMismatch" };
 
 /** Whether the supplied token released its delivery claim. */
 export type ReleaseDeliveryResult =
@@ -108,9 +106,17 @@ export interface DeadLetteredDelivery {
     readonly failedAt: string;
 }
 
-/** One canonical report in deterministic projection-replay order. */
-export interface CanonicalDeliveryReport {
-    readonly deliveryId: DeliveryGuid;
-    readonly reportJson: string;
-    readonly completedAt: string;
+/** How many deliveries sit in each state, and the oldest completion still kept (D168). */
+export interface DeliveryCounts {
+    readonly pending: number;
+    readonly processing: number;
+    readonly done: number;
+    readonly failed: number;
+    readonly oldestDone: string | null;
+}
+
+/** The newest delivery by receipt, with the instant it finished (D168). */
+export interface NewestDelivery {
+    readonly receivedAt: string;
+    readonly completedAt: string | null;
 }

@@ -5,138 +5,112 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    handleFor,
+    parseConfig,
     projectCapabilityView,
+    type Facts,
     type IssueMeaning,
-    type PlatformHandle,
     type Projection,
-    type StructuredExplanation,
+    type ResolverAnswer,
+    type ResolverSource,
     type WorkItemState,
 } from "@hiero-hackers/automation-core";
-import { intake, type IntakeDeclaration } from "./capability.js";
-import { configEnabling, webhookIssue } from "../../test/world.js";
+import { intake, intakeDeclaration } from "./capability.js";
+import {
+    configEnabling,
+    factsFor,
+    OBSERVED_AT,
+    REPOSITORY,
+    webhookIssue,
+} from "@hiero-hackers/automation-core/author/testing";
 
-const AT = new Date("2026-08-03T09:00:00.000Z");
-const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const ITEM = { kind: "issue", number: 11 } as const;
 
-const announcing = configEnabling(["intake"], ["intake"], { intake: { announce: true } });
-const silent = configEnabling(["intake"], ["intake"]);
-/** The same repository, having mapped no meanings at all. */
-const unmapped = {
-    ...announcing,
-    mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
-};
+const announcing = configEnabling(["intake"], [intakeDeclaration], { intake: { announce: true } });
+const silent = configEnabling(["intake"], [intakeDeclaration]);
+const announcingView = projectCapabilityView(intakeDeclaration, announcing);
 
 const issue = (state: Partial<WorkItemState<IssueMeaning>>) =>
-    webhookIssue({
-        repository: REPO,
-        item: ITEM,
-        observedAt: AT,
-        position: {
-            kind: "position",
-            state: { meaning: null, blocked: false, closedBy: null, ...state },
-            ignored: [],
-        } satisfies Projection<IssueMeaning>,
-    });
+    factsFor(
+        intakeDeclaration,
+        webhookIssue({
+            item: ITEM,
+            position: {
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: null, ...state },
+                ignored: [],
+            } satisfies Projection<IssueMeaning>,
+        }),
+    );
 
 /** The same issue, seen holding more than one position at once. */
 const conflicted = (...positions: readonly IssueMeaning[]) =>
-    webhookIssue({
-        repository: REPO,
-        item: ITEM,
-        observedAt: AT,
-        position: {
-            kind: "conflict",
-            positions,
-            blocked: false,
-            closedBy: null,
-            ignored: [],
-        } satisfies Projection<IssueMeaning>,
-    });
+    factsFor(
+        intakeDeclaration,
+        webhookIssue({
+            item: ITEM,
+            position: {
+                kind: "conflict",
+                positions,
+                blocked: false,
+                closedBy: null,
+                ignored: [],
+            } satisfies Projection<IssueMeaning>,
+        }),
+    );
 
 /**
- * A handle that records what intake explained, answering its one resolver.
- * The default answer is "a person".
+ * The engine's own handle over one record, answering intake's one resolver.
+ * The default answer is "a person"; `asked` is the login each question named.
  */
-function watch(
-    actor: Awaited<ReturnType<PlatformHandle<IntakeDeclaration>["resolve"]>> = {
-        ok: true,
-        value: false,
-    },
-): {
-    readonly platform: PlatformHandle<IntakeDeclaration>;
-    readonly explained: StructuredExplanation[];
-    readonly asked: string[];
-} {
-    const explained: StructuredExplanation[] = [];
+function watch(record: Facts, actor: ResolverAnswer<boolean> = { ok: true, value: false }) {
     const asked: string[] = [];
-    return {
-        platform: {
-            resolve: async (_query, input) => {
-                asked.push(input.login);
-                return await Promise.resolve(actor);
-            },
-            explain: (explanation) => {
-                explained.push(explanation);
-            },
-        },
-        explained,
-        asked,
+    const source: ResolverSource = async (_query, input) => {
+        asked.push((input as { readonly login: string }).login);
+        return await Promise.resolve(actor as never);
     };
+    const handle = handleFor(intakeDeclaration, record, source);
+    return { platform: handle, handle, asked };
 }
 
 describe("intake", () => {
     it("Issue opened by a bot", async () => {
-        const { platform, explained, asked } = watch({ ok: true, value: true });
+        const record = factsFor(intakeDeclaration, webhookIssue({ author: "renovate[bot]" }));
+        const { platform, handle, asked } = watch(record, { ok: true, value: true });
 
-        expect(
-            await intake.evaluate(
-                webhookIssue({ author: "renovate[bot]" }),
-                projectCapabilityView(intake.declaration, announcing),
-                platform,
-            ),
-        ).toEqual([]);
+        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
         // The AUTHOR, not the actor: the guard asks who opened the issue.
         expect(asked).toEqual(["renovate[bot]"]);
         // Silence, not a report: a machine's issue is not a problem.
-        expect(explained).toEqual([]);
+        expect(handle.explanations).toEqual([]);
     });
 
     it("stops, and says so, when nobody can answer who opened the issue", async () => {
-        const { platform, explained } = watch({
+        const record = issue({});
+        const { platform, handle } = watch(record, {
             ok: false,
             reason: "rateLimited",
             detail: "secondary rate limit",
         });
 
-        expect(
-            await intake.evaluate(
-                issue({}),
-                projectCapabilityView(intake.declaration, announcing),
-                platform,
-            ),
-        ).toEqual([]);
-        expect(explained).toEqual([
+        // The platform ends the evaluation; nothing comes back to be gated.
+        await expect(intake.evaluate(record, announcingView, platform)).rejects.toBeDefined();
+        expect(handle.skipped).toBe(true);
+        expect(handle.explanations).toEqual([
             {
                 capability: "intake",
-                summary:
-                    "Skipped: nobody could say whether this issue was opened by an automation.",
-                detail: ["the actor lookup answered rateLimited"],
+                summary: "Skipped: the isAutomationActor resolver could not answer.",
+                detail: ["resolver reason: rateLimited", "secondary rate limit"],
             },
         ]);
     });
 
     it("names both positions of a conflicted item, and repairs neither (D35)", async () => {
-        const { platform, explained } = watch();
+        const record = conflicted("ready", "inProgress");
+        const { platform, handle } = watch(record);
 
-        expect(
-            await intake.evaluate(
-                conflicted("ready", "inProgress"),
-                projectCapabilityView(intake.declaration, announcing),
-                platform,
-            ),
-        ).toEqual([]);
-        expect(explained).toEqual([
+        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
+        expect(handle.explanations).toEqual([
             {
                 capability: "intake",
                 summary: "Skipped: the item holds more than one workflow position.",
@@ -148,89 +122,63 @@ describe("intake", () => {
         ]);
     });
 
-    it("will not triage a repository that has not mapped awaitingTriage", async () => {
-        const { platform, explained } = watch();
-        const fresh = issue({});
+    /** D84: the meaning intake requires is the parser's business, never a delivery's. */
+    it("will not triage a repository that has not mapped awaitingTriage", () => {
+        const file = (labels: Readonly<Record<string, string>>) =>
+            parseConfig(
+                {
+                    schemaVersion: 2,
+                    capabilities: { intake: { enabled: true, announce: true } },
+                    mappings: { labels },
+                },
+                { revision: "rev-1", knownCapabilities: [intakeDeclaration] },
+            );
 
-        expect(
-            await intake.evaluate(
-                fresh,
-                projectCapabilityView(intake.declaration, unmapped),
-                platform,
-            ),
-        ).toEqual([]);
-        expect(explained).toEqual([
-            {
-                capability: "intake",
-                summary: "Skipped: this repository has not mapped awaitingTriage.",
-                detail: ["intake cannot triage without a mapped triage meaning"],
-            },
+        const refused = file({ ready: "status: ready for dev" });
+        expect(refused.ok ? [] : refused.errors.map(({ code, path }) => ({ code, path }))).toEqual([
+            { code: "meaningRequired", path: "mappings.labels.awaitingTriage" },
         ]);
 
-        // The same issue in a repository that mapped it: the silence was the mapping.
-        expect(
-            await intake.evaluate(
-                fresh,
-                projectCapabilityView(intake.declaration, announcing),
-                platform,
-            ),
-        ).toHaveLength(2);
+        // The same file with the meaning mapped: the refusal was the mapping.
+        expect(file({ awaitingTriage: "status: triage" }).ok).toBe(true);
     });
 
     it("leaves an issue that already holds a position, silently", async () => {
-        const { platform, explained } = watch();
-        expect(
-            await intake.evaluate(
-                issue({ meaning: "inProgress" }),
-                projectCapabilityView(intake.declaration, announcing),
-                platform,
-            ),
-        ).toEqual([]);
-        expect(explained).toEqual([]);
-    });
+        const record = issue({ meaning: "inProgress" });
+        const { platform, handle } = watch(record);
 
-    it("leaves a closed issue alone", async () => {
-        expect(
-            await intake.evaluate(
-                issue({ closedBy: "closedByHuman" }),
-                projectCapabilityView(intake.declaration, announcing),
-                watch().platform,
-            ),
-        ).toEqual([]);
+        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
+        expect(handle.explanations).toEqual([]);
     });
 
     /** Both requests in full: one occasion, but the announcement claims only openness. */
     it("asks for the label and the announcement, in that order, on their own claims", async () => {
-        const occasion = { cause: "issueWithoutPosition", observedAt: AT };
+        const occasion = { cause: "issueWithoutPosition", observedAt: OBSERVED_AT };
         const claim = { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false };
         const announceClaim = { meaningsPresent: [], meaningsAbsent: [], closed: false };
+        const record = issue({});
 
-        expect(
-            await intake.evaluate(
-                issue({}),
-                projectCapabilityView(intake.declaration, announcing),
-                watch().platform,
-            ),
-        ).toEqual([
+        expect(await intake.evaluate(record, announcingView, watch(record).platform)).toEqual([
             {
                 capability: "intake",
-                repository: REPO,
+                repository: REPOSITORY,
                 item: ITEM,
                 operation: "applyMappedLabel",
+                // The map's answer: `[*] → awaitingTriage` for `intakeObserved` (D78).
                 desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
                 claims: claim,
                 cause: occasion,
                 explanation: {
                     capability: "intake",
-                    summary: "New issue placed in triage.",
-                    detail: ["the issue carried no mapped workflow meaning"],
+                    summary: "Placed the new issue in triage.",
+                    detail: [],
                 },
                 grace: null,
                 idempotencyKey: expect.any(String),
             },
             {
                 capability: "intake",
-                repository: REPO,
+                repository: REPOSITORY,
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
@@ -242,7 +190,7 @@ describe("intake", () => {
                 explanation: {
                     capability: "intake",
                     summary: "Announced the triage placement.",
-                    detail: ["announce is enabled for this repository"],
+                    detail: [],
                 },
                 grace: null,
                 idempotencyKey: expect.any(String),
@@ -251,10 +199,11 @@ describe("intake", () => {
     });
 
     it("triages without announcing when announce is not configured", async () => {
+        const record = issue({});
         const intents = await intake.evaluate(
-            issue({}),
-            projectCapabilityView(intake.declaration, silent),
-            watch().platform,
+            record,
+            projectCapabilityView(intakeDeclaration, silent),
+            watch(record).platform,
         );
         expect(intents.map((intent) => intent.operation)).toEqual(["applyMappedLabel"]);
     });

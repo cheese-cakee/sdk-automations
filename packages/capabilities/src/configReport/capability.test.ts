@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
     decide,
+    handleFor,
     parseConfig,
     parseConfigDocument,
     projectCapabilityView,
@@ -16,25 +17,28 @@ import {
     type AdmittedCapability,
     type ConfigError,
     type ConfigResult,
+    type Externals,
     type Facts,
-    type ResolverSource,
-    type FactsFor,
-    type PlatformHandle,
     type PrMeaning,
     type Projection,
-    type StructuredExplanation,
+    type ResolverSource,
     type WorkItemState,
 } from "@hiero-hackers/automation-core";
-import { configReport, type ConfigReportDeclaration } from "./capability.js";
+import { configReport, configReportDeclaration } from "./capability.js";
 import { renderConfiguration, renderRejection, renderReport } from "./render.js";
 import { CONFIG_REPORT_SETTINGS } from "./settings.js";
 import { intakeDeclaration } from "../intake/capability.js";
 import { prQualityDeclaration } from "../prQuality/capability.js";
 import { inactivityDeclaration } from "../inactivity/capability.js";
-import { asDeclared, configEnabling, webhookPullRequest } from "../../test/world.js";
+import {
+    answering,
+    configEnabling,
+    factsFor,
+    OBSERVED_AT,
+    REPOSITORY,
+    webhookPullRequest,
+} from "@hiero-hackers/automation-core/author/testing";
 
-const AT = new Date("2026-08-03T09:00:00.000Z");
-const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const ITEM = { kind: "pullRequest", number: 12 } as const;
 const REVISION = "sha256:abcdef012345";
 
@@ -43,21 +47,18 @@ const KNOWN: readonly AdmittedCapability[] = [
     intakeDeclaration,
     prQualityDeclaration,
     inactivityDeclaration,
-    configReport.declaration,
+    configReportDeclaration,
 ];
 
-const view = () =>
-    projectCapabilityView(
-        configReport.declaration,
-        configEnabling(["configReport"], ["configReport"]),
-    );
+const enabled = () => configEnabling(["configReport"], [configReportDeclaration]);
+
+const view = () => projectCapabilityView(configReportDeclaration, enabled());
 
 const pullRequest = (state: Partial<WorkItemState<PrMeaning>>) =>
-    asDeclared<FactsFor<ConfigReportDeclaration>>(
+    factsFor(
+        configReportDeclaration,
         webhookPullRequest({
-            repository: REPO,
             item: ITEM,
-            observedAt: AT,
             position: {
                 kind: "position",
                 state: { meaning: null, blocked: false, closedBy: null, ...state },
@@ -66,39 +67,33 @@ const pullRequest = (state: Partial<WorkItemState<PrMeaning>>) =>
         }),
     );
 
-/** A handle carrying one resolver answer, and holding what the probe explained. */
-function watch(resolve: PlatformHandle<ConfigReportDeclaration>["resolve"]): {
-    readonly platform: PlatformHandle<ConfigReportDeclaration>;
-    readonly explained: StructuredExplanation[];
-} {
-    const explained: StructuredExplanation[] = [];
-    return {
-        platform: {
-            resolve,
-            explain: (explanation) => {
-                explained.push(explanation);
-            },
-        },
-        explained,
-    };
+/** The engine's own handle over one source, and the record it is about. */
+function probe(source: ResolverSource, state: Partial<WorkItemState<PrMeaning>> = {}) {
+    const facts = pullRequest(state);
+    const handle = handleFor(configReportDeclaration, facts, source);
+    return { facts, handle, platform: handle };
 }
 
-const untouched = watch(async () => ({ ok: true, value: { touched: false } }));
+/** The externals a decision runs against, over one resolver source. */
+const externals = (resolve: ResolverSource): Externals => ({
+    killSwitchActive: false,
+    installationGrants: ["issues:write"],
+    latestHumanChangeAt: () => null,
+    resolve,
+});
 
 /** The parser, over text, exactly as the resolver would have run it. */
 const parsed = (text: string): ConfigResult =>
     parseConfigDocument(text, { revision: revisionOf(text), knownCapabilities: KNOWN });
 
-/** A platform whose resolver answers with one proposed document. */
-const proposing = (text: string) =>
-    watch(async () => ({
-        ok: true,
-        value: { touched: true, revision: REVISION, result: parsed(text) },
-    }));
+/** A resolver source answering with one proposed document. */
+const proposing = (text: string): ResolverSource =>
+    answering({ ok: true, value: { touched: true, revision: REVISION, result: parsed(text) } });
 
 /** The one comment body this capability asked for. */
 async function bodyFor(text: string): Promise<string> {
-    const intents = await configReport.evaluate(pullRequest({}), view(), proposing(text).platform);
+    const { facts, platform } = probe(proposing(text));
+    const intents = await configReport.evaluate(facts, view(), platform);
     const desired = intents[0]?.desired;
     if (desired === undefined || !("body" in desired)) throw new Error("no comment was asked for");
     return desired.body;
@@ -155,24 +150,29 @@ capabilities:
 
 describe("configReport", () => {
     it("says nothing about a pull request that leaves automations.yml alone", async () => {
-        expect(await configReport.evaluate(pullRequest({}), view(), untouched.platform)).toEqual(
-            [],
+        const { facts, handle, platform } = probe(
+            answering({ ok: true, value: { touched: false } }),
         );
-        expect(untouched.explained).toEqual([]);
+
+        expect(await configReport.evaluate(facts, view(), platform)).toEqual([]);
+        expect(handle.explanations).toEqual([]);
     });
 
     it("reads an unanswerable resolver as unknown, never as an untouched file", async () => {
-        const failed = watch(async () => ({
-            ok: false,
-            reason: "rateLimited",
-            detail: "secondary rate limit on this installation",
-        }));
+        const { facts, handle, platform } = probe(
+            answering({
+                ok: false,
+                reason: "rateLimited",
+                detail: "secondary rate limit on this installation",
+            }),
+        );
 
-        expect(await configReport.evaluate(pullRequest({}), view(), failed.platform)).toEqual([]);
-        expect(failed.explained).toEqual([
+        await expect(configReport.evaluate(facts, view(), platform)).rejects.toBeDefined();
+        expect(handle.skipped).toBe(true);
+        expect(handle.explanations).toEqual([
             {
                 capability: "configReport",
-                summary: "Skipped: the proposed configuration could not be read.",
+                summary: "Skipped: the configAtHead resolver could not answer.",
                 detail: [
                     "resolver reason: rateLimited",
                     "secondary rate limit on this installation",
@@ -181,55 +181,55 @@ describe("configReport", () => {
         ]);
     });
 
-    it("says nothing about a merged pull request, and never asks", async () => {
-        const unreachable = watch(async () => {
+    /** The closed-item guard is the platform's: the capability is never woken (D59). */
+    it("is never woken for a merged pull request, and never asks", async () => {
+        const unreachable: ResolverSource = () => {
             throw new Error("closure is read before the resolver");
-        });
-        expect(
-            await configReport.evaluate(
-                pullRequest({ closedBy: "merged" }),
-                view(),
-                unreachable.platform,
-            ),
-        ).toEqual([]);
+        };
+
+        const decision = await decide(
+            { kind: "facts", facts: pullRequest({ closedBy: "merged" }) as Facts },
+            enabled(),
+            [toEngine(configReport)],
+            externals(unreachable),
+        );
+
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings).toEqual([]);
     });
 
     it("asks the configAtHead resolver, once, about the pull request it was given", async () => {
         const asked: { query: string; input: unknown }[] = [];
-        const recording = watch(async (query, input) => {
+        const recording: ResolverSource = async (query, input) => {
             asked.push({ query, input });
-            return { ok: true, value: { touched: false } };
-        });
+            return { ok: true, value: { touched: false } } as never;
+        };
+        const { facts, platform } = probe(recording);
 
-        await configReport.evaluate(pullRequest({}), view(), recording.platform);
+        await configReport.evaluate(facts, view(), platform);
 
         expect(asked).toEqual([{ query: "configAtHead", input: { item: ITEM } }]);
     });
 
-    /** `claims.closed` is `false` rather than absent: an omitted claim is vacuous. */
+    /** The claims are the record's own: an open item claims `closed: false`. */
     it("asks for one managed comment on the observed pull request, claiming it is open", async () => {
-        const intents = await configReport.evaluate(
-            pullRequest({}),
-            view(),
-            proposing(CLEAN).platform,
-        );
+        const { facts, platform } = probe(proposing(CLEAN));
+
+        const intents = await configReport.evaluate(facts, view(), platform);
 
         expect(intents).toEqual([
             {
                 capability: "configReport",
-                repository: REPO,
+                repository: REPOSITORY,
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: { kind: "summary", body: expect.any(String) },
                 claims: { meaningsPresent: [], meaningsAbsent: [], closed: false },
-                cause: { cause: "pullRequestChangesConfiguration", observedAt: AT },
+                cause: { cause: "pullRequestChangesConfiguration", observedAt: OBSERVED_AT },
                 explanation: {
                     capability: "configReport",
-                    summary: "This pull request changes automations.yml.",
-                    detail: [
-                        `proposed configuration read at revision ${REVISION}`,
-                        "the proposed file parses",
-                    ],
+                    summary: "Reported what this pull request's automations.yml would mean.",
+                    detail: [`proposed configuration read at revision ${REVISION}`],
                 },
                 grace: null,
                 idempotencyKey: expect.any(String),
@@ -239,19 +239,14 @@ describe("configReport", () => {
 
     /** The explanation is what a reader sees without opening the comment. */
     it("counts the errors in the explanation when the proposed file is rejected", async () => {
-        const intents = await configReport.evaluate(
-            pullRequest({}),
-            view(),
-            proposing(CASCADE).platform,
-        );
+        const { facts, platform } = probe(proposing(CASCADE));
+
+        const intents = await configReport.evaluate(facts, view(), platform);
 
         expect(intents[0]?.explanation).toEqual({
             capability: "configReport",
-            summary: "This pull request changes automations.yml.",
-            detail: [
-                `proposed configuration read at revision ${REVISION}`,
-                "the proposed file is rejected, with 5 errors",
-            ],
+            summary: "Reported what this pull request's automations.yml would mean.",
+            detail: [`proposed configuration read at revision ${REVISION}`],
         });
     });
 
@@ -427,7 +422,7 @@ mappings:
                 mode: "dry-run",
                 capabilities: { configReport: { enabled: true } },
             },
-            { revision: "rev-rehearsal", knownCapabilities: [configReport.declaration] },
+            { revision: "rev-rehearsal", knownCapabilities: [configReportDeclaration] },
         );
         if (!rehearsal.ok) throw new Error("the rehearsal configuration is invalid");
 
@@ -435,12 +430,7 @@ mappings:
             { kind: "facts", facts: pullRequest({}) as Facts },
             rehearsal.config,
             [toEngine(configReport)],
-            {
-                killSwitchActive: false,
-                installationGrants: ["issues:write"],
-                latestHumanChangeAt: () => null,
-                resolve: proposing(CLEAN).platform.resolve as unknown as ResolverSource,
-            },
+            externals(proposing(CLEAN)),
         );
 
         expect(decision.approved).toEqual([]);
@@ -643,8 +633,8 @@ mappings:
         ).toBe(true);
     });
 
-    /** The narrow shape again, needing no schedule, state or delivery. */
-    it("declares one event trigger, one resolver, one comment and no operational needs", () => {
+    /** The narrow shape again, with the three lists the trigger implies filled in. */
+    it("declares one event trigger, one resolver, one comment and no group", () => {
         expect(configReport.declaration).toEqual({
             name: "configReport",
             triggers: [{ kind: "event", event: "pull_request" }],
@@ -654,12 +644,6 @@ mappings:
             needs: [],
             resolvers: ["configAtHead"],
             intents: ["postManagedComment"],
-            operationalNeeds: {
-                schedule: false,
-                durableState: "none",
-                crossItemCoordination: false,
-                externalDelivery: false,
-            },
         });
     });
 

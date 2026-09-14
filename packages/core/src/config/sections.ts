@@ -4,7 +4,7 @@
  * alongside the value it contributes: `check*` problems only, `read*` both.
  */
 
-import { readSettings, type SettingsView } from "../capability/spec.js";
+import { readSettings, type SettingsView } from "./spec.js";
 import { checked, err, type Checked, type ConfigError, type ConfigErrorCode } from "./results.js";
 import { labelKey } from "./labels.js";
 import {
@@ -416,33 +416,6 @@ function readFamily<M extends string>(
     return readMeaningFamily(spec, family);
 }
 
-/**
- * Tiers and positions are both GitHub labels and share one namespace: a label
- * cannot be both, or either reverse reading would answer twice (D34).
- */
-function checkSkillsAgainstLabels(
-    labels: Partial<Record<MappableMeaning, string>>,
-    skills: Partial<Record<Skill, string>>,
-): readonly ConfigError[] {
-    const positions = new Map(
-        Object.entries(labels).map(([meaning, label]) => [labelKey(label), meaning]),
-    );
-    const errors: ConfigError[] = [];
-    for (const [tier, label] of Object.entries(skills)) {
-        const meaning = positions.get(labelKey(label));
-        if (meaning === undefined) continue;
-        errors.push(
-            err(
-                "skillNotInjective",
-                `mappings.skills.${tier}: label ${JSON.stringify(label)} is already mapped to "${meaning}" under mappings.labels` +
-                    ` — one label cannot be both a position and a tier (config-schema.md §3)`,
-                `mappings.skills.${tier}`,
-            ),
-        );
-    }
-    return errors;
-}
-
 /** Every label already spoken for, and by which family. */
 function labelsTaken(
     families: readonly (readonly [string, Readonly<Record<string, string>>])[],
@@ -457,8 +430,8 @@ function labelsTaken(
 }
 
 /**
- * An alert's spelling is a GitHub label, so it shares the namespace positions
- * and tiers share (D34). `alerts` is read last, checked against all of them.
+ * Positions, tiers and alert spellings are all GitHub labels in one namespace
+ * (D34). A family is checked against the families read before it.
  */
 function checkAgainstEarlier(
     spec: MeaningFamily<string>,
@@ -524,7 +497,7 @@ export function readMappings(raw: Record<string, unknown>): Checked<Mappings> {
      */
     const mapped = alerts.value as Readonly<Record<string, string>>;
     const shared = [
-        ...checkSkillsAgainstLabels(labels.value, skills.value),
+        ...checkAgainstEarlier(SKILLS, labelsTaken([["labels", labels.value]]), skills.value),
         ...checkAgainstEarlier(
             ALERTS,
             labelsTaken([

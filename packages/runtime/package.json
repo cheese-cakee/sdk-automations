@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-runtime",
     "version": "0.0.0",
     "private": true,
-    "description": "The running platform: `src/store/` is the owned operational store, `src/adapter/` the only place that talks to GitHub, and `src/shell/` the transport that composes them — see the README beside each.",
+    "description": "The running platform: `src/store/` is the owned operational store, `src/adapter/` the only place that talks to GitHub, and `src/shell/` the transport that composes them — the tree is design/architecture.md §1.",
     "type": "module",
     "exports": {
         ".": {
@@ -17,7 +17,9 @@
         "test": "tsc --noEmit && vitest run",
         "test:coverage": "tsc --noEmit && vitest run --coverage --testTimeout=15000",
         "test:watch": "vitest",
-        "start": "tsx src/shell/main.ts"
+        "start": "tsx src/shell/compose/main.ts",
+        "explain": "tsx src/shell/observe/explain-cli.ts",
+        "status": "tsx src/shell/observe/status-cli.ts"
     },
     "dependencies": {
         "@hiero-hackers/automation-capabilities": "workspace:*",

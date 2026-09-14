@@ -13,18 +13,22 @@
 import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
 import { generateKeyPairSync } from "node:crypto";
 import { expect } from "vitest";
-import type { FetchLike, GitHubRequest } from "../../src/adapter/contract.js";
-import { createGitHubHttpClient } from "../../src/adapter/http.js";
-import type { AppCredentials } from "../../src/adapter/jwt.js";
-import { createReadBack, type AppIdentity, type ReadBack } from "../../src/adapter/readback.js";
+import type { FetchLike, GitHubRequest } from "../../src/adapter/client/contract.js";
+import { createGitHubHttpClient } from "../../src/adapter/client/http.js";
+import type { AppCredentials } from "../../src/adapter/client/jwt.js";
+import {
+    createReadBack,
+    type AppIdentity,
+    type ReadBack,
+} from "../../src/adapter/writes/readback.js";
 import {
     createTokenSource,
     type InstallationToken,
     type TokenOutcome,
     type TokenSource,
-} from "../../src/adapter/token.js";
-import type { WriteVerbs } from "../../src/adapter/operations/transport.js";
-import { createWriteVerbs } from "../../src/adapter/writes.js";
+} from "../../src/adapter/client/token.js";
+import type { WriteVerbs } from "../../src/adapter/writes/operations/transport.js";
+import { createWriteVerbs } from "../../src/adapter/writes/writes.js";
 
 // ─── Time and tokens ─────────────────────────────────────────────────
 

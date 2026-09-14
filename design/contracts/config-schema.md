@@ -1,7 +1,7 @@
 # Repository Configuration Contract
 
 > **Built for the current shell** — `packages/core/src/config/` parses and validates the document;
-> `packages/runtime/src/shell/config.ts` fixes its repository path. The closed vocabularies below are locked by
+> `packages/runtime/src/shell/decide/config.ts` fixes its repository path. The closed vocabularies below are locked by
 > `packages/dev/checks/test/spec-drift.test.ts`, and every rejection shape is exercised by the in-package
 > corpus in `packages/core/test/config/documents.ts`.
 
@@ -45,7 +45,7 @@ an exception.
 ## 3. Schema shape
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 mode: observe
 capabilities:
   intake:
@@ -67,7 +67,7 @@ The accepted top-level keys are exactly:
 
 | Key | Current contract |
 |---|---|
-| `schemaVersion` | Optional; omission is version `1`, while a stated version that is not the number `1` — including a present null — is rejected. A future format must state its own version to be read as one. |
+| `schemaVersion` | Optional; omission is version `1`. Version `1` keeps a capability's options under `settings:`; version `2` states `schemaVersion: 2` and puts them beside `enabled`. Every other stated value — a present null, a quoted number — is `schemaVersionUnsupported` (D151). A future format must state its own version to be read as one. |
 | `mode` | Optional; omission defaults to `observe`, while a present null or invalid value is rejected. |
 | `capabilities` | Optional mapping from an admitted capability name to a flat block: an `enabled` boolean and, beside it, the keys the capability's spec reads. |
 | `mappings` | Optional; contains the `labels`, `commands` and `skills` families. |
@@ -176,7 +176,7 @@ protocol 8.2).
 | `duplicateKey` | The YAML repeats a key. |
 | `notAMapping` | The document or a mapping-shaped section has another type. |
 | `unknownKey` | A closed mapping contains an unsupported key. |
-| `schemaVersionUnsupported` | `schemaVersion` is stated and has the wrong type or is not `1`; absence is version `1`. |
+| `schemaVersionUnsupported` | `schemaVersion` is stated and is not the unquoted number `1` or `2`; absence is version `1`. |
 | `modeInvalid` | `mode` is present but is not one of §4's values. |
 | `capabilityNameInvalid` | A capability name is not a valid configuration key. |
 | `capabilityEnabledNotBoolean` | `enabled` is present but is not a boolean. |

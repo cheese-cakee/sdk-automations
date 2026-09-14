@@ -41,35 +41,35 @@ the ladder existed to enforce, kept without the ladder.
 | The stop | How it is written | Who hears about it |
 |---|---|---|
 | **Silent** | `return []` / `continue` | nobody — the branch a flowchart writes as "nothing" |
-| **An operator note** | `return skipped(platform, name, summary, ...detail)` | the operator surface, once, under the capability's name |
-| **A comment to the person** | an ordinary managed-comment intent through the factory | the person, and the operator through the intent's own explanation |
+| **An operator note** | `return platform.skip(summary, ...detail)` | the operator surface, once, under the capability's name |
+| **A comment to the person** | an ordinary managed-comment intent through `platform.intent` | the person, and the operator through the intent's own explanation |
 
 Only the last writes. The three are separate because a skip that explained where the design says
 nothing is a behaviour change, and the capabilities' own suites pin the difference. Six of the eight
 guards in the three built capabilities are the silent branch.
 
-The kit is one helper:
+The kit is two verbs on the handle, and two stops the platform makes on a capability's behalf:
 
 ```ts
 /** Stop and say why on the operator surface: one explanation, no intents. */
-export function skipped<D extends TypedDeclaration>(
-    platform: PlatformHandle<D>,
-    capability: string,
-    summary: string,
-    ...detail: readonly string[]
-): readonly never[];
+skip(summary: string, ...detail: readonly string[]): readonly never[];
+/** The answer, or the evaluation ends as skipped with the platform's own explanation (D51). */
+ask<Q>(query: Q, input: ResolverInput<Q>): Promise<ResolverOutput<Q>>;
 ```
 
-It returns `[]`, typed `readonly never[]` so `return skipped(…)` is assignable wherever an
-`evaluate` returns its own intent union.
+`skip` returns `[]`, typed `readonly never[]` so `return platform.skip(…)` is assignable wherever an
+`evaluate` returns its own intent union. `ask` ends the evaluation itself when the question goes
+unanswered, so no `!answer.ok` branch is written. A closed item never reaches a capability unless it
+declares `closed: true` (D59), and a label with no edge from the item's position is skipped by
+`platform.intent` before the map refuses it.
 
 Rules the kit fixes:
 
 - **Guards are judgements, named for the question.** `notConflicted`, `stillOpen`, "has this
   repository mapped `awaitingTriage`?". A guard that needs data reads it where it stands.
-- **Deny wins, and unknown is not a pass.** A resolver that could not answer is a `skipped`, never
-  a pass (D51). Nothing can enforce this inside a guard, so the reviewer's test is: does every
-  `!answer.ok` branch stop?
+- **Deny wins, and unknown is not a pass.** A resolver that could not answer is a skip, never a
+  pass (D51). `ask` enforces it; the reviewer's test is for the rare raw `resolve`: does every
+  `!answer.ok` branch stop, or deliberately carry on (the assignee filter)?
 - **The order is the flowchart's, and that is a REVIEW rule.** Guards are written in the order the
   design doc reads its diamonds, so a reviewer can hold the two side by side. Advisory before
   destructive is a property of that order: the guard that would comment sits above any act that
@@ -231,7 +231,7 @@ block that was readable.
 Nothing is reported per delivery any more. The per-delivery `unusable` path is retired: a capability
 cannot meet a block it cannot read, because such a file produces no configuration at all. The one
 settings rule the toolkit cannot state — a setting that DEMANDS a mapping, which is a cross-field rule
-§3.3 refuses — stays a guard in the capability that needs it, spoken through `skipped` under the same
+§3.3 refuses — stays a guard in the capability that needs it, spoken through `platform.skip` under the same
 dotted path so a maintainer meets one wording either way. The same spec is what the pull-request
 configuration check will render its annotations from (config-schema §7).
 

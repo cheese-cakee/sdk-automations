@@ -32,6 +32,16 @@ describe("every shipped capability's design page", () => {
         ).toEqual([]);
     });
 
+    it("names its folder, which is its configuration key", () => {
+        const wrong = shipped
+            .filter(({ name, title }) => !title.startsWith(`# ${name} — `))
+            .map(({ folder, title }) => `${folder}/design.md: ${JSON.stringify(title)}`);
+        expect(
+            wrong,
+            "the name before the em-dash is the folder's, spelled as the config key",
+        ).toEqual([]);
+    });
+
     /** The negative control for the shape above: two near misses, both refused. */
     it("refuses a hyphen for the em-dash, and a missing purpose", () => {
         expect(DESIGN_TITLE.test("# intake - walk a new issue")).toBe(false);

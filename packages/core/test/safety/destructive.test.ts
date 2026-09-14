@@ -1,10 +1,10 @@
 /**
- * The other write door — the grace.md ladder `evaluateDestructive` climbs: a
+ * The other write gate — the grace.md ladder `evaluateDestructive` climbs: a
  * recorded warning, a warning that authorizes THIS request, a plan whose
  * metadata is coherent, the grace floor, the grace fully elapsed, no
  * qualifying activity. Each rung is refused on its own and the two grace
  * boundaries are pinned to the millisecond. The D51-D53 findings that
- * entered by this door are here; the general door's are in `write.test.ts`.
+ * entered by this gate are here; the general gate's are in `write.test.ts`.
  */
 
 import { describe, it, expect } from "vitest";

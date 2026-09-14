@@ -3,42 +3,59 @@
 > The trace. A pull request is opened, `intake` wants the `awaitingTriage` label on it, and this
 > page follows that one label from GitHub's POST to GitHub's API call, naming each hop, its file,
 > and the one thing that hop protects. Read this before anything else in `design/`; the second
-> half is the walkthrough for writing a capability.
+> half is the walkthrough for writing a capability, and `design/guides/first-capability.md` is the
+> afternoon's version of it, one green test per step.
 
 ## The route
 
 | # | Hop | Where | What it protects |
 |---|---|---|---|
-| 1 | GitHub POSTs the webhook; the receiver checks the HMAC over the raw bytes and writes the delivery to the store before answering 202 | `packages/runtime/src/shell/receiver.ts` → `createReceiver`; `packages/core/src/github/signatures.ts` → `verifyBody`; `packages/runtime/src/store/store.ts` → `acceptDelivery` | a forged body never enters; an accepted delivery is never lost to a crash |
-| 2 | The processor claims the delivery under a lease and loads the repository's `automations.yml` through the config source | `packages/runtime/src/shell/processor.ts` → `createProcessor`; `packages/core/src/config/parse.ts` | one worker at a time; a rejected config records why and acts on nothing |
+| 1 | GitHub POSTs the webhook; the receiver checks the HMAC over the raw bytes and writes the delivery to the store before answering 202 | `packages/runtime/src/shell/inbound/receiver.ts` → `createReceiver`; `packages/core/src/github/signatures.ts` → `verifyBody`; `packages/runtime/src/store/inbox.ts` → `acceptDelivery` | a forged body never enters; an accepted delivery is never lost to a crash |
+| 2 | The delivery lane claims the delivery under a lease and loads the repository's `automations.yml` through the config source | `packages/runtime/src/shell/inbound/deliveries.ts` → `createDeliveries`; `packages/core/src/config/parse.ts` | one worker at a time; a rejected config records why and acts on nothing |
 | 3 | The delivery becomes facts: the normalizer reads the payload's labels and state, projects them through the repository's mappings into a `Projection`, and marks `unread` every fact group its row in `PRODUCERS` does not name | `packages/core/src/engine/normalize/pull-request.ts`; `packages/core/src/workflow/project.ts` → `projectPullRequest`; `packages/core/src/capability/producers.ts` → `PRODUCERS`; `design/contracts/facts.md` | a capability never sees a label string, and never sees a group nobody read |
 | 4 | `decide()` finds the enabled capabilities whose declaration reads this fact kind and whose needed groups were read, projects each a view of its own settings and the mapped names, and calls `evaluate` | `packages/core/src/engine/decide.ts` → `decide`, `intentsFrom`; `packages/core/src/capability/boundary.ts` | isolation: a capability sees its block, the names of the mappings, and its declared resolvers — nothing else (P3, P4) |
-| 5 | The capability returns intents: "set `awaitingTriage`, because `issueWithoutPosition`, claiming the item is open and the meaning absent" | `packages/capabilities/src/intake/capability.ts`; `packages/core/src/capability/factory.ts` → `intentFactoryFor` | an intent is a request, dated by its occasion, with a stable identity |
-| 6 | The screen checks the intent names its own capability, a declared operation, its own item, and a legal transition on the workflow map | `packages/core/src/capability/intent.ts` → `screenIntent` | a capability cannot act as another, on another item, or off the map |
+| 5 | The capability returns intents: "set `awaitingTriage`, because `issueWithoutPosition`, claiming the item is open and the meaning absent" | `packages/capabilities/src/intake/capability.ts`; `packages/core/src/capability/factory.ts` → `buildIntent`, behind `platform.intent` | an intent is a request, dated by its occasion, with a stable identity |
+| 6 | The screen checks the intent names its own capability, a declared operation, its own item, and a legal transition on the workflow map | `packages/core/src/engine/invoke.ts` → `screenIntent` | a capability cannot act as another, on another item, or off the map |
 | 7 | The world is derived from the facts, not asserted: do the intent's claims hold against the projection the delivery carried? | `packages/core/src/safety/world.ts` → `deriveWorld` | a caller cannot assert a precondition its own delivery contradicts (D77) |
-| 8 | The safety ladder judges the write request: kill switch, mode, capability enabled, grant present, item open and unpaused, precondition holding, no newer human change | `packages/core/src/safety/write.ts` → `evaluateWrite`; `packages/core/src/safety/rules.ts`; `packages/core/src/capability/operations/` for the operation's class and permission | every refusal is a code an operator reads; a destructive class is refused here and judged only at the grace door |
-| 9 | The approval: the intent becomes an `Effect` with its managed-comment identity minted (for comments) and its `WriteRequest` snapshot; a record-only mode records `wouldApply` instead | `packages/core/src/engine/decide.ts` → `gateIntent`; `packages/core/src/capability/managed.ts` | dry-run says exactly what active would do; identity is platform-owned (D125) |
-| 10 | The applier plans the effect as calls — for a label move, add the new label then remove the displaced one — journals each call as a row BEFORE sending, re-derives the world against a live read of the item, sends, and confirms the postcondition by read-back | `packages/runtime/src/shell/apply.ts` → `createApplier`; `packages/runtime/src/shell/operations/index.ts` → `planFor`, `serializeCall`; `packages/runtime/src/shell/operations/applyMappedLabel.ts` | a crash between journal and send is resent from the row; a human change between deciding and applying refuses the write; "applied" means observed, not assumed |
-| 11 | The adapter admits the request by shape (the endpoint matrix as code), checks the grant, mints or reuses the installation token, sends, classifies the answer, and stales its cache | `packages/runtime/src/adapter/operations/applyMappedLabel.ts`; `packages/runtime/src/adapter/admission.ts` → `admit`; `packages/runtime/src/adapter/http.ts` → `createGitHubHttpClient`; `packages/runtime/src/adapter/readback.ts` → `createReadBack` | only the endpoints the matrix confirmed can be reached; no credential leaves this directory |
-| 12 | The report — every finding and every effect's outcome — is persisted with the delivery, and the operator log names it | `packages/runtime/src/store/store.ts` → `completeDeliveryWithReport`; `packages/core/src/report/` | the record of what was decided and why outlives the process |
+| 8 | The safety ladder judges the write request: kill switch, mode, capability enabled, grant present, item open and unpaused, precondition holding, no newer human change | `packages/core/src/safety/write.ts` → `evaluateWrite`; `packages/core/src/safety/rules.ts`; `packages/core/src/intents/operations/` for the operation's class and permission | every refusal is a code an operator reads; a destructive class is refused here and judged only at the grace gate |
+| 9 | The approval: the intent becomes an `Effect` with its managed-comment identity minted (for comments) and its `WriteRequest` snapshot; a record-only mode records `wouldApply` instead | `packages/core/src/engine/decide.ts` → `gateIntent`; `packages/core/src/intents/managed.ts` | dry-run says exactly what active would do; identity is platform-owned (D125) |
+| 10 | The applier plans the effect as calls — for a label move, add the new label then remove the displaced one — journals each call as a row BEFORE sending, re-derives the world against a live read of the item, sends, and confirms the postcondition by read-back | `packages/runtime/src/shell/apply/apply.ts` → `createApplier`; `packages/runtime/src/shell/apply/operations/index.ts` → `planFor`, `serializeCall`; `packages/runtime/src/shell/apply/operations/applyMappedLabel.ts` | a crash between journal and send is resent from the row; a human change between deciding and applying refuses the write; "applied" means observed, not assumed |
+| 11 | The adapter admits the request by shape (the endpoint matrix as code), checks the grant, mints or reuses the installation token, sends, classifies the answer, and stales its cache | `packages/runtime/src/adapter/writes/operations/applyMappedLabel.ts`; `packages/runtime/src/adapter/client/admission.ts` → `admit`; `packages/runtime/src/adapter/client/http.ts` → `createGitHubHttpClient`; `packages/runtime/src/adapter/writes/readback.ts` → `createReadBack` | only the endpoints the matrix confirmed can be reached; no credential leaves this directory |
+| 12 | Every finding and every effect's outcome is a decision row, written before the delivery is completed, and the operator log names the kind it finished as | `packages/runtime/src/shell/decide/decisions.ts` → `decisionsOf`; `packages/runtime/src/store/inbox.ts` → `completeDelivery` | the record of what was decided and why outlives the process (D173) |
 
 A sweep enters at hop 3 with a different producer: the driver decides which records exist — one per open item, with the groups its row in `PRODUCERS` promises — so the producer, not the capability, chooses which item a decision is about
-(`packages/runtime/src/shell/sweep.ts`, `design/guides/sweep.md`) and hands `decide()` one record
+(`packages/runtime/src/shell/sweep/sweep.ts`, `design/guides/sweep.md`) and hands `decide()` one record
 per item. It is the other producer in `PRODUCERS`, and a producer decides which records exist —
-hence which items a capability may write to at all, and how much of each one it may read. A destructive act takes hop 8 through the grace door instead (`design/guides/grace.md`):
+hence which items a capability may write to at all, and how much of each one it may read. A destructive act takes hop 8 through the grace gate instead (`design/guides/grace.md`):
 the platform posts the warning, records it when it lands, and judges the act against the record.
 
 ## What each noun is, once
 
 - **facts** — one item as the platform read it, with a `position` (the projection) and groups that
   are read or `unread`.
+- **meaning** — a platform position word (`awaitingTriage`, `ready`, …), never a label string.
+- **mapping** — the reviewed label ↔ meaning table: the one bridge between a repository's words and
+  the platform's.
+- **projection** — the observed label set read as a position, or as a conflict.
+- **position** — the single meaning an item occupies in its flow — or `null`, or a conflict.
+- **blocked** — an orthogonal human-set pause flag: never a position, never capability-writable.
+- **capability** — a unit of automation: a declaration plus a pure `evaluate` returning intents.
+- **declaration** — a capability's self-description: what it watches, asks, does, and needs.
 - **view** — the slice of the config a capability may see: its settings and the mapped names.
 - **intent** — what a capability asks for: an operation, its desired value, its claims, its cause.
+- **occasion** — where and when an intent arose (repository, item, observed time), bound once by the
+  factory.
+- **claims** — the facts a capability believes hold; checked by derivation, or again at act time.
+- **screen** — a runtime check on a returned intent (attribution, floors, the map): enforcement, not
+  ergonomics.
+- **world** — the derived, unforgeable safety facts: what was observed, and whether a claim holds.
 - **effect** — an approved intent on its way to GitHub, with identity. A managed comment's identity
   is per item and purpose; the effect id is per occasion.
-- **call** — one GitHub step of an effect; its journal row is the call as bytes.
-- **verdict / outcome** — what a door said (`apply`, `refuse` with a code, `recordOnly`), and what
+- **call** — one GitHub step of an effect; its `sent` fact's payload is the call as bytes.
+- **verdict / outcome** — what a gate said (`apply`, `refuse` with a code, `recordOnly`), and what
   the applier made of an effect (`applied`, `already`, `refused`, `retryLater`, `unknown`).
+- **finding** — one record in a report: severity, machine code, prose, subject. `problems()` is the
+  operator surface.
 
 ## Writing a capability
 
@@ -61,7 +78,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
      and "add the row" is not the fix. A design needing a group its trigger cannot fill needs a
      different trigger, or the fact-shape change §6 prices — both interfaces, every producer, every
      fixture.
-   - resolvers → `RESOLVER_NAMES` in `packages/core/src/capability/catalogue.ts`, AND what feeds
+   - resolvers → `RESOLVER_NAMES` in `packages/core/src/catalogue.ts`, AND what feeds
      each one's input, AND which path answers it (a resolver needing a credential is `unavailable`
      on the credential-free path; the shell's stubbed externals list what they answer).
    - intents → `IntentCatalogue`'s desired payloads, in full: what you may say is exactly those
@@ -90,23 +107,31 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 3. **Make the folder** under `packages/capabilities/src/<name>/`: `capability.ts`, `settings.ts`
    (the spec, from `design/guides/capability-kits.md`), `capability.test.ts`, and the design page
    MOVED here as `design.md` — updating the table in `design/guides/capabilities/README.md` and the
-   one in `packages/capabilities/README.md`. Four files is the minimum, not the shape: split by
+   one-line list in `packages/capabilities/README.md`. Four files is the minimum, not the shape: split by
    concern when a file answers two questions. If the folder already exists it is a seed — promote
-   it in place.
+   it in place. The shape every folder shares: the declaration stays in `capability.ts` until a
+   sibling file needs its type (`inactivity/declaration.ts`); the words a contributor reads live in
+   `messages.ts`, or in `render.ts` when they are a document; `settings.ts` opens with one line
+   saying what the capability reads beside `enabled`; inline captions are `//`; a test drives
+   `evaluate` through `handleFor` and scripts answers with `answering`, both from the harness.
+   Every file in the folder names core through `@hiero-hackers/automation-core/author`
+   (`packages/core/src/author/index.ts`), the door sized to what an author needs; the root barrel
+   is the engine's, and a dependency rule refuses it from a capability.
 
    The `design.md` title is READ: its first line must be `# <name> — <purpose>`, with a spaced
    em-dash, because `docs/capabilities.md`'s purpose column is the half after it
    (`packages/dev/checks/test/capabilities.test.ts`). Your `capability.test.ts` builds its records
-   from `packages/capabilities/test/world.ts`, and a capability declaring FEWER groups than its
-   producer reads wraps `sweptPullRequest()` in `asDeclared` — the erasure the engine performs at
-   the boundary.
+   from `@hiero-hackers/automation-core/author/testing` (`packages/core/src/author/testing.ts`),
+   and a capability declaring FEWER groups than its
+   producer reads passes `sweptPullRequest()` through `factsFor` — the projection the engine
+   performs at the boundary, checked against your declaration.
 
    Register in `packages/capabilities/src/index.ts`: an import and one entry in `CAPABILITIES`. The
    named `export { … }` block is a third line only if something outside the package names your
    capability. The P3 matrix then covers you, and it writes each block at its own spec's FULLEST
-   valid settings (`test/world.ts`), so work behind an `enabled: true` still runs in the alone-run.
-   A PRINCIPAL your spec requires must be declared under `principals:` by every example that
-   enables you.
+   valid settings (`packages/core/src/author/testing.ts`), so work behind an `enabled: true` still
+   runs in the alone-run. A PRINCIPAL your spec requires must be declared under `principals:` by
+   every example that enables you.
 
    `test/engine-matrix.test.ts` pins every managed comment four fixtures earn, by capability, item
    and topic, and it is hand-written on purpose: derived from the registry it would assert whatever
@@ -116,13 +141,16 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    resolvers, intents, and `evaluates` nothing else. A typo does not compile; a need no producer
    reads does not boot.
 5. **Write `evaluate` in two captions**: the guards in the flowchart's order, each a visible `if`
-   returning `[]` or `skipped(...)` — a design's "on event X" is a STATE here, never a trigger; then
-   the act, intents through the factory. `view.settings` arrives typed and already judged, so there
-   is nothing to read first. An intent's `cause` is FREE TEXT, with one exception:
-   `applyMappedLabel` moves the item, so its cause comes from the closed list in
-   `workflow/causes.ts` and the workflow map picks it (`moveTo`). The judgements every capability
-   makes live in `capability/facts.ts` (`isOpen`, `isPaused`, `isConflicted`, `people`, the clocks,
-   `mentions`, `on`, `inert`, `moveTo`); import them, never a sibling.
+   returning `[]` or `platform.skip(...)` — a design's "on event X" is a STATE here, never a
+   trigger; then the act, intents through `platform.intent`. Three guards are the platform's and are
+   never written: a closed item never arrives (declare `closed: true` to see one), `platform.ask`
+   ends the evaluation when a resolver cannot answer, and a label with no edge is skipped.
+   `view.settings` arrives typed and already judged, so there is nothing to read first. An intent's
+   `cause` is FREE TEXT and part of its identity, so state it; `applyMappedLabel` moves the item, and
+   its transition cause is the workflow map's (`moveTo`) unless you name one. Claims are derived from
+   the record; name a claim only to narrow it. The judgements every capability makes live in
+   `capability/facts.ts` (`isPaused`, `isConflicted`, `people`, the clocks, `mentions`, `on`,
+   `inert`, `moveTo`); import them, never a sibling.
 
    An intent the safety ladder does not refuse contributes a `capabilityExplained` finding
    immediately BEFORE its verdict (`engine/decide.ts` → `gateIntent`), so two intents from one
@@ -134,8 +162,8 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 
    | You need | Where it registers | What else it obliges |
    |---|---|---|
-   | an operation | one module in each of `core/src/capability/operations/`, `runtime/src/shell/operations/`, `runtime/src/adapter/operations/` + a key in `IntentCatalogue` | a row pin in the shell's journal test; `pnpm contracts`; `design/guides/write-operations.md` |
-   | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; one arm in `answerValue` (`packages/core/src/engine/invoke.ts`), which re-reads the answer to the shape the catalogue promises; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/main.ts` |
+   | an operation | one module in each of `core/src/intents/operations/`, `runtime/src/shell/apply/operations/`, `runtime/src/adapter/writes/operations/` + a key in `IntentCatalogue` | a payload pin in the shell's effects test; `pnpm contracts`; `design/guides/write-operations.md` |
+   | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; one arm in `answerValue` (`packages/core/src/engine/invoke.ts`), which re-reads the answer to the shape the catalogue promises; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/reads/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/compose/main.ts` |
    | a resolver whose read it has NOT | the same, minus the adapter arm: the gate narrows `query` to `ConfirmedRead` BEFORE the switch, so an arm for an unconfirmed name does not compile. The adapter edit is a docstring saying which endpoint it would read and what the matrix lacks | the same two value pins; the capability shows the check undetermined until a sandbox protocol cites the row |
    | a fact group | `FACT_GROUPS` + `GROUP_KEYS` in `catalogue.ts`; every producer's row in the registry; every producer | `facts.md` regenerates; fixtures |
    | a fact field (always read) | both fact interfaces; every producer; a `NORMALIZE_MALFORMED_CODES` entry if a payload may lack it | fixtures |
@@ -153,7 +181,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    **Every closed vocabulary here is pinned BY VALUE in at least one test, and the new name goes
    into the pin in the same commit as the vocabulary.** Adding a resolver reds
    `packages/core/test/engine/invoke.test.ts`, whose fixture list is asserted equal to
-   `RESOLVER_NAMES`, and `packages/runtime/test/adapter/item-resolvers.test.ts`, which pins
+   `RESOLVER_NAMES`, and `packages/runtime/test/adapter/reads/item-resolvers.test.ts`, which pins
    `CONFIRMED_RESOLVER_READS` by value. Answer a red pin rather than deriving it away.
 
 7. **Run the suite.** The checks read the working tree, so a new file is judged before it is
@@ -172,7 +200,8 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    `git ls-files --cached --others --exclude-standard`
    (`packages/dev/checks/test/repository.ts`), so an untracked note is documentation the moment it
    exists, and `packages/dev/checks/test/citations.test.ts` resolves every `design/….md` and
-   `docs/….yml` string in every document. Put notes on a study branch or outside the repository.
+   `docs/….yml` string in every document. Put notes in `notes/` at the repository root, which is
+   ignored, or outside the repository.
 
 The skills in `.claude/skills/` are the house style for what you write: `placement` (where a
 file goes), `docstrings` (what a header says), `clarity` (how a body reads), `capability-design`

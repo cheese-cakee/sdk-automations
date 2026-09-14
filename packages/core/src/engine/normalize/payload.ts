@@ -3,7 +3,7 @@
  * readers of untrusted bytes, each answering a value or `null`, never throwing.
  */
 
-import type { Actor, Alerts, RepositoryRef } from "../../capability/index.js";
+import type { Actor, Alerts, RepositoryRef } from "../../catalogue.js";
 import type { MappableMeaning, RepositoryConfig } from "../../config/index.js";
 
 export function isRecord(v: unknown): v is Record<string, unknown> {

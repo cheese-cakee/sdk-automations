@@ -10,7 +10,8 @@
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",
-        "capture": "tsx src/capture.ts"
+        "capture": "tsx src/capture.ts",
+        "lab:probe": "tsx src/probes/run.ts"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",

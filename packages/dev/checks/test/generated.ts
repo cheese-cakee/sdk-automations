@@ -324,11 +324,11 @@ const REFUSAL_CODES: { readonly [C in SafetyRefusalCode]: CodeFacts } = {
     killSwitch: {
         raisedBy: "intent preflight",
         meaning:
-            "An operator pulled the brake; every returned intent is refused, including observation-class intents. Capability and resolver evaluation has already occurred (D117).",
+            "An operator closed the gate; every returned intent is refused, including observation-class intents. Capability and resolver evaluation has already occurred (D117).",
     },
     wrongEntryPoint: {
         raisedBy: "`write.ts`",
-        meaning: "A clock-triggered destructive request arrived at the general door.",
+        meaning: "A clock-triggered destructive request arrived at the general gate.",
     },
     preventiveGateUnavailable: {
         raisedBy: "`write.ts`",
@@ -374,7 +374,7 @@ const REFUSAL_CODES: { readonly [C in SafetyRefusalCode]: CodeFacts } = {
     },
     wrongActionClass: {
         raisedBy: "`destructive.ts`",
-        meaning: "A non-destructive request arrived at the destructive door.",
+        meaning: "A non-destructive request arrived at the destructive gate.",
     },
     noWarning: {
         raisedBy: "`destructive.ts`",

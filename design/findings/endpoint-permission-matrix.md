@@ -19,6 +19,7 @@ row chooses it.
 | Remove label | `DELETE /repos/{o}/{r}/issues/{n}/labels/{name}` | Issues W | 1/call | — | confirmed (200) | `2026-07-23T18-58-46-782Z#3` |
 | Create comment | `POST /repos/{o}/{r}/issues/{n}/comments` | Issues W | 1/call | — | confirmed (201); secondary limit at ~71 writes @ concurrency 20, no `retry-after` | `2026-07-23T19-37-00-198Z#15,19` |
 | Update own comment | `PATCH /repos/{o}/{r}/issues/comments/{id}` | Issues W | 1/call | — | confirmed (200) | `2026-07-23T19-41-18-911Z#4` |
+| Release one assignment | `DELETE /repos/{o}/{r}/issues/{n}/assignees` | Issues W | 1/call | — | confirmed (200), body `{ assignees: [login] }` — the one write that is a DELETE CARRYING A BODY, which is what takes one named login off and leaves the rest. Read-back is the item's `assignees` without that login, visible immediately and again at +2 s. **An assignment event names the assignee as its own actor**: `unassigned exploreriii by exploreriii` for an App-made release, identical to a human's, so nothing may read "a human reversed the App" off an assignment event's actor. Without the grant the 403 named `issues=write; pull_requests=write` | `2026-09-12T13-03-39-016Z#11`, `…#14` |
 | List comments | `GET /repos/{o}/{r}/issues/{n}/comments` | Issues R | 1/call | ETag present | confirmed. Read-after-write (6.7): 25/25 first-read visible after create, median 299 ms, p95 462 ms, max 514 ms over forty trials on one repository, REST list reads only — typical behaviour, not a documented guarantee. The rule it decides: present on first sight; absent only after two reads at least one second apart (about twice the p95), because a wrong absent duplicates a non-idempotent write. Re-measure before any GraphQL or search-based read-back | `2026-07-23T19-41-18-911Z#2`; `2026-07-25T21-00-55-057Z#79` |
 | Read PR | `GET /repos/{o}/{r}/pulls/{n}` | Pull requests R | 1/call | ETag present | confirmed incl. fork-sourced PR (head repo/sha exposed) | `2026-07-23T19-41-18-911Z#3`, `…T20-16-41-190Z#2` |
 | Read linked issues | GraphQL `PullRequest.closingIssuesReferences(excludeUserLinked: true)` | Issues R + Pull requests R | 1/page | — | confirmed for same-repository references. Cross-repository results are unsafe: an invisible target returns a clean empty connection | `2026-08-29T20-51-00.386Z#same-repository,#cross-repository-outside-target`; repeat `2026-08-29T20-51-32.049Z` |
@@ -26,12 +27,43 @@ row chooses it.
 | List PR reviews | `GET /repos/{o}/{r}/pulls/{n}/reviews` | Pull requests R | 1/call; 0 on 304 | ETag present; 304 confirmed free | confirmed; 1 page. `COMMENTED` reviews are present and are not a decision — the fold takes each reviewer's latest DECIDING state | `2026-09-12T06-31-36-229Z#10` |
 | List PR commits | `GET /repos/{o}/{r}/pulls/{n}/commits` | Pull requests R | 1/call; 0 on 304 | ETag present; 304 confirmed free | confirmed; 1 page; two readers (last commit date, and `verification` + `Signed-off-by:` trailers). **`verification.verified` is true only for a SIGNED commit**: a commit authored through the contents API under a USER token comes back `reason: unsigned`, and only the GPG-signed push was verified. A design expecting API-authored commits to be verified is wrong for user tokens | `2026-09-12T06-31-36-229Z#19`, `…#23` |
 | Create review | `POST /repos/{o}/{r}/pulls/{n}/reviews` | Pull requests W | 1/call | — | confirmed (REQUEST_CHANGES on fork-sourced PR); **no delivery observed** — App not subscribed to `pull_request_review` | `2026-07-23T20-16-41-190Z#6` |
+| Close a pull request | `PATCH /repos/{o}/{r}/pulls/{n}` | Pull requests W | 1/call | — | confirmed (200), body `{ state: "closed" }`; unmerged, and the reason is not sent — GitHub is told the state only. Read-back is `state=closed` with `closed_at`, visible immediately and again at +2 s. **`closed_by` is ABSENT from the pull object**: the actor of a close is on the `closed` TIMELINE event (`closed by automation-experiment-3892384[bot]`), so authorship is read from the timeline and never from the item, and a read-back asking for `closed_by` would never confirm. Without the grant the 403 named `pull_requests=write` | `2026-09-12T13-03-39-016Z#7`, `…#14` |
 | Read file (config) | `GET /repos/{o}/{r}/contents/{path}` | Contents R | 1/call | ETag present | confirmed incl. 404-as-absent and `ref` param. **Caution: serves fork-authored content at a PR head sha** (6.6) — config fetches must pin the default branch, never a PR-derived ref. A head-sha read is a REPORT INPUT only — parsed by the hardened document parser, rendered with the platform's escaping, and never the configuration anything is decided under (`configAtHead`) | `2026-07-23T19-09-37-225Z#2`, `…T19-10-09-463Z#2`, `…T20-18-20-965Z#3` |
 | Search issues | `GET /search/issues` | not measured — 6.9's negative control covered the five adopted reads only | 1 call, against a SEPARATE budget: `x-ratelimit-resource: search`, 30/minute, not the core 5,000/hour | not probed | **probed 2026-09-12, NOT adopted.** One of two candidates for "merged pull requests by one author". Answers in one call and reports `incomplete_results`; the index is eventually consistent, so a count that is sometimes low is possible | `2026-09-12T06-31-36-229Z#32` |
 | List closed pull requests | `GET /repos/{o}/{r}/pulls?state=closed` | not measured — as above | 1/page on the core budget; pages scale with the REPOSITORY'S AGE, not with the author (no server-side author filter), 1 page on the sandbox | not probed | **probed 2026-09-12, NOT adopted.** The other candidate. Exact, and its cost is the whole closed history divided by a hundred — per assignee, per sweep. Both candidates agreed on the sandbox (1 vs 1 for `exploreriii`, 0 vs 0 for `aceppaluni`), which settles nothing: the choice needs a cost model against the fleet budget (Q10) and a register row | `2026-09-12T06-31-36-229Z#32` |
 | List app deliveries | `GET /app/hook/deliveries` | App (JWT) | ~410 ms/15 | — | confirmed; ids are >2^53 strings | `2026-07-23T18-57-44-094Z#1` |
 | Redeliver | `POST /app/hook/deliveries/{id}/attempts` | App (JWT) | 202 | — | confirmed; redelivery carries `redelivery: true`. Also confirmed on a second contributor's events a day after original delivery: a **private-fork-sourced PR** (head repo a private fork of the sandbox) delivered `pull_request.opened`/`.closed` + `push`, signature-verified on redelivery, close-on-merge linkage intact (`merge_commit_sha` = push head). The ledger recorded `OK` for the originals although no receiver ran — the P9/6.2 loss window reproduced on unprompted real traffic | `2026-07-23T19-04-37-138Z#1`; `2026-07-25T20-03-36-091Z#1`, `…T20-04-04-509Z#1`, `…T20-04-05-654Z#1` (deliveries `3833075546093256704`, `…594313728`, `…955032064`) |
 | Mint installation token | `POST /app/installations/{id}/access_tokens` | App (JWT) | n/a | — | confirmed (201, 1h TTL) | `2026-07-23T18-34-51-975Z#1` |
+
+Each confirmed read's checkable shape is `packages/dev/lab/src/probes/reads.ts`; `pnpm lab:probe`
+compares it monthly (D158).
+
+## Provenance of the client's constants
+
+What the adapter's client hard-codes about GitHub, and how each fact goes stale. The reads above are
+re-probed monthly; nothing below is, so D40 makes re-probing these standing rather than occasional. A
+row with no date holds documented knowledge — something GitHub publishes and would announce changing.
+
+| Fact | Where it lives | Probed by | Date | Goes stale when | First symptom |
+|---|---|---|---|---|---|
+| JWT span ≤ 600 s from `iat` | `ASSERTION_LIFETIME_SECONDS` | GitHub's docs | documented | the cap changes | every mint 401s at once — loud |
+| RS256, backdated `iat` | `jwt.ts` | GitHub's docs | documented | the signing scheme changes | every mint rejected — loud |
+| Installation token TTL is 1 h | `REFRESH_SKEW_SECONDS`, `MINT_FLOOR_SECONDS` | the mint row above | 2026-07-23 | GitHub shortens the TTL | **quiet if shortened below ~2 min**: the floor would serve genuinely dead tokens |
+| `permissions` is `{scope: level}` | `grantsFromPermissions` | mint response | 2026-07-23 | a level outside `read`/`write` enters the ceiling | **quiet**: the grant is dropped, and a capability refuses citing a permission the installation actually holds |
+| REST request version is `2026-03-10` | `GITHUB_API_VERSION` | GitHub's version docs | documented | the version approaches sunset | the response carries `deprecation`/`sunset`, then calls return 410 |
+| Contents API wraps a file as `{type, encoding, content, sha}` — base64 inline, `encoding: "none"` past 1 MB | the decode in `config.ts` | GitHub's contents docs | documented | the envelope or the 1 MB behaviour changes | **quiet-ish**: healthy configs read as defective (fail-closed records) or unrecognized (retries) |
+| Timeline entries name `event`, a typed `actor`, second-precision `created_at`; pages ascend | the six-kind filter in `externals.ts` | GitHub's timeline docs, the timeline row above | documented + 2026-07-23 | the shape or the kinds change | a missing actor or date is unknown; **quiet**: new kinds stay uncounted |
+| Installation identities are App bot logins such as `name[bot]` | the automation actor in `resolvers.ts` | [GitHub's App identity guide](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps) | documented | the login convention changes | App actors are mistaken for people, or people for App actors |
+
+**The quiet rows are the ones that matter.** A wrong JWT bound fails loudly within minutes; a TTL
+that shrank, a grant level silently dropped, or a timeline shape that drifted keeps every test green
+while the running system misbehaves — and the timeline row is the worst of the three, because its
+failure direction is writing over human edits. `MINT_FLOOR_SECONDS` is *derived* from the TTL row:
+its safety argument is "an hour is far longer than a minute", and it stops being sound the day that
+stops being true.
+
+**Cadence:** quarterly for the dated rows, plus ad-hoc whenever a first-symptom column shows up in
+operator reports. **Owner:** unassigned.
 
 ## The ceiling
 

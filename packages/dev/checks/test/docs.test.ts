@@ -55,10 +55,22 @@ const page = (name: string): string => normalizeNewlines(readFileSync(join(docsD
  */
 function shellRecordKinds(): string[] {
     const source = normalizeNewlines(
-        readFileSync(join(repoRoot, "packages/runtime/src/shell/processor.ts"), "utf8"),
+        readFileSync(join(repoRoot, "packages/runtime/src/shell/inbound/deliveries.ts"), "utf8"),
     );
     const union = source.split("type ShellRecord =")[1]?.split("\n\n")[0] ?? "";
     return [...union.matchAll(/readonly kind: "([A-Za-z]+)"/g)].map((m) => m[1]!);
+}
+
+/**
+ * The applier's own codes. `EFFECT_CODES` is the runtime's, and this package
+ * depends on core alone, so it is read as text like the record kinds (D85).
+ */
+function effectCodes(): string[] {
+    const source = normalizeNewlines(
+        readFileSync(join(repoRoot, "packages/runtime/src/shell/effects.ts"), "utf8"),
+    );
+    const array = source.split("export const EFFECT_CODES = [")[1]?.split("]")[0] ?? "";
+    return [...array.matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]!);
 }
 
 /** The first backtick-quoted token of each table row in one `## section`. */
@@ -118,6 +130,7 @@ describe("docs/quickstart.md", () => {
             "capabilities.md",
             "configuration.md",
             "troubleshooting.md",
+            "running.md",
         ]) {
             expect(index).toContain(`(${target})`);
         }
@@ -412,6 +425,28 @@ describe("docs/troubleshooting.md", () => {
     const onPurpose = tableCodes(doc, "It did nothing on purpose");
     const needsYou = tableCodes(doc, "It needs something from you");
     const defects = inlineCodes(doc, "It should never happen");
+    const APPLIER = "It decided, and the write did not land";
+
+    /** The assertion, so the negative control runs the same one. */
+    const locksEffectCodes = (markdown: string): void => {
+        expect(tableCodes(markdown, APPLIER).sort()).toEqual(effectCodes().sort());
+    };
+
+    /**
+     * The applier's codes are a closed vocabulary below every verdict, locked
+     * the way the verdict sections are: a new one cannot ship undocumented.
+     */
+    it("covers every code the applier reports, and invents none", () => {
+        expect(effectCodes(), "EFFECT_CODES parsed").toContain("ledgerInconsistent");
+        locksEffectCodes(doc);
+    });
+
+    it("catches a section that drops one", () => {
+        const rows = effectCodes()
+            .slice(1)
+            .map((code) => `| \`${code}\` | why |`);
+        expect(() => locksEffectCodes([`## ${APPLIER}`, "", ...rows, ""].join("\n"))).toThrow();
+    });
 
     it("covers every refusal and record-only code, and invents none", () => {
         const EVERY_CODE: {

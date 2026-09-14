@@ -1,8 +1,8 @@
 /**
  * The request, configuration and context every safety suite starts from.
  *
- * Three files hold the safety layer to account — the general door, the
- * destructive door, and the rule list both run — and all three open on the
+ * Three files hold the safety layer to account — the general gate, the
+ * destructive gate, and the rule list both run — and all three open on the
  * same well-formed write: an assignment nobody has objected to, in a
  * repository that enabled it, with the permission granted. A test then states
  * only the one fact it is about, which is the fact a reader is looking for.

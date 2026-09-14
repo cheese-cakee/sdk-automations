@@ -39,11 +39,12 @@ import {
     sweptPullRequest,
     webhookIssue,
     webhookPullRequest,
-} from "./world.js";
+} from "@hiero-hackers/automation-core/author/testing";
 
 // Derived, not listed: a capability joins the matrix by joining the registry.
 const ALL = CAPABILITIES;
 const NAMES = CAPABILITIES.map((capability) => capability.declaration.name);
+const DECLARATIONS = CAPABILITIES.map((capability) => capability.declaration);
 
 const RECORDS: readonly Facts[] = [
     webhookIssue(),
@@ -145,7 +146,7 @@ function sliceFor(decisions: readonly Decision[], name: string): Slice {
 }
 
 async function runAll(enabled: readonly string[]): Promise<readonly Decision[]> {
-    const config = configEnabling(enabled, NAMES, SETTINGS, MAPPINGS);
+    const config = configEnabling(enabled, DECLARATIONS, SETTINGS, MAPPINGS);
     const decisions: Decision[] = [];
     for (const facts of RECORDS) {
         decisions.push(await decide({ kind: "facts", facts }, config, ALL, externals));
@@ -230,7 +231,7 @@ describe("prQuality on a conflicted pull request", () => {
     it("refuses preconditionStale and approves nothing", async () => {
         const decision = await decide(
             { kind: "facts", facts: conflicted },
-            configEnabling(["prQuality"], NAMES, SETTINGS, MAPPINGS),
+            configEnabling(["prQuality"], DECLARATIONS, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -242,9 +243,8 @@ describe("prQuality on a conflicted pull request", () => {
     });
 
     /**
-     * Merged counts as closed, and prQuality declines before the resolver
-     * rather than at the gate — the `itemClosed` rule changed nothing here,
-     * which is the point of asserting it.
+     * Merged counts as closed, and the platform declines before the capability
+     * is called at all: no finding, nothing asked, nothing approved (D59).
      */
     it("says nothing at all about a merged pull request", async () => {
         const merged = webhookPullRequest({
@@ -256,7 +256,7 @@ describe("prQuality on a conflicted pull request", () => {
         });
         const decision = await decide(
             { kind: "facts", facts: merged },
-            configEnabling(["prQuality"], NAMES, SETTINGS, MAPPINGS),
+            configEnabling(["prQuality"], DECLARATIONS, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -293,6 +293,7 @@ describe("managed-comment identity is minted by the platform", () => {
                 kind: effect.managedComment?.identity.kind,
                 topic: effect.managedComment?.identity.topic,
             })),
+            "one row per managed comment the four fixture records earn, in record then registry order — a new capability that posts one adds its rows here by hand",
         ).toEqual([
             { capability: "intake", item: 11, kind: "notice", topic: "" },
             { capability: "prQuality", item: 12, kind: "summary", topic: "" },
@@ -357,7 +358,7 @@ describe("managed-comment identity is minted by the platform", () => {
 describe("intake conflict behavior", () => {
     it("reports a conflicted item in dry-run without approving a repair", async () => {
         const config = {
-            ...configEnabling(["intake"], NAMES, SETTINGS, MAPPINGS),
+            ...configEnabling(["intake"], DECLARATIONS, SETTINGS, MAPPINGS),
             mode: "dry-run" as const,
         };
         const facts = webhookIssue({

@@ -7,7 +7,7 @@ description: Author or revise a capability design doc in design/guides/capabilit
 
 Read the nearest exemplar first: the design docs beside their code in `packages/capabilities/src/`.
 A new design starts in `design/guides/capabilities/` and moves into its capability's folder the day
-that folder exists. Start from what exists — the C++ and Python SDK bots and `design/audit/services.md`
+that folder exists. Start from what exists — the C++ and Python SDK bots and `design/findings/services.md`
 — and make a difference between two SDKs two example configs of one schema, not two features.
 
 ## The page
@@ -30,8 +30,15 @@ banners. Then exactly four sections, in this order.
    constructor table in `design/guides/capability-kits.md` §3: a shape with no constructor is the
    design's to move (§3.3), and moving it after the code is written costs the code.
 3. **How it works** — what it acts on and never acts on; one mermaid flowchart with the guards in
-   evaluation order; a table where the behavior is tabular (per-check semantics, ladders); and the
-   declaration and the phases as two short tables, or dropped where the code says it. No rendered
+   evaluation order — never the three the platform performs (closed items, an unanswered resolver, a
+   label with no edge); a table where the behavior is tabular (per-check semantics, ladders); and the
+   declaration and the phases as two short tables, or dropped where the code says it. The declaration
+   table names `triggers`, `resolvers`, `intents`, `requiredMappings` (write `none` rather than
+   omit the row), `facts`/`needs` only when a schedule trigger or a group read makes them
+   non-obvious, and a `Platform needs` row (durable state, cross-item coordination, external
+   delivery) as the review question it is. An intent's explanation summary says what the capability
+   asked for, in the past tense of the act — "Placed the new issue in triage.", "Asked for a linked
+   issue on this pull request." — never the observation that led to it. No rendered
    examples. Name every platform piece a scenario needs and does not have — catalogue entries,
    resolvers, sweep drivers, mapping families — where it is needed. Name a gap by its COST: a
    registry row, a fact-shape change (a field or group on both interfaces, every producer, every

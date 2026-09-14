@@ -1,15 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
+import { count, duration, flag, section, spec, writeDuration } from "../../src/capability/index.js";
 import {
-    count,
     describeSpec,
-    duration,
-    flag,
-    section,
-    spec,
-    writeDuration,
-} from "../../src/capability/index.js";
-import {
     parseConfig,
     NO_CONFIG,
     labelKey,

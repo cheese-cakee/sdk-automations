@@ -3,7 +3,7 @@
  * plus the constructor for the refusal.
  */
 
-import type { Facts } from "../../capability/index.js";
+import type { Facts } from "../../catalogue.js";
 
 /** Every way a consumed delivery can be unreadable; the operator surface must see each. */
 export const NORMALIZE_MALFORMED_CODES = [

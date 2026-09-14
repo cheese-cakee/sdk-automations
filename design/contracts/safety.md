@@ -12,14 +12,14 @@ verdict codes. A capability never decides whether its own write may happen.
 ## 1. Action classes
 
 The engine derives a request's class from the operation facts in `INTENT_OPERATIONS`; a capability cannot
-declare or elevate it. That platform-owned class chooses the door.
+declare or elevate it. That platform-owned class chooses the gate.
 
-| Class | Door | Today's treatment |
+| Class | Gate | Today's treatment |
 |---|---|---|
 | `observation` | `evaluateWrite` | Recorded, never applied. Needs no permission and no consent. |
 | `humanFacingOutput` | `evaluateWrite` | The general rules decide. |
 | `reversibleStateChange` | `evaluateWrite` | The general rules decide. |
-| `clockTriggeredDestructive` | `evaluateDestructive` | Refused at the general door — the warning and grace gates cannot be decided from one request (D52). |
+| `clockTriggeredDestructive` | `evaluateDestructive` | Refused at the general gate — the warning and grace gates cannot be decided from one request (D52). |
 | `immediatePreventive` | none | Refused everywhere until a request proves an immediate explanation and a simple maintainer reversal (D54). |
 
 ## 2. Precedence
@@ -27,12 +27,12 @@ declare or elevate it. That platform-owned class chooses the door.
 Order is contract, not style. Only the kill switch changes an OUTCOME; the rest decide which code is
 reported, and the tests freeze the sequence (D39, D52).
 
-1. **Preflight**, before either door: kill switch, then the authoritative precondition.
-2. **Door policy**: `evaluateWrite` refuses the two classes it does not own; `evaluateDestructive`
+1. **Preflight**, before either gate: kill switch, then the authoritative precondition.
+2. **Gate policy**: `evaluateWrite` refuses the two classes it does not own; `evaluateDestructive`
    refuses anything that is not clock-triggered destructive, then runs its own gates in order —
    recorded warning, warning-to-request match, plan validity, grace floor, grace elapsed, cancelling
    activity.
-3. **General rules**, shared by both doors, in the order `GENERAL_RULES` lists them: observation,
+3. **General rules**, shared by both gates, in the order `GENERAL_RULES` lists them: observation,
    capability enabled, permissions, item open, item paused, human ordering known, timestamps valid,
    no newer human change, mode not disabled, mode not record-only.
 4. Nothing objected — `apply`.
@@ -46,8 +46,8 @@ not this document's.
 <!-- generated: refusal-codes -->
 | Code | Raised by | Meaning |
 |---|---|---|
-| `killSwitch` | intent preflight | An operator pulled the brake; every returned intent is refused, including observation-class intents. Capability and resolver evaluation has already occurred (D117). |
-| `wrongEntryPoint` | `write.ts` | A clock-triggered destructive request arrived at the general door. |
+| `killSwitch` | intent preflight | An operator closed the gate; every returned intent is refused, including observation-class intents. Capability and resolver evaluation has already occurred (D117). |
+| `wrongEntryPoint` | `write.ts` | A clock-triggered destructive request arrived at the general gate. |
 | `preventiveGateUnavailable` | `write.ts` | The immediate-preventive class has no gate yet. |
 | `capabilityDisabled` | general rules | The repository did not enable this capability. |
 | `permissionMissing` | general rules | The installation lacks a grant the request requires. |
@@ -58,7 +58,7 @@ not this document's.
 | `humanOrderingUnknown` | general rules | Ordering evidence could not be established, which is a conflict and never an absence. |
 | `invalidTimestamp` | general rules | The observation or human-change timestamp is not a finite time. |
 | `modeDisabled` | general rules | The repository mode is `disabled`. |
-| `wrongActionClass` | `destructive.ts` | A non-destructive request arrived at the destructive door. |
+| `wrongActionClass` | `destructive.ts` | A non-destructive request arrived at the destructive gate. |
 | `noWarning` | `destructive.ts` | No recorded warning; a destructive action never occurs on first observation. |
 | `warningRequestMismatch` | `destructive.ts` | The warning authorizes a different capability, target, change, or causal observation. |
 | `invalidDestructivePlan` | `destructive.ts` | The plan carries a non-finite value, or a warning predating its observation or shorter than the full grace period. |

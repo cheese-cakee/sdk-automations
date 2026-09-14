@@ -7,7 +7,7 @@ import type { RepositoryConfig } from "../config/index.js";
 import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
 import type { SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
-/** May this write happen? The wrong door is a verdict, not a bypass (D52). */
+/** May this write happen? The wrong gate is a verdict, not a bypass (D52). */
 export function evaluateWrite(
     request: WriteRequest,
     config: RepositoryConfig,

@@ -1,4 +1,4 @@
-# pr-quality — one dashboard comment that tells a contributor what stops their pull request from being ready to review
+# prQuality — one dashboard comment that tells a contributor what stops their pull request from being ready to review
 
 Not built: phases 2, 3, and four of phase 1's five checks.
 
@@ -100,13 +100,19 @@ capability).
 
 ```mermaid
 flowchart LR
-    O["pull_request event"] --> CL{"closed or merged?"}
-    CL -->|yes| N0["nothing"]
-    CL -->|no| R["resolve: commitAttestations · mergeability · linkedIssues + assignees"]
+    O["pull_request event"] --> CL{"platform: closed or merged?"}
+    CL -->|yes| N0["nothing — the capability is never called"]
+    CL -->|no| R["ask: commitAttestations · mergeability · linkedIssues + assignees"]
+    R -->|"platform: unanswered"| N1["skipped, with the platform's own explanation"]
     R --> S["each check: pass · fail · unknown"]
     S --> I["postManagedComment — update in place"]
     S -->|"label mode, all resolved"| L["needsRevision on any fail · needsReview when all pass and ready for review"]
 ```
+
+Two of those guards are the platform's and none of the capability's. A closed or merged item never
+reaches a capability that has not declared `closed: true`; the engine passes it by in silence. A resolver that cannot answer ends the evaluation as skipped, with an explanation the
+platform writes — the shipped single check therefore has no `unknown` row to render, and the one
+guard left in `capability.ts` is the check's own `enabled`.
 
 | Check | Pass | Fail | Unknown |
 |---|---|---|---|
@@ -119,11 +125,11 @@ flowchart LR
 | Declaration | Value |
 |---|---|
 | `triggers` | `pull_request` (opened, edited, synchronize, reopened, ready_for_review) |
-| `facts` / `needs` | `pullRequest`, needing no group. Phase 2's draft/ready state is the `readiness` group, which the `pull_request` producer already reads — the declaration needs it, the platform does not |
+| `facts` / `needs` | both implied by the trigger: a `pullRequest` record, needing no group. Phase 2's draft/ready state is the `readiness` group, which the `pull_request` producer already reads — the declaration will name it, the platform already reads it |
 | `resolvers` | `linkedIssues` (declared; read confirmed) · `mergeability` (in the catalogue, read CONFIRMED — undeclared here, and the merge-conflict check is unwritten) · `commitAttestations` and `assigneesOf` (in the catalogue, reads confirmed by protocol 6.9 — undeclared here, and their three checks are unwritten). `assigneesOf` answers an ISSUE number: the cited row is `GET /issues/{n}`, which is what the linked-issue assignment check asks about |
 | `intents` | `postManagedComment` (`summary`) · `applyMappedLabel` (`needsReview`/`needsRevision`, phase 2) |
+| `requiredMappings` | none — the shipped check writes no label |
 | Permissions | repository: `pull_requests:read`, `issues:read`, `issues:write` · organization: none |
-| `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: candidate (sibling recheck, deferred) · externalDelivery: false |
 
 | Phase | Ships | Needs first |
 |---|---|---|

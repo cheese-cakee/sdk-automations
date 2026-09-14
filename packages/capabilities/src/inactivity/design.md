@@ -1,6 +1,6 @@
 # inactivity — remind about stalled work, then release it
 
-Not built: phases 2, 3, 4.
+Not built: phase 4.
 
 ## What the output looks like
 
@@ -122,6 +122,8 @@ Never acts on maintainer staleness or paused work:
 - a pull request in `needsReview`, or in ready-for-review mode without the `needsRevision` label —
   that wait is the maintainers'
 - anything carrying the `blocked` meaning
+- a closed issue or a merged pull request, which never reaches this capability at all: the platform
+  wakes it for open items only, because it declares no `closed: true` (D59)
 
 ```mermaid
 flowchart LR
@@ -155,8 +157,8 @@ state change between sweep and write refuses the act.
 All three reasons act. Each one CLAIMS the evidence it read — the label reason its meaning, the
 two native reasons their mode — and the platform re-reads that evidence before it closes anything:
 a pull request marked ready for review, or a change request a later review lifted, refuses the
-close the same way a label somebody removed does. **No armed rehearsal has run on the close path**,
-so protocol 8.2 owes it a run before it acts anywhere.
+close the same way a label somebody removed does. Protocol 8.3 ran the close path armed on
+2026-09-12: warning, grace, close on a draft claim, notice, and a human reopen left alone.
 
 | Declaration | Value |
 |---|---|
@@ -164,14 +166,14 @@ so protocol 8.2 owes it a run before it acts anywhere.
 | `facts` / `needs` | `issue` and `pullRequest`, needing `assignees` (each with `assignedAt` and last `/working`), `links`, `review` (changes requested, `reapableSince`, last commit) and `readiness` (draft). The fifth group, `command`, is the issue's and this capability does not read it. A producer that reads less — a webhook — is a `factsUnread` skip |
 | `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-quality's job, arriving as `needsRevision` |
 | `intents` | `postManagedComment` · `releaseAssignment` · `closePullRequest`. Every act claims what it saw: the assignee ladder and the label reason claim meanings and closure, and each mode reason claims its own `pullRequestMode` |
-| Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write`; phase 3 adds `pull_requests:write` · organization: none |
-| `operationalNeeds` | schedule: true · durableState: required · crossItemCoordination: false · externalDelivery: false |
+| `requiredMappings` | none — the label reason demands `needsRevision` in a guard, only where it is switched on |
+| Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write`, `pull_requests:write` — the close's own, and the only write on the pull surface · organization: none |
 
 | Phase | Ships | Needs first |
 |---|---|---|
 | 1 | reminders only — both ladders, comment-only | nothing: the sweep driver, the commands mapping family and the `review` group's three reads all ship. Unproven end to end — no sweep has run against a live repository |
-| 2 | issue release — unassign after grace | the assignee write family (`design/guides/grace.md` wires the destructive gate to the sweep path) |
-| 3 | PR close after grace | a `closePullRequest` operation — the catalogue's first close, destructive-gated — and the pull-request write endpoint, which is an armed FX-gate run (protocol 8.2) nobody has made on this path |
+| 2 | issue release — unassign after grace | nothing: the release is a confirmed endpoint, a body-carrying `DELETE …/issues/{n}/assignees` under Issues W, and `design/guides/grace.md` wires the destructive gate to the sweep path |
+| 3 | PR close after grace | nothing to build: `closePullRequest` is the catalogue's first close, destructive-gated, and `PATCH …/pulls/{n}` is a confirmed endpoint under Pull requests W. Owed rather than needed first — the armed FX-gate run (protocol 8.2), which nobody has made on this path |
 | 4 (candidate) | stale unassigned triage/ready issues — remind, optionally close | an issue-closure operation and a policy conversation; unranked |
 
 ## Verified by

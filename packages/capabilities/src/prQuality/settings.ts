@@ -3,7 +3,7 @@
  * block, at the size the shipped code can honestly read.
  */
 
-import { block, section, spec, text } from "@hiero-hackers/automation-core";
+import { block, section, spec, text } from "@hiero-hackers/automation-core/author";
 
 /** The checks a repository may switch on, and where each failure sends a reader. */
 export const PR_QUALITY_SETTINGS = spec({

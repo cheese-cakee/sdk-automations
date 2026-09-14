@@ -70,6 +70,16 @@ describe("contracts/config-schema.md matches the vocabularies the code owns", ()
         );
     });
 
+    it("the schemaVersion rows name versions 1 and 2 and the code refusing the rest", () => {
+        const rows = doc.split("\n").filter((line) => /^\|.*`schemaVersion`/.test(line));
+        const names = (token: string): boolean => rows.some((row) => row.includes(token));
+        expect({
+            one: names("`1`"),
+            two: names("`2`"),
+            unsupported: names("`schemaVersionUnsupported`"),
+        }).toEqual({ one: true, two: true, unsupported: true });
+    });
+
     it("proves the check can fail", () => {
         const forged = "## 4. Repository modes\n\n| Mode |\n|---|\n| `disabled` |\n| `observe` |\n";
         expect(tableCodes(`# x\n\n${forged}`, "4. Repository modes")).not.toEqual([

@@ -411,8 +411,10 @@ describe("source imports follow the layer policy, checked by dependency-cruiser"
         expect([...fired].sort()).toEqual([
             "adapter-imported-at-shell-main-only",
             "adapter-imports-core-only",
+            "capabilities-enter-by-the-author-door",
             "core-and-capabilities-stay-pure",
             "core-imports-no-internal-package",
+            "harness-is-test-only",
             "no-circular",
             "no-import-past-the-barrel",
             "not-to-unresolvable",
@@ -424,7 +426,12 @@ describe("source imports follow the layer policy, checked by dependency-cruiser"
         ]);
     });
 
-    it("allows only the shell composition root to import the adapter", async () => {
+    /**
+     * The exact list is both controls at once: the sweep's test directory
+     * reaches the adapter's barrel and the fake beside it and is absent here,
+     * while a sibling lane's test reaching the same fake is present.
+     */
+    it("allows only the shell composition root and the sweep's test to import the adapter", async () => {
         const fixtureRoot = join(repoRoot, "packages/dev/checks", FIXTURES);
         const violations = await cruiseViolations(["packages"], fixtureRoot);
         expect(
@@ -435,6 +442,7 @@ describe("source imports follow the layer policy, checked by dependency-cruiser"
             [
                 "adapter-imported-at-shell-main-only: packages/core/src/imports-adapter.ts -> packages/runtime/src/adapter/index.ts",
                 "adapter-imported-at-shell-main-only: packages/runtime/src/shell/imports-adapter.ts -> packages/runtime/src/adapter/index.ts",
+                "adapter-imported-at-shell-main-only: packages/runtime/test/shell/inbound/uses-adapter.ts -> packages/runtime/test/adapter/harness.ts",
             ].sort(),
         );
     });

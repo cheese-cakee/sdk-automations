@@ -71,7 +71,7 @@ nothing, never a licence to act as though the answer were "no".
 over: a resolver outside that list reaches an endpoint with no cited row, so the gate answers it
 `unavailable` before the dispatch and its reader sits complete and tested until a sandbox run cites
 the row. Which names those are is the list itself, pinned by value in
-`packages/runtime/test/adapter/item-resolvers.test.ts` and nowhere restated — a count beside a
+`packages/runtime/test/adapter/reads/item-resolvers.test.ts` and nowhere restated — a count beside a
 generated table is a sentence that goes stale the day the table grows. A resolver is a question a capability asks BEFORE it acts, so an
 unconfirmed read answering anyway would be the capability acting on evidence nobody has established
 the App may gather.
@@ -105,7 +105,7 @@ marker counts only under App authorship, so one copied into a repository user's 
 trigger an operation (D125).
 
 The marker's own rules are the ones a reader has to trust, and they live in
-`packages/core/src/capability/managed.ts`: one short marker per purpose per item; the schema version,
+`packages/core/src/intents/managed.ts`: one short marker per purpose per item; the schema version,
 capability and kind in the clear, so a maintainer reading raw markdown can see whose comment it is;
 the subject as a digest, because a topic is a capability's free text; and a body offered for
 recognition refused outright when it carries no marker, is oversized, is malformed, or names a prior
@@ -129,7 +129,7 @@ its topic on `grace` instead, and its warning and notice both stand under it.
 `mention` is the other optional field, and it is NOT part of identity: it names a PRINCIPAL, by the
 name the repository's `principals:` block declares, and the platform resolves it into the handle
 behind it where identity is minted (`addressManagedComment`, run before the effect so the verdict,
-the dry-run rehearsal and the journal row all read the same bytes). A capability that wants to ping
+the dry-run rehearsal and the recorded call all read the same bytes). A capability that wants to ping
 someone therefore never learns who it pinged, for the reason `desired.meaning` is a meaning and
 never a label. The same purpose addressed to two different principals is still one standing comment
 on the item.
@@ -138,10 +138,10 @@ on the item.
 three operations on purpose (D63, D141). `assign` and `unassign` are the reversible pair a
 contributor asks for on their own behalf; `releaseAssignment` is the clock's, so it is destructive
 and reaches GitHub only through the warning-and-grace gates. `lockIssue` and `unlockIssue` are the
-two directions of one moderation, kept apart for the same reason: a journal row should name the
+two directions of one moderation, kept apart for the same reason: a recorded call should name the
 direction it went rather than carry a boolean an operator has to decode. `closePullRequest` is the
 catalogue's first close, and its `reason` is the sentence its close notice states — carried on the
-desired outcome so the journal row names it, as `lockIssue`'s and `unlockIssue`'s are.
+desired outcome so the recorded call names it, as `lockIssue`'s and `unlockIssue`'s are.
 
 Four of these operations have no confirmed write endpoint — `assign`, `unassign`, `lockIssue`,
 `unlockIssue` — and each is nonetheless a whole registered operation in all three layers, refusing

@@ -6,33 +6,34 @@
  * never I/O; everything derivable is derived.
  */
 
+import { factGroupUnread, type Facts, type ItemRef, type RepositoryRef } from "../catalogue.js";
 import {
-    addressManagedComment,
-    factGroupUnread,
-    managedCommentOf,
     modesOf,
     projectCapabilityView,
-    readIntent,
-    screenIntent,
-    type AnyIntent,
     type CapabilityView,
-    type DestructiveGrace,
-    type Facts,
-    type Intent,
-    type ItemRef,
-    type ManagedComment,
-    type RepositoryRef,
     type TypedDeclaration,
 } from "../capability/index.js";
+import {
+    addressManagedComment,
+    managedCommentOf,
+    type AnyIntent,
+    type DestructiveGrace,
+    type Intent,
+    type ManagedComment,
+} from "../intents/index.js";
 import type { PermissionGrant } from "../github/index.js";
 import {
     EngineHandle,
+    isSkipSignal,
+    readIntent,
+    screenIntent,
     thrownDetail,
     type EngineCapability,
     type ResolverSource,
 } from "./invoke.js";
 import { normalizeDelivery } from "./events.js";
 import type { RepositoryConfig } from "../config/index.js";
+import { closureOf } from "../workflow/index.js";
 import {
     deriveWorld,
     evaluateDestructive,
@@ -407,6 +408,8 @@ async function intentsFrom(
             ? { intents: [...intents], defect: null }
             : { intents: [], defect: "the capability returned a non-array intent collection" };
     } catch (thrown) {
+        // The platform's own sentinel: the handle already said why (D51).
+        if (isSkipSignal(thrown)) return { intents: [], defect: null };
         return { intents: [], defect: thrownDetail(thrown) };
     }
 }
@@ -446,7 +449,7 @@ function readInput(
 }
 
 /**
- * The front door: a delivery becomes a report, plus the intents that may act.
+ * The entry point: a delivery becomes a report, plus the intents that may act.
  * Total — every fallible seam is contained, so a report always comes back.
  */
 export async function decide(
@@ -478,7 +481,10 @@ export async function decide(
                 continue;
             }
 
-            const handle = new EngineHandle(declaration, externals.resolve);
+            // A closed issue and a merged pull request have both left (D59): routine, so silent.
+            if (declaration.closed !== true && closureOf(facts.position) !== null) continue;
+
+            const handle = new EngineHandle(declaration, facts, externals.resolve);
             const view = projectCapabilityView(declaration, config);
             const evaluated = await intentsFrom(capability, facts, view, handle);
 
@@ -519,6 +525,18 @@ export async function decide(
                         { kind: "capability", capability: declaration.name },
                     ),
                 );
+            }
+
+            if (handle.skipped && evaluated.intents.length > 0) {
+                findings.push(
+                    finding(
+                        "problem",
+                        "intentsAfterSkip",
+                        `"${declaration.name}" caught the platform's skip and returned ${String(evaluated.intents.length)} intents, which are refused`,
+                        { kind: "capability", capability: declaration.name },
+                    ),
+                );
+                continue;
             }
 
             for (const intent of evaluated.intents) {

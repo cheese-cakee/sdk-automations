@@ -22,9 +22,9 @@ const KILL_SWITCH: SafetyVerdict = {
     reason: "a kill switch is active",
 };
 
-/** Kill switch and authoritative precondition run before either write door. */
+/** Kill switch and authoritative precondition run before either write gate. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
-    // Ahead of the observation short-circuit: the brake refuses those too (D117).
+    // Ahead of the observation short-circuit: the gate refuses those too (D117).
     if (context.killSwitchActive) return KILL_SWITCH;
     if (!context.world.preconditionHolds) {
         return {
@@ -177,7 +177,7 @@ function standingFacts(
     };
 }
 
-/** The ordered rules, run in order — both doors arrive here after their own policy. */
+/** The ordered rules, run in order — both gates arrive here after their own policy. */
 export function evaluateGeneralRulesAfterPreflight(
     request: WriteRequest,
     config: RepositoryConfig,
@@ -192,8 +192,8 @@ export function evaluateGeneralRulesAfterPreflight(
 }
 
 /**
- * The kill switch and every `standing` rule, in the same order — the brakes a
- * caller holding no item can still consult.
+ * The kill switch and every `standing` rule, in the same order — the standing
+ * gate a caller holding no item can still consult.
  */
 export function evaluateStandingRules(
     request: StandingRequest,

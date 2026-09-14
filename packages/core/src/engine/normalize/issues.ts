@@ -3,7 +3,8 @@
  * has read it. A group the webhook cannot see is `UNREAD`, never invented.
  */
 
-import { UNREAD, type ProducedFacts } from "../../capability/index.js";
+import { UNREAD } from "../../catalogue.js";
+import type { ProducedFacts } from "../../capability/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
 import type { DeliveryFacts } from "./payload.js";
 import type { NormalizeResult } from "./verdict.js";

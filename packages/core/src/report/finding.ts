@@ -3,7 +3,7 @@
  * The list is FLAT: four surfaces are views of it and they group differently.
  */
 
-import type { ItemRef, RepositoryRef } from "../capability/index.js";
+import type { ItemRef, RepositoryRef } from "../catalogue.js";
 import type { RepositoryMode } from "../config/index.js";
 
 /** `info`: it happened and was normal. `notice`: nothing happened, as intended. `problem`: act. */

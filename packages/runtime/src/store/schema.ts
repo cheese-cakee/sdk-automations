@@ -1,58 +1,25 @@
 /**
- * The store schema contract: recognize an owned database, migrate it in order, and
- * reject shapes or versions this package cannot interpret.
+ * The store schema contract: recognize an owned database, create it, and reject
+ * shapes or versions this package cannot interpret. No store older than this
+ * schema will ever be opened, so there is no history to convert here (D165).
  */
 
 import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 
 /** The newest storage schema this package can safely read and write. */
-export const CURRENT_STORAGE_SCHEMA_VERSION = 6;
+export const CURRENT_STORAGE_SCHEMA_VERSION = 1;
 
 /** A deliberate interruption point after one migration step. */
-export type MigrationFaultPoint =
-    "migration:1" | "migration:2" | "migration:3" | "migration:4" | "migration:5" | "migration:6";
+export type MigrationFaultPoint = "migration:1";
 
 type FaultInjector = (point: MigrationFaultPoint) => void;
 
-const SEEN_DELIVERY_V1 = `
-    CREATE TABLE seen_delivery (
-        delivery_id TEXT PRIMARY KEY,
-        at          TEXT NOT NULL
-    )`;
-
-const SEEN_DELIVERY_V3 = `
-    CREATE TABLE seen_delivery (
-        delivery_id   TEXT PRIMARY KEY,
-        event_name    TEXT NOT NULL,
-        payload       BLOB,
-        payload_digest TEXT NOT NULL,
-        received_at   TEXT NOT NULL,
-        state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done')),
-        claim_worker  TEXT,
-        claim_token   TEXT,
-        claimed_at    TEXT,
-        completed_at  TEXT,
-        CHECK (
-            (state = 'pending' AND payload IS NOT NULL
-                AND claim_worker IS NULL AND claim_token IS NULL
-                AND claimed_at IS NULL AND completed_at IS NULL)
-            OR
-            (state = 'processing' AND payload IS NOT NULL
-                AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
-                AND claimed_at IS NOT NULL AND completed_at IS NULL)
-            OR
-            (state = 'done' AND payload IS NULL
-                AND claim_worker IS NULL AND claim_token IS NULL
-                AND claimed_at IS NULL AND completed_at IS NOT NULL)
-        )
-    )`;
-
 /**
- * Version 5 adds the two columns a bounded retry needs, and the terminal state it ends in.
- * `failed` is dead-lettering: claimable by nothing, and it KEEPS its payload — there is no report.
+ * `failed` is dead-lettering: claimable by nothing, and it KEEPS its payload.
+ * `completed_at` is when a delivery finished, done or dead-lettered alike.
  */
-const SEEN_DELIVERY_V5 = `
+const SEEN_DELIVERY = `
     CREATE TABLE seen_delivery (
         delivery_id   TEXT PRIMARY KEY,
         event_name    TEXT NOT NULL,
@@ -92,39 +59,60 @@ const DELIVERY_WORK = `
     CREATE INDEX delivery_work
         ON seen_delivery(state, received_at, delivery_id)`;
 
-const DELIVERY_REPORT_V4 = `
-    CREATE TABLE delivery_report (
-        delivery_id TEXT PRIMARY KEY,
-        claim_token TEXT NOT NULL,
-        report_json TEXT NOT NULL,
-        completed_at TEXT NOT NULL
+/**
+ * One row per fact of an effect, folded to a state (D161).
+ * `fact_id` is the ledger's order, so a fact never has to be found by its timestamp.
+ */
+const EFFECT_FACT = `
+    CREATE TABLE effect_fact (
+        fact_id     INTEGER PRIMARY KEY,
+        effect_id   TEXT NOT NULL,
+        seq         INTEGER NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('sent','unsent','landed','refused','abandoned','warned','reversed')),
+        at          TEXT NOT NULL,
+        revision    TEXT NOT NULL,
+        capability  TEXT NOT NULL,
+        repository  TEXT NOT NULL,
+        item_kind   TEXT NOT NULL,
+        item_number INTEGER NOT NULL,
+        verb        TEXT,
+        login       TEXT,
+        code        TEXT,
+        detail      TEXT,
+        payload     TEXT
     )`;
 
-const EFFECT_JOURNAL_V1 = `
-    CREATE TABLE effect_journal (
-        effect_id TEXT NOT NULL,
-        call_seq  INTEGER NOT NULL,
-        intent    TEXT NOT NULL,
-        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-        at        TEXT NOT NULL,
-        PRIMARY KEY (effect_id, call_seq)
+const FACT_BY_EFFECT = `
+    CREATE INDEX fact_by_effect ON effect_fact(effect_id, seq, fact_id)`;
+
+const FACT_BY_ITEM = `
+    CREATE INDEX fact_by_item   ON effect_fact(repository, item_kind, item_number, kind, at)`;
+
+const OPEN_SENDS = `
+    CREATE INDEX open_sends     ON effect_fact(at) WHERE kind = 'sent'`;
+
+/** One row per item per capability per pass, webhook and sweep alike (D163). */
+const DECISION = `
+    CREATE TABLE decision (
+        pass_id     TEXT NOT NULL,
+        source      TEXT NOT NULL CHECK (source IN ('webhook','sweep')),
+        source_id   TEXT NOT NULL,
+        at          TEXT NOT NULL,
+        repository  TEXT NOT NULL,
+        item_kind   TEXT NOT NULL,
+        item_number INTEGER NOT NULL,
+        capability  TEXT NOT NULL,
+        verdict     TEXT NOT NULL,
+        code        TEXT,
+        detail      TEXT,
+        effect_id   TEXT
     )`;
 
-const EFFECT_JOURNAL_V2 = `
-    CREATE TABLE effect_journal (
-        effect_id TEXT NOT NULL,
-        call_seq  INTEGER NOT NULL,
-        intent    TEXT NOT NULL,
-        status    TEXT NOT NULL CHECK (status IN ('sent', 'done')),
-        at        TEXT NOT NULL,
-        attempt   INTEGER NOT NULL,
-        revision  TEXT NOT NULL,
-        PRIMARY KEY (effect_id, call_seq)
-    )`;
+const DECISION_BY_ITEM = `
+    CREATE INDEX decision_by_item ON decision(repository, item_kind, item_number, at)`;
 
-const OPEN_INTENTS = `
-    CREATE INDEX open_intents
-        ON effect_journal(at) WHERE status = 'sent'`;
+const DECISION_BY_AT = `
+    CREATE INDEX decision_by_at   ON decision(at)`;
 
 const EFFECT_CLAIM = `
     CREATE TABLE effect_claim (
@@ -133,98 +121,35 @@ const EFFECT_CLAIM = `
         at        TEXT NOT NULL
     )`;
 
-const SCHEDULE_V1 = `
-    CREATE TABLE schedule (
-        schedule_id TEXT PRIMARY KEY,
-        due_at      TEXT NOT NULL,
-        effect      TEXT NOT NULL,
-        status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done'))
-    )`;
-
-/**
- * Version 6 adds the record grace.md §4 asks for: one row per ACT effect, snapshot
- * columns copied not referenced (D60), `earliest_action_at` stored not recomputed. HOURS.
- */
-const DESTRUCTIVE_WARNING_V6 = `
-    CREATE TABLE destructive_warning (
-        effect_id          TEXT PRIMARY KEY,
-        warned_at          TEXT NOT NULL,
-        grace_hours        INTEGER NOT NULL,
-        earliest_action_at TEXT NOT NULL,
-        cancelled_by       TEXT NOT NULL,
-        reverses_with      TEXT NOT NULL,
-        action_class       TEXT NOT NULL,
-        capability         TEXT NOT NULL,
-        cause_observed_at  TEXT NOT NULL,
-        cause              TEXT NOT NULL,
-        item               TEXT NOT NULL,
-        change             TEXT NOT NULL
-    )`;
-
-const SCHEDULE_V2 = `
+/** `resume_after` is the item number a firing stopped reading at; null reads the list from the beginning (D170). */
+const SCHEDULE = `
     CREATE TABLE schedule (
         schedule_id TEXT PRIMARY KEY,
         due_at      TEXT NOT NULL,
         effect      TEXT NOT NULL,
         status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
         claimed_at  TEXT,
-        claim_token TEXT
+        claim_token TEXT,
+        resume_after INTEGER
     )`;
 
 const SCHEMA_BY_VERSION = {
     1: {
-        effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V1,
-        schedule: SCHEDULE_V1,
-        seen_delivery: SEEN_DELIVERY_V1,
-    },
-    2: {
-        effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V2,
-        open_intents: OPEN_INTENTS,
-        schedule: SCHEDULE_V2,
-        seen_delivery: SEEN_DELIVERY_V1,
-    },
-    3: {
+        decision: DECISION,
+        decision_by_at: DECISION_BY_AT,
+        decision_by_item: DECISION_BY_ITEM,
         delivery_work: DELIVERY_WORK,
         effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V2,
-        open_intents: OPEN_INTENTS,
-        schedule: SCHEDULE_V2,
-        seen_delivery: SEEN_DELIVERY_V3,
-    },
-    4: {
-        delivery_report: DELIVERY_REPORT_V4,
-        delivery_work: DELIVERY_WORK,
-        effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V2,
-        open_intents: OPEN_INTENTS,
-        schedule: SCHEDULE_V2,
-        seen_delivery: SEEN_DELIVERY_V3,
-    },
-    5: {
-        delivery_report: DELIVERY_REPORT_V4,
-        delivery_work: DELIVERY_WORK,
-        effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V2,
-        open_intents: OPEN_INTENTS,
-        schedule: SCHEDULE_V2,
-        seen_delivery: SEEN_DELIVERY_V5,
-    },
-    6: {
-        delivery_report: DELIVERY_REPORT_V4,
-        delivery_work: DELIVERY_WORK,
-        destructive_warning: DESTRUCTIVE_WARNING_V6,
-        effect_claim: EFFECT_CLAIM,
-        effect_journal: EFFECT_JOURNAL_V2,
-        open_intents: OPEN_INTENTS,
-        schedule: SCHEDULE_V2,
-        seen_delivery: SEEN_DELIVERY_V5,
+        effect_fact: EFFECT_FACT,
+        fact_by_effect: FACT_BY_EFFECT,
+        fact_by_item: FACT_BY_ITEM,
+        open_sends: OPEN_SENDS,
+        schedule: SCHEDULE,
+        seen_delivery: SEEN_DELIVERY,
     },
 } as const;
 
 type StorageSchemaVersion = keyof typeof SCHEMA_BY_VERSION;
-type DetectedStorageSchemaVersion = 0 | Exclude<StorageSchemaVersion, 4 | 5 | 6>;
 
 function schemaObjects(
     db: DatabaseSync,
@@ -260,105 +185,32 @@ function assertSchemaMatchesVersion(db: DatabaseSync, version: StorageSchemaVers
     }
 }
 
-function detectUnversionedSchema(db: DatabaseSync): DetectedStorageSchemaVersion {
-    if (schemaObjects(db).length === 0) return 0;
-    for (const version of [1, 2, 3] as const) {
-        if (schemaMatchesVersion(db, version)) return version;
+/** An unversioned file is this package's only if it is empty (D165). */
+function detectUnversionedSchema(db: DatabaseSync): 0 {
+    if (schemaObjects(db).length > 0) {
+        throw new Error("unrecognized unversioned storage schema");
     }
-    throw new Error("unrecognized unversioned storage schema");
+    return 0;
 }
 
 function setVersion(db: DatabaseSync, version: number): void {
     db.exec(`PRAGMA user_version = ${String(version)}`);
 }
 
-function createOriginalOperationalSchema(db: DatabaseSync): void {
-    db.exec(`${SEEN_DELIVERY_V1};${EFFECT_JOURNAL_V1};${EFFECT_CLAIM};${SCHEDULE_V1};`);
+function createSchema(db: DatabaseSync): void {
+    db.exec(
+        `${SEEN_DELIVERY};${DELIVERY_WORK};
+         ${EFFECT_FACT};${FACT_BY_EFFECT};${FACT_BY_ITEM};${OPEN_SENDS};
+         ${DECISION};${DECISION_BY_ITEM};${DECISION_BY_AT};
+         ${EFFECT_CLAIM};${SCHEDULE};`,
+    );
 }
 
-function addRecoveryOwnershipState(db: DatabaseSync): void {
-    db.exec(`
-        ALTER TABLE effect_journal RENAME TO effect_journal_v1;
-        ${EFFECT_JOURNAL_V2};
-        INSERT INTO effect_journal
-            SELECT effect_id, call_seq, intent, status, at, 1, 'legacy:unknown'
-            FROM effect_journal_v1;
-        DROP TABLE effect_journal_v1;
-
-        ALTER TABLE schedule RENAME TO schedule_v1;
-        ${SCHEDULE_V2};
-        INSERT INTO schedule
-            SELECT schedule_id, due_at, effect,
-                   CASE status WHEN 'running' THEN 'pending' ELSE status END,
-                   NULL, NULL
-            FROM schedule_v1;
-        DROP TABLE schedule_v1;
-
-        ${OPEN_INTENTS};
-    `);
-}
-
-function addDurableDeliveryWork(db: DatabaseSync): void {
-    db.exec(`
-        ALTER TABLE seen_delivery RENAME TO seen_delivery_v2;
-        ${SEEN_DELIVERY_V3};
-        INSERT INTO seen_delivery (
-            delivery_id, event_name, payload, payload_digest, received_at,
-            state, claim_worker, claim_token, claimed_at, completed_at
-        )
-        SELECT delivery_id, 'legacy.unknown', NULL,
-               '0000000000000000000000000000000000000000000000000000000000000000',
-               at, 'done', NULL, NULL, NULL, at
-        FROM seen_delivery_v2;
-        DROP TABLE seen_delivery_v2;
-
-        ${DELIVERY_WORK};
-    `);
-}
-
-function addCanonicalDeliveryReports(db: DatabaseSync): void {
-    db.exec(`${DELIVERY_REPORT_V4};`);
-}
-
-/**
- * Existing rows start at zero attempts with no retry deadline: an attempt this
- * schema never counted cannot be reconstructed.
- */
-function addBoundedDeliveryRetries(db: DatabaseSync): void {
-    db.exec(`
-        ALTER TABLE seen_delivery RENAME TO seen_delivery_v4;
-        ${SEEN_DELIVERY_V5};
-        INSERT INTO seen_delivery (
-            delivery_id, event_name, payload, payload_digest, received_at,
-            state, claim_worker, claim_token, claimed_at, completed_at,
-            attempts, retry_not_before
-        )
-        SELECT delivery_id, event_name, payload, payload_digest, received_at,
-               state, claim_worker, claim_token, claimed_at, completed_at,
-               0, NULL
-        FROM seen_delivery_v4;
-        DROP TABLE seen_delivery_v4;
-
-        ${DELIVERY_WORK};
-    `);
-}
-
-/** A new table and nothing else: no existing row has a warning to backfill. */
-function addDestructiveWarnings(db: DatabaseSync): void {
-    db.exec(`${DESTRUCTIVE_WARNING_V6};`);
-}
-
+/** One entry per version, and the mechanism a second version will use (D165). */
 const MIGRATIONS: ReadonlyArray<{
     readonly version: StorageSchemaVersion;
     readonly apply: (db: DatabaseSync) => void;
-}> = [
-    { version: 1, apply: createOriginalOperationalSchema },
-    { version: 2, apply: addRecoveryOwnershipState },
-    { version: 3, apply: addDurableDeliveryWork },
-    { version: 4, apply: addCanonicalDeliveryReports },
-    { version: 5, apply: addBoundedDeliveryRetries },
-    { version: 6, apply: addDestructiveWarnings },
-];
+}> = [{ version: 1, apply: createSchema }];
 
 /** Read SQLite's native application schema version. */
 export function readStorageSchemaVersion(db: DatabaseSync): number {

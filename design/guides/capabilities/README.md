@@ -17,6 +17,7 @@ the other one (D131).
 | `onboarding` | [`onboarding.md`](onboarding.md) — no folder yet |
 | `reviews` | [`reviews.md`](reviews.md) — no folder yet |
 | `merged` | [`merged.md`](merged.md) — no folder yet |
+| `why` | [`why.md`](why.md) — no folder yet |
 
 Write a new design here, in the shape the `capability-design` skill describes.
 Move it the day its folder is created, and update this table in the same breath.

@@ -15,33 +15,31 @@ import {
     pullRequestClock,
     REVERSES_WITH,
     type ClaimedFacts,
+    type Clock,
     type IntentFor,
-} from "@hiero-hackers/automation-core";
-import type { InactivitySettings, LadderContext, MakeIntent } from "./context.js";
+} from "@hiero-hackers/automation-core/author";
+import type { InactivitySettings, LadderContext } from "./context.js";
 import type { InactivityDeclaration, PullLadderFacts } from "./declaration.js";
 import {
     graceHoursOf,
     ladderOf,
+    REAP_REASONS,
     reaps,
     stillOnTheLadder,
     type Ladder,
+    type ReapReason,
     type Reaping,
 } from "./ladder.js";
-import { closeReason, pullRequestReminder, REAP_REASONS, type ReapReason } from "./messages.js";
+import { closeReason, pullRequestReminder } from "./messages.js";
 
 /** The first enabled reason that holds, with the clocks it resolved. */
 interface Reapable extends Ladder {
     readonly reason: ReapReason;
 }
 
-/**
- * What an intent about this reason claims it saw: the label reason claims its
- * meaning, the two native reasons their mode.
- */
+/** The mode the two native reasons read; a label's meaning the record derives. */
 function claimsFor(reason: ReapReason): Partial<ClaimedFacts> {
-    return reason === "needsRevision"
-        ? { closed: false, meaningsPresent: ["needsRevision"] }
-        : { closed: false, pullRequestMode: reason };
+    return reason === "needsRevision" ? {} : { pullRequestMode: reason };
 }
 
 /** The pull-request ladder once its block has consented — `enabled: true`. */
@@ -73,59 +71,55 @@ export async function onPullRequest(
     if (!pullRequests.enabled) return [];
 
     // A pull request awaiting review is the maintainers' wait, not the contributor's.
-    const meanings = meaningsOf(facts);
-    if (meanings.includes("needsReview")) return [];
-    const { draft } = facts.readiness;
-    const { changesRequested } = facts.review;
-    if (!draft && !changesRequested && !meanings.includes("needsRevision")) return [];
+    if (meaningsOf(facts).includes("needsReview")) return [];
 
     // In a reapable mode the repository opted into, or nothing to say.
     const reapable = reapableFor(facts, pullRequests);
     if (reapable === null) return [];
 
-    return await onLadder(facts, reapable, context);
+    return await onPullRequestLadder(facts, reapable, context);
 }
 
 /** What one pull request past its ladder is worth saying and doing about. */
-async function onLadder(
+async function onPullRequestLadder(
     facts: PullLadderFacts,
     reapable: Reapable,
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
-    const { observedAt } = context;
-    const clock = pullRequestClock(facts, reapable.reason, observedAt);
+    const clock = pullRequestClock(facts, reapable.reason, context.observedAt);
     if (clock.idleHours < reapable.remindAfter) return [];
 
     const logins = (await people(context.platform, facts.assignees)).map(
         (assignee) => assignee.login,
     );
-    // Dated at the clock's start, not the sweep: the occasion is the idle run.
-    const make = context.make(facts.item, clock.idleSince);
-
     return [
         reaps(reapable)
-            ? close(facts, logins, clock.idleHours, reapable, observedAt, make)
-            : remind(logins, clock.idleHours, reapable, observedAt, make),
+            ? close(context, facts, logins, clock, reapable)
+            : remind(context, logins, clock, reapable),
     ];
 }
 
 /** The close alone, carrying the reminder's words as grace. */
 function close(
+    { platform, observedAt }: LadderContext,
     facts: PullLadderFacts,
     logins: readonly string[],
-    idleHours: number,
+    clock: Clock,
     reapable: Reapable & Reaping,
-    observedAt: Date,
-    make: MakeIntent,
 ): IntentFor<InactivityDeclaration> {
-    return make({
+    return platform.intent({
         operation: "closePullRequest",
         desired: { reason: closeReason(reapable.reapAfter) },
         cause: "pullRequestWentStale",
+        // Dated at the clock's start, not the sweep: the occasion is the idle run.
+        occasion: clock.idleSince,
         claims: claimsFor(reapable.reason),
         explain: {
             summary: `Warned about a pull request stale in ${reapable.reason}; the close follows the grace.`,
-            detail: [`idle ${lasting(idleHours)}`, `closes after ${lasting(reapable.reapAfter)}`],
+            detail: [
+                `idle ${lasting(clock.idleHours)}`,
+                `closes after ${lasting(reapable.reapAfter)}`,
+            ],
         },
         grace: {
             hours: graceHoursOf(reapable),
@@ -149,13 +143,12 @@ function close(
  * takes the identity the platform's own warning would have taken.
  */
 function remind(
+    { platform, observedAt }: LadderContext,
     logins: readonly string[],
-    idleHours: number,
+    clock: Clock,
     reapable: Reapable,
-    observedAt: Date,
-    make: MakeIntent,
 ): IntentFor<InactivityDeclaration> {
-    return make({
+    return platform.intent({
         operation: "postManagedComment",
         desired: {
             kind: "warning",
@@ -163,10 +156,11 @@ function remind(
             body: pullRequestReminder(logins, reapable.reason, reapable, observedAt),
         },
         cause: "pullRequestWentStale",
+        occasion: clock.idleSince,
         claims: claimsFor(reapable.reason),
         explain: {
             summary: `Reminded about a pull request stale in ${reapable.reason}; this reason closes nothing.`,
-            detail: [`idle ${lasting(idleHours)}`, "no reap block is enabled, so nothing follows"],
+            detail: [`idle ${lasting(clock.idleHours)}`],
         },
     });
 }

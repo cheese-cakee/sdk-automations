@@ -44,12 +44,6 @@ const declaration = declareCapability({
     needs: [],
     resolvers: [],
     intents: ["applyMappedLabel"],
-    operationalNeeds: {
-        schedule: false,
-        durableState: "none",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 /** The smallest real capability: triage anything with no position. */
@@ -804,7 +798,12 @@ describe("paths the delivery tests never walk", () => {
  * makes no claim whatsoever, so nothing but the rule can refuse it.
  */
 describe("closure is a platform fact, not a capability's claim", () => {
-    const commenter = declareCapability({ ...declaration, intents: ["postManagedComment"] });
+    // `closed: true`, so the record reaches the capability and the WRITE rule refuses it.
+    const commenter = declareCapability({
+        ...declaration,
+        closed: true,
+        intents: ["postManagedComment"],
+    });
 
     /** Every `claims` field left to its default, which is "I claim nothing". */
     const claimless: EngineCapability = {
@@ -850,6 +849,20 @@ describe("closure is a platform fact, not a capability's claim", () => {
             );
             expect(decision.approved).toEqual([]);
             expect(decision.report.findings.map((f) => f.code)).toEqual(["itemClosed"]);
+        },
+    );
+
+    it.each(["closedByHuman", "completedByLinkedMerge"] as const)(
+        "never hands a capability that did not opt in an item closed as %s (D59)",
+        async (closedBy) => {
+            const decision = await decide(
+                { kind: "facts", facts: observedAs(closedBy) },
+                configIn("active"),
+                [{ ...claimless, declaration: { ...commenter, closed: false } as never }],
+                externals,
+            );
+            expect(decision.approved).toEqual([]);
+            expect(decision.report.findings).toEqual([]);
         },
     );
 

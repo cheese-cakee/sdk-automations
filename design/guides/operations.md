@@ -15,16 +15,28 @@ Whoever takes the operator role must be able to:
 - suspend processing without uninstalling the App;
 - prove whether one or several application processes are active.
 
-- One deployment gives every repository the same configuration, permissions, adapter, and upgrades.
+- One process serves one installation and owns one store; every repository the installation covers is
+  served by it, and each is decided under its own `automations.yml` (D169).
+- One deployment gives every repository the same permissions, adapter, and upgrades.
 - It needs an organization-owned operator, not one contributor's personal account (Q1, Q13).
 - A personal development App is separate from the production App (P8).
 - The personal App is only ever used for sandbox work.
 
 The records that role owns: the canonical delivery report (what was decided and why) and the effect
-journal (what reached GitHub). Neither carries a secret or repository content it does not need, and
-**repository comments are user-facing output, never the operational audit record.** How long either
-is kept, who may read it, and how it is deleted are open (Q17) — ninety days was proposed under D43
-and never ratified — so the store still grows without a policy.
+ledger (what reached GitHub). Neither carries a secret or repository content it does not need, and
+**repository comments are user-facing output, never the operational audit record.** Who may read
+either, and how a record is deleted on request, are open (Q17). How long each is kept is D166's, and
+every sweep firing runs all three windows:
+
+| Window | Kept | Prune |
+|---|---|---|
+| Done deliveries, each with its report | 30 days | `inbox.pruneCompletedDeliveries` |
+| Decision rows (D163) | 30 days | `ledger.pruneDecisions` |
+| Settled effects, whole and never by row (D161) | 90 days | `ledger.prune` |
+
+An effect with an open send is kept however old, and so is one whose warning promised an action
+still ahead: the promise outlives the window. Nothing prunes outside a firing, and a firing says
+`sweepPruned` only when something went.
 
 ## 2. Intake
 
@@ -41,6 +53,8 @@ and never ratified — so the store still grows without a policy.
 - The adapter records primary and secondary rate-limit headers.
 - It uses conditional reads where supported and paginates every list operation.
 - It paces writes and applies bounded backoff.
+- One sweep firing sends at most `SWEEP_WRITE_CALLS` write requests, 20 by default (D167), and spends at
+  most `SWEEP_READ_REQUESTS` requests reading, 2,000 by default, resuming where it stopped (D170).
 - It stops retrying when GitHub's response says waiting is required.
 - Measured budgets (Q10):
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).
@@ -50,16 +64,28 @@ and never ratified — so the store still grows without a policy.
 | Switch | Stops | Built |
 |---|---|---|
 | Process/global | every returned intent after capability/resolver evaluation | `KILL_SWITCH=1`; intake still records and reports the refusal |
-| Installation | one organization or installation | no |
+| Installation | one organization or installation | `SUSPENDED=1`; intake still verifies and accepts, and records `installationSuspended` (D171) |
 | Repository mode | one repository's approved effects | all four modes are core vocabulary; a process composed without the App's identity records `modeUnsupported` for `active` |
 | Capability | one capability, leaving others alone | `capabilities.<name>.enabled: false` or omission |
 | Item-level pause | every capability write on an item | mapped `blocked` meaning → `itemBlocked` |
 
-- Four of the five levels have code paths today; installation-wide suspension is missing. The process
-  switch is an intent-level safety refusal, not a transport or evaluation shutdown; an unsupported
-  `active` is intercepted earlier still, before `decide()` runs. The item pause is currently global to
-  all capabilities rather than profile-selective (D117).
-- The operator runbook must say what happens to queued and pending work when each switch activates.
+- All five levels have code paths today. The process switch is an intent-level safety refusal, not a
+  transport or evaluation shutdown; suspension is the one level above evaluation, since it decides
+  nothing and reads nothing; an unsupported `active` is intercepted earlier still, before `decide()`
+  runs. The item pause is currently global to all capabilities rather than profile-selective (D117).
+- What each switch does to queued and pending work, which is what the operator runbook owes:
+  - **Process/global.** Queued deliveries are still claimed and decided, and every intent the
+    decision returns is refused `killSwitch`; a send left open is refused the same way, not resent.
+  - **Installation.** Queued deliveries are verified, accepted and recorded `installationSuspended`,
+    so none is redriven later; nothing is read or sent, and a send left open stays open until the
+    switch lifts.
+  - **Repository mode.** From the next delivery that reads the file, that repository's work is
+    decided and recorded rather than applied; a send left open is closed `modeRecordsOnly`.
+  - **Capability.** From the next delivery that reads the file, that capability returns nothing and
+    every other one is unaffected; a send left open is closed `capabilityDisabled`.
+  - **Item-level pause.** Queued work naming the item is refused `itemBlocked` for every capability;
+    a send already made is resolved on the call it holds, because a resume meets only the
+    item-independent gate.
 
 ## 5. Before the App writes to a repository it does not own
 

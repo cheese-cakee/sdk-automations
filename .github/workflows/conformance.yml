@@ -1,0 +1,88 @@
+name: conformance
+
+# Era 3's cadence: re-verify every confirmed read's observed shape against the
+# personal sandbox (P8, D22) and print what drifted. Reads only, one request per
+# read. `workflow_dispatch`, deliberately not `pull_request` in any form: fork
+# code must never run in a job that holds the sandbox App's key.
+#
+# With no secrets set, `pnpm lab:probe` prints `skipped: no credentials` and
+# exits 0. With them, a clean run proposes its stamp by pull request.
+on:
+  workflow_dispatch:
+  schedule:
+    # Monthly, well inside the 45-day window `conformance.test.ts` locks.
+    - cron: "0 9 1 * *"
+
+# Never a push to main: the stamp travels by pull request, and a drift fails
+# before any commit is made — that decision stays a person's.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: conformance probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The runner takes a PATH to the App's key and never a key value, so the
+      # secret becomes a mode-600 file under RUNNER_TEMP. The absent-secret
+      # branch leaves PRIVATE_KEY_PATH unset, which is what makes the skip
+      # below a skip rather than a failure.
+      - name: place the sandbox app key
+        env:
+          SANDBOX_APP_PRIVATE_KEY: ${{ secrets.SANDBOX_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "${SANDBOX_APP_PRIVATE_KEY}" ]; then
+            echo "no sandbox app key secret: the probe will skip"
+            exit 0
+          fi
+          KEY_PATH="${RUNNER_TEMP}/sandbox-app.pem"
+          install -m 600 /dev/null "${KEY_PATH}"
+          printf '%s' "${SANDBOX_APP_PRIVATE_KEY}" > "${KEY_PATH}"
+          echo "PRIVATE_KEY_PATH=${KEY_PATH}" >> "${GITHUB_ENV}"
+      # `lab:probe` is the lab package's own script, so the lab is the working
+      # directory. A non-zero exit is a drift or an unreadable request, both of
+      # which are for a person to read, not for CI to absorb.
+      - name: probe the confirmed reads
+        working-directory: packages/dev/lab
+        env:
+          APP_ID: ${{ secrets.SANDBOX_APP_ID }}
+          INSTALLATION_ID: ${{ secrets.SANDBOX_INSTALLATION_ID }}
+          SANDBOX_REPO: ${{ secrets.SANDBOX_REPO }}
+        run: pnpm lab:probe
+      # The commit goes through the contents API, which GitHub signs (main
+      # requires signatures); a person reviews and squash-merges the result.
+      - name: propose the stamp
+        if: env.PRIVATE_KEY_PATH != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILE: packages/dev/lab/probe-results.json
+          BRANCH: conformance/stamp
+        run: |
+          if git diff --quiet -- "${FILE}"; then echo "stamp unchanged"; exit 0; fi
+          REPO="repos/${GITHUB_REPOSITORY}"
+          TITLE="chore(lab): conformance stamp $(date -u +%Y-%m-%d)"
+          MAIN=$(gh api "${REPO}/git/ref/heads/main" --jq .object.sha)
+          gh api -X PATCH "${REPO}/git/refs/heads/${BRANCH}" -f sha="${MAIN}" -F force=true >/dev/null \
+            || gh api -X POST "${REPO}/git/refs" -f ref="refs/heads/${BRANCH}" -f sha="${MAIN}" >/dev/null
+          BLOB=$(gh api "${REPO}/contents/${FILE}?ref=${BRANCH}" --jq .sha)
+          gh api -X PUT "${REPO}/contents/${FILE}" -f branch="${BRANCH}" -f sha="${BLOB}" \
+            -f message="$(printf '%s\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' "${TITLE}")" \
+            -f content="$(base64 -w0 "${FILE}")" >/dev/null
+          if [ -z "$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number')" ]; then
+            gh pr create --base main --head "${BRANCH}" --title "${TITLE}" \
+              --body "Monthly probe: every confirmed read answered in its recorded shape. Merging refreshes the 45-day lock."
+          fi

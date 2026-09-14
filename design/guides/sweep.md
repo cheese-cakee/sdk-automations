@@ -37,9 +37,9 @@ there has not changed: a read absent from the matrix is never sent, and the driv
    groups above through one adapter seam, `FactsReader` — a factory over the client and the
    repository, returning `IssueFacts` / `PullRequestFacts` with `trigger: { kind: "sweep" }`, and
    marking any read that failed or is unconfirmed as `unread` for that group rather than guessing.
-3. It hands the engine one record at a time — `decide({ kind: "facts", facts })` — under the
-   delivery lifecycle the processor already has (a sweep record is a synthetic delivery with its
-   own id `sweep:{schedule}:{item}`), so reports, effects, the applier and recovery are unchanged.
+3. It hands the engine one record at a time — `decide({ kind: "facts", facts })` — through the one
+   box the webhook lane also calls, naming the schedule row as the cause rather than dressing a
+   swept item as a delivery (D173), so reports, effects, the applier and recovery are unchanged.
 4. It schedules the next sweep at the configured cadence (default hourly, because a clock the sweep
    cannot see is a promise the App cannot keep: `MIN_REAP_HOURS` is two hours, and a daily sweep
    would let a two-hour clock run a day before anyone was warned about it) and completes the row.

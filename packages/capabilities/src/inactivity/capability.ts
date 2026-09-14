@@ -5,12 +5,7 @@
  * settings name and branches on the record's kind; each ladder is its own file.
  */
 
-import {
-    skipped,
-    type Capability,
-    type CapabilityView,
-    type MappableMeaning,
-} from "@hiero-hackers/automation-core";
+import type { Capability, CapabilityView } from "@hiero-hackers/automation-core/author";
 import { ladderContext, type InactivitySettings } from "./context.js";
 import { inactivityDeclaration, type InactivityDeclaration } from "./declaration.js";
 import { onIssue } from "./issues.js";
@@ -18,47 +13,24 @@ import { onPullRequest } from "./pull-requests.js";
 
 export { inactivityDeclaration, type InactivityDeclaration } from "./declaration.js";
 
-/**
- * The one settings rule the toolkit cannot carry: a setting that demands a
- * mapping. Worded and pathed as the parser words the same kind of mistake.
- */
-function unusableMappings(
+/** The one settings rule the toolkit cannot carry: a setting demanding a mapping, in the parser's words. */
+function unmappedDemand(
     settings: InactivitySettings,
     view: CapabilityView<InactivityDeclaration>,
-): readonly string[] {
-    const at = (path: string, message: string): string =>
-        `capabilities.inactivity.${path}: ${message}`;
-    const unmapped = (meaning: MappableMeaning): boolean => !view.mapped.labels.includes(meaning);
-    const problems: string[] = [];
+): string | null {
     const { pullRequests } = settings;
-    if (
-        pullRequests.enabled &&
-        pullRequests.reapWhen.needsRevision.enabled &&
-        unmapped("needsRevision")
-    ) {
-        problems.push(
-            at(
-                "pullRequests.reapWhen.needsRevision.enabled",
-                "reaping on needsRevision needs that meaning mapped, and this repository has not mapped it",
-            ),
-        );
-    }
-    return problems;
+    const demandsNeedsRevision =
+        pullRequests.enabled && pullRequests.reapWhen.needsRevision.enabled;
+    if (!demandsNeedsRevision || view.mapped.labels.includes("needsRevision")) return null;
+    return "capabilities.inactivity.pullRequests.reapWhen.needsRevision.enabled: reaping on needsRevision needs that meaning mapped, and this repository has not mapped it";
 }
 
 export const inactivity: Capability<InactivityDeclaration> = {
     declaration: inactivityDeclaration,
 
     async evaluate(facts, view, platform) {
-        const [demanded, ...alsoDemanded] = unusableMappings(view.settings, view);
-        if (demanded !== undefined) {
-            return skipped(
-                platform,
-                "inactivity",
-                `Skipped: settings unusable — ${demanded}`,
-                ...alsoDemanded,
-            );
-        }
+        const demanded = unmappedDemand(view.settings, view);
+        if (demanded !== null) return platform.skip(`Skipped: settings unusable — ${demanded}`);
 
         const context = ladderContext(view.settings, facts, platform);
         return facts.kind === "issue"

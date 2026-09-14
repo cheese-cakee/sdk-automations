@@ -6,7 +6,8 @@
  * edit reads `command: null`, not `UNREAD`.
  */
 
-import { UNREAD, type CommandFacts, type ProducedFacts } from "../../capability/index.js";
+import { UNREAD, type CommandFacts } from "../../catalogue.js";
+import type { ProducedFacts } from "../../capability/index.js";
 import { commandInComment } from "../../config/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
 import { isRecord, timestamp, type DeliveryFacts } from "./payload.js";

@@ -1,6 +1,6 @@
 /** The reviewed repository configuration's vocabulary and shape (config-schema.md §2–§4). */
 
-import type { Spec } from "../capability/spec.js";
+import type { Spec } from "./spec.js";
 
 // ─── Vocabulary ──────────────────────────────────────────────────────
 

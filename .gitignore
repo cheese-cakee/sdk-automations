@@ -17,3 +17,6 @@ packages/runtime/data/
 
 # agent worktrees live here; never content
 .claude/worktrees/
+
+# working notes: never documentation, never tracked
+notes/

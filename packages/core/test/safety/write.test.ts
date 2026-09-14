@@ -1,9 +1,9 @@
 /**
- * The general write door — `evaluateWrite` alone (contracts/safety.md). Widest
+ * The general write gate — `evaluateWrite` alone (contracts/safety.md). Widest
  * first: the enumeration fixing `apply ⇔ every rule passes`, then the
  * examples naming a code or an ordering the sweep never inspects, then the
- * D51-D53 findings that entered by THIS door. `destructive.test.ts` is the
- * other door, `rules.test.ts` the order both share, `builders.ts` the
+ * D51-D53 findings that entered by THIS gate. `destructive.test.ts` is the
+ * other gate, `rules.test.ts` the order both share, `builders.ts` the
  * request, config and context all three start from.
  */
 

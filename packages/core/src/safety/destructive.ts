@@ -117,7 +117,7 @@ export function evaluateDestructive(
     context: WriteContext,
     now: Date,
 ): SafetyVerdict {
-    // Kill switch first: the verdict CODE is contract, so the brake must be named (D39).
+    // Kill switch first: the verdict CODE is contract, so the gate must be named (D39).
     const preflight = evaluatePreflight(context);
     if (preflight !== null) return preflight;
     if (plan.request.actionClass !== "clockTriggeredDestructive") {

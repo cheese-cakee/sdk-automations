@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CapabilityDeclaration, OperationalNeeds } from "@hiero-hackers/automation-core";
+import type { CapabilityDeclaration } from "@hiero-hackers/automation-core";
 import { repoRoot } from "./repository.js";
 
 const DOC = join(repoRoot, "design", "contracts", "contract.md");
@@ -19,20 +19,13 @@ const DOC = join(repoRoot, "design", "contracts", "contract.md");
 const DECLARATION_FIELDS: Record<keyof CapabilityDeclaration, true> = {
     name: true,
     triggers: true,
+    closed: true,
     settings: true,
     requiredMappings: true,
     facts: true,
     needs: true,
     resolvers: true,
     intents: true,
-    operationalNeeds: true,
-};
-
-const NEEDS_FIELDS: Record<keyof OperationalNeeds, true> = {
-    schedule: true,
-    durableState: true,
-    crossItemCoordination: true,
-    externalDelivery: true,
 };
 
 /** The property names declared in one `interface X { … }` block of a fenced ts sample. */
@@ -49,10 +42,6 @@ describe("contract.md §1 matches the declaration the code accepts", () => {
         expect(interfaceFields(doc, "CapabilityDeclaration")).toEqual(
             Object.keys(DECLARATION_FIELDS),
         );
-    });
-
-    it("lists exactly the operational needs", () => {
-        expect(interfaceFields(doc, "OperationalNeeds")).toEqual(Object.keys(NEEDS_FIELDS));
     });
 
     it("does not reintroduce a declared permissions block", () => {

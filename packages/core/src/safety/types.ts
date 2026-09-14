@@ -73,7 +73,7 @@ export type SafetyRefusalCode =
 /** Why a write was recorded rather than performed. Not a refusal. */
 export type RecordOnlyCode = "observation" | "modeRecordsOnly";
 
-/** The answer both doors return: applied, recorded, or refused with a code. */
+/** The answer both gates return: applied, recorded, or refused with a code. */
 export type SafetyVerdict =
     | { readonly outcome: "apply" }
     | {

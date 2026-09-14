@@ -49,7 +49,7 @@ import {
     sweptPullRequest,
     webhookIssue,
     webhookPullRequest,
-} from "./world.js";
+} from "@hiero-hackers/automation-core/author/testing";
 
 const ALL = CAPABILITIES;
 const NAMES = CAPABILITIES.map(({ declaration }) => declaration.name);
@@ -429,7 +429,7 @@ async function decideOn(config: RepositoryConfig, facts: Facts): Promise<Decisio
 }
 
 const configFor = (settings: Readonly<Record<string, unknown>>, names = ["inactivity"]) =>
-    configEnabling(names, NAMES, { inactivity: settings }, MAPPINGS);
+    configEnabling(names, DECLARATIONS, { inactivity: settings }, MAPPINGS);
 
 describe("a sweep at the fastest legal ladder", () => {
     const fastest = {
@@ -440,7 +440,7 @@ describe("a sweep at the fastest legal ladder", () => {
 
     /**
      * Day zero reminds, and the release does NOT follow it in the same sweep:
-     * the destructive door refuses an act with no recorded warning however
+     * the destructive gate refuses an act with no recorded warning however
      * short the clocks are, so the one effect approved is the warning the
      * platform authored (grace.md §2).
      */
@@ -609,7 +609,7 @@ describe("two capabilities on one item", () => {
         const decision = await decideOn(
             configEnabling(
                 ["prQuality", "inactivity"],
-                NAMES,
+                DECLARATIONS,
                 {
                     prQuality: { checks: { linkedIssues: { enabled: true } } },
                     inactivity: {

@@ -3,6 +3,20 @@
  * (`design/contracts/config-schema.md` §2–§4). Nothing here throws or does
  * I/O, and one error anywhere yields no configuration at all (D38).
  */
+export {
+    describeSpec,
+    readSettings,
+    type BlockOf,
+    type DurationOptions,
+    type Field,
+    type FieldDescription,
+    type SettingsOf,
+    type SettingsProblem,
+    type SettingsProblemCode,
+    type SettingsResult,
+    type SettingsView,
+    type Spec,
+} from "./spec.js";
 export * from "./schema.js";
 export {
     ABSENT_CONFIG_REVISION,

@@ -15,12 +15,13 @@
  * directory, so in-package support is support that survives mutation (D82).
  */
 
-import { spec, type Spec } from "../../src/capability/index.js";
+import { spec } from "../../src/capability/index.js";
 import {
     parseConfig,
     type AdmittedCapability,
     type RepositoryConfig,
     type RepositoryMode,
+    type Spec,
 } from "../../src/config/index.js";
 
 /**

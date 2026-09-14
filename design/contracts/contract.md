@@ -15,17 +15,17 @@ Neither page promises rollback or a generic conformance kit; those do not exist 
 interface CapabilityDeclaration {
   readonly name: string;
   readonly triggers: readonly DeclaredTrigger[];
+  readonly closed?: boolean;                     // also woken for a closed item; absent is open only (D59)
   readonly settings: Spec;                       // the settings toolkit's spec; its keys are the legal names
   readonly requiredMappings: DeclaredMappings;
   readonly facts: readonly string[];
   readonly needs: readonly string[];
   readonly resolvers: readonly string[];
   readonly intents: readonly string[];
-  readonly operationalNeeds: OperationalNeeds;
 }
 
 type DeclaredTrigger =
-  | { readonly kind: "event"; readonly event: string }
+  | { readonly kind: "event"; readonly event: WebhookProducer }   // issues | issue_comment | pull_request
   | { readonly kind: "schedule"; readonly description: string };
 
 interface DeclaredMappings {
@@ -33,17 +33,13 @@ interface DeclaredMappings {
   readonly commands?: readonly string[];
   readonly skills?: readonly string[];
 }
-
-interface OperationalNeeds {
-  readonly schedule: boolean;
-  readonly durableState: "none" | "candidate" | "required";
-  readonly crossItemCoordination: boolean;
-  readonly externalDelivery: boolean;
-}
 ```
 
 - `validateCapabilityDeclarations` validates the complete directly admitted set: name syntax, at least one
-  trigger, schedule consistency, duplicates, catalogue membership, and duplicate capability names.
+  trigger, at least one fact kind, duplicates, catalogue membership, and duplicate capability names.
+- `declareCapability` takes the author's shorter form: `facts` is implied by an event trigger (each webhook
+  producer yields one kind; a schedule trigger states its kinds), and `needs` and `requiredMappings` default
+  to empty. The filled declaration is what everything below reads.
 - `settings` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first is the
   spec every capability block is read against — its keys are the legal names a block may carry beside
   `enabled`, and its fields judge the values, at parse time, with the rest of the file — and the
@@ -58,6 +54,8 @@ interface OperationalNeeds {
   catalogues, which is also what lets a declaration serve as an `AdmittedCapability` uncast.
 - `declareCapability<const D>` preserves those lists as literal tuples so the boundary can project exact
   types instead of widening them to every name.
+- A closed issue or merged pull request reaches a capability only when it declares `closed: true`; the engine
+  skips it in silence otherwise, as it skips a kind the capability never declared (D59).
 - There is no runtime retirement registry, `describe`, or tombstone lookup. The application passes one
   direct admitted set, and configuration rejects every name outside it.
 
@@ -91,13 +89,26 @@ interface CapabilityView<D extends TypedDeclaration> {
 }
 
 interface PlatformHandle<D extends TypedDeclaration> {
+  ask<Q extends D["resolvers"][number] & ResolverName>(
+    query: Q,
+    input: ResolverInput<Q>,
+  ): Promise<ResolverOutput<Q>>;
   resolve<Q extends D["resolvers"][number] & ResolverName>(
     query: Q,
     input: ResolverInput<Q>,
   ): Promise<ResolverAnswer<ResolverOutput<Q>>>;
+  intent<K extends D["intents"][number]>(request: IntentRequest<K>): Intent<K>;
+  skip(summary: string, ...detail: readonly string[]): readonly never[];
   explain(explanation: StructuredExplanation): void;
 }
 ```
+
+`ask` is the resolver call a capability writes: the answer, or the evaluation ends as skipped with a
+platform-written explanation (D51, once, in the engine). It ends the evaluation by throwing the platform's own
+sentinel, which `decide()` catches; that is the one throw a capability body may cause, and a capability that
+catches it and still returns intents has them refused as `intentsAfterSkip`. `resolve` is the raw answer, for
+the capability that carries on without one. `skip` is the explicit stop, returned. `intent` builds one intent
+about the record in hand, so the occasion, the cause, and the claims are read off the record (§3).
 
 `FactsFor<D>` is the declared kinds with every declared group's `| Unread` removed and every undeclared
 group typed `Unread` — the type is the guarantee, not a promise the engine keeps.
@@ -131,9 +142,17 @@ interface Intent<K extends IntentOperation> {
 ```
 
 - An intent requests an outcome; it is never proof that the outcome happened.
-- `intentFactoryFor` restricts the operation to the declaration, binds repository, item, capability, and
-  observation time once, requires an explanation, fills a vacuous `claims` default, and derives the
-  idempotency key.
+- `platform.intent` restricts the operation to the declaration, binds repository, item, capability, and
+  observation time from the record, requires an explanation, and derives the idempotency key. An act with a
+  clock of its own dates itself at that clock's start instead, through `occasion`, so the effect identity is
+  stable across sweeps and a reset mints a new one (`design/guides/grace.md` §1).
+- **Claims are derived from the record** unless the request narrows them: closure as observed, every mapped
+  meaning observed as present, and a label's meaning as absent. A wider claim refuses on a moved world, which
+  is the safe side, and the next delivery re-evaluates.
+- **The cause defaults to the trigger** (the event name, or `sweep`) and is part of the idempotency key, so a
+  capability that already states one keeps it: the key is the store's `effect_id` (D65).
+- **A label's transition cause comes from the map** (`moveTo`) when the request leaves it out; no edge from the
+  item's position ends the evaluation as skipped.
 - `screenIntent` rechecks capability identity, declared operation, dated cause, authoritative projection,
   entity/meaning compatibility, pause authority, position conflicts, and transition legality at runtime.
 - The engine derives action class and required permission from `INTENT_OPERATIONS`, then derives an

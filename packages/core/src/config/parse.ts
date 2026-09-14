@@ -3,7 +3,7 @@
  * order below is what a maintainer reads their mistakes in, and tests freeze it.
  */
 
-import type { SettingsView } from "../capability/spec.js";
+import type { SettingsView } from "./spec.js";
 import type { Mappings, ParseConfigOptions, RepositoryConfig } from "./schema.js";
 import { err, type Checked, type ConfigResult } from "./results.js";
 import {

@@ -1,5 +1,5 @@
 /**
- * The second door: what `decide()` does with an intent that carries grace
+ * The second gate: what `decide()` does with an intent that carries grace
  * (`design/guides/grace.md` §2).
  *
  * The fixture is a capability with ONE graced act, so every row below is the
@@ -7,7 +7,7 @@
  * the routing decides — the capability says the same thing on every sweep, and
  * the platform's own record is what changes.
  *
- * `decide.test.ts` owns the ordinary door and everything above it; this file
+ * `decide.test.ts` owns the ordinary gate and everything above it; this file
  * owns the destructive one, including the two screens that keep the two
  * classes from wearing each other's clothes.
  */
@@ -49,12 +49,6 @@ const declaration = declareCapability({
     needs: [],
     resolvers: [],
     intents: ["releaseAssignment", "postManagedComment"],
-    operationalNeeds: {
-        schedule: true,
-        durableState: "required",
-        crossItemCoordination: false,
-        externalDelivery: false,
-    },
 });
 
 const GRACE: DestructiveGrace = {
@@ -311,7 +305,7 @@ describe("with a warning standing", () => {
 
     /**
      * A promise made about some OTHER plan authorizes nothing here (D60), and
-     * the snapshot is what says so — the door is reached, and refuses.
+     * the snapshot is what says so — the gate is reached, and refuses.
      */
     it("refuses a warning recorded against a different change", async () => {
         const intent = act();
@@ -360,7 +354,7 @@ describe("the screen keeps the two classes apart", () => {
         ]);
     });
 
-    it("refuses a grace below the platform's floor before any door is reached", async () => {
+    it("refuses a grace below the platform's floor before any gate is reached", async () => {
         for (const hours of [0, -1]) {
             const decision = await decided(act({ ...GRACE, hours }));
 

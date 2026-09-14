@@ -92,7 +92,7 @@ These are here because each one has actually cost this project time.
 - **A large change divides so that every piece merges green with the system still running.** Isolation
   comes from seams that already exist and from environment gates, not from feature flags. Measurement
   is its own piece and carries no code. Removing the scaffolding is the last piece, and it is what
-  closes the issue. [`packages/runtime/src/adapter/`](packages/runtime/src/adapter/README.md) is the
+  closes the issue. `packages/runtime/src/adapter/` is the
   worked example: auth, then the client, then one seam at a time behind the composition root's
   environment gate, and choosing the live path last.
 
@@ -156,8 +156,8 @@ operator with alerts.
 
 ## Where the "why" lives
 
-- [`packages/core/README.md`](packages/core/README.md) — the glossary and the reading path.
-  **Start here** if the vocabulary is new.
+- [`design/trace.md`](design/trace.md) — one label from the webhook to the API call, and what each
+  noun means. **Start here** if the vocabulary is new.
 - [`design/architecture.md`](design/architecture.md) — the system as diagrams, each naming the code
   or test that falsifies it.
 - [`design/constraints.md`](design/constraints.md) — the register's binding subset: the rules a

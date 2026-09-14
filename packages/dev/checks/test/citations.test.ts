@@ -108,7 +108,7 @@ describe("documents cite files that exist", () => {
         expect(existsSync(join(repoRoot, "packages/core/src/nonexistent.ts"))).toBe(false);
         expect(existsSync(join(repoRoot, goneDesign))).toBe(false);
         expect(existsSync(join(repoRoot, "packages/core/src/index.ts"))).toBe(true);
-        expect(existsSync(join(repoRoot, "design/audit/services.md"))).toBe(true);
+        expect(existsSync(join(repoRoot, "design/findings/services.md"))).toBe(true);
 
         // The diary's pair, as source rather than prose: an operator-facing
         // string and a `describe` title, both naming a page that is not there.

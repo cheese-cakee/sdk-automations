@@ -126,7 +126,7 @@ flowchart LR
 | `intents` | `postManagedComment` (`notice`, one per pull request) |
 | `requiredMappings` | `skills` when `recommend` is enabled; `labels` for `onlyWhen`'s meanings |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write` · organization: none |
-| `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: false · externalDelivery: false |
+| Platform needs | durableState: none · crossItemCoordination: false · externalDelivery: false |
 
 The `pull_request` producer reads `readiness` alone on a pull-request record, so `links` on that
 trigger is a boot error naming `sweep` as the only producer that reads it. The payload carries no

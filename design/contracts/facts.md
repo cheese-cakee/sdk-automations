@@ -115,7 +115,7 @@ declareCapability({
     name: "inactivity",
     facts: ["issue", "pullRequest"],          // the kinds it reads (was `observations`)
     needs: ["assignees", "links", "review"],   // the groups it reads
-    // triggers, settings, requiredMappings, resolvers, intents, operationalNeeds as before
+    // triggers, settings, requiredMappings, resolvers, intents as before
 });
 ```
 

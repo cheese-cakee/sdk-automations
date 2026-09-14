@@ -4,30 +4,21 @@ import type { TypedDeclaration } from "./declaration.js";
 import type { Command, MappableMeaning, RepositoryConfig, Skill } from "../config/index.js";
 import type {
     Facts,
-    FactGroup,
     ResolverAnswer,
     ResolverInput,
     ResolverName,
     ResolverOutput,
     StructuredExplanation,
-    Unread,
-} from "./catalogue.js";
-import type { AnyIntent } from "./intent.js";
-import { readSettings, type SettingsOf, type SettingsView } from "./spec.js";
+} from "../catalogue.js";
+import type { AnyIntent, Intent } from "../intents/index.js";
+import type { IntentRequest } from "./factory.js";
+import type { ReadGroups } from "./producers.js";
+import { readSettings, type SettingsOf, type SettingsView } from "../config/spec.js";
 
 // ─── Typed projections ───────────────────────────────────────────────
 
-/** One record with the declared groups read, the rest left `Unread` — facts.md §3. */
-type Read<F extends Facts, N extends FactGroup> = {
-    readonly [K in keyof F]: K extends N
-        ? Exclude<F[K], Unread>
-        : K extends FactGroup
-          ? Unread
-          : F[K];
-};
-
 /** The fact union a declaration receives — one member per declared kind. */
-export type FactsFor<D extends TypedDeclaration> = Read<
+export type FactsFor<D extends TypedDeclaration> = ReadGroups<
     Extract<Facts, { kind: D["facts"][number] }>,
     D["needs"][number]
 >;
@@ -40,10 +31,7 @@ export type IntentFor<D extends TypedDeclaration> = Extract<
 
 // ─── The view a capability sees ──────────────────────────────────────
 
-/**
- * contract.md §2 — the projection a capability sees. No `mode`, no `enabled`,
- * no neighbour's block, and **no spellings**: names only (§2, P3).
- */
+/** contract.md §2 — no `mode`, no `enabled`, no neighbour's block, no spellings (§2, P3). */
 export interface CapabilityView<D extends TypedDeclaration> {
     /** This repository's answers to the capability's own spec, resolved. */
     readonly settings: SettingsOf<D["settings"]>;
@@ -93,10 +81,20 @@ export function projectCapabilityView<const D extends TypedDeclaration>(
 
 /** contract.md §2. No Octokit, HTTP, raw payload, or other capability reaches through. */
 export interface PlatformHandle<D extends TypedDeclaration> {
+    /** The answer, or the evaluation ends as skipped: an unanswered question is not "no" (D51). */
+    ask<Q extends D["resolvers"][number] & ResolverName>(
+        query: Q,
+        input: ResolverInput<Q>,
+    ): Promise<ResolverOutput<Q>>;
+    /** The raw answer, for the rare capability that carries on without one. */
     resolve<Q extends D["resolvers"][number] & ResolverName>(
         query: Q,
         input: ResolverInput<Q>,
     ): Promise<ResolverAnswer<ResolverOutput<Q>>>;
+    /** One intent about this record; occasion, cause and claims are read off it. */
+    intent<K extends D["intents"][number]>(request: IntentRequest<K>): Intent<K>;
+    /** Stop and say why on the operator surface: one explanation, no intents. */
+    skip(summary: string, ...detail: readonly string[]): readonly never[];
     explain(explanation: StructuredExplanation): void;
 }
 

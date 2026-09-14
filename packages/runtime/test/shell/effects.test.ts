@@ -15,7 +15,7 @@ import {
     parseJournaledCall,
     planFor,
     serializeCall,
-} from "../../src/shell/operations/index.js";
+} from "../../src/shell/apply/operations/index.js";
 import {
     commentEffect,
     configFor,
@@ -27,7 +27,7 @@ import {
     READY_LABEL,
     REVIEW_LABEL,
     TRIAGE_LABEL,
-} from "./effect-harness.js";
+} from "./apply/effect-harness.js";
 
 const config = configFor();
 
@@ -411,6 +411,14 @@ describe("the journal row", () => {
         [
             "a close with no reason",
             '{"capability":"intake","item":{"kind":"pullRequest","number":1},"verb":"closePullRequest","reason":""}',
+        ],
+        [
+            "a lock with no reason",
+            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"lockIssue"}',
+        ],
+        [
+            "an unlock with no reason",
+            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"unlockIssue"}',
         ],
     ])("reads %s as no call at all", (_label, row) => {
         expect(parseJournaledCall(row)).toBeNull();

@@ -92,8 +92,9 @@ does not judge.
 ## How it works
 
 Acts on: pull requests that are open and that change `automations.yml` at the repository root.
-Never acts on: closed or merged pull requests, pull requests that leave the file alone, and the
-file itself — the App holds `contents: read` and cannot change its own configuration.
+Never acts on: closed or merged pull requests, which the platform withholds from a capability that
+did not declare `closed: true` (D59); pull requests that leave the file alone; and the file itself —
+the App holds `contents: read` and cannot change its own configuration.
 
 Two rules a reader must not miss. **The head sha is a report input only.** The content of
 `automations.yml` at a pull request's head is written by whoever opened the pull request, fork
@@ -105,19 +106,21 @@ question is a maintainer asking for a merge-blocking status.
 
 ```mermaid
 flowchart LR
-    O["pull_request event"] --> CL{"closed or merged?"}
-    CL -->|yes| N0["nothing"]
-    CL -->|no| R["resolve: configAtHead"]
-    R --> A{"could it answer?"}
+    O["pull_request event"] --> CL{"platform: open item?"}
+    CL -->|no| N0["nothing"]
+    CL -->|yes| R["ask: configAtHead"]
+    R --> A{"platform: could it answer?"}
     A -->|no| S["skipped — an operator note"]
     A -->|yes| T{"touched automations.yml?"}
     T -->|no| N1["nothing"]
     T -->|yes| C["postManagedComment — update in place"]
 ```
 
-The resolver answers the "touched" question, so it is asked before that guard rather than after it;
-deny wins at the guard above, and a resolver that could not answer is an operator note and never a
-silent pass (D51). It hands back the ALREADY PARSED result: the platform parses, because a
+Both guards above the "touched" question are the platform's. A closed or merged pull request never
+reaches this capability, and an unanswerable resolver ends the evaluation with an explanation the
+platform writes — an operator note, never a silent pass (D51). The one guard left here is the
+"touched" question itself, and the resolver answers it, so it is asked above that guard rather than
+after it. It hands back the ALREADY PARSED result: the platform parses, because a
 capability cannot know which declarations the shell ships, and a document judged against a shorter
 list would call a capability unknown that this App does run.
 
@@ -148,20 +151,19 @@ carrying a newline. The tree is a nested list, which is a tree that escaping wor
 | Declaration | Value |
 |---|---|
 | `triggers` | `pull_request` — the question is about one pull request's proposed file |
-| `facts` / `needs` | `pullRequest`, needing no group. The report is rendered from the resolver's answer alone; a group declared but unread would only make this capability skip deliveries it can answer |
+| `facts` / `needs` | implied by the trigger: one `pullRequest` record, needing no group. The report is rendered from the resolver's answer alone; a group declared but unread would only make this capability skip deliveries it can answer |
 | `resolvers` | `configAtHead` — it answers both halves at once, whether the pull request touched the file and what the touched file parses to, so it is asked above the "touched" guard |
 | `intents` | `postManagedComment` (`summary`) — one comment per pull request, updated in place |
 | `requiredMappings` | none. The comment renders the document's own `mappings:` section back; it demands nothing of it |
 | Permissions | repository: `pull_requests:read` and `contents:read` (the file list, the head sha, the file), `issues:write` (the comment) · organization: none |
-| `operationalNeeds` | schedule: false · durableState: none · crossItemCoordination: false · externalDelivery: false |
 
 ## Verified by
 
 | Scenario | Proves |
 |---|---|
 | A pull request that leaves `automations.yml` alone | nothing is said, and no comment is asked for |
-| The resolver could not answer | `skipped` under this capability's name, never a pass (D51) |
-| A merged pull request | nothing is said, and the resolver is never asked |
+| The resolver could not answer | the platform ends the evaluation and explains it under this capability's name, never a pass (D51) |
+| A merged pull request | the platform says nothing, the capability is never woken, and the resolver is never asked (D59) |
 | A clean file | mode, every capability with its resolved settings, and the file's mappings |
 | A rejected file | every error as `line N — path: message`, in document order |
 | Five errors from one bad capability-wide value | the cascade collapses to the enclosing error plus "and N places that inherit it" |

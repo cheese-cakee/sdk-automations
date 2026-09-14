@@ -22,7 +22,7 @@ import {
     type ResolverInput,
     type ResolverOutput,
     type Unread,
-} from "./catalogue.js";
+} from "../catalogue.js";
 
 // ─── The three stops ─────────────────────────────────────────────────
 

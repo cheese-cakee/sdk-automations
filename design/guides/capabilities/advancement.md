@@ -141,7 +141,7 @@ repositories that want evidence to age out.
 | `resolvers` | the pillar counters (new, repo-local) — or none, if the sweep entries carry the counts |
 | `intents` | `postManagedComment` only |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write` · organization: none — repo-local by design |
-| `operationalNeeds` | schedule: true · durableState: required for `noticeOn: latestActivity` (the dedup record — the venue moves) and candidate for `activeWeeks` (expensive recompute) · crossItemCoordination: true — counts span the repository · externalDelivery: false |
+| Platform needs | durableState: required for `noticeOn: latestActivity` (the dedup record — the venue moves) and candidate for `activeWeeks` (expensive recompute) · crossItemCoordination: true — counts span the repository · externalDelivery: false |
 
 No producer row answers this table, and that is the finding: `sweep` makes `issue` and
 `pullRequest` records only, and `contributor` is not a `FactKind`, so the declaration cannot be

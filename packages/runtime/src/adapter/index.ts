@@ -4,10 +4,10 @@
  * See [README.md](README.md) for what it owns and the seams it fills.
  */
 
-export { signAppAssertion, type AppCredentials } from "./jwt.js";
-export { githubMintInstallationToken, type GitHubMintOptions } from "./mint.js";
-export { githubConfigSource, type GitHubConfigSourceOptions } from "./config.js";
-export { createResolverSource, type ResolverSourceOptions } from "./resolvers.js";
+export { signAppAssertion, type AppCredentials } from "./client/jwt.js";
+export { githubMintInstallationToken, type GitHubMintOptions } from "./client/mint.js";
+export { githubConfigSource, type GitHubConfigSourceOptions } from "./reads/config.js";
+export { createResolverSource, type ResolverSourceOptions } from "./reads/resolvers.js";
 export {
     CONFIRMED_SWEEP_READS,
     createFactsReader,
@@ -19,7 +19,7 @@ export {
     type OpenItemsOutcome,
     type Read,
     type SweepRead,
-} from "./facts.js";
+} from "./reads/facts.js";
 export {
     causeFingerprintOf,
     installationGrants,
@@ -31,7 +31,7 @@ export {
     type LiveExternalsOptions,
     type LiveExternalsOutcome,
     type OrderingEvidenceOptions,
-} from "./externals.js";
+} from "./reads/externals.js";
 export {
     createTokenSource,
     grantsFromPermissions,
@@ -41,8 +41,8 @@ export {
     type TokenOutcome,
     type TokenSource,
     type TokenSourceOptions,
-} from "./token.js";
-export { createWriteVerbs, type WriteVerbsOptions } from "./writes.js";
+} from "./client/token.js";
+export { createWriteVerbs, type WriteVerbsOptions } from "./writes/writes.js";
 export {
     createReadBack,
     type AppIdentity,
@@ -52,7 +52,7 @@ export {
     type ReadBack,
     type ReadBackOptions,
     type ReadBackOutcome,
-} from "./readback.js";
+} from "./writes/readback.js";
 export {
     type BrokenSeam,
     type FetchLike,
@@ -67,6 +67,7 @@ export {
     type NotSentReason,
     type RateLimitSnapshot,
     type WriteIdempotency,
-} from "./contract.js";
-export { type WriteEndpoint, type WriteResult, type WriteVerbs } from "./operations/transport.js";
-export { createGitHubHttpClient, wait } from "./http.js";
+} from "./client/contract.js";
+export { type WriteEndpoint } from "./client/endpoints.js";
+export { type WriteResult, type WriteVerbs } from "./writes/operations/transport.js";
+export { createGitHubHttpClient, wait } from "./client/http.js";

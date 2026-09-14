@@ -58,13 +58,13 @@ describe("claims under random interleaving: store ≡ single-holder lease model"
                         // Attempt a claim with a LEASE-length staleness window.
                         const staleBefore = now - LEASE;
                         const modelAllows = holder === null || holder.atMs <= staleBefore;
-                        const won = store.claim(effect, worker, iso(now), iso(staleBefore));
+                        const won = store.ledger.claim(effect, worker, iso(now), iso(staleBefore));
                         expect(won).toBe(modelAllows);
                         if (won) model.set(effect, { worker, atMs: now });
                     } else {
                         // Attempt a release — only the current holder's row dies.
                         const modelReleases = holder !== null && holder.worker === worker;
-                        const released = store.release(effect, worker);
+                        const released = store.ledger.release(effect, worker);
                         expect(released).toBe(modelReleases);
                         if (released) model.set(effect, null);
                     }
@@ -102,7 +102,7 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                 for (let i = 0; i < 8; i++) {
                     const id = `s${String(i)}`;
                     const dueMs = start + Math.floor(rand() * 60 * MINUTE);
-                    a.schedule(id, iso(dueMs), "work");
+                    a.ledger.schedule(id, iso(dueMs), "work");
                     model.set(id, {
                         status: "pending",
                         dueMs,
@@ -127,7 +127,7 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                                 return row.status === "pending" && row.dueMs <= now;
                             })
                             .sort();
-                        const claimed = store.claimDue(iso(now));
+                        const claimed = store.ledger.claimDue(iso(now));
                         const fired = claimed.map((r) => r.scheduleId).sort();
                         expect(fired).toEqual(expected);
                         for (const claimedRow of claimed) {
@@ -144,7 +144,7 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                         const id = running[Math.floor(rand() * running.length)];
                         if (id !== undefined) {
                             const token = model.get(id)!.claimToken!;
-                            expect(store.scheduleDone(id, token)).toBe(true);
+                            expect(store.ledger.scheduleDone(id, token)).toBe(true);
                             model.get(id)!.status = "done";
                             model.get(id)!.claimToken = null;
                         }
@@ -161,7 +161,7 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                                 );
                             })
                             .sort();
-                        const requeued = store
+                        const requeued = store.ledger
                             .requeueStuck(iso(threshold))
                             .map((r) => r.scheduleId)
                             .sort();

@@ -1,6 +1,6 @@
 /**
  * The rule list itself — `GENERAL_RULES`, the one thing `rules.ts` exports,
- * because order is contract (D39, D52). Three claims the doors cannot make
+ * because order is contract (D39, D52). Three claims the gates cannot make
  * for it: the order is pinned as a literal, no two rules share a name, and
  * every rule answers the value an earlier rule normally intercepts without
  * throwing. A single write through `evaluateWrite` closes the loop — the
@@ -15,7 +15,7 @@ import { capabilityOff, config, context, evalWrite, request } from "./builders.j
 describe("the check order is contract, and now assertable directly", () => {
     /**
      * Verdict codes are contract (D39), so precedence between rules is too: an
-     * operator who has pulled the emergency brake must be told about the kill
+     * operator who has closed the emergency gate must be told about the kill
      * switch, not about whatever else also refuses (D52). Precedence as a LIST
      * can be pinned outright, which is the entire reason for the shape — a
      * sequence of `if`s can only be tested by tripping several rules at once
@@ -48,7 +48,7 @@ describe("the check order is contract, and now assertable directly", () => {
      * `latestHumanChangeAt` after `humanOrderingUnknown` has removed the one
      * value with no `getTime()`, and their own guards against it are
      * unreachable through `evaluateGeneralRulesAfterPreflight` — so a test
-     * entering by the front door cannot see them at all.
+     * entering there cannot see them at all.
      *
      * Every rule is therefore handed that value directly and must ANSWER: a
      * verdict or `null`, never a throw. The property is per-rule independence,

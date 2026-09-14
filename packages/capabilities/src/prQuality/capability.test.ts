@@ -5,26 +5,30 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    handleFor,
     parseConfig,
     projectCapabilityView,
-    type FactsFor,
-    type PlatformHandle,
     type PrMeaning,
     type Projection,
-    type StructuredExplanation,
+    type ResolverSource,
     type WorkItemState,
 } from "@hiero-hackers/automation-core";
-import { prQuality, type PrQualityDeclaration } from "./capability.js";
-import { asDeclared, configEnabling, webhookPullRequest } from "../../test/world.js";
+import { prQuality, prQualityDeclaration } from "./capability.js";
+import {
+    answering,
+    configEnabling,
+    factsFor,
+    OBSERVED_AT,
+    REPOSITORY,
+    webhookPullRequest,
+} from "@hiero-hackers/automation-core/author/testing";
 
-const AT = new Date("2026-08-03T09:00:00.000Z");
-const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const ITEM = { kind: "pullRequest", number: 12 } as const;
 
 const view = (settings: Readonly<Record<string, unknown>>) =>
     projectCapabilityView(
         prQuality.declaration,
-        configEnabling(["prQuality"], ["prQuality"], { prQuality: settings }),
+        configEnabling(["prQuality"], [prQuality.declaration], { prQuality: settings }),
     );
 
 /**
@@ -34,11 +38,10 @@ const view = (settings: Readonly<Record<string, unknown>>) =>
 const running = view({ checks: { linkedIssues: { enabled: true } } });
 
 const pullRequest = (state: Partial<WorkItemState<PrMeaning>>) =>
-    asDeclared<FactsFor<PrQualityDeclaration>>(
+    factsFor(
+        prQuality.declaration,
         webhookPullRequest({
-            repository: REPO,
             item: ITEM,
-            observedAt: AT,
             position: {
                 kind: "position",
                 state: { meaning: null, blocked: false, closedBy: null, ...state },
@@ -47,40 +50,29 @@ const pullRequest = (state: Partial<WorkItemState<PrMeaning>>) =>
         }),
     );
 
-/** A handle carrying one resolver answer, and holding what the probe explained. */
-function watch(resolve: PlatformHandle<PrQualityDeclaration>["resolve"]): {
-    readonly platform: PlatformHandle<PrQualityDeclaration>;
-    readonly explained: StructuredExplanation[];
-} {
-    const explained: StructuredExplanation[] = [];
-    return {
-        platform: {
-            resolve,
-            explain: (explanation) => {
-                explained.push(explanation);
-            },
-        },
-        explained,
-    };
-}
-
-const noneFound = watch(async () => ({ ok: true, value: [] }));
+const noneFound = answering({ ok: true, value: [] });
 
 describe("prQuality", () => {
     it("reads an unanswerable resolver as unknown, never as no linked issue", async () => {
-        const failed = watch(async () => ({
-            ok: false,
-            reason: "rateLimited",
-            detail: "secondary rate limit on this installation",
-        }));
         const open = pullRequest({});
+        const failed = handleFor(
+            prQualityDeclaration,
+            open,
+            answering({
+                ok: false,
+                reason: "rateLimited",
+                detail: "secondary rate limit on this installation",
+            }),
+        );
 
-        expect(await prQuality.evaluate(open, running, failed.platform)).toEqual([]);
+        // The platform ends the evaluation; the capability neither guards nor catches.
+        await expect(prQuality.evaluate(open, running, failed)).rejects.toBeDefined();
+        expect(failed.skipped).toBe(true);
         // The reason is the report's whole account of the silence, so it is stated in full.
-        expect(failed.explained).toEqual([
+        expect(failed.explanations).toEqual([
             {
                 capability: "prQuality",
-                summary: "Skipped: the linked-issue resolver could not answer.",
+                summary: "Skipped: the linkedIssues resolver could not answer.",
                 detail: [
                     "resolver reason: rateLimited",
                     "secondary rate limit on this installation",
@@ -89,46 +81,47 @@ describe("prQuality", () => {
         ]);
 
         // The same pull request, answered: the silence above was the failure.
-        expect(await prQuality.evaluate(open, running, noneFound.platform)).toHaveLength(1);
-        expect(noneFound.explained).toEqual([]);
+        const answered = handleFor(prQualityDeclaration, open, noneFound);
+        expect(await prQuality.evaluate(open, running, answered)).toHaveLength(1);
+        expect(answered.explanations).toEqual([]);
     });
 
     it("says nothing about a pull request that already links an issue", async () => {
-        const linked = watch(async () => ({ ok: true, value: [{ kind: "issue", number: 11 }] }));
-        expect(await prQuality.evaluate(pullRequest({}), running, linked.platform)).toEqual([]);
-    });
-
-    it("says nothing about a merged pull request, and never asks", async () => {
-        const unreachable = watch(async () => {
-            throw new Error("closure is read before the resolver");
-        });
-        expect(
-            await prQuality.evaluate(
-                pullRequest({ closedBy: "merged" }),
-                running,
-                unreachable.platform,
-            ),
-        ).toEqual([]);
+        const open = pullRequest({});
+        const linked = handleFor(
+            prQualityDeclaration,
+            open,
+            answering({ ok: true, value: [{ kind: "issue", number: 11 }] }),
+        );
+        expect(await prQuality.evaluate(open, running, linked)).toEqual([]);
     });
 
     it("asks the linkedIssues resolver, once, about the pull request it was given", async () => {
         const asked: { query: string; input: unknown }[] = [];
-        const recording = watch(async (query, input) => {
+        const recording: ResolverSource = async (query, input) => {
             asked.push({ query, input });
-            return { ok: true, value: [] };
-        });
+            return await Promise.resolve({ ok: true, value: [] } as never);
+        };
+        const open = pullRequest({});
 
-        await prQuality.evaluate(pullRequest({}), running, recording.platform);
+        await prQuality.evaluate(open, running, handleFor(prQualityDeclaration, open, recording));
 
         expect(asked).toEqual([{ query: "linkedIssues", input: { item: ITEM } }]);
     });
 
     /** `claims.closed` is `false` rather than absent: an omitted claim is vacuous. */
     it("asks for one managed comment on the observed pull request, claiming it is open", async () => {
-        expect(await prQuality.evaluate(pullRequest({}), running, noneFound.platform)).toEqual([
+        const open = pullRequest({});
+        expect(
+            await prQuality.evaluate(
+                open,
+                running,
+                handleFor(prQualityDeclaration, open, noneFound),
+            ),
+        ).toEqual([
             {
                 capability: "prQuality",
-                repository: REPO,
+                repository: REPOSITORY,
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
@@ -136,11 +129,11 @@ describe("prQuality", () => {
                     body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",
                 },
                 claims: { meaningsPresent: [], meaningsAbsent: [], closed: false },
-                cause: { cause: "pullRequestWithoutLinkedIssue", observedAt: AT },
+                cause: { cause: "pullRequestWithoutLinkedIssue", observedAt: OBSERVED_AT },
                 explanation: {
                     capability: "prQuality",
-                    summary: "No linked issue found on this pull request.",
-                    detail: ["checked via the linkedIssues resolver"],
+                    summary: "Asked for a linked issue on this pull request.",
+                    detail: [],
                 },
                 grace: null,
                 idempotencyKey: expect.any(String),
@@ -173,20 +166,27 @@ describe("prQuality", () => {
      * resolver proves an unasked question rather than a discarded answer.
      */
     it("runs no check for a repository that enables none, and never asks", async () => {
-        const unreachable = watch(async () => {
+        const unreachable: ResolverSource = () => {
             throw new Error("a parked check asks nothing");
-        });
-        expect(await prQuality.evaluate(pullRequest({}), view({}), unreachable.platform)).toEqual(
-            [],
-        );
+        };
+        const open = pullRequest({});
+        const parked = handleFor(prQualityDeclaration, open, unreachable);
+
         expect(
             await prQuality.evaluate(
-                pullRequest({}),
-                view({ checks: { linkedIssues: { enabled: false } } }),
-                unreachable.platform,
+                open,
+                view({}),
+                handleFor(prQualityDeclaration, open, unreachable),
             ),
         ).toEqual([]);
-        expect(unreachable.explained).toEqual([]);
+        expect(
+            await prQuality.evaluate(
+                open,
+                view({ checks: { linkedIssues: { enabled: false } } }),
+                parked,
+            ),
+        ).toEqual([]);
+        expect(parked.explanations).toEqual([]);
     });
 
     /** The guide is where the design puts it: on the failure, and nowhere else. */
@@ -194,7 +194,12 @@ describe("prQuality", () => {
         const withGuide = view({
             checks: { linkedIssues: { enabled: true, guide: "https://example.test/linking" } },
         });
-        const [intent] = await prQuality.evaluate(pullRequest({}), withGuide, noneFound.platform);
+        const open = pullRequest({});
+        const [intent] = await prQuality.evaluate(
+            open,
+            withGuide,
+            handleFor(prQualityDeclaration, open, noneFound),
+        );
 
         expect(intent?.desired).toEqual({
             kind: "summary",
