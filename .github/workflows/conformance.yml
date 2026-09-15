@@ -13,11 +13,14 @@ on:
     # Monthly, well inside the 45-day window `conformance.test.ts` locks.
     - cron: "0 9 1 * *"
 
-# Never a push to main: the stamp travels by pull request, and a drift fails
-# before any commit is made — that decision stays a person's.
+# The boundary, in two halves: the probe job below holds the sandbox App's
+# key and a read-only token, and the publish job holds the repository's
+# write token and no sandbox credentials — a token minted per job, so the
+# probe physically cannot write this repository and the publisher physically
+# cannot read the key. `github.token` is one installation token per job; a
+# workflow-level write would hand the probe both halves at once.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}
@@ -27,6 +30,10 @@ jobs:
   probe:
     name: conformance probe
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.stamp.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,16 +70,51 @@ jobs:
           INSTALLATION_ID: ${{ secrets.SANDBOX_INSTALLATION_ID }}
           SANDBOX_REPO: ${{ secrets.SANDBOX_REPO }}
         run: pnpm lab:probe
+      # The verdict crosses as this job's own output: one boolean, not the
+      # file. A credentialed run always writes a fresh `probedAt` — the diff
+      # is never quiet — while an absent-secret run writes nothing at all.
+      - name: read whether the stamp moved
+        id: stamp
+        run: |
+          if git diff --quiet -- packages/dev/lab/probe-results.json; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+      # Only the expected result file crosses the boundary. The key stays on
+      # this runner, and the evidence log with the raw bodies is never taken.
+      - name: keep the probed stamp for the publisher
+        if: steps.stamp.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: probe-results
+          path: packages/dev/lab/probe-results.json
+
+  publish:
+    name: conformance publish
+    needs: probe
+    # A failed probe never passes the `needs` gate, and a credential-less
+    # one writes no stamp so `changed` stays false — both stop here, before
+    # any branch is moved.
+    if: needs.probe.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: take the probed stamp back
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: probe-results
+          path: stamp
       # The commit goes through the contents API, which GitHub signs (main
       # requires signatures); a person reviews and squash-merges the result.
       - name: propose the stamp
-        if: env.PRIVATE_KEY_PATH != ''
         env:
           GH_TOKEN: ${{ github.token }}
           FILE: packages/dev/lab/probe-results.json
           BRANCH: conformance/stamp
         run: |
-          if git diff --quiet -- "${FILE}"; then echo "stamp unchanged"; exit 0; fi
           REPO="repos/${GITHUB_REPOSITORY}"
           TITLE="chore(lab): conformance stamp $(date -u +%Y-%m-%d)"
           MAIN=$(gh api "${REPO}/git/ref/heads/main" --jq .object.sha)
@@ -81,7 +123,7 @@ jobs:
           BLOB=$(gh api "${REPO}/contents/${FILE}?ref=${BRANCH}" --jq .sha)
           gh api -X PUT "${REPO}/contents/${FILE}" -f branch="${BRANCH}" -f sha="${BLOB}" \
             -f message="$(printf '%s\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' "${TITLE}")" \
-            -f content="$(base64 -w0 "${FILE}")" >/dev/null
+            -f content="$(base64 -w0 stamp/probe-results.json)" >/dev/null
           if [ -z "$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number')" ]; then
             gh pr create --base main --head "${BRANCH}" --title "${TITLE}" \
               --body "Monthly probe: every confirmed read answered in its recorded shape. Merging refreshes the 45-day lock."
