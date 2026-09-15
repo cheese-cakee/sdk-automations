@@ -8,7 +8,7 @@ import { join } from "node:path";
 import type { RepositoryRef } from "@hiero-hackers/automation-core";
 import { defaultDataDir, storeFile } from "../paths.js";
 import { DEFAULT_TICK_MS } from "./shell.js";
-import { SWEEP_READ_REQUESTS, SWEEP_WRITE_CALLS } from "../sweep/budgets.js";
+import { SWEEP_REQUESTS, SWEEP_WRITE_CALLS } from "../sweep/budgets.js";
 
 /** The port this endpoint takes when PORT says nothing. */
 const DEFAULT_PORT = 8790;
@@ -29,7 +29,7 @@ export const REFUSAL = {
     cadenceUnbacked:
         "SWEEP_CADENCE_HOURS arms the fact sweep and needs APP_ID, PRIVATE_KEY_PATH and INSTALLATION_ID to read GitHub with.",
     writeCap: "SWEEP_WRITE_CALLS must be a whole number of calls, 1 or more.",
-    readBudget: "SWEEP_READ_REQUESTS must be a whole number of requests, 1 or more.",
+    requestCap: "SWEEP_REQUESTS must be a whole number of requests, 1 or more.",
 } as const;
 
 /** The credential names, for the count that refuses a partial set. */
@@ -56,11 +56,11 @@ export interface Composition {
     readonly credentials: Credentials | null;
     /** The App's URL slug, and the whole of what arms the write path. */
     readonly writes: { readonly appSlug: string } | null;
-    /** How often a repository is READ rather than waited on, and the bounds of one firing. */
+    /** How often repositories are read and the bounds shared by one tick. */
     readonly sweep: {
         readonly cadenceMs: number;
         readonly writeCap: number;
-        readonly readBudget: number;
+        readonly requestCap: number;
     } | null;
     readonly switches: { readonly killSwitch: boolean; readonly suspended: boolean };
     readonly paths: { readonly configFile: string; readonly storeFile: string };
@@ -139,8 +139,8 @@ export function parseComposition(env: Environment): Parsed {
     else if (cadenceHours !== null && credentials === null) errors.push(REFUSAL.cadenceUnbacked);
     const cap = counted(env["SWEEP_WRITE_CALLS"], 1);
     if (cap === "typo") errors.push(REFUSAL.writeCap);
-    const budget = counted(env["SWEEP_READ_REQUESTS"], 1);
-    if (budget === "typo") errors.push(REFUSAL.readBudget);
+    const budget = counted(env["SWEEP_REQUESTS"] ?? env["SWEEP_READ_REQUESTS"], 1);
+    if (budget === "typo") errors.push(REFUSAL.requestCap);
 
     if (endpoint === null) return { ok: false, errors };
     if (errors.length > 0) return { ok: false, errors };
@@ -156,7 +156,7 @@ export function parseComposition(env: Environment): Parsed {
                     ? {
                           cadenceMs: cadenceHours * 60 * 60_000,
                           writeCap: typeof cap === "number" ? cap : SWEEP_WRITE_CALLS,
-                          readBudget: typeof budget === "number" ? budget : SWEEP_READ_REQUESTS,
+                          requestCap: typeof budget === "number" ? budget : SWEEP_REQUESTS,
                       }
                     : null,
             switches: {

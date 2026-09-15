@@ -1676,6 +1676,36 @@ describe("the write budget a caller hands down", () => {
         expect(leaseIsFree(keyOf(effect))).toBe(true);
     });
 
+    it("refuses an effect when the shared request budget is spent", async () => {
+        const github = fakeGitHub();
+        const budget = { remaining: 3, requests: { remaining: 0 } };
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor(), budget));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "sweepRequestCap" });
+        expect(github.calls).toEqual([]);
+        expect(store.ledger.factsOf(keyOf(effect))).toEqual([]);
+        expect(budget.remaining).toBe(3);
+    });
+
+    it("does not journal a send when the fresh gate spends the last request", async () => {
+        const github = fakeGitHub();
+        const requests = { remaining: 1 };
+        const budget = { remaining: 3, requests };
+        const applier = applierOver(github, {
+            externals: () => {
+                requests.remaining = 0;
+                return Promise.resolve(stubbedExternals());
+            },
+        });
+
+        const outcome = one(await applier.applyAll([effect], configFor(), budget));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "sweepRequestCap" });
+        expect(github.calls).toEqual([]);
+        expect(store.ledger.factsOf(keyOf(effect))).toEqual([]);
+    });
+
     it("stops at the effect the cap reaches, and decides the rest again", async () => {
         const github = fakeGitHub();
         const second = labelEffect({ meaning: "ready", item: PULL });

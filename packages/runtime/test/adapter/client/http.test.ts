@@ -27,6 +27,7 @@ import {
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_WAIT_MS,
     PRIMARY_BUDGET_RESERVE,
+    withRequestBudget,
 } from "../../../src/adapter/client/http.js";
 import {
     failure,
@@ -1502,7 +1503,7 @@ describe("rate awareness", () => {
     });
 });
 
-/** What the sweep's read budget spends: sends, not items and not successes (D170). */
+/** What a request budget spends: sends, not items and not successes (D170). */
 describe("the request count", () => {
     it("starts at none and counts one request", async () => {
         const { client } = harness([success()]);
@@ -1594,6 +1595,37 @@ describe("the request count", () => {
         expect(budget).toEqual({ remaining: 0 });
         expect(scripted.calls).toHaveLength(2);
         expect(client.requestsMade()).toBe(2);
+    });
+});
+
+describe("a shared request budget", () => {
+    it("charges retries to the request cap and the write cap", async () => {
+        const { client, scripted } = harness([failure(503, "down"), success("up")]);
+        const requests = { remaining: 3 };
+        const writes = { remaining: 2 };
+
+        expect((await withRequestBudget(client, requests).request(request(), writes)).ok).toBe(
+            true,
+        );
+
+        expect(requests.remaining).toBe(1);
+        expect(writes.remaining).toBe(0);
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("uses the shared cap when a call has no smaller cap", async () => {
+        const { client, scripted } = harness([success(), success("must not be sent")]);
+        const requests = { remaining: 1 };
+        const bounded = withRequestBudget(client, requests);
+
+        expect((await bounded.request(request())).ok).toBe(true);
+        expect(await bounded.request(request())).toMatchObject({
+            ok: false,
+            failure: { kind: "notSent", reason: "requestBudgetExhausted" },
+        });
+
+        expect(requests).toEqual({ remaining: 0, exhausted: true });
+        expect(scripted.calls).toHaveLength(1);
     });
 });
 

@@ -79,6 +79,34 @@ export const MAX_RETRY_WAIT_MS = 30_000;
  */
 const BACKOFF_JITTER_FRACTION = 0.25;
 
+export function withRequestBudget(
+    client: GitHubHttpClient,
+    budget: GitHubRequestBudget,
+): GitHubHttpClient {
+    return {
+        async request(request, localBudget) {
+            if (localBudget === undefined || localBudget === budget) {
+                return await client.request(request, budget);
+            }
+            const available = Math.min(budget.remaining, localBudget.remaining);
+            const shared: GitHubRequestBudget = { remaining: available };
+            try {
+                return await client.request(request, shared);
+            } finally {
+                const spent = available - shared.remaining;
+                budget.remaining -= spent;
+                localBudget.remaining -= spent;
+                if (shared.exhausted) {
+                    if (budget.remaining === 0) budget.exhausted = true;
+                    if (localBudget.remaining === 0) localBudget.exhausted = true;
+                }
+            }
+        },
+        latestRateLimit: () => client.latestRateLimit(),
+        requestsMade: () => client.requestsMade(),
+    };
+}
+
 /**
  * Primary-budget requests held back rather than spent (threat model §2).
  * Under it this client stops as if already exhausted, countably in the shell.
@@ -304,7 +332,7 @@ export function createGitHubHttpClient({
 }: GitHubHttpClientOptions): GitHubHttpClient {
     const cache = createRepresentationCache();
     let latestRateLimit: RateLimitSnapshot | null = null;
-    /** Monotonic for this client's life; the sweep's read budget spends it (D170). */
+    /** Monotonic for this client's life; useful for operational measurement. */
     let sent = 0;
 
     const rememberRateLimit = (

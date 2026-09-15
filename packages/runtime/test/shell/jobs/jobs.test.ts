@@ -239,7 +239,7 @@ describe("one tick, four jobs", () => {
                 tickMs: TICK_MS,
                 // The reader is never reached: `intake` runs on events, so the
                 // repository wants no sweeping and the firing reads nothing.
-                sweep: { requestsMade: () => 0 },
+                sweep: {},
                 log,
             }),
         );

@@ -37,11 +37,13 @@ STORE_PATH=…                # optional; default <state home>/shell.sqlite
 TICK_SECONDS=60             # optional; the reconciliation tick: requeue, recover, drain, fire
 SWEEP_CADENCE_HOURS=1       # optional; arms the fact sweep and sets how often a repository is read
 SWEEP_WRITE_CALLS=20        # optional; how many writes one sweep firing may send
-SWEEP_READ_REQUESTS=2000    # optional; how many requests one sweep firing may spend reading
+SWEEP_REQUESTS=2000    # optional; GitHub requests shared by all repositories in one tick
 KILL_SWITCH=1               # optional; refuse everything, loudly — including armed writes
 SUSPENDED=1                 # optional; accept every delivery, decide and send nothing
 XDG_STATE_HOME=…            # optional; where the state home lives
 ```
+
+`SWEEP_READ_REQUESTS` remains accepted as an older name when `SWEEP_REQUESTS` is absent.
 
 The three credentials are required together, and a key file that is not there fails the boot before
 the process listens. Without them the shell reads a local configuration file and stubbed external
@@ -67,10 +69,12 @@ instruction to read GitHub.
 The `startup` line carries `writes: "armed" | "absent"` and `sweep: "armed" | "absent"`, so which
 composition is running is readable before any delivery arrives.
 
-One firing sends at most `SWEEP_WRITE_CALLS` writes and spends at most `SWEEP_READ_REQUESTS`
-requests reading, resuming next firing where it stopped. A webhook writes for one item and a firing
-writes for every one, which is why the cap is the sweep's: an act it holds back is refused
-`sweepWriteCap` and decided again from the same cause next firing, and `sweepFinished` carries
+One reconciliation tick sends at most `SWEEP_WRITE_CALLS` writes and makes at most
+`SWEEP_REQUESTS` GitHub requests across every due repository. The request total includes
+configuration, facts, resolvers, apply-time checks, writes, retries, and read-back. A repository left
+untouched when either cap is spent remains due for the next tick. A webhook writes for one item and
+a sweep writes for every one, which is why the cap is the sweep's: an act it holds back is refused
+`sweepRequestCap` or `sweepWriteCap` and decided again from the same cause next firing, and `sweepFinished` carries
 `writes` and `heldBack`, so a repository the cap is starving says so every firing.
 
 ## The two switches

@@ -27,12 +27,8 @@ import { createDeliveries } from "../inbound/deliveries.js";
 import { createReceiver } from "../inbound/receiver.js";
 import { createJobs } from "../jobs/jobs.js";
 import { contained, createLogger, detailOf, type Log } from "../log.js";
-import {
-    DEFAULT_SWEEP_CADENCE_MS,
-    SWEEP_READ_REQUESTS,
-    SWEEP_WRITE_CALLS,
-} from "../sweep/budgets.js";
-import { createSweep, type SweepFactsSource } from "../sweep/sweep.js";
+import { DEFAULT_SWEEP_CADENCE_MS, SWEEP_REQUESTS, SWEEP_WRITE_CALLS } from "../sweep/budgets.js";
+import { createSweep, type RequestBudget, type SweepFactsSource } from "../sweep/sweep.js";
 
 /** How often the shell requeues stale claims and drains, absent an override. */
 export const DEFAULT_TICK_MS = 60_000;
@@ -73,7 +69,7 @@ export interface ShellOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     /** One set per repository; the process serves whichever the installation delivers for. */
-    readonly seams: (repository: RepositoryRef) => RepositorySeams;
+    readonly seams: (repository: RepositoryRef, budget?: RequestBudget) => RepositorySeams;
     /** The one repository a credential-free process serves; absent, the payload names it. */
     readonly repository?: RepositoryRef;
     readonly worker?: string;
@@ -85,10 +81,8 @@ export interface ShellOptions {
         readonly cadenceMs?: number;
         /** How many writes one firing may send; the default is `SWEEP_WRITE_CALLS`. */
         readonly writeCap?: number;
-        /** How many requests one firing may spend reading; the default is `SWEEP_READ_REQUESTS`. */
-        readonly readBudget?: number;
-        /** What that budget is spent against: the client's own count of requests sent. */
-        readonly requestsMade: () => number;
+        /** How many GitHub requests one tick may send; the default is `SWEEP_REQUESTS`. */
+        readonly requestCap?: number;
     };
     /** The installation switch (D171): deliveries are accepted and recorded, and nothing is read, decided or sent. */
     readonly suspended?: boolean;
@@ -118,18 +112,13 @@ export function createShell(options: ShellOptions): Shell {
     const log = contained(options.log ?? createLogger({ clock }));
     const worker = options.worker ?? `shell-${randomUUID()}`;
 
-    /** One repository's seams, built out once and held: the deciding is the same box. */
-    const served = new Map<string, Serving>();
-    const servingFor = (repository: RepositoryRef): Serving => {
-        const key = `${repository.owner}/${repository.repo}`;
-        const held = served.get(key);
-        if (held !== undefined) return held;
-        const { configSource, externals, writePath, facts } = options.seams(repository);
+    const buildServing = (repository: RepositoryRef, seams: RepositorySeams): Serving => {
+        const { configSource, externals, writePath, facts } = seams;
         const applier =
             writePath === null
                 ? null
                 : createApplier({ ledger: options.store.ledger, ...writePath, worker, clock, log });
-        const serving: Serving = {
+        return {
             configSource,
             facts,
             applier,
@@ -141,6 +130,15 @@ export function createShell(options: ShellOptions): Shell {
                 ...(applier === null ? {} : { applier }),
             }),
         };
+    };
+
+    /** One repository's seams, built out once and held: the deciding is the same box. */
+    const served = new Map<string, Serving>();
+    const servingFor = (repository: RepositoryRef): Serving => {
+        const key = `${repository.owner}/${repository.repo}`;
+        const held = served.get(key);
+        if (held !== undefined) return held;
+        const serving = buildServing(repository, options.seams(repository));
         served.set(key, serving);
         return serving;
     };
@@ -165,19 +163,21 @@ export function createShell(options: ShellOptions): Shell {
             : createSweep({
                   store: options.store,
                   capabilities: options.capabilities,
-                  processorFor: (repository) => {
-                      const { decideItem, facts } = servingFor(repository);
+                  processorFor: (repository, budget) => {
+                      const { configSource, decideItem, facts } = buildServing(
+                          repository,
+                          options.seams(repository, budget),
+                      );
                       return {
                           decideItem,
                           facts,
-                          configuration: () => deliveries.configuration(repository),
+                          configuration: () => deliveries.configuration(repository, configSource),
                       };
                   },
                   clock,
                   cadenceMs: options.sweep.cadenceMs ?? DEFAULT_SWEEP_CADENCE_MS,
                   writeCap: options.sweep.writeCap ?? SWEEP_WRITE_CALLS,
-                  readBudget: options.sweep.readBudget ?? SWEEP_READ_REQUESTS,
-                  requestsMade: options.sweep.requestsMade,
+                  requestCap: options.sweep.requestCap ?? SWEEP_REQUESTS,
                   suspended,
                   log,
               });

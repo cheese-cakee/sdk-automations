@@ -74,15 +74,30 @@ export interface Applier {
 }
 
 /** An effect a spent budget holds back: nothing claimed, nothing recorded, decided again next firing. */
-const heldBack = ({ intent }: Effect): EffectOutcome => ({
+const heldBack = (
+    { intent }: Effect,
+    code: "sweepRequestCap" | "sweepWriteCap",
+): EffectOutcome => ({
     effectId: intent.idempotencyKey,
     capability: intent.capability,
     operation: intent.operation,
     item: intent.item,
     outcome: "refused",
-    code: "sweepWriteCap",
-    detail: "this firing's write cap is spent; decided again next sweep",
+    code,
+    detail:
+        code === "sweepRequestCap"
+            ? "this tick's request cap is spent; decided again next sweep"
+            : "this firing's write cap is spent; decided again next sweep",
 });
+
+const spentBudget = (
+    budget: WriteBudget | undefined,
+): "sweepRequestCap" | "sweepWriteCap" | null =>
+    budget?.requests?.remaining === 0
+        ? "sweepRequestCap"
+        : budget?.remaining === 0
+          ? "sweepWriteCap"
+          : null;
 
 export function createApplier(options: ApplierOptions): Applier {
     const { ledger, writer, reader, externals, worker, clock, log } = options;
@@ -285,10 +300,9 @@ export function createApplier(options: ApplierOptions): Applier {
         async applyAll(effects, config, budget) {
             const outcomes: EffectOutcome[] = [];
             for (const effect of effects) {
+                const spent = spentBudget(budget);
                 outcomes.push(
-                    budget?.remaining === 0
-                        ? heldBack(effect)
-                        : await apply(effect, config, budget),
+                    spent === null ? await apply(effect, config, budget) : heldBack(effect, spent),
                 );
             }
             return outcomes;

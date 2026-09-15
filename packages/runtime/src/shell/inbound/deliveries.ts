@@ -146,7 +146,10 @@ export interface Deliveries {
      * The current configuration as this lane reads it, or `null` when it cannot be read.
      * Exposed for the sweep, so a firing is gated on the same file: two readers could disagree about active mode, and that disagreement writes to GitHub.
      */
-    configuration(repository: RepositoryRef): Promise<RepositoryConfig | null>;
+    configuration(
+        repository: RepositoryRef,
+        source?: ConfigSource,
+    ): Promise<RepositoryConfig | null>;
 }
 
 /**
@@ -457,9 +460,12 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
          * A read, never a decision: an unanswerable source and an unparsable file are both
          * `null`, because the sweep's response to either is the same.
          */
-        async configuration(repository: RepositoryRef): Promise<RepositoryConfig | null> {
+        async configuration(
+            repository: RepositoryRef,
+            source?: ConfigSource,
+        ): Promise<RepositoryConfig | null> {
             try {
-                const loaded = await loadConfig(lane(repository).configSource);
+                const loaded = await loadConfig(source ?? lane(repository).configSource);
                 return loaded.result.ok ? loaded.result.config : null;
             } catch {
                 return null;

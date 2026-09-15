@@ -6,5 +6,5 @@ export const DEFAULT_SWEEP_CADENCE_MS = 60 * 60_000;
 /** How many writes one firing may send before it carries the rest to the next (D167). */
 export const SWEEP_WRITE_CALLS = 20;
 
-/** How many requests one firing may spend reading, of GitHub's hourly five thousand (D170). */
-export const SWEEP_READ_REQUESTS = 2_000;
+/** How many GitHub requests one reconciliation tick may send (D170). */
+export const SWEEP_REQUESTS = 2_000;

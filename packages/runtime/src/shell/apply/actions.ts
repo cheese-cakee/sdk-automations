@@ -14,6 +14,7 @@ import type { EffectOutcomeCode, EffectOutcomeName } from "../effects.js";
 
 export interface WriteBudget {
     remaining: number;
+    readonly requests?: { remaining: number };
 }
 
 /** Everything one pass over one effect shares; the last three are what it learns. */

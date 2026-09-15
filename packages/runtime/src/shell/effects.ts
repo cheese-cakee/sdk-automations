@@ -21,6 +21,7 @@ export type EffectOutcomeName = (typeof EFFECT_OUTCOMES)[number];
 /** Why an outcome is what it is, for everything that happens BELOW a verdict. */
 export const EFFECT_CODES = [
     "leaseHeld",
+    "sweepRequestCap",
     "sweepWriteCap",
     "rowUnreadable",
     "ledgerInconsistent",
