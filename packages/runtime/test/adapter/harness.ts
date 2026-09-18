@@ -10,24 +10,19 @@
  * GitHub, the harnesses.
  */
 
-import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
+import type { ItemRef, ReadBack, RepositoryRef, WriteVerbs } from "@hiero-hackers/automation-core";
 import { generateKeyPairSync } from "node:crypto";
 import { expect } from "vitest";
 import type { FetchLike, GitHubRequest } from "../../src/adapter/client/contract.js";
 import { createGitHubHttpClient } from "../../src/adapter/client/http.js";
 import type { AppCredentials } from "../../src/adapter/client/jwt.js";
-import {
-    createReadBack,
-    type AppIdentity,
-    type ReadBack,
-} from "../../src/adapter/writes/readback.js";
+import { createReadBack, type AppIdentity } from "../../src/adapter/writes/readback.js";
 import {
     createTokenSource,
     type InstallationToken,
     type TokenOutcome,
     type TokenSource,
 } from "../../src/adapter/client/token.js";
-import type { WriteVerbs } from "../../src/adapter/writes/operations/transport.js";
 import { createWriteVerbs } from "../../src/adapter/writes/writes.js";
 
 // ─── Time and tokens ─────────────────────────────────────────────────

@@ -186,15 +186,52 @@ describe("ordering evidence", () => {
         "closed",
         "reopened",
         "commented",
-        "committed",
         "convert_to_draft",
         "ready_for_review",
-        "reviewed",
         "review_dismissed",
         "review_requested",
     ])("counts a lone %s event as a human change", async (kind) => {
         const { lookup } = source([page([entry(kind, "maintainer", "2026-08-20T10:00:00Z")])]);
         expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T10:00:00Z"));
+    });
+
+    /** GitHub's `committed` entry carries a committer and no actor (protocol 8.5). */
+    /** A review entry names `user` and `submitted_at`; a bot's review does not count (D201). */
+    it("counts a reviewed entry by its user and submission time", async () => {
+        const review = (login: string, type: "User" | "Bot") => ({
+            event: "reviewed",
+            user: { login, type },
+            submitted_at: "2026-08-20T11:00:00Z",
+            state: "approved",
+        });
+        const human = source([page([review("maintainer", "User")])]);
+        expect(await human.lookup(ITEM)).toEqual(new Date("2026-08-20T11:00:00Z"));
+        const bot = source([page([review("app[bot]", "Bot")])]);
+        expect(await bot.lookup(ITEM)).toBeNull();
+        const actorOnly = source([page([entry("reviewed", "maintainer", "2026-08-20T11:00:00Z")])]);
+        expect(await actorOnly.lookup(ITEM)).toBe("unknown");
+    });
+
+    it("counts a committed entry by its committer's date, actor or not", async () => {
+        const committed = {
+            event: "committed",
+            sha: "abc1234",
+            author: { name: "x", email: "x@example.test", date: "2026-08-20T09:00:00Z" },
+            committer: { name: "x", email: "x@example.test", date: "2026-08-20T11:00:00Z" },
+        };
+        const { lookup } = source([
+            page([committed, entry("labeled", "maintainer", "2026-08-20T10:00:00Z")]),
+        ]);
+        expect(await lookup(ITEM)).toEqual(new Date("2026-08-20T11:00:00Z"));
+    });
+
+    it.each([
+        ["no committer", { event: "committed", sha: "abc1234" }],
+        ["a committer without a date", { event: "committed", committer: { name: "x" } }],
+        ["an unreadable date", { event: "committed", committer: { date: "yesterday" } }],
+    ])("answers unknown for a committed entry with %s", async (_name, committed) => {
+        const { lookup } = source([page([committed])]);
+        expect(await lookup(ITEM)).toBe("unknown");
     });
 
     it("excludes the cause but keeps ties from another actor and later changes", async () => {

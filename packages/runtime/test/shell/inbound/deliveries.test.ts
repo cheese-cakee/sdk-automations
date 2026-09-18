@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     asDeliveryGuid,
     toEngine,
+    type Allowance,
     type Effect,
     type EngineCapability,
     type RepositoryRef,
@@ -39,7 +40,6 @@ import {
     type ExternalsForDelivery,
 } from "../../../src/shell/decide/externals.js";
 import type { ConfigSource } from "../../../src/shell/decide/config.js";
-import type { Allowance } from "../../../src/shell/allowance.js";
 import type { Log, ShellEvent } from "../../../src/shell/log.js";
 import { spending, type Spending } from "../spending.js";
 

@@ -4,7 +4,15 @@
     "mode": "observe",
     "capabilities": {},
     "mappings": {
-        "labels": {},
+        "labels": {
+            "awaitingTriage": "status: triage",
+            "ready": "status: ready",
+            "inProgress": "status: in progress",
+            "needsReview": "status: needs review",
+            "needsRevision": "status: needs revision",
+            "readyToMerge": "status: ready to merge",
+            "blocked": "status: blocked"
+        },
         "commands": {},
         "skills": {},
         "alerts": {}

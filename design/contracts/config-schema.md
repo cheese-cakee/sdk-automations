@@ -132,9 +132,12 @@ meanings too, so the only question left about a key is its shape.
   collision names the later spelling — the one a maintainer changes.
 - No declaration may require an open family's entry: `requiredMappings` is checked against a closed
   meaning set, and an open family has none.
+- Every label meaning has a default spelling (`LABEL_DEFAULTS`, D203): a document that maps nothing
+  gets all seven, and `mappings.labels` overrides one meaning at a time. A spelling the document
+  gives one meaning that is another unmapped meaning's default is `labelNotInjective`.
 - A capability enabled without a mapping its declaration requires is `meaningRequired`, pathed at
   `mappings.<family>.<meaning>`. Disabled capabilities require nothing, and every missing mapping is
-  reported at once (D84).
+  reported at once (D84). Labels have defaults, so this reaches the other families only.
 - The parser does **not** currently call GitHub to confirm that a mapped label exists. That is an
   activation check still to build.
 

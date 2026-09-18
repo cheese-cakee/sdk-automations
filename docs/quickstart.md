@@ -83,7 +83,7 @@ capabilities:
   intake:
     enabled: true
     announce: true
-  prQuality:
+  prDashboard:
     enabled: true
     checks:
       linkedIssues:

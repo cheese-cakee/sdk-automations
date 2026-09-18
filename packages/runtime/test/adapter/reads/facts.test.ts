@@ -612,7 +612,8 @@ describe("the review group — the three reads protocol 6.9 confirmed", () => {
             value: {
                 changesRequested: true,
                 reapableSince: {
-                    needsRevision: new Date("2026-08-01T00:00:00Z"),
+                    // The no-file configuration maps every meaning by default (D203), so the labeled event dates it.
+                    needsRevision: new Date("2026-08-27T00:00:00Z"),
                     changesRequested: new Date("2026-08-26T00:00:00Z"),
                     draft: new Date("2026-08-25T00:00:00Z"),
                 },

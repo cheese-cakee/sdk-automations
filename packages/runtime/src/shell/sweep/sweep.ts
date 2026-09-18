@@ -7,6 +7,7 @@
 import {
     groupsNeeded,
     UNREAD,
+    type Allowance,
     type EngineCapability,
     type FactGroup,
     type IssueFacts,
@@ -15,6 +16,7 @@ import {
     type PullRequestFacts,
     type RepositoryConfig,
     type RepositoryRef,
+    type Spent,
     type Unread,
 } from "@hiero-hackers/automation-core";
 import {
@@ -26,7 +28,6 @@ import {
     type SnapshotFacts,
     type Store,
 } from "../../store/index.js";
-import type { Allowance, Spent } from "../allowance.js";
 import { REVIEW_SETTLE_MS, SNAPSHOT_MAX_AGE_MS } from "./budgets.js";
 import type { DecideItem, Decided } from "../decide/item.js";
 import { repositoryOfScheduleId, SWEEP_EFFECT, wantsSweeping } from "../decide/schedule.js";

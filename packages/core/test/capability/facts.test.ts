@@ -474,7 +474,7 @@ describe("moveTo (D5)", () => {
     });
 
     it("answers null where the map draws no edge", () => {
-        // prQuality's own defect, as the design page wrote it: "needsRevision
+        // prDashboard's own defect, as the design page wrote it: "needsRevision
         // on fail" from a position with no such edge is refused
         // `transitionNotOnMap`, and the capability is told here instead.
         expect(moveTo(pullAt("needsRevision"), "readyToMerge")).toBeNull();

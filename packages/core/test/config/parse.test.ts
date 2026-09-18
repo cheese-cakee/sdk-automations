@@ -1,3 +1,4 @@
+import { DEFAULT_LABEL_MAPPINGS } from "../../src/config/label-defaults.js";
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { count, duration, flag, section, spec, writeDuration } from "../../src/capability/index.js";
@@ -242,7 +243,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         expect(Object.keys(NO_CONFIG.capabilities)).toHaveLength(0);
         expect(Object.keys(NO_CONFIG.principals)).toHaveLength(0);
         expect(NO_CONFIG.mappings).toEqual({
-            labels: {},
+            labels: { ...DEFAULT_LABEL_MAPPINGS },
             commands: {},
             skills: {},
             alerts: {},
@@ -256,7 +257,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                 schemaVersion: 2,
                 mode: "observe",
                 capabilities: {
-                    prQuality: {
+                    prDashboard: {
                         enabled: true,
                         checks: { dco: true, mergeConflict: true },
                     },
@@ -272,8 +273,8 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             },
             {
                 revision: "rev-test",
-                knownCapabilities: admitting(["prQuality", "assignment"], {
-                    prQuality: spec({
+                knownCapabilities: admitting(["prDashboard", "assignment"], {
+                    prDashboard: spec({
                         checks: section({
                             dco: flag({ default: false }),
                             mergeConflict: flag({ default: false }),
@@ -285,7 +286,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(result.config.capabilities.prQuality?.enabled).toBe(true);
+            expect(result.config.capabilities.prDashboard?.enabled).toBe(true);
             expect(result.config.capabilities.assignment?.enabled).toBe(false);
             expect(result.config.mappings.labels.ready).toBe("status: ready for dev");
         }

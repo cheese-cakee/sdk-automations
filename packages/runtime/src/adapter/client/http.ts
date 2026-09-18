@@ -11,9 +11,9 @@ import {
     parseSecondsHeader,
     retryAdvice,
     type FailureClass,
+    type Pool,
 } from "@hiero-hackers/automation-core";
 import { admit, missingGrants } from "./admission.js";
-import type { Pool } from "./allowance.js";
 import {
     allowanceFailure,
     bodyOf,

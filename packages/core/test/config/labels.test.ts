@@ -5,6 +5,7 @@
  * promise docs/configuration.md makes to maintainers, tested here.
  */
 
+import { parseConfig } from "../../src/config/parse.js";
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
@@ -51,9 +52,28 @@ describe("meaningOfLabel", () => {
         expect(meaningOfLabel(de, "STRAßE")).toBe("ready");
     });
 
-    it("an empty mapping finds nothing at all", () => {
+    /** A file that maps nothing carries every meaning at its default spelling (D203). */
+    it("an empty mapping finds each default spelling, and nothing else", () => {
         const bare = configWith();
-        expect(meaningOfLabel(bare, "status: triage")).toBeNull();
+        expect(meaningOfLabel(bare, "status: triage")).toBe("awaitingTriage");
+        expect(meaningOfLabel(bare, "Status: Needs Review")).toBe("needsReview");
+        expect(meaningOfLabel(bare, "S-review")).toBeNull();
+    });
+
+    it("a file spelling one meaning as another's default is refused", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 2,
+                mappings: { labels: { awaitingTriage: "status: ready" } },
+            },
+            { revision: "rev-shadow", knownCapabilities: [] },
+        );
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
+            "labelNotInjective @ mappings.labels.awaitingTriage",
+        ]);
+        const both = configWith({ labels: { awaitingTriage: "status: ready", ready: "queue" } });
+        expect(meaningOfLabel(both, "status: ready")).toBe("awaitingTriage");
+        expect(meaningOfLabel(both, "queue")).toBe("ready");
     });
 });
 

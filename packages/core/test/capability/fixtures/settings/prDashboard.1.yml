@@ -2,7 +2,7 @@ schemaVersion: 2
 mode: dry-run # disabled | observe | dry-run | active — rehearse, then arm
 
 capabilities:
-  prQuality:
+  prDashboard:
     enabled: true # explicit true only; anything else is off
     checks: # a check runs only with an explicit enabled: true
       dcoSignoff:

@@ -4,12 +4,12 @@
  */
 
 import type {
+    Allowance,
     ItemRef,
     RepositoryConfig,
     RepositoryRef,
     WarningToRecord,
 } from "@hiero-hackers/automation-core";
-import type { Allowance } from "../allowance.js";
 import type { LedgerState } from "../../store/index.js";
 import type { EffectOutcomeCode, EffectOutcomeName } from "../effects.js";
 

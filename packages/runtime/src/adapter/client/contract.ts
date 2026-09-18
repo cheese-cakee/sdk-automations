@@ -3,8 +3,8 @@
  * Nothing here judges a request or sends one.
  */
 
-import type { FailureClass } from "@hiero-hackers/automation-core";
-import type { Allowance, Lane } from "./allowance.js";
+import type { FailureClass, Lane } from "@hiero-hackers/automation-core";
+import type { Allowance } from "./allowance.js";
 import type { TokenSource } from "./token.js";
 
 // ─── The shared constants ────────────────────────────────────────────

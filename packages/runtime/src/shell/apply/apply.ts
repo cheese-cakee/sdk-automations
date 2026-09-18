@@ -5,27 +5,23 @@
  * `gates.ts` whether it still may, and `call.ts` sends and proves one call.
  */
 
-import type { AnyIntent, Effect, RepositoryConfig } from "@hiero-hackers/automation-core";
+import type {
+    Allowance,
+    AnyIntent,
+    Effect,
+    Lane,
+    ReadBack,
+    RepositoryConfig,
+    WriteVerbs,
+} from "@hiero-hackers/automation-core";
 import type { Fact, Ledger, OpenSend } from "../../store/index.js";
 import type { Log } from "../log.js";
-import type { Allowance, Lane } from "../allowance.js";
 import { actionFor, type Action, type Pass, type PassResult } from "./actions.js";
 import type { Call, EffectOutcome } from "../effects.js";
-import type { EffectReader, EffectWriter } from "./operations/handler.js";
 import { operationOf, parseJournaledCall, planFor } from "./operations/index.js";
 import { createCalls, stop, type CallResult } from "./call.js";
 import { createGates, type EffectExternalsSource } from "./gates.js";
 
-/** The seam vocabulary, re-exported from its new home to keep the barrel's name set. */
-export type {
-    CommentSeen,
-    EffectReader,
-    EffectWriter,
-    ItemSeen,
-    ReadAnswer,
-    SeenState,
-    WriteResult,
-} from "./operations/handler.js";
 export { recordedWarningsIn, type EffectExternalsSource } from "./gates.js";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
@@ -47,8 +43,8 @@ export const EFFECT_ATTEMPT_CAP = 5;
 export interface ApplierOptions {
     /** The whole store the applier touches: the facts, and the lease beside them (D164). */
     readonly ledger: Ledger;
-    readonly writer: EffectWriter;
-    readonly reader: EffectReader;
+    readonly writer: WriteVerbs;
+    readonly reader: ReadBack;
     readonly externals: EffectExternalsSource;
     /** Which worker holds a lease; the ledger releases only this name's own. */
     readonly worker: string;

@@ -19,6 +19,7 @@ import {
 } from "../harness.js";
 
 const ISSUE = "https://api.github.com/repos/hiero-hackers/sdk-automations/issues/132";
+const REPO = "https://api.github.com/repos/hiero-hackers/sdk-automations";
 
 const listed =
     (body: string, headers?: HeadersInit): ResponseStep =>
@@ -129,6 +130,20 @@ describe("reading an item's labels", () => {
         const { readBack } = harness([listed(body)]);
 
         expect((await readBack.labels(ITEM)).ok).toBe(false);
+    });
+});
+
+describe("reading whether the repository defines a label", () => {
+    it("answers present on a 200, absent on GitHub's 404, and unknown otherwise", async () => {
+        const defined = harness([success('{"name":"status: stale","color":"5319e7"}')]);
+        expect(await defined.readBack.labelDefined("status: stale")).toBe("present");
+        expect(defined.scripted.calls[0]!.url).toBe(`${REPO}/labels/status%3A%20stale`);
+
+        const missing = harness([failure(404, "Not Found")]);
+        expect(await missing.readBack.labelDefined("status: stale")).toBe("absent");
+
+        const refused = harness([failure(500, "boom")]);
+        expect(await refused.readBack.labelDefined("status: stale")).toBe("unknown");
     });
 });
 

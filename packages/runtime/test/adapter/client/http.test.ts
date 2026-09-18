@@ -1782,6 +1782,12 @@ const ISSUE = `${GITHUB_API_ORIGIN}/repos/hiero-hackers/sdk-automations/issues/1
 const REPO = `${GITHUB_API_ORIGIN}/repos/hiero-hackers/sdk-automations`;
 const PULL = `${REPO}/pulls`;
 
+const createLabel: GitHubRequest = {
+    url: `${REPO}/labels`,
+    method: "POST",
+    body: JSON.stringify({ name: "status: stale", color: "5319e7", description: "x" }),
+    idempotency: "nonIdempotent",
+};
 const addLabel: GitHubRequest = {
     url: `${ISSUE}/labels`,
     method: "POST",
@@ -1840,6 +1846,7 @@ function refusalOf(outcome: Awaited<ReturnType<GitHubHttpClient["request"]>>): s
 
 describe("the write gate", () => {
     it.each([
+        ["create label", createLabel, "POST", `${REPO}/labels`],
         ["add label", addLabel, "POST", `${ISSUE}/labels`],
         ["remove label", removeLabel, "DELETE", `${ISSUE}/labels/status%3A%20stale`],
         ["create comment", createComment, "POST", `${ISSUE}/comments`],

@@ -9,15 +9,34 @@
                 "announce": true
             }
         },
-        "prQuality": {
+        "prDashboard": {
             "enabled": true,
             "settings": {
                 "checks": {
+                    "dcoSignoff": {
+                        "enabled": true,
+                        "guide": "https://github.com/<org>/<repo>/wiki/Signing-Guide"
+                    },
+                    "gpgSignature": {
+                        "enabled": true,
+                        "guide": "https://github.com/<org>/<repo>/wiki/Signing-Guide"
+                    },
+                    "mergeConflicts": {
+                        "enabled": true
+                    },
                     "linkedIssues": {
                         "enabled": true,
-                        "guide": "https://github.com/<org>/<repo>/wiki/Linking-Issues"
+                        "guide": "https://github.com/<org>/<repo>/wiki/Linking-Issues",
+                        "assignedIssues": {
+                            "enabled": true,
+                            "guide": "https://github.com/<org>/<repo>/wiki/Assignment"
+                        }
                     }
-                }
+                },
+                "applyLabels": [
+                    "needsRevision",
+                    "needsReview"
+                ]
             }
         },
         "configReport": {

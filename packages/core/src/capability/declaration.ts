@@ -7,6 +7,7 @@ import {
     CAPABILITY_NAME_PATTERN,
     COMMANDS,
     MAPPABLE_MEANINGS,
+    type MappableMeaning,
     MAPPING_FAMILIES,
     SKILL_TIERS,
 } from "../config/schema.js";
@@ -45,6 +46,8 @@ export interface CapabilityDeclaration {
     readonly closed?: boolean;
     readonly settings: Spec;
     readonly requiredMappings: DeclaredMappings;
+    /** The label meanings it may set — non-empty exactly when `intents` holds `applyMappedLabel` (D204). */
+    readonly labels: readonly string[];
     readonly facts: readonly string[];
     /** A need declared is a read paid for: the sweep reads these and no more (D195). */
     readonly needs: readonly string[];
@@ -55,6 +58,7 @@ export interface CapabilityDeclaration {
 /** A declaration whose names are catalogue keys — the shape `parseConfig` admits. */
 export interface TypedDeclaration extends CapabilityDeclaration {
     readonly requiredMappings: RequiredMappings;
+    readonly labels: readonly MappableMeaning[];
     readonly facts: readonly FactKind[];
     readonly needs: readonly FactGroup[];
     readonly resolvers: readonly ResolverName[];
@@ -68,6 +72,7 @@ export interface DeclarationInput {
     readonly closed?: boolean;
     readonly settings: Spec;
     readonly requiredMappings?: RequiredMappings;
+    readonly labels?: readonly MappableMeaning[];
     readonly facts?: readonly FactKind[];
     readonly needs?: readonly FactGroup[];
     readonly resolvers: readonly ResolverName[];
@@ -89,8 +94,9 @@ type KindsOfTriggers<T extends readonly DeclaredTrigger[]> = {
 /** The input with its defaults filled, each list kept as the literal tuple written. */
 export type Declared<D extends DeclarationInput> = Omit<
     D,
-    "facts" | "needs" | "requiredMappings"
+    "facts" | "needs" | "requiredMappings" | "labels"
 > & {
+    readonly labels: D["labels"] extends readonly MappableMeaning[] ? D["labels"] : readonly [];
     readonly facts: D["facts"] extends readonly FactKind[]
         ? D["facts"]
         : readonly KindsOfTriggers<D["triggers"]>[];
@@ -119,6 +125,7 @@ export function declareCapability<const D extends DeclarationInput>(d: D): Decla
         facts: d.facts ?? kindsImpliedBy(d.triggers),
         needs: d.needs ?? [],
         requiredMappings: d.requiredMappings ?? {},
+        labels: d.labels ?? [],
     };
     // THE ONE CAST: the conditional types above are these three defaults, as types.
     return filled as unknown as Declared<D>;
@@ -161,8 +168,17 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
         );
     }
 
+    const setsLabels = d.intents.includes("applyMappedLabel");
+    if (setsLabels && d.labels.length === 0) {
+        errors.push(`${at}: may set a position but names no label meaning in \`labels\``);
+    }
+    if (!setsLabels && d.labels.length > 0) {
+        errors.push(`${at}: names label meanings but never declares the applyMappedLabel intent`);
+    }
+
     // No `settings` row: a spec's keys are unique by construction.
     const lists: (readonly [string, readonly string[]])[] = [
+        ["labels", d.labels],
         ["facts", d.facts],
         ["needs", d.needs],
         ["resolvers", d.resolvers],
@@ -208,6 +224,11 @@ function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly str
         for (const meaning of declaration.requiredMappings[family] ?? []) {
             if (FAMILY_MEANINGS[family].some((name) => name === meaning)) continue;
             errors.push(`${at}: required meaning "${meaning}" is not in the ${family} family`);
+        }
+    }
+    for (const meaning of declaration.labels) {
+        if (!MAPPABLE_MEANINGS.some((name) => name === meaning)) {
+            errors.push(`${at}: label meaning "${meaning}" is not in the labels family`);
         }
     }
     for (const fact of declaration.facts) {

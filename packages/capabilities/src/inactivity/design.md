@@ -65,7 +65,7 @@ capabilities:
           enabled: true
           reap:
             enabled: true
-        needsRevision: # the label pr-quality's label mode applies for DCO, GPG, linked-issue and assignment failures
+        needsRevision: # the label pr-dashboard's label mode applies for DCO, GPG, linked-issue and assignment failures
           enabled: true
           remindAfter: 2d # reason override — quality failures reap fast
           reap:
@@ -114,7 +114,7 @@ Reminds and acts on contributor staleness only:
 - assigned issues with no open pull request
 - pull requests where the ball is with the contributor — linked or not, assigned or not: in draft
   mode, in changes-requested mode (a review asked for changes), or carrying the `needsRevision`
-  label — which, with pr-quality's label mode, may also indicate persistent DCO, GPG, linked-issue
+  label — which, with pr-dashboard's label mode, may also indicate persistent DCO, GPG, linked-issue
   and assignment failures
 
 Never acts on maintainer staleness or paused work:
@@ -164,7 +164,7 @@ close the same way a label somebody removed does. Protocol 8.3 ran the close pat
 |---|---|
 | `triggers` | `schedule` — no webhook resets a clock; the sweep reads the timeline instead |
 | `facts` / `needs` | `issue` and `pullRequest`, needing `assignees` (each with `assignedAt` and last `/working`), `links`, `review` (changes requested, `reapableSince`, last commit) and `readiness` (draft). The fifth group, `command`, is the issue's and this capability does not read it. A producer that reads less — a webhook — is a `factsUnread` skip |
-| `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-quality's job, arriving as `needsRevision` |
+| `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-dashboard's job, arriving as `needsRevision` |
 | `intents` | `postManagedComment` · `releaseAssignment` · `closePullRequest`. Every act claims what it saw: the assignee ladder and the label reason claim meanings and closure, and each mode reason claims its own `pullRequestMode` |
 | `requiredMappings` | none — the label reason demands `needsRevision` in a guard, only where it is switched on |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write`, `pull_requests:write` — the close's own, and the only write on the pull surface · organization: none |
@@ -192,7 +192,7 @@ close the same way a label somebody removed does. Protocol 8.3 ran the close pat
 | A parked `reap` block beside an enabled ladder | the same: `enabled: false` is a release kept for later, not one running |
 | `needsRevision` override of `2d`/`5d` | the quality-failure PR reaps on the fast clock; an ordinary stale PR keeps the ladder's `60d` |
 | Review flips a PR `needsReview` → `needsRevision` | its clock starts; the reverse flip stops it |
-| pr-quality labels a failing PR `needsRevision` | the reaper's clock runs on it — detection is composed, not duplicated |
+| pr-dashboard labels a failing PR `needsRevision` | the reaper's clock runs on it — detection is composed, not duplicated |
 | Item gains the `blocked` meaning mid-cycle | all clocks pause, including linked PRs |
 | Draft PR marked ready for review, no `needsRevision` | leaves the reapable state; its clock stops |
 | Two assignees, one recent | only the stale one is released |

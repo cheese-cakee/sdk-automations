@@ -8,10 +8,11 @@ import {
 } from "../../src/capability/index.js";
 
 const declaration: CapabilityDeclaration = {
-    name: "prQuality",
+    name: "prDashboard",
     triggers: [{ kind: "event", event: "pull_request" }],
     settings: spec({ checks: flag({ default: false }) }),
     requiredMappings: { labels: ["needsReview"] },
+    labels: ["needsReview"],
     facts: ["pullRequest"],
     /**
      * Empty, and it is the study's finding that it has to be: the webhook
@@ -30,7 +31,7 @@ describe("validateCapabilityDeclarations", () => {
 
     it("rejects duplicate declaration names with the boot-boundary error", () => {
         expect(validateCapabilityDeclarations([declaration, declaration])).toContain(
-            'duplicate capability name "prQuality"',
+            'duplicate capability name "prDashboard"',
         );
     });
 
@@ -105,7 +106,7 @@ describe("validateCapabilityDeclarations", () => {
                 { ...declaration, settings: spec({ enabled: flag({ default: false }) }) },
             ]),
         ).toEqual([
-            'capability "prQuality": settings may not declare "enabled" — it is consent on the capability\'s own block, whose other keys are the settings',
+            'capability "prDashboard": settings may not declare "enabled" — it is consent on the capability\'s own block, whose other keys are the settings',
         ]);
         expect(validateCapabilityDeclarations([declaration])).toEqual([]);
     });
@@ -120,12 +121,12 @@ describe("validateCapabilityDeclarations", () => {
             validateCapabilityDeclarations([
                 { ...declaration, facts: ["issue"], needs: ["review"] },
             ]),
-        ).toEqual(['capability "prQuality": no declared fact kind carries the group "review"']);
+        ).toEqual(['capability "prDashboard": no declared fact kind carries the group "review"']);
     });
 
     /**
      * The defect this check was built for, as the declaration that found it:
-     * prQuality's own design page asked for `needs: ["review"]` on a
+     * prDashboard's own design page asked for `needs: ["review"]` on a
      * `pull_request` trigger, and the platform answered by skipping the
      * capability `factsUnread` on every delivery, silently, forever.
      *
@@ -135,7 +136,7 @@ describe("validateCapabilityDeclarations", () => {
      */
     it("refuses a need the producer its trigger names never reads", () => {
         expect(validateCapabilityDeclarations([{ ...declaration, needs: ["review"] }])).toEqual([
-            'capability "prQuality": the "pull_request" trigger leaves "review" unread on a pullRequest record, so every delivery it wakes is skipped — read by: sweep',
+            'capability "prDashboard": the "pull_request" trigger leaves "review" unread on a pullRequest record, so every delivery it wakes is skipped — read by: sweep',
         ]);
     });
 
@@ -164,11 +165,32 @@ describe("validateCapabilityDeclarations", () => {
         expect(trigger.kind).toBe("event");
     });
 
+    /** D204: a capability that may set a position names which, and the reverse. */
+    it("holds `labels` and the applyMappedLabel intent together", () => {
+        expect(validateCapabilityDeclarations([{ ...declaration, labels: [] }])).toEqual([
+            'capability "prDashboard": may set a position but names no label meaning in `labels`',
+        ]);
+        expect(
+            validateCapabilityDeclarations([{ ...declaration, intents: ["postManagedComment"] }]),
+        ).toEqual([
+            'capability "prDashboard": names label meanings but never declares the applyMappedLabel intent',
+        ]);
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, labels: ["needsReview", "needsReview", "nonsense"] },
+            ]),
+        ).toEqual([
+            'capability "prDashboard": duplicate labels entry "needsReview"',
+            'capability "prDashboard": label meaning "nonsense" is not in the labels family',
+        ]);
+    });
+
     it("keeps operation facts out of the declaration shape", () => {
         expect(declaration.intents).toEqual(["postManagedComment", "applyMappedLabel"]);
         expect(Object.keys(declaration).sort()).toEqual([
             "facts",
             "intents",
+            "labels",
             "name",
             "needs",
             "requiredMappings",

@@ -98,8 +98,9 @@ describe("issues, through the real payloads", () => {
         });
     });
 
-    it("an unmapped repository sees the same delivery as meaningless", () => {
-        const bare = configWith();
+    /** The default spelling IS `status: triage` (D203), so the meaningless case spells the position another way. */
+    it("a repository spelling the position differently sees the same delivery as meaningless", () => {
+        const bare = configWith({ labels: { awaitingTriage: "position: triage" } });
         const o = observed("issues.labeled.json", bare);
         expect(o.position).toMatchObject({
             kind: "position",
@@ -161,12 +162,16 @@ describe("shapes derived from the real ones", () => {
  * arrived. Both are read off the real capture, whose `action` is `labeled`,
  * whose `label.name` is `status: triage`, and whose sender is a person.
  *
- * The config here maps `status: triage` as an ALERT and not as a position,
- * which is the only way a repository can spell it both ways — the two families
- * share GitHub's label namespace and the parser refuses the overlap.
+ * The config here maps `status: triage` as an ALERT and spells the position
+ * another way — the only way a repository can carry both, since the two
+ * families share GitHub's label namespace and the parser refuses the overlap
+ * (the position's default spelling included, D203).
  */
 describe("the actor and the alerts a delivery carries", () => {
-    const alerting = configWith({ alerts: { triage: "status: triage" } });
+    const alerting = configWith({
+        labels: { awaitingTriage: "position: triage" },
+        alerts: { triage: "status: triage" },
+    });
 
     const withPayload = (over: Record<string, unknown>): unknown => ({
         ...(fixture("issues.labeled.json") as Record<string, unknown>),
@@ -197,6 +202,7 @@ describe("the actor and the alerts a delivery carries", () => {
             "issues",
             withPayload({ label: { name: "Security" } }),
             configWith({
+                labels: { awaitingTriage: "position: triage" },
                 alerts: { triage: "status: triage", security: "Security" },
             }),
         );

@@ -12,8 +12,8 @@ spelling), its own block's keys, and nothing another capability was given.
 <!-- generated: capabilities -->
 | Capability | What it does | Wakes on | Needs mapped | Settings keys | May write | Design |
 |---|---|---|---|---|---|---|
-| `intake` | walk a new issue from its opening to triaged, ready work | the `issues` webhook | `labels.awaitingTriage` | `announce` | your mapped labels; a comment it keeps up to date | [design page](../packages/capabilities/src/intake/design.md) |
-| `prQuality` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook | nothing required | `checks` | a comment it keeps up to date | [design page](../packages/capabilities/src/prQuality/design.md) |
+| `intake` | walk a new issue from its opening to triaged, ready work | the `issues` webhook | `labels.awaitingTriage` | `announce` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date | [design page](../packages/capabilities/src/intake/design.md) |
+| `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
 | `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
 | `configReport` | one comment on a pull request that changes `automations.yml`, saying what the App would read from it | the `pull_request` webhook | nothing required | none | a comment it keeps up to date | [design page](../packages/capabilities/src/configReport/design.md) |
 <!-- /generated -->
@@ -48,14 +48,26 @@ enabled: true
 announce: false # default — Comment on a new issue to say it is waiting for triage, rather than only labelling it
 ```
 
-### `prQuality`
+### `prDashboard`
 
 ```yaml
 enabled: true
 checks: # default — The quality checks this repository runs — each one off until it is enabled
+  dcoSignoff: # off until enabled — Say so when a commit carries no Signed-off-by trailer
+    enabled: true
+    # guide: "…" — optional; A page explaining how to sign commits, shown to the contributor when this check fails
+  gpgSignature: # off until enabled — Say so when a commit has no verified signature
+    enabled: true
+    # guide: "…" — optional; A page explaining how to sign commits, shown to the contributor when this check fails
+  mergeConflicts: # off until enabled — Say so when the branch does not merge cleanly
+    enabled: true
   linkedIssues: # off until enabled — Say so when a pull request references no issue
     enabled: true
     # guide: "…" — optional; A page explaining how to link an issue, shown to the contributor when this check fails
+    assignedIssues: # off until enabled — Say so when the author is not assigned to every linked issue
+      enabled: true
+      # guide: "…" — optional; A page explaining how to get assigned, shown to the contributor when this check fails
+applyLabels: [] # none — The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review
 ```
 
 ### `inactivity`

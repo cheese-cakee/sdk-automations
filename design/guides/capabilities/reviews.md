@@ -78,7 +78,7 @@ capabilities:
 
 mappings:
   labels:
-    needsReview: "status: needs review" # something must APPLY it — a human, or prQuality's label mode once built
+    needsReview: "status: needs review" # something must APPLY it — a human, or prDashboard's label mode once built
     needsRevision: "status: changes requested"
     communityReviewWelcome: "community review welcome" # required when communityReview is enabled; created in the repository if missing
 

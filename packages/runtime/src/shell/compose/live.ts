@@ -5,7 +5,12 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { AdmittedCapability, Externals, RepositoryRef } from "@hiero-hackers/automation-core";
+import type {
+    AdmittedCapability,
+    Allowance,
+    Externals,
+    RepositoryRef,
+} from "@hiero-hackers/automation-core";
 import {
     createAllowance,
     createFactsReader,
@@ -22,25 +27,18 @@ import {
     type Allowance as ClientAllowance,
     type FactsReader,
     type OrderingEvidenceOptions,
-    type ReadBack,
-    type WriteVerbs,
 } from "../../adapter/index.js";
-import type { Allowance } from "../allowance.js";
-import type { EffectReader, EffectWriter } from "../apply/apply.js";
 import type { Log } from "../log.js";
 import type { SweepFacts } from "../sweep/sweep.js";
 import type { Credentials } from "./composition.js";
 import type { RepositorySeams } from "./shell.js";
 
 /**
- * The applier's seams, held against the adapter objects that fill them.
+ * The sweep's seam, held against the adapter object that fills it.
  * The ONLY file allowed to see both, so the only place a drift can be caught. A CONSTRAINT rather than a conditional, which would evaluate to `never` and compile.
  */
 type Satisfies<Contract, Given extends Contract> = Given;
-type _WriterSeamIsTheAdapterSurface = Satisfies<EffectWriter, WriteVerbs>;
-type _ReaderSeamIsTheAdapterSurface = Satisfies<EffectReader, ReadBack>;
 type _SweepSeamIsTheAdapterSurface = Satisfies<SweepFacts, FactsReader>;
-type _AllowanceIsTheClientLedger = Satisfies<Allowance, ClientAllowance>;
 
 export interface LiveGitHub {
     /** One set per repository, built on demand and held: the installation may deliver for any. */

@@ -4,8 +4,8 @@
  * carried errors. No read lives here; the reads are `resolvers.ts` and `links.ts`.
  */
 
-import type { ResolverAnswer } from "@hiero-hackers/automation-core";
-import type { Allowance, Lane } from "../client/allowance.js";
+import type { Lane, ResolverAnswer } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import { describeFailure, type GitHubFailure, type GitHubSuccess } from "../client/contract.js";
 import { field } from "../client/untrusted.js";
 

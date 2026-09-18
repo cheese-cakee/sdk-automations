@@ -64,6 +64,7 @@ export {
     type SectionsOptions,
 } from "../capability/settings.js";
 export type { BlockOf, SettingsOf, Spec } from "../config/spec.js";
+export { LABEL_DEFAULTS } from "../config/label-defaults.js";
 export type { Command, MappableMeaning, RepositoryConfig, Skill } from "../config/schema.js";
 export type { ConfigError, ConfigResult } from "../config/results.js";
 export { MIN_GRACE_HOURS, MIN_REAP_HOURS } from "../safety/destructive.js";
@@ -72,6 +73,7 @@ export type { DestructiveGrace } from "../intents/intent.js";
 export {
     UNREAD,
     type AssigneeClock,
+    type CommitAttestation,
     type FactGroup,
     type FactKind,
     type Facts,

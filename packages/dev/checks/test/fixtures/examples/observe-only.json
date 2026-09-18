@@ -16,6 +16,8 @@
             "ready": "status: ready for dev",
             "inProgress": "status: in progress",
             "needsReview": "status: needs review",
+            "needsRevision": "status: needs revision",
+            "readyToMerge": "status: ready to merge",
             "blocked": "status: blocked"
         },
         "commands": {},

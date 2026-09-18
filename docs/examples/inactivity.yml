@@ -31,7 +31,5 @@ capabilities:
             enabled: true
 
 mappings:
-  labels:
-    blocked: "status: blocked"
   commands:
     working: "/working"

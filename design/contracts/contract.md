@@ -18,6 +18,7 @@ interface CapabilityDeclaration {
   readonly closed?: boolean;                     // also woken for a closed item; absent is open only (D59)
   readonly settings: Spec;                       // the settings toolkit's spec; its keys are the legal names
   readonly requiredMappings: DeclaredMappings;
+  readonly labels: readonly string[];            // the label meanings it may set; non-empty iff intents holds applyMappedLabel (D204)
   readonly facts: readonly string[];
   readonly needs: readonly string[];
   readonly resolvers: readonly string[];
@@ -40,6 +41,10 @@ interface DeclaredMappings {
 - `declareCapability` takes the author's shorter form: `facts` is implied by an event trigger (each webhook
   producer yields one kind; a schedule trigger states its kinds), and `needs` and `requiredMappings` default
   to empty. The filled declaration is what everything below reads.
+- `labels` names the meanings a capability may set, checked against the labels family and against
+  `intents`: a capability that may set a position names which, and one that names them declares the
+  intent. The parser copies it onto the enabled block, so the configuration report can tell a file's
+  reviewers which labels the App will use, and define if missing (D204).
 - `settings` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first is the
   spec every capability block is read against — its keys are the legal names a block may carry beside
   `enabled`, and its fields judge the values, at parse time, with the rest of the file — and the

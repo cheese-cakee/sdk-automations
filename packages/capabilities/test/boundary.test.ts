@@ -12,10 +12,10 @@ import {
     validateCapabilityDeclarations,
     type AnyIntent,
 } from "@hiero-hackers/automation-core";
-import { CAPABILITIES, inactivity, intake, prQuality } from "../src/index.js";
+import { CAPABILITIES, inactivity, intake, prDashboard } from "../src/index.js";
 import { INACTIVITY_SETTINGS } from "../src/inactivity/settings.js";
 import { INTAKE_SETTINGS } from "../src/intake/settings.js";
-import { PR_QUALITY_SETTINGS } from "../src/prQuality/settings.js";
+import { PR_DASHBOARD_SETTINGS } from "../src/prDashboard/settings.js";
 import { configEnabling } from "@hiero-hackers/automation-core/author/testing";
 
 // Derived, not listed: the isolation claim below covers a capability the day
@@ -36,16 +36,26 @@ const DECLARATIONS = ALL.map((c) => c.declaration);
  * `declarations` block below.
  */
 describe("declared shape", () => {
-    it("prQuality declares one event trigger, one resolver, and one comment", () => {
-        expect(prQuality.declaration).toEqual({
-            name: "prQuality",
-            triggers: [{ kind: "event", event: "pull_request" }],
-            settings: PR_QUALITY_SETTINGS,
+    it("prDashboard declares an event and a schedule trigger, five resolvers, a comment and a label", () => {
+        expect(prDashboard.declaration).toEqual({
+            name: "prDashboard",
+            triggers: [
+                { kind: "event", event: "pull_request" },
+                { kind: "schedule", description: "hourly recheck of every open pull request" },
+            ],
+            settings: PR_DASHBOARD_SETTINGS,
             requiredMappings: {},
+            labels: ["needsRevision", "needsReview"],
             facts: ["pullRequest"],
-            needs: [],
-            resolvers: ["linkedIssues"],
-            intents: ["postManagedComment"],
+            needs: ["readiness"],
+            resolvers: [
+                "isAutomationActor",
+                "linkedIssues",
+                "commitAttestations",
+                "mergeability",
+                "assigneesOf",
+            ],
+            intents: ["postManagedComment", "applyMappedLabel"],
         });
     });
 
@@ -60,6 +70,7 @@ describe("declared shape", () => {
             triggers: [{ kind: "event", event: "issues" }],
             settings: INTAKE_SETTINGS,
             requiredMappings: { labels: ["awaitingTriage"] },
+            labels: ["awaitingTriage"],
             facts: ["issue"],
             needs: [],
             resolvers: ["isAutomationActor"],
@@ -73,6 +84,7 @@ describe("declared shape", () => {
             triggers: [{ kind: "schedule", description: "hourly stale-assignment sweep" }],
             settings: INACTIVITY_SETTINGS,
             requiredMappings: {},
+            labels: [],
             facts: ["issue", "pullRequest"],
             needs: ["assignees", "links", "review", "readiness"],
             resolvers: ["isAutomationActor"],
@@ -173,12 +185,20 @@ describe("configuration isolation (contract.md §2)", () => {
 
     /**
      * `intake`'s `announce: true` is the block above, and this repository
-     * wrote nothing under `prQuality` — so what arrives is prQuality's own
+     * wrote nothing under `prDashboard` — so what arrives is prDashboard's own
      * spec at its own defaults, with its neighbour's answer nowhere in it.
      */
     it("never hands a capability another capability's block", () => {
-        const view = projectCapabilityView(prQuality.declaration, config);
-        expect(view.settings).toEqual({ checks: { linkedIssues: { enabled: false } } });
+        const view = projectCapabilityView(prDashboard.declaration, config);
+        expect(view.settings).toEqual({
+            checks: {
+                dcoSignoff: { enabled: false },
+                gpgSignature: { enabled: false },
+                mergeConflicts: { enabled: false },
+                linkedIssues: { enabled: false },
+            },
+            applyLabels: [],
+        });
     });
 
     /**
@@ -192,7 +212,16 @@ describe("configuration isolation (contract.md §2)", () => {
     it("reports mapped names without ever exposing a spelling", () => {
         const view = projectCapabilityView(intake.declaration, config);
         expect(view.mapped).toEqual({
-            labels: ["awaitingTriage", "inProgress", "blocked"],
+            // The three the file spelled and the four at their defaults, in the table's order (D203).
+            labels: [
+                "awaitingTriage",
+                "ready",
+                "inProgress",
+                "needsReview",
+                "needsRevision",
+                "readyToMerge",
+                "blocked",
+            ],
             commands: ["assign"],
             skills: ["beginner"],
             alerts: [],
@@ -237,7 +266,7 @@ describe("intent screening", () => {
 
     it("refuses an intent attributed to another capability", () => {
         const foreign = candidate({
-            capability: "prQuality",
+            capability: "prDashboard",
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         });

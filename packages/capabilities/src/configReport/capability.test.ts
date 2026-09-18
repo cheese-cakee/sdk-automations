@@ -28,7 +28,7 @@ import { configReport, configReportDeclaration } from "./capability.js";
 import { renderConfiguration, renderRejection, renderReport } from "./render.js";
 import { CONFIG_REPORT_SETTINGS } from "./settings.js";
 import { intakeDeclaration } from "../intake/capability.js";
-import { prQualityDeclaration } from "../prQuality/capability.js";
+import { prDashboardDeclaration } from "../prDashboard/capability.js";
 import { inactivityDeclaration } from "../inactivity/capability.js";
 import {
     answering,
@@ -45,7 +45,7 @@ const REVISION = "sha256:abcdef012345";
 /** The declarations a proposed document is judged against: the real ones. */
 const KNOWN: readonly AdmittedCapability[] = [
     intakeDeclaration,
-    prQualityDeclaration,
+    prDashboardDeclaration,
     inactivityDeclaration,
     configReportDeclaration,
 ];
@@ -106,7 +106,7 @@ capabilities:
   intake:
     enabled: true
     announce: true
-  prQuality:
+  prDashboard:
     enabled: true
   inactivity:
     enabled: false
@@ -263,11 +263,23 @@ describe("configReport", () => {
                 "",
                 "- intake — on",
                 "  - announce: true",
+                "  - labels it may set",
+                "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 // `enabled: true` and nothing else, so every check is parked.
-                "- prQuality — on",
+                "- prDashboard — on",
                 "  - checks",
+                "    - dcoSignoff",
+                "      - enabled: false",
+                "    - gpgSignature",
+                "      - enabled: false",
+                "    - mergeConflicts",
+                "      - enabled: false",
                 "    - linkedIssues",
                 "      - enabled: false",
+                "  - applyLabels: none",
+                "  - labels it may set",
+                "    - status: needs revision — needsRevision; defined #d93f0b if the repository lacks it",
+                "    - status: needs review — needsReview; defined #5319e7 if the repository lacks it",
                 "",
                 "Switched off: inactivity.",
                 "",
@@ -275,6 +287,12 @@ describe("configReport", () => {
                 "",
                 "- labels",
                 "  - awaitingTriage: status: triage",
+                "  - ready: status: ready",
+                "  - inProgress: status: in progress",
+                "  - needsReview: status: needs review",
+                "  - needsRevision: status: needs revision",
+                "  - readyToMerge: status: ready to merge",
+                "  - blocked: status: blocked",
                 "",
                 "**Principals**",
                 "",
@@ -299,7 +317,16 @@ describe("configReport", () => {
                 "",
                 "- configReport — on, no settings",
                 "",
-                "**Mappings** — none.",
+                "**Mappings**",
+                "",
+                "- labels",
+                "  - awaitingTriage: status: triage",
+                "  - ready: status: ready",
+                "  - inProgress: status: in progress",
+                "  - needsReview: status: needs review",
+                "  - needsRevision: status: needs revision",
+                "  - readyToMerge: status: ready to merge",
+                "  - blocked: status: blocked",
                 "",
                 "Read on the default branch, this changes nothing until it merges.",
             ].join("\n"),
@@ -314,13 +341,13 @@ mode: active
 capabilities:
   configReport:
     enabled: true
-  prQuality:
+  prDashboard:
     enabled: false
   intake:
     enabled: false
 `);
 
-        expect(body).toContain("Switched off: prQuality, intake.");
+        expect(body).toContain("Switched off: prDashboard, intake.");
     });
 
     it("renders a rejected file as line, path and message in document order", async () => {
@@ -411,7 +438,9 @@ mappings:
             "- none — this file enables no capability",
         );
         expect(renderReport("sha256:absent", empty)).toContain("**Mode** — observe");
-        expect(renderReport("sha256:absent", empty)).toContain("**Mappings** — none.");
+        expect(renderReport("sha256:absent", empty)).toContain(
+            "  - awaitingTriage: status: triage",
+        );
     });
 
     /** The comment behind the mode ladder, with no exemption (`design.md`). */
@@ -633,6 +662,30 @@ mappings:
         ).toBe(true);
     });
 
+    /** A hand-built block: the labels a capability may set render on the default spelling when nothing is mapped (D204). */
+    it("names the labels a capability may set, at the default spelling when none is mapped", () => {
+        const body = renderConfiguration("sha256:labels", {
+            revision: "sha256:labels",
+            schemaVersion: 2,
+            mode: "active",
+            capabilities: {
+                intake: { enabled: true, settings: {}, labels: ["awaitingTriage"] },
+                configReport: { enabled: true, settings: {} },
+            },
+            mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
+            principals: {},
+        });
+
+        expect(body).toContain(
+            [
+                "- intake — on",
+                "  - labels it may set",
+                "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
+                "- configReport — on, no settings",
+            ].join("\n"),
+        );
+    });
+
     /** The narrow shape again, with the three lists the trigger implies filled in. */
     it("declares one event trigger, one resolver, one comment and no group", () => {
         expect(configReport.declaration).toEqual({
@@ -640,6 +693,7 @@ mappings:
             triggers: [{ kind: "event", event: "pull_request" }],
             settings: CONFIG_REPORT_SETTINGS,
             requiredMappings: {},
+            labels: [],
             facts: ["pullRequest"],
             needs: [],
             resolvers: ["configAtHead"],

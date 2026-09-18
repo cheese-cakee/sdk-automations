@@ -4,7 +4,7 @@
  * ledger is the adapter's, and `allowance.test.ts` holds GitHub's table to it.
  */
 
-import type { Allowance, Lane, Refusal, Spent } from "../../src/shell/allowance.js";
+import type { Allowance, Lane, Refusal, Spent } from "@hiero-hackers/automation-core";
 
 /** The fake, plus the three levers a case pulls: what it charged, what it refuses, and when. */
 export interface Spending extends Allowance {

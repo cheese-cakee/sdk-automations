@@ -4,12 +4,17 @@
  * reorder a field, or change what `parse` refuses (write-operations.md §5).
  */
 
-import type { Effect, IntentOperation, RepositoryConfig } from "@hiero-hackers/automation-core";
+import type {
+    Effect,
+    IntentOperation,
+    RepositoryConfig,
+    WriteResult,
+} from "@hiero-hackers/automation-core";
 import type { Call, JournaledCall, Plan } from "../../effects.js";
 import { applyMappedLabel } from "./applyMappedLabel.js";
 import { assign } from "./assign.js";
 import { closePullRequest } from "./closePullRequest.js";
-import type { Confirmation, OperationHandler, SendContext, WriteResult } from "./handler.js";
+import type { Confirmation, OperationHandler, SendContext } from "./handler.js";
 import { lockIssue } from "./lockIssue.js";
 import { postManagedComment } from "./postManagedComment.js";
 import { releaseAssignment } from "./releaseAssignment.js";

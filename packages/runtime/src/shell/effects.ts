@@ -63,6 +63,12 @@ export type Call =
           readonly kind: ManagedCommentKind;
           readonly body: string;
       }
+    | {
+          readonly verb: "defineLabel";
+          readonly label: string;
+          readonly color: string;
+          readonly description: string;
+      }
     | { readonly verb: "addLabel"; readonly label: string }
     | { readonly verb: "removeLabel"; readonly label: string }
     | { readonly verb: "assign"; readonly login: string }

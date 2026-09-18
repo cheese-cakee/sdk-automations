@@ -1,10 +1,11 @@
-/**
- * What a lane may still spend of GitHub's own limits, as the shell sees it: the adapter's ledger
- * restated, because only `compose/live.ts` may name it. `exhausted` names the lane at its cap (D192).
- */
+/** What a lane may still spend of GitHub's own limits, and what it has turned away (D192, D193). */
 
-export type Lane = "core" | "graphql" | "mutations";
+export type Pool = "core" | "graphql";
 
+/** A pool, or the mutation lane that rides on `core` and is armed per tick. */
+export type Lane = Pool | "mutations";
+
+/** What has been spent this window; `graphql` counts points and the rest requests. */
 export interface Spent {
     readonly core: number;
     readonly graphql: number;
@@ -19,17 +20,18 @@ export interface Refusal {
 
 /** One pool's share of GitHub's window, as this process has spent it (D193). */
 export interface PoolStanding {
-    readonly pool: "core" | "graphql";
+    readonly pool: Pool;
     readonly allowed: number;
     readonly spent: number;
     readonly resetAt: string | null;
 }
 
+/** What a lane has spent and what it still may; the client's ledger adds the writing half. */
 export interface Allowance {
     spent(): Spent;
+    /** The lane at its cap — core, then graphql, then mutations — or `null`. */
     exhausted(): Lane | null;
     refusals(): number;
-    /** The last request this allowance turned away, or `null`. */
     lastRefusal(): Refusal | null;
     standing(): readonly PoolStanding[];
     /** Open this tick's mutation lane at `calls`, spent from nothing. */

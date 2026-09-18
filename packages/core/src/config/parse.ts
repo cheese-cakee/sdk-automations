@@ -3,6 +3,7 @@
  * order below is what a maintainer reads their mistakes in, and tests freeze it.
  */
 
+import { DEFAULT_LABEL_MAPPINGS } from "./label-defaults.js";
 import type { SettingsView } from "./spec.js";
 import type { Mappings, ParseConfigOptions, RepositoryConfig } from "./schema.js";
 import { err, type Checked, type ConfigResult } from "./results.js";
@@ -38,7 +39,7 @@ export const NO_CONFIG: RepositoryConfig = {
     schemaVersion: 1,
     mode: "observe",
     capabilities: cleanRecord([]),
-    mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
+    mappings: { labels: { ...DEFAULT_LABEL_MAPPINGS }, commands: {}, skills: {}, alerts: {} },
     principals: cleanRecord([]),
 };
 

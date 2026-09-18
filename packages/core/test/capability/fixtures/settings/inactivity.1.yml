@@ -22,7 +22,7 @@ capabilities:
           enabled: true
           reap:
             enabled: true
-        needsRevision: # the label pr-quality's label mode applies for DCO, GPG, linked-issue and assignment failures
+        needsRevision: # the label pr-dashboard's label mode applies for DCO, GPG, linked-issue and assignment failures
           enabled: true
           remindAfter: 2d # reason override — quality failures reap fast
           reap:

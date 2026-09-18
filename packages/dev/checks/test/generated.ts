@@ -487,11 +487,14 @@ export function renderCapabilityTable(): readonly GeneratedBlock[] {
         );
         return names.length === 0 ? "nothing required" : names.join(", ");
     };
-    const writes = (intents: readonly string[]): string =>
+    const writes = (intents: readonly string[], labels: readonly string[]): string =>
         intents
             .map((intent) => {
                 if (!isOperation(intent)) throw new Error(`${intent} is not an operation`);
-                return WRITES[intent];
+                // The meanings a label write may set, since "your mapped labels" names none (D204).
+                return intent === "applyMappedLabel"
+                    ? `the ${codeList(labels)} ${labels.length === 1 ? "label" : "labels"}, at your spelling or the default`
+                    : WRITES[intent];
             })
             .join("; ");
     // The spec IS the settings schema, so its keys are the legal names (C1).
@@ -518,7 +521,7 @@ export function renderCapabilityTable(): readonly GeneratedBlock[] {
                     capability.triggers.map(wakes).join(", "),
                     mapped(capability.requiredMappings),
                     settingsKeys(capability.settings),
-                    writes(capability.intents),
+                    writes(capability.intents, capability.labels),
                     `[design page](../${capability.folder}/design.md)`,
                 ]),
             ),

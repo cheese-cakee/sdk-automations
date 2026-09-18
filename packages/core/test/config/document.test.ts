@@ -174,27 +174,23 @@ describe("a rejection with a path carries the line that path sits on", () => {
      * document does NOT contain, so it is the nearest-ancestor rule's only
      * document-reachable demonstration: the deepest node the walk reaches.
      */
-    const NEEDS_AWAITING_TRIAGE = `schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: true\n`;
+    const NEEDS_WORKING = `schemaVersion: 1\ncapabilities:\n  tracker:\n    enabled: true\n`;
 
-    it("a required mapping lands on labels: when the family is there", () => {
-        const [error] = errorsOf(
-            `${NEEDS_AWAITING_TRIAGE}mappings:\n  labels:\n    ready: "status: ready"\n`,
-        );
-        expect(error?.path).toBe("mappings.labels.awaitingTriage");
+    it("a required mapping lands on commands: when the family is there", () => {
+        const [error] = errorsOf(`${NEEDS_WORKING}mappings:\n  commands:\n    assign: "/assign"\n`);
+        expect(error?.path).toBe("mappings.commands.working");
         expect(error?.line).toBe(6);
     });
 
-    it("a required mapping lands on mappings: when there is no labels:", () => {
-        const [error] = errorsOf(
-            `${NEEDS_AWAITING_TRIAGE}mappings:\n  alerts:\n    critical: "P0"\n`,
-        );
-        expect(error?.path).toBe("mappings.labels.awaitingTriage");
+    it("a required mapping lands on mappings: when there is no commands:", () => {
+        const [error] = errorsOf(`${NEEDS_WORKING}mappings:\n  alerts:\n    critical: "P0"\n`);
+        expect(error?.path).toBe("mappings.commands.working");
         expect(error?.line).toBe(5);
     });
 
     it("a required mapping has no line at all when there is no mappings:", () => {
-        const [error] = errorsOf(NEEDS_AWAITING_TRIAGE);
-        expect(error?.path).toBe("mappings.labels.awaitingTriage");
+        const [error] = errorsOf(NEEDS_WORKING);
+        expect(error?.path).toBe("mappings.commands.working");
         expect(error?.line).toBeUndefined();
     });
 

@@ -1,11 +1,7 @@
 /** The close-pull-request operation's transport: one endpoint on the pull surface, one verb. */
 
-import {
-    pullPath,
-    type OperationTransport,
-    type VerbContext,
-    type WriteVerbs,
-} from "./transport.js";
+import type { WriteVerbs } from "@hiero-hackers/automation-core";
+import { pullPath, type OperationTransport, type VerbContext } from "./transport.js";
 
 export const CLOSE_PULL_REQUEST = {
     verbs: (context: VerbContext): Pick<WriteVerbs, "closePullRequest"> => ({

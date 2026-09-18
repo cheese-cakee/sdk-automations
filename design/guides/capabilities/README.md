@@ -8,7 +8,7 @@ the other one (D131).
 | Capability | Design |
 |---|---|
 | `intake` | `packages/capabilities/src/intake/design.md` |
-| `prQuality` | `packages/capabilities/src/prQuality/design.md` |
+| `prDashboard` | `packages/capabilities/src/prDashboard/design.md` |
 | `inactivity` | `packages/capabilities/src/inactivity/design.md` |
 | `configReport` | `packages/capabilities/src/configReport/design.md` |
 | `advancement` | [`advancement.md`](advancement.md) — no folder yet |

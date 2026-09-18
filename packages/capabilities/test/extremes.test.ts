@@ -577,7 +577,7 @@ describe("exemptBlocked: false with blocked mapped", () => {
 });
 
 /**
- * Two capabilities on one pull request, in one sweep: `prQuality`'s standing
+ * Two capabilities on one pull request, in one sweep: `prDashboard`'s standing
  * summary and `inactivity`'s warning. Two managed comments, and the identity
  * that keeps them apart is the capability plus the purpose — never the
  * occasion — so neither rewrites the other (D125, D145).
@@ -605,13 +605,13 @@ describe("two capabilities on one item", () => {
 
     it("posts two comments with two identities and two markers", async () => {
         // Both blocks stated, because both capabilities are opt-in one level
-        // below their own `enabled`: prQuality's check and inactivity's reason.
+        // below their own `enabled`: prDashboard's check and inactivity's reason.
         const decision = await decideOn(
             configEnabling(
-                ["prQuality", "inactivity"],
+                ["prDashboard", "inactivity"],
                 DECLARATIONS,
                 {
-                    prQuality: { checks: { linkedIssues: { enabled: true } } },
+                    prDashboard: { checks: { linkedIssues: { enabled: true } } },
                     inactivity: {
                         pullRequests: {
                             enabled: true,
@@ -636,7 +636,7 @@ describe("two capabilities on one item", () => {
                 topic: effect.managedComment?.identity.topic,
             })),
         ).toEqual([
-            { capability: "prQuality", kind: "summary", topic: "" },
+            { capability: "prDashboard", kind: "summary", topic: "" },
             // The reason is the discriminator on a pull request, the assignee
             // on an issue: one warning per act, never one per item.
             { capability: "inactivity", kind: "warning", topic: "needsRevision" },

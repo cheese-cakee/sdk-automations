@@ -6,7 +6,15 @@
  * and search reads were never measured, and search indexing is known to lag.
  */
 
-import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
+import type {
+    CommentFact,
+    ItemFacts,
+    ItemRef,
+    Presence,
+    ReadBack,
+    ReadBackOutcome,
+    RepositoryRef,
+} from "@hiero-hackers/automation-core";
 import type { Allowance } from "../client/allowance.js";
 import {
     advertisesNextPage,
@@ -35,7 +43,7 @@ const READ_BACK_PAGE_SIZE = 100;
  */
 const MAX_READ_BACK_PAGES = 5;
 
-// ─── What a read-back answers ────────────────────────────────────────
+// ─── What a read-back is built from ──────────────────────────────────
 
 /**
  * Who this process is on GitHub, so it can recognise its own writing. Injected.
@@ -44,51 +52,6 @@ const MAX_READ_BACK_PAGES = 5;
 export interface AppIdentity {
     readonly appId: string;
     readonly botLogin: string;
-}
-
-/** One comment, as the marker matcher needs it. */
-export interface CommentFact {
-    readonly id: number;
-    readonly body: string;
-    readonly authoredByApp: boolean;
-}
-
-/**
- * The item itself, as an apply-time re-gate reads it.
- * `merged` is not inferred from `closed` (D47); it and `draft` are `false` for an issue.
- */
-export interface ItemFacts {
-    readonly labels: readonly string[];
-    readonly closed: boolean;
-    readonly merged: boolean;
-    readonly draft: boolean;
-}
-
-/** A read that answered, or the reason it established nothing. */
-export type ReadBackOutcome<T> =
-    { readonly ok: true; readonly value: T } | { readonly ok: false; readonly detail: string };
-
-/** D46's three answers; `unknown` is not a soft "absent". */
-export type Presence = "present" | "absent" | "unknown";
-
-/** The four resources stage C reads, raw or as a presence. */
-export interface ReadBack {
-    comments(item: ItemRef): Promise<ReadBackOutcome<readonly CommentFact[]>>;
-    labels(item: ItemRef): Promise<ReadBackOutcome<readonly string[]>>;
-    /** The item's own current facts — one read, no presence rule involved. */
-    item(item: ItemRef): Promise<ReadBackOutcome<ItemFacts>>;
-    /** Its own read because it is its own call: the reviews list, not the item's body. */
-    changesRequested(item: ItemRef): Promise<ReadBackOutcome<boolean>>;
-    pullRequestActivity(
-        item: ItemRef,
-        working: string | undefined,
-    ): Promise<ReadBackOutcome<Date | null>>;
-    /** The logins on the item now; one read, because a released login cannot come back stale. */
-    assignees(item: ItemRef): Promise<ReadBackOutcome<readonly string[]>>;
-    /** Is a comment matching `matches` there? Absence obeys the gap above. */
-    commentPresence(item: ItemRef, matches: (comment: CommentFact) => boolean): Promise<Presence>;
-    /** Is this exact label name there? Absence obeys the gap above. */
-    labelPresence(item: ItemRef, label: string): Promise<Presence>;
 }
 
 /**
@@ -318,6 +281,16 @@ export function createReadBack({
             ? await readChangesRequested(reads, item.number)
             : { ok: true, value: false };
 
+    /** The repository's own label list is read one name at a time: the answer is the status. */
+    const labelDefined = async (label: string): Promise<Presence> => {
+        const outcome = await http.request({
+            url: `${repoPath(repository)}/labels/${encodeURIComponent(label)}`,
+            method: "GET",
+        });
+        if (outcome.ok) return "present";
+        return outcome.failure.kind === "notFoundOrNotInstalled" ? "absent" : "unknown";
+    };
+
     return {
         comments,
         labels,
@@ -338,5 +311,6 @@ export function createReadBack({
                 () => labels(item),
                 (name) => name === label,
             ),
+        labelDefined,
     };
 }

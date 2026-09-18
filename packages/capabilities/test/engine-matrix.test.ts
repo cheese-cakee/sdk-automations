@@ -119,6 +119,8 @@ const externals: Externals = {
         // `touched` on it — a capability reading a nonsense answer is not the
         // isolation this matrix measures.
         if (query === "linkedIssues") return { ok: true, value: [] } as never;
+        if (query === "commitAttestations") return { ok: true, value: [] } as never;
+        if (query === "assigneesOf") return { ok: true, value: [] } as never;
         if (query === "configAtHead") return { ok: true, value: { touched: false } } as never;
         return { ok: true, value: false } as never;
     },
@@ -187,7 +189,7 @@ describe("P3 through the engine", () => {
     it("the matrix is not vacuous: alone-runs do real, distinguishable work", async () => {
         const intakeAlone = sliceFor(await runAll(["intake"]), "intake");
         expect(intakeAlone.approved.length).toBeGreaterThan(0);
-        const prAlone = sliceFor(await runAll(["prQuality"]), "prQuality");
+        const prAlone = sliceFor(await runAll(["prDashboard"]), "prDashboard");
         expect(prAlone.approved.length).toBeGreaterThan(0);
         /**
          * Both halves of facts.md §4 in one list, in record order: the two
@@ -211,13 +213,13 @@ describe("P3 through the engine", () => {
 });
 
 /**
- * The cross-layer half of prQuality's conflict claim. The capability reads no
+ * The cross-layer half of prDashboard's conflict claim. The capability reads no
  * position, so nothing in its `capability.ts` stops a conflicted pull request — and
  * for a month its docstring said one "still gets its comment". The engine is
  * where that is settled: `deriveWorld` establishes no precondition from a
  * conflicted projection, so the preflight refuses before any rule runs.
  */
-describe("prQuality on a conflicted pull request", () => {
+describe("prDashboard on a conflicted pull request", () => {
     const conflicted = webhookPullRequest({
         position: {
             kind: "conflict",
@@ -231,7 +233,7 @@ describe("prQuality on a conflicted pull request", () => {
     it("refuses preconditionStale and approves nothing", async () => {
         const decision = await decide(
             { kind: "facts", facts: conflicted },
-            configEnabling(["prQuality"], DECLARATIONS, SETTINGS, MAPPINGS),
+            configEnabling(["prDashboard"], DECLARATIONS, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -256,7 +258,7 @@ describe("prQuality on a conflicted pull request", () => {
         });
         const decision = await decide(
             { kind: "facts", facts: merged },
-            configEnabling(["prQuality"], DECLARATIONS, SETTINGS, MAPPINGS),
+            configEnabling(["prDashboard"], DECLARATIONS, SETTINGS, MAPPINGS),
             ALL,
             externals,
         );
@@ -282,7 +284,7 @@ describe("managed-comment identity is minted by the platform", () => {
         const comments = await approvedComments();
         /**
          * Record order, and a capability sees every record of a kind it
-         * declared: intake and prQuality read the sweep-shaped pair too, since
+         * declared: intake and prDashboard read the sweep-shaped pair too, since
          * a sweep reads a superset of what a webhook does (intake's `announce`
          * is a flag, and the fullest document throws it).
          */
@@ -296,12 +298,12 @@ describe("managed-comment identity is minted by the platform", () => {
             "one row per managed comment the four fixture records earn, in record then registry order — a new capability that posts one adds its rows here by hand",
         ).toEqual([
             { capability: "intake", item: 11, kind: "notice", topic: "" },
-            { capability: "prQuality", item: 12, kind: "summary", topic: "" },
+            { capability: "prDashboard", item: 12, kind: "summary", topic: "" },
             { capability: "intake", item: 13, kind: "notice", topic: "" },
             // `inactivity` is the one design that needs the discriminator: the
             // warning is about ONE assignee's clock (D145).
             { capability: "inactivity", item: 13, kind: "warning", topic: "contributor" },
-            { capability: "prQuality", item: 14, kind: "summary", topic: "" },
+            { capability: "prDashboard", item: 14, kind: "summary", topic: "" },
             // The same discriminator on a pull request is the REASON, so a
             // pull request re-warned under another one gets its own comment.
             { capability: "inactivity", item: 14, kind: "warning", topic: "draft" },

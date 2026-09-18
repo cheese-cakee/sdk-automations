@@ -9,15 +9,28 @@
                 "announce": true
             }
         },
-        "prQuality": {
+        "prDashboard": {
             "enabled": true,
             "settings": {
                 "checks": {
+                    "dcoSignoff": {
+                        "enabled": false
+                    },
+                    "gpgSignature": {
+                        "enabled": false
+                    },
+                    "mergeConflicts": {
+                        "enabled": false
+                    },
                     "linkedIssues": {
                         "enabled": true,
-                        "guide": null
+                        "guide": null,
+                        "assignedIssues": {
+                            "enabled": false
+                        }
                     }
-                }
+                },
+                "applyLabels": []
             }
         },
         "inactivity": {
@@ -75,7 +88,7 @@
     "mappings": {
         "labels": {
             "awaitingTriage": "status: triage",
-            "ready": "status: ready for dev",
+            "ready": "status: ready",
             "inProgress": "status: in progress",
             "needsReview": "status: needs review",
             "needsRevision": "status: needs revision",

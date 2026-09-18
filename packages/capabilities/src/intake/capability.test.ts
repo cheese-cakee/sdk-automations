@@ -123,7 +123,8 @@ describe("intake", () => {
     });
 
     /** D84: the meaning intake requires is the parser's business, never a delivery's. */
-    it("will not triage a repository that has not mapped awaitingTriage", () => {
+    /** D203: a file that never maps `awaitingTriage` triages on the default spelling. */
+    it("triages a repository that never mapped awaitingTriage, on its default spelling", () => {
         const file = (labels: Readonly<Record<string, string>>) =>
             parseConfig(
                 {
@@ -134,13 +135,14 @@ describe("intake", () => {
                 { revision: "rev-1", knownCapabilities: [intakeDeclaration] },
             );
 
-        const refused = file({ ready: "status: ready for dev" });
-        expect(refused.ok ? [] : refused.errors.map(({ code, path }) => ({ code, path }))).toEqual([
-            { code: "meaningRequired", path: "mappings.labels.awaitingTriage" },
-        ]);
-
-        // The same file with the meaning mapped: the refusal was the mapping.
-        expect(file({ awaitingTriage: "status: triage" }).ok).toBe(true);
+        const defaulted = file({ ready: "status: ready for dev" });
+        expect(defaulted.ok ? defaulted.config.mappings.labels.awaitingTriage : null).toBe(
+            "status: triage",
+        );
+        const spelled = file({ awaitingTriage: "triage: new" });
+        expect(spelled.ok ? spelled.config.mappings.labels.awaitingTriage : null).toBe(
+            "triage: new",
+        );
     });
 
     it("leaves an issue that already holds a position, silently", async () => {

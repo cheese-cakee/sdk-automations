@@ -47,6 +47,7 @@ export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 export interface CapabilityConfig {
     readonly enabled: boolean;
     readonly settings: Readonly<Record<string, unknown>>;
+    readonly labels?: readonly MappableMeaning[];
 }
 
 /** Each meaning → this repository's spelling. First three families CLOSED, `alerts` OPEN. */
@@ -114,6 +115,7 @@ export interface AdmittedCapability {
     readonly settings: Spec;
     /** What must be mapped for this to be enabled (D84). */
     readonly requiredMappings: RequiredMappings;
+    readonly labels?: readonly MappableMeaning[];
 }
 
 /** `knownCapabilities` is required: omitting it would silently skip the unknown check (D58). */

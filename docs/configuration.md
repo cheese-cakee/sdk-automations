@@ -107,7 +107,7 @@ shipped default. See [Troubleshooting](troubleshooting.md#it-never-got-as-far-as
 | Required | no |
 | Default | `{}` — nothing enabled |
 
-Keys are capability names in camelCase (`intake`, `prQuality`). Every name must belong to the
+Keys are capability names in camelCase (`intake`, `prDashboard`). Every name must belong to the
 application's directly admitted capability list, whether `enabled` is `true` or `false`. Unknown
 names fail closed instead of being retained as compatibility entries.
 
@@ -161,7 +161,7 @@ about zero, zero is simply the number.
 **The label vocabulary is the only channel there is.** Capabilities cannot read each other's blocks,
 call each other, or run in an order you choose — that isolation is deliberate, and it is what lets
 you enable one without reasoning about the rest. What one capability *writes* another can *read*,
-because both speak the same meanings: `prQuality` applies your `needsRevision` label to a pull
+because both speak the same meanings: `prDashboard` applies your `needsRevision` label to a pull
 request that is failing its checks, and `inactivity`'s `reapWhen.needsRevision` is a clock that runs
 on pull requests carrying it. Wire that up by mapping the meaning once under `mappings.labels` and
 naming it in both blocks. Everything else — settings, timing, comments — stays isolated by design,
@@ -173,7 +173,7 @@ so if you are looking for a way to make one capability wait for another, there i
 |---|---|
 | Type | mapping with up to four keys: `labels`, `commands`, `skills`, `alerts` |
 | Required | no |
-| Default | `{}` — no meanings available |
+| Default | every label meaning at its default spelling (the table under [Label mappings](#label-mappings)); no commands, skills or alerts |
 
 See [Label mappings](#label-mappings) below, then [Command mappings](#command-mappings),
 [Skill mappings](#skill-mappings) and [Alerts](#alerts).
@@ -195,43 +195,55 @@ you wrote.
 ## Label mappings
 
 **Why this exists.** The App thinks in fixed meanings: `needsReview` is the same idea in every
-repository. Your repository has its own words for it — `status: needs review`, `S-review`, `awaiting
-review`. This mapping is the translation between the two, and it runs in one direction only: a
-capability asks for a *meaning*, and the App looks up *your* label.
+repository. Each meaning has a default spelling, and a repository that maps nothing uses those. Your
+repository may have its own words for it — `S-review`, `awaiting review` — and this mapping is the
+translation, one meaning at a time, in one direction only: a capability asks for a *meaning*, and the
+App looks up *your* label.
 
 Two consequences worth knowing:
 
-- **The App can only touch labels you list here.** A label you have not mapped is invisible to it. This
-  is the main lever you have over its blast radius, and it is why the mapping is explicit rather than
-  guessed from your label names.
+- **The App touches only the labels of the meanings the capabilities you enable ask for**, under the
+  spelling in force — yours where you mapped one, the default otherwise. Enable nothing and it writes
+  no labels at all.
 - **Renaming a label is a one-line change here**, not a change to any capability.
 
-### Do I have to map all of them?
+### Do I have to map at all?
 
-No. **It depends on which capabilities you enable** — each one uses only the meanings it needs.
+No. Map a meaning only when you want your own spelling for it. A spelling you give one meaning that
+is another unmapped meaning's default is refused, so two meanings never share a label.
 
-You are told in this file, not later in a report. Every capability declares the meanings it requires, and
-enabling one whose meaning you have not mapped is a `meaningRequired` error naming the capability, the
-meaning, and the line to add. A capability you leave disabled requires nothing.
+The other families have no defaults: enabling a capability whose command, skill or alert you have not
+mapped is a `meaningRequired` error naming the capability, the meaning, and the line to add. A
+capability you leave disabled requires nothing.
 
-Capabilities still skip themselves at report time when a meaning is missing, but that path is now only
-reachable for a configuration the parser never saw — it is a safety net, not the thing you find out from.
+### Which labels will it use?
 
-Map nothing, enable nothing, and the App writes no labels at all — which is a legitimate way to run it.
+The report the App posts on a pull request that edits this file lists, under each enabled
+capability, the labels it may set at the spelling in force, and the colour each would be defined
+with if the repository lacks it. That is the moment to map your own name instead. There is no global
+"no labels" switch: a capability whose whole act is a label is switched off by disabling it, and one
+where the label is one act among several lists the positions it may set, like prDashboard's
+`applyLabels`, which left empty labels nothing.
 
-| Meaning | Typical use |
-|---|---|
-| `awaitingTriage` | New, nobody has looked yet |
-| `ready` | Triaged and available to pick up |
-| `inProgress` | Someone is on it |
-| `needsReview` | Waiting on a reviewer |
-| `needsRevision` | Reviewer sent it back |
-| `readyToMerge` | Approved, awaiting merge |
-| `blocked` | Paused by a human — the App reads this and never sets it |
+| Meaning | Typical use | Default spelling | Defined as, when the repository lacks it |
+|---|---|---|---|
+| `awaitingTriage` | New, nobody has looked yet | `status: triage` | `#fbca04` New; waiting for a maintainer to triage |
+| `ready` | Triaged and available to pick up | `status: ready` | `#0e8a16` Triaged and ready to be picked up |
+| `inProgress` | Someone is on it | `status: in progress` | `#1d76db` Someone is working on it |
+| `needsReview` | Waiting on a reviewer | `status: needs review` | `#5319e7` Waiting for a maintainer's review |
+| `needsRevision` | Reviewer sent it back | `status: needs revision` | `#d93f0b` Changes are needed before review |
+| `readyToMerge` | Approved, awaiting merge | `status: ready to merge` | `#006b75` Approved and waiting to merge |
+| `blocked` | Paused by a human — the App reads this and never sets it | `status: blocked` | `#b60205` Paused by a person; every clock waits |
 
 Rules: a label must be a non-empty string, and no two meanings may share one. The duplicate check
 ignores case and surrounding spaces, but the label is otherwise used **exactly as written** — it has
 to match your real GitHub label character for character.
+
+### Do I have to create the labels?
+
+No. A label the repository lacks, default or mapped, is defined by the App the first time it needs
+it, with the colour and description in the table above. A label you created is used exactly as it
+is — its colour, its description — and is never edited. Create your own when you want your own look.
 
 ## Command mappings
 
@@ -320,7 +332,7 @@ The exact codes the App reports, and what to fix.
 | `unknownKey` | A key the schema does not have — usually a typo. Includes a setting name the capability never declared |
 | `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `1` or `2` — omit the key and it is `1` |
 | `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
-| `capabilityNameInvalid` | Capability names are camelCase, like `prQuality` |
+| `capabilityNameInvalid` | Capability names are camelCase, like `prDashboard` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |
 | `capabilityUnknown` | The capability is not available in this application; remove its block or run an application that ships it |
 | `settingInvalid` | A value in a capability's block is not what that setting takes — the message names the path and what it must be |

@@ -124,16 +124,27 @@ function releasedByApp(login: unknown, at: Date, landed: readonly LandedWrite[])
     });
 }
 
+/** A commit's own date: GitHub's `committed` entry names a committer and no actor. */
+function committedAt(entry: unknown): Date | "unparsable" {
+    const date = field(field(entry, "committer"), "date");
+    if (typeof date !== "string") return "unparsable";
+    const at = new Date(date);
+    return Number.isFinite(at.getTime()) ? at : "unparsable";
+}
+
 /** A `Date`; `null` for an entry that does not count; `"unparsable"` for one that cannot be trusted. */
 function humanChangeAt(entry: unknown, landed: readonly LandedWrite[]): Date | null | "unparsable" {
     const kind = field(entry, "event");
     // Stryker disable next-line ConditionalExpression: Set.has answers false for any non-string already; the typeof arm is for readers.
     if (typeof kind !== "string" || !HUMAN_CHANGE_EVENTS.has(kind)) return null;
-    const actor = field(entry, "actor");
+    if (kind === "committed") return committedAt(entry);
+    // A review is the one entry GitHub spells with `user` and `submitted_at` (D201).
+    const reviewed = kind === "reviewed";
+    const actor = field(entry, reviewed ? "user" : "actor");
     const actorType = field(actor, "type");
     if (actorType === "Bot") return null;
     if (actorType !== "User") return "unparsable";
-    const createdAt = field(entry, "created_at");
+    const createdAt = field(entry, reviewed ? "submitted_at" : "created_at");
     if (typeof createdAt !== "string") return "unparsable";
     const at = new Date(createdAt);
     if (!Number.isFinite(at.getTime())) return "unparsable";

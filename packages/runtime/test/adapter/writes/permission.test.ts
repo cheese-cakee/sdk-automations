@@ -11,6 +11,8 @@ import {
     type IntentOperation,
     type ItemRef,
     type PermissionGrant,
+    type WriteResult,
+    type WriteVerbs,
 } from "@hiero-hackers/automation-core";
 import { describe, expect, it } from "vitest";
 import type { GitHubWriteRequest } from "../../../src/adapter/client/contract.js";
@@ -20,11 +22,7 @@ import {
     type WriteEndpoint,
 } from "../../../src/adapter/client/endpoints.js";
 import { TRANSPORTS, writeVerbsOf } from "../../../src/adapter/writes/operations/index.js";
-import type {
-    VerbContext,
-    WriteResult,
-    WriteVerbs,
-} from "../../../src/adapter/writes/operations/transport.js";
+import type { VerbContext } from "../../../src/adapter/writes/operations/transport.js";
 import { TEST_ITEM as ITEM, TEST_REPOSITORY as REPOSITORY } from "../harness.js";
 
 /** The close names the pull surface, whose grant is not the issue surface's. */
@@ -32,6 +30,7 @@ const PULL: ItemRef = { kind: "pullRequest", number: 205 };
 
 /** One call per verb; the arguments are not the subject, the endpoint reached is. */
 const CALLS: { readonly [K in keyof WriteVerbs]: (verbs: WriteVerbs) => Promise<WriteResult> } = {
+    createLabel: (verbs) => verbs.createLabel("status: stale", "5319e7", "waiting"),
     addLabel: (verbs) => verbs.addLabel(ITEM, "status: stale"),
     removeLabel: (verbs) => verbs.removeLabel(ITEM, "status: stale"),
     createComment: (verbs) => verbs.createComment(ITEM, "hello"),

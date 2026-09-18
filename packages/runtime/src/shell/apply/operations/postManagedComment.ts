@@ -3,14 +3,14 @@
  * and D12's create-or-update at the send. The only operation that reads before it writes.
  */
 
-import { MANAGED_COMMENT_KINDS, type ManagedCommentKind } from "@hiero-hackers/automation-core";
-import { renderManagedBody } from "../../effects.js";
 import {
-    type CommentSeen,
-    type OperationHandler,
-    type ReadAnswer,
-    type SendContext,
-} from "./handler.js";
+    MANAGED_COMMENT_KINDS,
+    type CommentFact,
+    type ManagedCommentKind,
+    type ReadBackOutcome,
+} from "@hiero-hackers/automation-core";
+import { renderManagedBody } from "../../effects.js";
+import { type OperationHandler, type SendContext } from "./handler.js";
 import { text } from "./row.js";
 
 const isManagedCommentKind = (value: string): value is ManagedCommentKind =>
@@ -23,7 +23,7 @@ const isManagedCommentKind = (value: string): value is ManagedCommentKind =>
 const matchedComment = async (
     pass: SendContext,
     body: string,
-): Promise<ReadAnswer<CommentSeen | null>> => {
+): Promise<ReadBackOutcome<CommentFact | null>> => {
     const mine = pass.isMine(body);
     const listed = await pass.reader.comments(pass.item);
     if (!listed.ok) return { ok: false, detail: `the comment read-back failed: ${listed.detail}` };

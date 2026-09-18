@@ -4,18 +4,18 @@
  * nothing is closed that was not read back. It knows no verb and no gate.
  */
 
-import { matchesManagedComment, parseManagedMarker } from "@hiero-hackers/automation-core";
+import {
+    matchesManagedComment,
+    parseManagedMarker,
+    type CommentFact,
+    type ReadBack as ReadBackSeam,
+    type WriteResult,
+    type WriteVerbs,
+} from "@hiero-hackers/automation-core";
 import type { FactKind, Ledger, StoredWarning } from "../../store/index.js";
 import type { Pass, PassResult } from "./actions.js";
 import type { Call, EffectOutcomeCode, EffectOutcomeName } from "../effects.js";
-import type {
-    CommentSeen,
-    Confirmation,
-    EffectReader,
-    EffectWriter,
-    SendContext,
-    WriteResult,
-} from "./operations/handler.js";
+import type { Confirmation, SendContext } from "./operations/handler.js";
 import { confirmCall, sendCall as sendByHandler, serializeCall } from "./operations/index.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -48,10 +48,10 @@ const loginOf = (call: Call): string | null => ("login" in call ? call.login : n
  * Is this comment the one the call about to be sent would BE? Authorship and identity (D125).
  * The identity comes from the call's own rendered body, which is all a resend has, so a recovery pass and a fresh one ask exactly the same question (D145).
  */
-const isMine = (body: string): ((comment: CommentSeen) => boolean) => {
+const isMine = (body: string): ((comment: CommentFact) => boolean) => {
     const published = parseManagedMarker(body);
     const mine = "recognized" in published ? published.recognized : null;
-    return (comment: CommentSeen): boolean =>
+    return (comment: CommentFact): boolean =>
         mine !== null &&
         matchesManagedComment({ body: comment.body, authoredByApp: comment.authoredByApp }, mine)
             .matches;
@@ -60,8 +60,8 @@ const isMine = (body: string): ((comment: CommentSeen) => boolean) => {
 export interface CallOptions {
     /** The facts a send is recorded in, and the warning a landed comment promises (D164). */
     readonly ledger: Ledger;
-    readonly writer: EffectWriter;
-    readonly reader: EffectReader;
+    readonly writer: WriteVerbs;
+    readonly reader: ReadBackSeam;
     readonly clock: () => Date;
 }
 

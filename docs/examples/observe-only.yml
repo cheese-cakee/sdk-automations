@@ -16,12 +16,8 @@ capabilities:
     announce: false
 
 mappings:
-  labels:
-    awaitingTriage: "status: triage"
+  labels: # every other meaning keeps its default spelling; this one is spelled the repository's way
     ready: "status: ready for dev"
-    inProgress: "status: in progress"
-    needsReview: "status: needs review"
-    blocked: "status: blocked"
 
 principals:
   maintainerTeam: hiero-sdk-js-maintainers

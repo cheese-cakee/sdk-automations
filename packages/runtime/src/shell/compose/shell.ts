@@ -9,17 +9,14 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import {
     validateCapabilityDeclarations,
+    type Allowance,
     type EngineCapability,
+    type ReadBack,
     type RepositoryRef,
+    type WriteVerbs,
 } from "@hiero-hackers/automation-core";
 import type { Store } from "../../store/index.js";
-import {
-    createApplier,
-    type Applier,
-    type EffectExternalsSource,
-    type EffectReader,
-    type EffectWriter,
-} from "../apply/apply.js";
+import { createApplier, type Applier, type EffectExternalsSource } from "../apply/apply.js";
 import type { ConfigSource } from "../decide/config.js";
 import { createItemDecider, type DecideItem } from "../decide/item.js";
 import type { ExternalsForDelivery } from "../decide/externals.js";
@@ -27,7 +24,6 @@ import { createDeliveries } from "../inbound/deliveries.js";
 import { createReceiver } from "../inbound/receiver.js";
 import { createJobs } from "../jobs/jobs.js";
 import { contained, createLogger, detailOf, type Log } from "../log.js";
-import type { Allowance } from "../allowance.js";
 import {
     DEFAULT_SWEEP_CADENCE_MS,
     SNAPSHOT_MAX_AGE_MS,
@@ -47,8 +43,8 @@ const HEADERS_TIMEOUT_MS = 10_000;
 
 /** The three seams `createApplier` cannot build for itself, per repository. */
 export interface WritePath {
-    readonly writer: EffectWriter;
-    readonly reader: EffectReader;
+    readonly writer: WriteVerbs;
+    readonly reader: ReadBack;
     readonly externals: EffectExternalsSource;
 }
 

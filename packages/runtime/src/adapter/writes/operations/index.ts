@@ -3,14 +3,14 @@
  * `TRANSPORTS` is the only place the operations are listed.
  */
 
-import type { IntentOperation } from "@hiero-hackers/automation-core";
+import type { IntentOperation, WriteVerbs } from "@hiero-hackers/automation-core";
 import { APPLY_MAPPED_LABEL } from "./applyMappedLabel.js";
 import { ASSIGN } from "./assign.js";
 import { CLOSE_PULL_REQUEST } from "./closePullRequest.js";
 import { LOCK_ISSUE } from "./lockIssue.js";
 import { POST_MANAGED_COMMENT } from "./postManagedComment.js";
 import { RELEASE_ASSIGNMENT } from "./releaseAssignment.js";
-import type { OperationTransport, VerbContext, WriteVerbs } from "./transport.js";
+import type { OperationTransport, VerbContext } from "./transport.js";
 import { UNASSIGN } from "./unassign.js";
 import { UNLOCK_ISSUE } from "./unlockIssue.js";
 

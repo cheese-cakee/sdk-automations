@@ -21,27 +21,25 @@ import {
     managedCommentOf,
     parseConfigDocument,
     writeRequestFor,
+    type Allowance,
     type ClaimedFacts,
+    type CommentFact,
     type Effect,
     type Intent,
+    type ItemFacts,
     type ItemRef,
     type MappableMeaning,
     type ManagedCommentKind,
+    type Presence,
+    type ReadBack,
+    type ReadBackOutcome,
     type RepositoryConfig,
     type RepositoryMode,
+    type WriteResult,
+    type WriteVerbs,
 } from "@hiero-hackers/automation-core";
 import { intakeDeclaration } from "@hiero-hackers/automation-capabilities";
 import { expect } from "vitest";
-import type {
-    CommentSeen,
-    EffectReader,
-    EffectWriter,
-    ItemSeen,
-    ReadAnswer,
-    SeenState,
-    WriteResult,
-} from "../../../src/shell/apply/operations/handler.js";
-import type { Allowance } from "../../../src/shell/allowance.js";
 import type { Spending } from "../spending.js";
 
 // ─── The repository under test ───────────────────────────────────────
@@ -369,7 +367,9 @@ export function markerOf(effect: Effect): string {
 /** One item, as this fake holds it. */
 export interface FakeWorld {
     labels: string[];
-    comments: CommentSeen[];
+    /** The repository's own label list; `null` means every name is defined, the common case. */
+    definedLabels: string[] | null;
+    comments: CommentFact[];
     /** The logins on the item, which a release takes one name off. */
     assignees: string[];
     closed: boolean;
@@ -400,27 +400,27 @@ export interface Faults {
     /** The assignee read refuses — the release's whole read-back. */
     assigneeReadFails: boolean;
     /** Every presence question answers this instead of consulting the world. */
-    presence: SeenState | null;
+    presence: Presence | null;
 }
 
 export interface FakeGitHub {
     readonly world: FakeWorld;
-    readonly writer: EffectWriter;
-    readonly reader: EffectReader;
+    readonly writer: WriteVerbs;
+    readonly reader: ReadBack;
     /** Every write attempted, in order, as `verb argument`. */
     readonly calls: string[];
     readonly faults: Faults;
 }
 
 /** A comment this fake believes the App wrote. */
-export const appComment = (id: number, body: string): CommentSeen => ({
+export const appComment = (id: number, body: string): CommentFact => ({
     id,
     body,
     authoredByApp: true,
 });
 
 /** A comment carrying a copied marker under a person's name (D125's attack). */
-export const copiedComment = (id: number, body: string): CommentSeen => ({
+export const copiedComment = (id: number, body: string): CommentFact => ({
     id,
     body,
     authoredByApp: false,
@@ -429,6 +429,7 @@ export const copiedComment = (id: number, body: string): CommentSeen => ({
 export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
     const world: FakeWorld = {
         labels: [...(initial.labels ?? [])],
+        definedLabels: Array.isArray(initial.definedLabels) ? [...initial.definedLabels] : null,
         comments: [...(initial.comments ?? [])],
         assignees: [...(initial.assignees ?? [])],
         closed: initial.closed ?? false,
@@ -475,7 +476,21 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         return answer;
     };
 
-    const writer: EffectWriter = {
+    const writer: WriteVerbs = {
+        createLabel: (label, color, _description, allowance) =>
+            Promise.resolve(
+                perform(
+                    "createLabel",
+                    `${label} ${color}`,
+                    () => {
+                        if (world.definedLabels?.includes(label) === false) {
+                            world.definedLabels.push(label);
+                        }
+                        return { outcome: "applied" };
+                    },
+                    allowance,
+                ),
+            ),
         addLabel: (_item, label, allowance) =>
             Promise.resolve(
                 perform(
@@ -561,10 +576,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
             ),
     };
 
-    const presenceOf = (holds: boolean): SeenState =>
+    const presenceOf = (holds: boolean): Presence =>
         faults.presence ?? (holds ? "present" : "absent");
 
-    const reader: EffectReader = {
+    const reader: ReadBack = {
         comments: () =>
             Promise.resolve(
                 faults.commentReadFails
@@ -572,7 +587,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                     : { ok: true, value: [...world.comments] },
             ),
         labels: () => Promise.resolve({ ok: true, value: [...world.labels] }),
-        item: (): Promise<ReadAnswer<ItemSeen>> => {
+        item: (): Promise<ReadBackOutcome<ItemFacts>> => {
             if (faults.itemReadThrows) throw new Error("the item read seam broke");
             return Promise.resolve(
                 faults.itemReadFails
@@ -609,6 +624,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         commentPresence: (_item, matches) =>
             Promise.resolve(presenceOf(world.comments.some(matches))),
         labelPresence: (_item, label) => Promise.resolve(presenceOf(world.labels.includes(label))),
+        labelDefined: (label) =>
+            Promise.resolve(
+                presenceOf(world.definedLabels === null || world.definedLabels.includes(label)),
+            ),
     };
 
     return { world, writer, reader, calls, faults };
@@ -620,6 +639,6 @@ export function callsOf(github: FakeGitHub, verb: string): string[] {
 }
 
 /** Comments this fake believes the App wrote. */
-export function appComments(github: FakeGitHub): readonly CommentSeen[] {
+export function appComments(github: FakeGitHub): readonly CommentFact[] {
     return github.world.comments.filter((comment) => comment.authoredByApp);
 }

@@ -29,7 +29,7 @@ import {
 } from "../../src/index.js";
 
 const identity: ManagedIdentity = {
-    capability: "prQuality",
+    capability: "prDashboard",
     item: { kind: "pullRequest", number: 12 },
     kind: "summary",
     topic: "",
@@ -50,7 +50,7 @@ describe("what the platform mints", () => {
      */
     it("is an HTML comment carrying version, capability, kind and subject digest", () => {
         expect(deriveManagedMarker(identity)).toBe(
-            '<!-- hiero-automation:{"schemaVersion":2,"capability":"prQuality","kind":"summary","subject":"e1a382cce4e4f9a6"} -->',
+            '<!-- hiero-automation:{"schemaVersion":2,"capability":"prDashboard","kind":"summary","subject":"e30e55c3e5260515"} -->',
         );
     });
 
@@ -144,7 +144,7 @@ describe("what the parser refuses, and why", () => {
         const reached = [
             rejection("Thanks for opening this."),
             rejection(markerOf({ schemaVersion: 2, capability: "x".repeat(600) })),
-            rejection(markerOf({ schemaVersion: 2, capability: "prQuality" })),
+            rejection(markerOf({ schemaVersion: 2, capability: "prDashboard" })),
             rejection(markerOf({ ...published, schemaVersion: 1, effect: published.subject })),
             rejection(markerOf({ ...published, schemaVersion: 3 })),
         ];
@@ -227,7 +227,9 @@ describe("what the parser refuses, and why", () => {
         expect(rejection(markerOf({ ...published, schemaVersion: -1 }))).toBe("malformed");
         expect(rejection(markerOf({ ...published, schemaVersion: 1.5 }))).toBe("malformed");
         expect(rejection(markerOf({ ...published, schemaVersion: "2" }))).toBe("malformed");
-        expect(rejection(markerOf({ capability: "prQuality", kind: "summary" }))).toBe("malformed");
+        expect(rejection(markerOf({ capability: "prDashboard", kind: "summary" }))).toBe(
+            "malformed",
+        );
     });
 
     /**

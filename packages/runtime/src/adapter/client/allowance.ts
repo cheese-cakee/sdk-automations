@@ -6,7 +6,15 @@
  * ledger refuses every request, so no response can ever name the next window.
  */
 
-import { parseSecondsHeader } from "@hiero-hackers/automation-core";
+import {
+    parseSecondsHeader,
+    type Allowance as AllowanceView,
+    type Lane,
+    type Pool,
+    type PoolStanding,
+    type Refusal,
+    type Spent,
+} from "@hiero-hackers/automation-core";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
 
@@ -14,19 +22,6 @@ import { parseSecondsHeader } from "@hiero-hackers/automation-core";
 export const ASSUMED_POOL_LIMIT = 5_000;
 
 // ─── What one exchange costs ─────────────────────────────────────────
-
-/** The two pools this client's requests are charged to. */
-export type Pool = "core" | "graphql";
-
-/** A pool, or the mutation lane that rides on `core` and is armed per tick. */
-export type Lane = Pool | "mutations";
-
-/** What has been spent this window; `graphql` counts points and the rest requests. */
-export interface Spent {
-    readonly core: number;
-    readonly graphql: number;
-    readonly mutations: number;
-}
 
 /** One finished exchange, as the client saw it. */
 export interface Exchange {
@@ -64,23 +59,6 @@ export interface PoolWindow {
     readonly resetAt: string;
 }
 
-/** A request this allowance turned away: the lane that refused, and its window (D192). */
-export interface Refusal {
-    readonly lane: Lane;
-    /** `null` before a response named a reset, and for the mutation lane. */
-    readonly resetAt: string | null;
-}
-
-/** One pool's share of GitHub's window, as this process has spent it (D193). */
-export interface PoolStanding {
-    readonly pool: Pool;
-    /** What this lane may spend of the pool before the window rolls. */
-    readonly allowed: number;
-    readonly spent: number;
-    /** When GitHub's own window rolls; `null` before a response named one. */
-    readonly resetAt: string | null;
-}
-
 export interface AllowanceOptions {
     /** The share of each pool's own limit this lane may spend; 0 < share ≤ 1. */
     readonly share: number;
@@ -92,26 +70,15 @@ export interface AllowanceOptions {
     readonly clock?: () => number;
 }
 
-/** What a lane has spent and what it still may. The client debits it; the shell reads it. */
-export interface Allowance {
-    spent(): Spent;
-    /** The lane at its cap — core, then graphql, then mutations — or `null`. */
-    exhausted(): Lane | null;
+/** The ledger behind the read view: what the client debits, and what it refuses from. */
+export interface Allowance extends AllowanceView {
     /** Which lane refuses one more request of this shape, or `null`. */
     refuses(pool: Pool, mutation: boolean): Lane | null;
-    /** Requests this allowance has turned away, for the life of the process. */
-    refusals(): number;
-    /** The last request this allowance turned away, or `null`. */
-    lastRefusal(): Refusal | null;
-    /** What each pool may spend this window, and what it has (D193). */
-    standing(): readonly PoolStanding[];
     /** Say that a request was turned away; the client says it as it refuses one. */
     refused(lane: Lane): void;
     charge(exchange: Exchange): void;
     /** What a response said about its pool: the cap it sets, and the window it opens. */
     observed(pool: Pool, headers: Readonly<Record<string, string>>): void;
-    /** Open this tick's mutation lane at `calls`, spent from nothing. */
-    armMutations(calls: number): void;
 }
 
 /** One pool as this process counts it: GitHub's numbers, and what we put through it. */

@@ -19,7 +19,7 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
-import { intake, prQuality } from "@hiero-hackers/automation-capabilities";
+import { intake, prDashboard } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import {
     createShell,
@@ -154,7 +154,7 @@ describe("the first slice, end to end", () => {
 
     it("rejects duplicate direct capability names before returning a server", () => {
         const intakeCapability = toEngine(intake);
-        const prQualityCapability = toEngine(prQuality);
+        const prDashboardCapability = toEngine(prDashboard);
         expect(() =>
             createShell({
                 secret: SECRET,
@@ -162,14 +162,14 @@ describe("the first slice, end to end", () => {
                 capabilities: [
                     intakeCapability,
                     intakeCapability,
-                    prQualityCapability,
-                    prQualityCapability,
+                    prDashboardCapability,
+                    prDashboardCapability,
                 ],
                 seams: seamsOn(configFile),
                 repository: REPOSITORY,
             }),
         ).toThrow(
-            'invalid capability declarations: duplicate capability name "intake"; duplicate capability name "prQuality"',
+            'invalid capability declarations: duplicate capability name "intake"; duplicate capability name "prDashboard"',
         );
     });
 

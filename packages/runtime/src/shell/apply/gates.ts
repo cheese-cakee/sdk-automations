@@ -21,17 +21,19 @@ import {
     type Externals,
     type HumanChangeOrdering,
     type IntentOperation,
+    type ItemFacts,
     type ItemRef,
     type MappableMeaning,
     type ObservedModes,
     type Projection,
+    type ReadBack,
+    type ReadBackOutcome,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
 import type { Ledger } from "../../store/index.js";
 import { detailOf } from "../log.js";
 import type { EffectOutcomeCode } from "../effects.js";
 import type { Pass, PassResult } from "./actions.js";
-import type { EffectReader, ItemSeen, ReadAnswer } from "./operations/handler.js";
 
 /**
  * A FRESH externals set, built per apply pass.
@@ -53,7 +55,7 @@ const refuse = (code: EffectOutcomeCode, detail: string): GateVerdict => ({
  * A merged pull request is `merged` and everything else closed is `closedByHuman`; every closure refuses the write by the same rule, so the choice cannot change a verdict.
  */
 function projectionFrom(
-    seen: ItemSeen,
+    seen: ItemFacts,
     kind: ItemRef["kind"],
     config: RepositoryConfig,
 ): Projection<MappableMeaning> {
@@ -99,7 +101,7 @@ export function recordedWarningsIn(
 export interface GateOptions {
     /** The facts a recorded warning is read from (D164). */
     readonly ledger: Ledger;
-    readonly reader: EffectReader;
+    readonly reader: ReadBack;
     readonly externals: EffectExternalsSource;
     readonly clock: () => Date;
 }
@@ -136,7 +138,7 @@ export function createGates(options: GateOptions): Gates {
     };
 
     /** The externals for this pass, with the seam CONTAINED. */
-    const freshExternals = async (): Promise<ReadAnswer<Externals>> => {
+    const freshExternals = async (): Promise<ReadBackOutcome<Externals>> => {
         try {
             return { ok: true, value: await externals() };
         } catch (error) {
@@ -187,8 +189,8 @@ export function createGates(options: GateOptions): Gates {
      */
     const modesClaimed = async (
         intent: AnyIntent,
-        seen: ItemSeen,
-    ): Promise<ReadAnswer<ObservedModes>> => {
+        seen: ItemFacts,
+    ): Promise<ReadBackOutcome<ObservedModes>> => {
         const claimed = intent.claims.pullRequestMode;
         if (claimed === undefined) return { ok: true, value: {} };
         if (claimed === "draft") return { ok: true, value: { draft: seen.draft } };

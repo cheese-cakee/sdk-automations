@@ -44,16 +44,7 @@ export {
     type TokenSourceOptions,
 } from "./client/token.js";
 export { createWriteVerbs, type WriteVerbsOptions } from "./writes/writes.js";
-export {
-    createReadBack,
-    type AppIdentity,
-    type CommentFact,
-    type ItemFacts,
-    type Presence,
-    type ReadBack,
-    type ReadBackOptions,
-    type ReadBackOutcome,
-} from "./writes/readback.js";
+export { createReadBack, type AppIdentity, type ReadBackOptions } from "./writes/readback.js";
 export {
     type BrokenSeam,
     type FetchLike,
@@ -70,7 +61,6 @@ export {
     type WriteIdempotency,
 } from "./client/contract.js";
 export { type WriteEndpoint } from "./client/endpoints.js";
-export { type WriteResult, type WriteVerbs } from "./writes/operations/transport.js";
 export { CONTENT_CREATION_HOURLY, createGitHubHttpClient, wait } from "./client/http.js";
 export {
     costOf,
@@ -78,8 +68,5 @@ export {
     type Allowance,
     type AllowanceOptions,
     type Exchange,
-    type Lane,
-    type Pool,
     type PoolWindow,
-    type Spent,
 } from "./client/allowance.js";

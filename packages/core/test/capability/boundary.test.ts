@@ -7,7 +7,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { declareCapability, flag, projectCapabilityView, spec, text } from "../../src/index.js";
+import {
+    declareCapability,
+    flag,
+    MAPPABLE_MEANINGS,
+    projectCapabilityView,
+    spec,
+    text,
+} from "../../src/index.js";
 import { configWith } from "../config/builders.js";
 
 const declaration = declareCapability({
@@ -44,15 +51,24 @@ describe("projectCapabilityView (contract.md §2)", () => {
     /** D71 — availability of a meaning, never the repository's word for it. */
     it("reports mapped meanings without exposing a label string", () => {
         const view = projectCapabilityView(declaration, config);
-        expect([...view.mapped.labels].sort()).toEqual(["awaitingTriage", "blocked"]);
+        // Every label meaning is mapped, the two spelled by the file and the five by default (D203).
+        expect([...view.mapped.labels].sort()).toEqual([
+            "awaitingTriage",
+            "blocked",
+            "inProgress",
+            "needsReview",
+            "needsRevision",
+            "ready",
+            "readyToMerge",
+        ]);
         expect(JSON.stringify(view)).not.toContain("status: triage");
     });
 
-    it("reports no mapped meanings when the repository mapped none", () => {
+    it("reports every label meaning, and no other family, when the repository mapped none", () => {
         const bare = configWith({ mode: "observe", known: ["fixture"] });
         const view = projectCapabilityView(declaration, bare);
         expect(view.mapped).toEqual({
-            labels: [],
+            labels: [...MAPPABLE_MEANINGS],
             commands: [],
             skills: [],
             alerts: [],

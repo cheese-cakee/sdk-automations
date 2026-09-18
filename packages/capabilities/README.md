@@ -6,7 +6,7 @@ as `CAPABILITIES`. The shell composes that list and names no capability, so addi
 and a line. This package imports core and nothing else, and does no I/O.
 
 The four that ship, one line each: `intake` walks a new issue from its opening to triaged, ready
-work; `prQuality` posts one dashboard comment telling a contributor what stops their pull request
+work; `prDashboard` posts one dashboard comment telling a contributor what stops their pull request
 being ready to review; `inactivity` reminds about stalled work and then releases it; `configReport`
 comments on a pull request that changes `automations.yml`, saying what the App would read from it.
 What each triggers on, maps, reads and may write is the generated table in

@@ -14,7 +14,9 @@ One comment per pull request, updated in place. When the file parses:
 >
 > - intake — on
 >   - announce: true
-> - prQuality — on, no settings
+>   - labels it may set
+>     - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it
+> - prDashboard — on, no settings
 > - configReport — on, no settings
 > - inactivity — on
 >   - exemptBlocked: true
@@ -79,7 +81,7 @@ capabilities:
     enabled: true # explicit true only; reads no settings
 ```
 
-The block holds `enabled` and nothing else. The spec is empty — the same written answer `prQuality`
+The block holds `enabled` and nothing else. The spec is empty — the same written answer `prDashboard`
 gives, not a forgotten file: there is no policy to state, because what the comment says is decided
 entirely by what the pull request's file says. No mappings are required either: the capability
 speaks no meanings.
@@ -135,7 +137,7 @@ under the error it followed from. A maintainer fixing the first fixes all of the
 
 **Every string that came from the file is rendered inert** — keys, label spellings, alert names,
 principals, and the parser's own messages, which quote the file's words back. The helper is
-`inert()` from `capability/facts.ts`, the one `prQuality` renders commit text with: one line, every
+`inert()` from `capability/facts.ts`, the one `prDashboard` renders commit text with: one line, every
 active markdown character backslash-escaped, every `@` broken so no mention notifies anybody. The
 file in a pull request is attacker-controlled text in exactly the way a commit message is.
 

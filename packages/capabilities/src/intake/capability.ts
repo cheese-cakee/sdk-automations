@@ -17,6 +17,7 @@ export const intakeDeclaration = declareCapability({
     triggers: [{ kind: "event", event: "issues" }],
     settings: INTAKE_SETTINGS,
     requiredMappings: { labels: ["awaitingTriage"] },
+    labels: ["awaitingTriage"],
     resolvers: ["isAutomationActor"],
     intents: ["applyMappedLabel", "postManagedComment"],
 });

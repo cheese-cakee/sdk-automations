@@ -6,6 +6,7 @@
 
 import {
     decide,
+    type Allowance,
     type DecideInput,
     type Decision,
     type EngineCapability,
@@ -16,7 +17,6 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import type { Store } from "../../store/index.js";
-import type { Allowance } from "../allowance.js";
 import { recordedWarningsIn, type Applier } from "../apply/apply.js";
 import type { EffectOutcome } from "../effects.js";
 import { decisionsOf, type DecidedPass } from "./decisions.js";

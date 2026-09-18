@@ -13,6 +13,7 @@ import {
     UNREAD,
     type Effect,
     type EngineCapability,
+    type Allowance,
     type Facts,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
@@ -20,7 +21,6 @@ import { intake } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { Store } from "../../../src/store/index.js";
 import { spending } from "../spending.js";
-import type { Allowance } from "../../../src/shell/allowance.js";
 import type { Applier } from "../../../src/shell/apply/apply.js";
 import { createItemDecider, type DecideItem } from "../../../src/shell/decide/item.js";
 import {

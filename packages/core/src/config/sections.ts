@@ -24,6 +24,7 @@ import {
     type RepositoryMode,
     type Skill,
 } from "./schema.js";
+import { DEFAULT_LABEL_MAPPINGS } from "./label-defaults.js";
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
     if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
@@ -233,7 +234,15 @@ export function readCapabilities(
                 ? null
                 : readCapabilitySettings(name, declared, names, stated, base);
         if (read !== null && !read.ok) errors.push(...read.errors);
-        entries.push([name, { enabled, settings: read?.ok === true ? read.value : stated }]);
+        const labels = declared?.labels ?? [];
+        entries.push([
+            name,
+            {
+                enabled,
+                settings: read?.ok === true ? read.value : stated,
+                ...(labels.length === 0 ? {} : { labels }),
+            },
+        ]);
     }
     return checked(entries, errors);
 }
@@ -458,9 +467,45 @@ function checkAgainstEarlier(
  * The `mappings` section, family by family: absence, the sweep for keys no
  * family claims, each family's own check, and the rules spanning two families.
  */
+/**
+ * The document's label spellings over the defaults (D203): a meaning the file
+ * did not map keeps its default, and a file spelling that is another meaning's
+ * default is refused, since one label cannot carry two meanings.
+ */
+function labelsWithDefaults(
+    mapped: Partial<Record<MappableMeaning, string>>,
+): Checked<Record<MappableMeaning, string>> {
+    const errors: ConfigError[] = [];
+    const merged = { ...DEFAULT_LABEL_MAPPINGS } as Record<MappableMeaning, string>;
+    for (const [meaning, spelling] of Object.entries(mapped) as [MappableMeaning, string][]) {
+        merged[meaning] = spelling;
+    }
+    for (const [meaning, spelling] of Object.entries(mapped) as [MappableMeaning, string][]) {
+        const shadowed = MAPPABLE_MEANINGS.find(
+            (other) =>
+                other !== meaning &&
+                !Object.hasOwn(mapped, other) &&
+                labelKey(DEFAULT_LABEL_MAPPINGS[other]) === labelKey(spelling),
+        );
+        if (shadowed === undefined) continue;
+        errors.push(
+            err(
+                LABELS.notInjective,
+                `mappings.labels.${meaning}: label ${JSON.stringify(spelling)} is the default spelling of "${shadowed}"` +
+                    ` — map ${shadowed} to another label, or spell ${meaning} differently (D203)`,
+                `mappings.labels.${meaning}`,
+            ),
+        );
+    }
+    return checked(merged, errors);
+}
+
 export function readMappings(raw: Record<string, unknown>): Checked<Mappings> {
     if (raw.mappings === undefined) {
-        return { ok: true, value: { labels: {}, commands: {}, skills: {}, alerts: {} } };
+        return {
+            ok: true,
+            value: { labels: { ...DEFAULT_LABEL_MAPPINGS }, commands: {}, skills: {}, alerts: {} },
+        };
     }
     if (!isPlainObject(raw.mappings)) {
         return {
@@ -474,7 +519,8 @@ export function readMappings(raw: Record<string, unknown>): Checked<Mappings> {
         .filter((key) => !(MAPPING_SECTION_KEYS as readonly string[]).includes(key))
         .map((key) => err("unknownKey", `mappings: unknown key "${key}"`, `mappings.${key}`));
 
-    const labels = readFamily(LABELS, section.labels);
+    const written = readFamily(LABELS, section.labels);
+    const labels = written.ok ? labelsWithDefaults(written.value) : written;
     const commands = readFamily(COMMAND_WORDS, section.commands);
     const skills = readFamily(SKILLS, section.skills);
     const alerts = readFamily(ALERTS, section.alerts);

@@ -8,7 +8,9 @@
 
 import {
     inert,
+    LABEL_DEFAULTS,
     type ConfigError,
+    type MappableMeaning,
     type ConfigResult,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core/author";
@@ -65,6 +67,24 @@ function tree(group: Readonly<Record<string, unknown>>, depth: number): readonly
     });
 }
 
+/** The labels an enabled capability may set, under the spelling in force, and how each is defined if missing (D204). */
+function labelsSetBy(
+    config: RepositoryConfig,
+    meanings: readonly MappableMeaning[],
+): readonly string[] {
+    if (meanings.length === 0) return [];
+    return [
+        bullet(1, "labels it may set"),
+        ...meanings.map((meaning) => {
+            const spelling = config.mappings.labels[meaning] ?? LABEL_DEFAULTS[meaning].name;
+            return bullet(
+                2,
+                `${inert(spelling)} — ${meaning}; defined #${LABEL_DEFAULTS[meaning].color} if the repository lacks it`,
+            );
+        }),
+    ];
+}
+
 /** Every capability the file switched on, with what its block resolved to. */
 function capabilities(config: RepositoryConfig): readonly string[] {
     const entries = Object.entries(config.capabilities);
@@ -73,9 +93,10 @@ function capabilities(config: RepositoryConfig): readonly string[] {
 
     const lines = on.flatMap(([name, block]) => {
         const settings = tree(block.settings, 1);
-        return settings.length === 0
+        const labels = labelsSetBy(config, block.labels ?? []);
+        return settings.length === 0 && labels.length === 0
             ? [bullet(0, `${inert(name)} — on, no settings`)]
-            : [bullet(0, `${inert(name)} — on`), ...settings];
+            : [bullet(0, `${inert(name)} — on`), ...settings, ...labels];
     });
     return [
         "**Capabilities**",
@@ -85,7 +106,7 @@ function capabilities(config: RepositoryConfig): readonly string[] {
     ];
 }
 
-/** The `mappings:` section, family by family, rendered once for the document. */
+/** The `mappings:` section, family by family; a parsed document always carries the labels (D203). */
 function mappings(config: RepositoryConfig): readonly string[] {
     const families = Object.entries(config.mappings).filter(
         ([, family]) => Object.keys(family).length > 0,

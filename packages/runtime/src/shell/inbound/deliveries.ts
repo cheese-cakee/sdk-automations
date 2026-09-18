@@ -11,11 +11,13 @@ import {
     parseConfigDocument,
     repositoryNamedBy,
     UNREADABLE_CONFIG_REVISION,
+    type Allowance,
     type ConfigResult,
     type ConfigError,
     type EngineCapability,
     type Report,
     type RepositoryConfig,
+    type Refusal,
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import type {
@@ -23,7 +25,6 @@ import type {
     ReleaseDeliveryAfterFailureResult,
     Store,
 } from "../../store/index.js";
-import type { Allowance, Refusal } from "../allowance.js";
 import type { ConfigSource } from "../decide/config.js";
 import type { DecideItem } from "../decide/item.js";
 import { declareSweep } from "../decide/schedule.js";

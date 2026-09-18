@@ -18,12 +18,24 @@ capabilities:
     enabled: true
     announce: true # and told so in a comment (default: false)
 
-  prQuality: # one comment per pull request, kept current: what stops it being reviewable
+  prDashboard: # one comment per pull request, kept current: what stops it being reviewable
     enabled: true
     checks: # every check the App runs today, switched on — each one is off until it is
+      dcoSignoff: # a commit carries no Signed-off-by trailer
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide" # optional — shown to the contributor on failure
+      gpgSignature: # a commit has no verified signature
+        enabled: true
+        guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide"
+      mergeConflicts: # the branch does not merge cleanly
+        enabled: true
       linkedIssues: # the pull request references no issue
         enabled: true
-        guide: "https://github.com/<org>/<repo>/wiki/Linking-Issues" # optional — shown to the contributor on failure
+        guide: "https://github.com/<org>/<repo>/wiki/Linking-Issues"
+        assignedIssues: # the author is not assigned to every linked issue — nested, because it depends on the link
+          enabled: true
+          guide: "https://github.com/<org>/<repo>/wiki/Assignment"
+    applyLabels: [needsRevision, needsReview] # the positions the verdict may set — each one mapped below
 
   configReport: # a pull request that changes this file gets one comment saying what it would mean
     enabled: true # reads no settings today
@@ -61,7 +73,7 @@ capabilities:
             after: 5d
 
 mappings:
-  labels: # the App names the meaning; you supply the label it is spelled with
+  labels: # every meaning has a default spelling; map one only to spell it your own way
     awaitingTriage: "status: triage"
     ready: "status: ready for dev"
     inProgress: "status: in progress"

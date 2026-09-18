@@ -22,7 +22,7 @@ them exactly:
 ## Verified by
 ```
 
-Fill the four sections the way `packages/capabilities/src/prQuality/design.md` does. Once the design
+Fill the four sections the way `packages/capabilities/src/prDashboard/design.md` does. Once the design
 is approved, make `packages/capabilities/src/draftNotice/` and move the page in as `design.md`,
 updating the index; from here on the page is the standard the code is held to.
 

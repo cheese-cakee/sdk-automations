@@ -14,6 +14,7 @@ import {
     revisionOf,
     toEngine,
     type EngineCapability,
+    type ReadBack,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
 import { intake } from "@hiero-hackers/automation-capabilities";
@@ -23,7 +24,6 @@ import {
     fileConfigSource,
     serializeCall,
     stubbedExternals,
-    type EffectReader,
     type Log,
     type RepositorySeams,
     type Shell,
@@ -309,7 +309,7 @@ mappings:
         store.ledger.open(new Date(BASE.getTime() + 60 * 60_000).toISOString()).length;
 
     /** A read-back that dies on one item, so the pass has a row to step over. */
-    const brittle = (reader: EffectReader, failing: number): EffectReader => ({
+    const brittle = (reader: ReadBack, failing: number): ReadBack => ({
         ...reader,
         labelPresence: (item, label) =>
             item.number === failing

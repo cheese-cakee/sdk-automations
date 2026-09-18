@@ -99,7 +99,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 1. **Write the design page**, four sections: what the output looks like (the rendered comments), the
    config block, how it works (a flowchart of the guards in order, the declaration and the phases),
    verified-by (the scenarios, which become the test titles). Read the exemplar nearest your shape:
-   `prQuality` (webhook, resolvers, one comment), `intake` (webhook, labels, several stations),
+   `prDashboard` (webhook, resolvers, one comment), `intake` (webhook, labels, several stations),
    `inactivity` (schedule, clocks, destructive acts — nine files, one per concern).
 2. **Baseline.** `pnpm -r test` and `pnpm format:check` before you touch anything, so a later red is
    yours. `pnpm -r test:coverage` is the MUTATION path — it runs Stryker, it is slow, and it is

@@ -90,10 +90,10 @@ export interface OperationHandler<K extends IntentOperation> {
 /** What one send may know: the item, the two seams, and this effect's own identity. */
 export interface SendContext {
     readonly item: ItemRef;
-    readonly writer: EffectWriter;
-    readonly reader: EffectReader;
+    readonly writer: WriteVerbs;
+    readonly reader: ReadBack;
     /** Is a comment the one THIS CALL would be? Authorship and marker, both required (D125). */
-    isMine(body: string): (comment: CommentSeen) => boolean;
+    isMine(body: string): (comment: CommentFact) => boolean;
 }
 ```
 
@@ -138,10 +138,13 @@ GraphQL gate, its body rule and the grant precheck, and matches a built URL agai
 one walk, which keeps the preamble every shape shares — no query or fragment,
 `repos/{owner}/{repo}/issues`, encoded names — in one place and hands each shape only its method and
 the path's tail. The send-and-classify mechanism stays one function in the writes file and reaches
-the builders as `apply`. The vocabulary the builders return in — `WriteResult`, `WriteVerbs`,
-`NotFoundMeaning` — sits in the transport file below both readers, because the writes file imports
-the registry and a type that stayed behind would close a cycle the cruiser refuses.
-`createWriteVerbs` composes the verbs the transports contribute, and the `WriteVerbs` interface
+the builders as `apply`. The vocabulary the builders return in — `WriteResult` and `WriteVerbs`,
+with the read-back's `ReadBack`, `ReadBackOutcome`, `Presence`, `CommentFact` and `ItemFacts` —
+lives in `packages/core/src/seams.ts`, and the allowance view both layers read in
+`packages/core/src/github/allowance.ts`; the shell and the adapter name one definition, so a new
+verb is one line in one place. `NotFoundMeaning` stays in the transport file, which is the only
+layer that knows what a 404 means. `createWriteVerbs` composes the verbs the transports
+contribute, and the `WriteVerbs` interface
 stays the closed surface the shell sees. The matcher and the builder stay two spellings in two
 files: the D129 rule that a gate must not trust the builder's string is kept. `unassign` is a
 transport with no verbs today, which is exactly why the shell refuses it at send; the real unassign

@@ -30,9 +30,9 @@ and destructive rehearsals as evidence instead of repeating them from the beginn
 
 ### 3. Finish one capability
 
-Complete `prQuality` phase 1 as small, independent changes: mergeability, commit attestations, and
+Complete `prDashboard` phase 1 as small, independent changes: mergeability, commit attestations, and
 linked-issue assignment. Keep label behavior separate. Confirm ownership before starting another
-capability so work does not overlap.
+capability so work does not overlap. `prDashboard` is complete (2026-09-16, D198–D200).
 
 ### 4. Improve capability authoring from evidence
 

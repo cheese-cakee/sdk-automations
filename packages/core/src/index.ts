@@ -2,6 +2,7 @@ export * from "./workflow/index.js";
 export * from "./safety/index.js";
 export * from "./config/index.js";
 export * from "./catalogue.js";
+export * from "./seams.js";
 export * from "./capability/index.js";
 export * from "./intents/index.js";
 export * from "./github/index.js";

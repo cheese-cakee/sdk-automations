@@ -22,6 +22,7 @@ const DECLARATION_FIELDS: Record<keyof CapabilityDeclaration, true> = {
     closed: true,
     settings: true,
     requiredMappings: true,
+    labels: true,
     facts: true,
     needs: true,
     resolvers: true,

@@ -1,14 +1,24 @@
-/** The mapped-label operation's transport: the two label verbs. */
+/** The mapped-label operation's transport: the three label verbs. */
 
-import {
-    issuePath,
-    type OperationTransport,
-    type VerbContext,
-    type WriteVerbs,
-} from "./transport.js";
+import { repoPath } from "../../client/contract.js";
+import type { WriteVerbs } from "@hiero-hackers/automation-core";
+import { issuePath, type OperationTransport, type VerbContext } from "./transport.js";
 
 export const APPLY_MAPPED_LABEL = {
-    verbs: (context: VerbContext): Pick<WriteVerbs, "addLabel" | "removeLabel"> => ({
+    verbs: (
+        context: VerbContext,
+    ): Pick<WriteVerbs, "createLabel" | "addLabel" | "removeLabel"> => ({
+        createLabel: (label, color, description, allowance) =>
+            context.apply(
+                {
+                    url: `${repoPath(context.repository)}/labels`,
+                    method: "POST",
+                    body: JSON.stringify({ name: label, color, description }),
+                    idempotency: "nonIdempotent",
+                },
+                "invisible",
+                allowance,
+            ),
         addLabel: (item, label, allowance) =>
             context.apply(
                 {

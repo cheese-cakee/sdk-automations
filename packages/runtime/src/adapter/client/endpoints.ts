@@ -7,8 +7,9 @@
 import type { PermissionGrant } from "@hiero-hackers/automation-core";
 import { GITHUB_API_ORIGIN } from "./contract.js";
 
-/** The six write operations the endpoint matrix confirmed, by path shape. */
+/** The seven write operations the endpoint matrix confirmed, by path shape. */
 export type WriteEndpoint =
+    | "createLabel"
     | "addLabel"
     | "removeLabel"
     | "createComment"
@@ -32,7 +33,7 @@ export function isNumberSegment(segment: string | undefined): boolean {
 
 export interface EndpointShape {
     readonly endpoint: WriteEndpoint;
-    readonly resource: "issues" | "pulls";
+    readonly resource: "issues" | "pulls" | "labels";
     /** The grant a 403 on this endpoint names; a write takes nothing weaker (D123). */
     readonly grant: PermissionGrant;
     /** Structural match on method and the path's tail — never derived from the builder (D129). */
@@ -54,6 +55,15 @@ function itemViewsStaledBy(url: URL): readonly string[] {
     const issue = `${repository}/issues/${String(number)}`;
     return [issue, `${issue}/timeline`, `${repository}/pulls/${String(number)}`];
 }
+
+/** `POST …/labels` — the repository's label list, defined into (protocol 6.14). */
+const CREATE_LABEL: EndpointShape = {
+    endpoint: "createLabel",
+    resource: "labels",
+    grant: "issues:write",
+    matches: (method, rest) => method === "POST" && rest.length === 0,
+    invalidates: (url) => [`${GITHUB_API_ORIGIN}${url.pathname}`],
+};
 
 /** `POST …/issues/{n}/labels` — the item's label list, added to. */
 const ADD_LABEL: EndpointShape = {
@@ -141,6 +151,7 @@ const RELEASE_ASSIGNMENT: EndpointShape = {
 
 /** One shape per confirmed operation, and the only place one is declared. */
 export const CONFIRMED_WRITE_ENDPOINTS: { readonly [K in WriteEndpoint]: EndpointShape } = {
+    createLabel: CREATE_LABEL,
     addLabel: ADD_LABEL,
     removeLabel: REMOVE_LABEL,
     createComment: CREATE_COMMENT,

@@ -89,14 +89,15 @@ describe("the shipped examples", () => {
      * enables `intake`, so dropping its `awaitingTriage` line is a one-word
      * edit away from a documented file the real shell refuses to parse.
      */
-    it("refuses an enabled capability missing a meaning it requires", () => {
+    /** D203: the meaning a capability requires is mapped by default, so the file parses. */
+    it("accepts an enabled capability on the default spelling of the meaning it requires", () => {
         const unmapped = parseText(
             "schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: true\n",
             "unmapped",
         );
-        expect(unmapped.ok ? [] : unmapped.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
-            "meaningRequired @ mappings.labels.awaitingTriage",
-        ]);
+        expect(unmapped.ok ? unmapped.config.mappings.labels.awaitingTriage : unmapped.errors).toBe(
+            "status: triage",
+        );
     });
 
     it("refuses a settings key no capability declares", () => {
@@ -127,9 +128,10 @@ describe("the shipped examples", () => {
 
         expect(observe.config.mode).toBe("observe");
         expect(active.config.mode).toBe("active");
-        for (const [meaning, label] of Object.entries(observe.config.mappings.labels)) {
-            expect(active.config.mappings.labels).toHaveProperty(meaning, label);
-        }
+        // Both carry every meaning: one spells `ready` its own way, the other runs on defaults.
+        expect(Object.keys(active.config.mappings.labels)).toEqual(
+            Object.keys(observe.config.mappings.labels),
+        );
     });
 
     it("a shipped capability may be configured while disabled", () => {

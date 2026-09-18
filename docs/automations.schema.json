@@ -50,13 +50,13 @@
                                 }
                             }
                         },
-                        "prQuality": {
+                        "prDashboard": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run prQuality. Consent is literally true; absent leaves it off.",
+                                    "description": "Run prDashboard. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
                                 "settings": {
@@ -67,6 +67,98 @@
                                             "type": "object",
                                             "additionalProperties": false,
                                             "properties": {
+                                                "dcoSignoff": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": true,
+                                                                    "description": "Run this block."
+                                                                },
+                                                                "guide": {
+                                                                    "type": "string",
+                                                                    "description": "A page explaining how to sign commits, shown to the contributor when this check fails."
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "enabled"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": false,
+                                                                    "description": "Leave this block parked and unread.",
+                                                                    "default": false
+                                                                }
+                                                            }
+                                                        }
+                                                    ],
+                                                    "description": "Say so when a commit carries no Signed-off-by trailer."
+                                                },
+                                                "gpgSignature": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": true,
+                                                                    "description": "Run this block."
+                                                                },
+                                                                "guide": {
+                                                                    "type": "string",
+                                                                    "description": "A page explaining how to sign commits, shown to the contributor when this check fails."
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "enabled"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": false,
+                                                                    "description": "Leave this block parked and unread.",
+                                                                    "default": false
+                                                                }
+                                                            }
+                                                        }
+                                                    ],
+                                                    "description": "Say so when a commit has no verified signature."
+                                                },
+                                                "mergeConflicts": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": false,
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": true,
+                                                                    "description": "Run this block."
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "enabled"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "enabled": {
+                                                                    "const": false,
+                                                                    "description": "Leave this block parked and unread.",
+                                                                    "default": false
+                                                                }
+                                                            }
+                                                        }
+                                                    ],
+                                                    "description": "Say so when the branch does not merge cleanly."
+                                                },
                                                 "linkedIssues": {
                                                     "oneOf": [
                                                         {
@@ -80,6 +172,38 @@
                                                                 "guide": {
                                                                     "type": "string",
                                                                     "description": "A page explaining how to link an issue, shown to the contributor when this check fails."
+                                                                },
+                                                                "assignedIssues": {
+                                                                    "oneOf": [
+                                                                        {
+                                                                            "type": "object",
+                                                                            "additionalProperties": false,
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": true,
+                                                                                    "description": "Run this block."
+                                                                                },
+                                                                                "guide": {
+                                                                                    "type": "string",
+                                                                                    "description": "A page explaining how to get assigned, shown to the contributor when this check fails."
+                                                                                }
+                                                                            },
+                                                                            "required": [
+                                                                                "enabled"
+                                                                            ]
+                                                                        },
+                                                                        {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "enabled": {
+                                                                                    "const": false,
+                                                                                    "description": "Leave this block parked and unread.",
+                                                                                    "default": false
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    ],
+                                                                    "description": "Say so when the author is not assigned to every linked issue."
                                                                 }
                                                             },
                                                             "required": [
@@ -101,6 +225,21 @@
                                                 }
                                             },
                                             "description": "The quality checks this repository runs — each one off until it is enabled."
+                                        },
+                                        "applyLabels": {
+                                            "type": "array",
+                                            "items": {
+                                                "enum": [
+                                                    "awaitingTriage",
+                                                    "ready",
+                                                    "inProgress",
+                                                    "needsReview",
+                                                    "needsRevision",
+                                                    "readyToMerge",
+                                                    "blocked"
+                                                ]
+                                            },
+                                            "description": "The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review."
                                         }
                                     }
                                 }
@@ -615,19 +754,111 @@
                                 }
                             }
                         },
-                        "prQuality": {
+                        "prDashboard": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run prQuality. Consent is literally true; absent leaves it off.",
+                                    "description": "Run prDashboard. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
                                 "checks": {
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
+                                        "dcoSignoff": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        },
+                                                        "guide": {
+                                                            "type": "string",
+                                                            "description": "A page explaining how to sign commits, shown to the contributor when this check fails."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Say so when a commit carries no Signed-off-by trailer."
+                                        },
+                                        "gpgSignature": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        },
+                                                        "guide": {
+                                                            "type": "string",
+                                                            "description": "A page explaining how to sign commits, shown to the contributor when this check fails."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Say so when a commit has no verified signature."
+                                        },
+                                        "mergeConflicts": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "object",
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": true,
+                                                            "description": "Run this block."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "enabled"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "enabled": {
+                                                            "const": false,
+                                                            "description": "Leave this block parked and unread.",
+                                                            "default": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "description": "Say so when the branch does not merge cleanly."
+                                        },
                                         "linkedIssues": {
                                             "oneOf": [
                                                 {
@@ -641,6 +872,38 @@
                                                         "guide": {
                                                             "type": "string",
                                                             "description": "A page explaining how to link an issue, shown to the contributor when this check fails."
+                                                        },
+                                                        "assignedIssues": {
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "additionalProperties": false,
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": true,
+                                                                            "description": "Run this block."
+                                                                        },
+                                                                        "guide": {
+                                                                            "type": "string",
+                                                                            "description": "A page explaining how to get assigned, shown to the contributor when this check fails."
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "enabled"
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "enabled": {
+                                                                            "const": false,
+                                                                            "description": "Leave this block parked and unread.",
+                                                                            "default": false
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "description": "Say so when the author is not assigned to every linked issue."
                                                         }
                                                     },
                                                     "required": [
@@ -662,6 +925,21 @@
                                         }
                                     },
                                     "description": "The quality checks this repository runs — each one off until it is enabled."
+                                },
+                                "applyLabels": {
+                                    "type": "array",
+                                    "items": {
+                                        "enum": [
+                                            "awaitingTriage",
+                                            "ready",
+                                            "inProgress",
+                                            "needsReview",
+                                            "needsRevision",
+                                            "readyToMerge",
+                                            "blocked"
+                                        ]
+                                    },
+                                    "description": "The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review."
                                 }
                             }
                         },

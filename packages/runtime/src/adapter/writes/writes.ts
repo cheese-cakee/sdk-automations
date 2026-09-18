@@ -5,7 +5,7 @@
  * because the admission gate has no confirmed endpoint for it.
  */
 
-import type { RepositoryRef } from "@hiero-hackers/automation-core";
+import type { RepositoryRef, WriteResult, WriteVerbs } from "@hiero-hackers/automation-core";
 import type { Allowance } from "../client/allowance.js";
 import {
     describeFailure,
@@ -15,7 +15,7 @@ import {
     type WriteIdempotency,
 } from "../client/contract.js";
 import { writeVerbsOf } from "./operations/index.js";
-import type { NotFoundMeaning, WriteResult, WriteVerbs } from "./operations/transport.js";
+import type { NotFoundMeaning } from "./operations/transport.js";
 
 /** GitHub's prose, documented rather than probed: a reword falls back to `forbidden`. */
 export const LABEL_ABSENT = {

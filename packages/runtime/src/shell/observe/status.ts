@@ -14,7 +14,7 @@ import {
     type StandingWarnings,
     type VerdictTally,
 } from "../../store/index.js";
-import type { Allowance } from "../allowance.js";
+import type { Allowance } from "@hiero-hackers/automation-core";
 import { storeFile } from "../paths.js";
 
 /** What the store answered: the lines to print, and whether a store was there. */

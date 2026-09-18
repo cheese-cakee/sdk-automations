@@ -169,9 +169,10 @@ describe("a settings block a seed cannot read", () => {
      * `needsRevision` needs the meaning mapped, or the reason could never fire
      * and the repository would never learn why.
      */
-    it("is reported by inactivity when a setting needs a meaning nobody mapped", async () => {
+    /** Every label meaning has a default spelling (D203), so a reaping reason is never unmapped. */
+    it("is not reported by inactivity for a reason the file never spelled: the default stands", async () => {
         const { platform, explained } = watch(inactivity.declaration, swept);
-        const unmapped = projectCapabilityView(
+        const defaulted = projectCapabilityView(
             inactivity.declaration,
             configEnabling(
                 ["inactivity"],
@@ -188,15 +189,8 @@ describe("a settings block a seed cannot read", () => {
             ),
         );
 
-        expect(await inactivity.evaluate(swept, unmapped, platform)).toEqual([]);
-        expect(explained).toEqual([
-            {
-                capability: "inactivity",
-                summary:
-                    "Skipped: settings unusable — capabilities.inactivity.pullRequests.reapWhen.needsRevision.enabled: reaping on needsRevision needs that meaning mapped, and this repository has not mapped it",
-                detail: [],
-            },
-        ]);
+        expect(await inactivity.evaluate(swept, defaulted, platform)).toEqual([]);
+        expect(explained).toEqual([]);
     });
 
     /**

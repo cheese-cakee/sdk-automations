@@ -8,6 +8,7 @@
  * half-built call.
  */
 
+import type { RepositoryConfig } from "@hiero-hackers/automation-core";
 import { describe, expect, it } from "vitest";
 import { renderManagedBody, type Call } from "../../src/shell/effects.js";
 import {
@@ -28,6 +29,20 @@ import {
     REVIEW_LABEL,
     TRIAGE_LABEL,
 } from "./apply/effect-harness.js";
+
+/** The define each move plans first: the mapped name with the platform's colour (D202). */
+const DEFINE_READY = {
+    verb: "defineLabel",
+    label: READY_LABEL,
+    color: "0e8a16",
+    description: "Triaged and ready to be picked up",
+} as const;
+const DEFINE_REVIEW = {
+    verb: "defineLabel",
+    label: REVIEW_LABEL,
+    color: "5319e7",
+    description: "Waiting for a maintainer's review",
+} as const;
 
 const config = configFor();
 
@@ -80,6 +95,7 @@ describe("planning a label move", () => {
         expect(plan).toEqual({
             ok: true,
             calls: [
+                DEFINE_READY,
                 { verb: "addLabel", label: READY_LABEL },
                 { verb: "removeLabel", label: TRIAGE_LABEL },
             ],
@@ -89,13 +105,19 @@ describe("planning a label move", () => {
     it("is one call when the item held no position to displace", () => {
         const plan = planFor(labelEffect({ meaning: "ready" }), config);
 
-        expect(plan).toEqual({ ok: true, calls: [{ verb: "addLabel", label: READY_LABEL }] });
+        expect(plan).toEqual({
+            ok: true,
+            calls: [DEFINE_READY, { verb: "addLabel", label: READY_LABEL }],
+        });
     });
 
     it("is one call when the claimed position is the one being moved to", () => {
         const plan = planFor(labelEffect({ meaning: "ready", displacing: "ready" }), config);
 
-        expect(plan).toEqual({ ok: true, calls: [{ verb: "addLabel", label: READY_LABEL }] });
+        expect(plan).toEqual({
+            ok: true,
+            calls: [DEFINE_READY, { verb: "addLabel", label: READY_LABEL }],
+        });
     });
 
     /**
@@ -122,6 +144,7 @@ describe("planning a label move", () => {
         expect(plan).toEqual({
             ok: true,
             calls: [
+                DEFINE_READY,
                 { verb: "addLabel", label: READY_LABEL },
                 { verb: "removeLabel", label: TRIAGE_LABEL },
             ],
@@ -139,6 +162,7 @@ describe("planning a label move", () => {
         ).toEqual({
             ok: true,
             calls: [
+                DEFINE_REVIEW,
                 { verb: "addLabel", label: REVIEW_LABEL },
                 { verb: "removeLabel", label: MERGE_LABEL },
             ],
@@ -153,11 +177,21 @@ describe("planning a label move", () => {
                 labelEffect({ item: pr, meaning: "needsReview", displacing: "awaitingTriage" }),
                 config,
             ),
-        ).toEqual({ ok: true, calls: [{ verb: "addLabel", label: REVIEW_LABEL }] });
+        ).toEqual({
+            ok: true,
+            calls: [DEFINE_REVIEW, { verb: "addLabel", label: REVIEW_LABEL }],
+        });
     });
 
+    /** A parsed document always maps every meaning (D203); the refusal guards a hand-built one. */
+    const withoutInProgress = (): RepositoryConfig => {
+        const labels = { ...config.mappings.labels };
+        delete (labels as Record<string, string>)["inProgress"];
+        return { ...config, mappings: { ...config.mappings, labels } };
+    };
+
     it("refuses when the repository maps no label to the target meaning", () => {
-        const plan = planFor(labelEffect({ meaning: "inProgress" }), config);
+        const plan = planFor(labelEffect({ meaning: "inProgress" }), withoutInProgress());
 
         expect(plan).toEqual({
             ok: false,
@@ -167,7 +201,10 @@ describe("planning a label move", () => {
     });
 
     it("refuses when the repository maps no label to the position being displaced", () => {
-        const plan = planFor(labelEffect({ meaning: "ready", displacing: "inProgress" }), config);
+        const plan = planFor(
+            labelEffect({ meaning: "ready", displacing: "inProgress" }),
+            withoutInProgress(),
+        );
 
         expect(plan).toEqual({
             ok: false,
@@ -325,8 +362,17 @@ describe("the journal row", () => {
         );
     });
 
+    it("spells a define one way, the colour and description after the name", () => {
+        expect(rowFor(DEFINE_READY)).toBe(
+            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+                '"verb":"defineLabel","label":"status: ready","color":"0e8a16",' +
+                '"description":"Triaged and ready to be picked up"}',
+        );
+    });
+
     it.each([
         [{ verb: "postComment", kind: "notice", body: "b" }],
+        [DEFINE_READY],
         [{ verb: "addLabel", label: READY_LABEL }],
         [{ verb: "removeLabel", label: TRIAGE_LABEL }],
         [{ verb: "assign", login: "sophie" }],
@@ -363,6 +409,18 @@ describe("the journal row", () => {
         ["a JSON array", "[]"],
         ["a JSON scalar", '"row"'],
         ["no capability", '{"item":{"kind":"issue","number":1},"verb":"addLabel","label":"l"}'],
+        [
+            "a define without a colour",
+            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","description":"d"}',
+        ],
+        [
+            "a define without a description",
+            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","color":"0e8a16"}',
+        ],
+        [
+            "a label verb no handler owns",
+            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"paintLabel","label":"l"}',
+        ],
         [
             "an empty capability",
             '{"capability":"","item":{"kind":"issue","number":1},"verb":"addLabel","label":"l"}',

@@ -1720,9 +1720,9 @@ describe("intake — packages/capabilities/src/intake/design.md", () => {
     });
 });
 
-describe("prQuality — packages/capabilities/src/prQuality/design.md", () => {
+describe("prDashboard — packages/capabilities/src/prDashboard/design.md", () => {
     /** The whole section, in three constructors. `assignedIssues` nests, which is its dependency. */
-    const PR_QUALITY_DESIGN = spec({
+    const PR_DASHBOARD_DESIGN = spec({
         checks: blocks({
             guide: text({ optional: true }),
             assignedIssues: block({ guide: text({ optional: true }) }),
@@ -1730,16 +1730,16 @@ describe("prQuality — packages/capabilities/src/prQuality/design.md", () => {
         applyLabels: flag({ default: false }),
     });
 
-    const prQuality = declarationFor("prQuality", PR_QUALITY_DESIGN);
+    const prDashboard = declarationFor("prDashboard", PR_DASHBOARD_DESIGN);
 
     const read = (name: string) => {
-        const { refused, stripped, config } = travel(name, prQuality);
+        const { refused, stripped, config } = travel(name, prDashboard);
         expect([refused, stripped]).toEqual([[], []]);
-        return viewOf(prQuality, config).settings;
+        return viewOf(prDashboard, config).settings;
     };
 
     it("runs the four consented checks, and the sub-check inside the one that carries it", () => {
-        expect(read("prQuality.1")).toEqual({
+        expect(read("prDashboard.1")).toEqual({
             checks: {
                 dcoSignoff: {
                     enabled: true,
@@ -1770,7 +1770,7 @@ describe("prQuality — packages/capabilities/src/prQuality/design.md", () => {
     });
 
     it("reads the trimmed setup as two checks and no label mode", () => {
-        expect(read("prQuality.2")).toEqual({
+        expect(read("prDashboard.2")).toEqual({
             checks: {
                 dcoSignoff: { enabled: true, guide: null, assignedIssues: { enabled: false } },
                 mergeConflicts: { enabled: true, guide: null, assignedIssues: { enabled: false } },
@@ -1785,15 +1785,17 @@ describe("prQuality — packages/capabilities/src/prQuality/design.md", () => {
             [
                 "schemaVersion: 2",
                 "capabilities:",
-                "  prQuality:",
+                "  prDashboard:",
                 "    enabled: true",
                 "    assignedIssues:",
                 "      enabled: true",
             ].join("\n"),
-            { revision: "rev-nesting", knownCapabilities: [prQuality] },
+            { revision: "rev-nesting", knownCapabilities: [prDashboard] },
         );
 
-        expect(refusalsOf(result)).toEqual(["unknownKey @ capabilities.prQuality.assignedIssues"]);
+        expect(refusalsOf(result)).toEqual([
+            "unknownKey @ capabilities.prDashboard.assignedIssues",
+        ]);
     });
 });
 
@@ -2201,18 +2203,14 @@ describe("assignment — design/guides/capabilities/assignment.md", () => {
      * longer travels: the file a maintainer would push is rejected whole,
      * naming the entry rather than the capability.
      */
-    it("refuses the guard meaning this excerpt never mapped, by its dotted path", () => {
+    /** The excerpt never maps `blocked`; its default spelling stands in (D203). */
+    it("accepts the guard meaning this excerpt never mapped, on its default spelling", () => {
         const result = parseConfigDocument(documentOf("assignment.3"), {
             revision: "rev-assignment.3",
             knownCapabilities: [assignment],
         });
 
-        expect(refusalsOf(result)).toEqual([
-            "settingInvalid @ capabilities.assignment.autoAssign.notClaimableWhen.0",
-        ]);
-        expect(result.ok ? [] : result.errors.map((e) => e.message)).toEqual([
-            'capabilities.assignment.autoAssign.notClaimableWhen.0: "blocked" is not a meaning this repository has mapped',
-        ]);
+        expect(refusalsOf(result)).toEqual([]);
     });
 });
 

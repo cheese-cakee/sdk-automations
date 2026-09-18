@@ -182,10 +182,72 @@ describe("an effect nothing has started", () => {
         });
         expect(github.calls).toEqual([`addLabel ${READY_LABEL}`]);
         expect(github.world.labels).toEqual([READY_LABEL]);
-        expect(store.ledger.stateOf(keyOf(effect), 1)).toMatchObject({
+        expect(store.ledger.stateOf(keyOf(effect), 2)).toMatchObject({
             kind: "settled",
             how: "landed",
         });
+    });
+
+    /** D202: the repository lacks the mapped name, so it is defined first, in the platform's colour. */
+    it("defines a label the repository lacks before adding it", async () => {
+        const lacking = fakeGitHub({ definedLabels: [] });
+        const effect = labelEffect({ meaning: "ready" });
+
+        const outcome = one(await applierOver(lacking).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "applied" });
+        expect(lacking.calls).toEqual([
+            `createLabel ${READY_LABEL} 0e8a16`,
+            `addLabel ${READY_LABEL}`,
+        ]);
+        expect(lacking.world.definedLabels).toEqual([READY_LABEL]);
+    });
+
+    it("continues when another writer defines the label first", async () => {
+        const github = fakeGitHub({ definedLabels: [] });
+        const createLabel = github.writer.createLabel;
+        github.faults.scripted = [{ outcome: "conflict", detail: "label already exists" }];
+        Object.assign(github.writer, {
+            createLabel: async (...args: Parameters<typeof createLabel>) => {
+                const result = await createLabel(...args);
+                github.world.definedLabels?.push(args[0]);
+                return result;
+            },
+        });
+
+        const outcome = one(
+            await applierOver(github).applyAll([labelEffect({ meaning: "ready" })], configFor()),
+        );
+
+        expect(outcome).toMatchObject({ outcome: "applied" });
+        expect(github.calls).toEqual([
+            `createLabel ${READY_LABEL} 0e8a16`,
+            `addLabel ${READY_LABEL}`,
+        ]);
+        expect(github.world.labels).toEqual([READY_LABEL]);
+    });
+
+    it("leaves a label the repository defines exactly as it is", async () => {
+        const holding = fakeGitHub({ definedLabels: [TRIAGE_LABEL] });
+
+        await applierOver(holding).applyAll(
+            [labelEffect({ meaning: "awaitingTriage" })],
+            configFor(),
+        );
+
+        expect(holding.calls).toEqual([`addLabel ${TRIAGE_LABEL}`]);
+        expect(holding.world.definedLabels).toEqual([TRIAGE_LABEL]);
+    });
+
+    it("stops at the define when the repository's label list cannot be read", async () => {
+        const github = fakeGitHub({ definedLabels: [] });
+        github.faults.presence = "unknown";
+        const effect = labelEffect({ meaning: "ready" });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "unknown", code: "writeUnknown" });
+        expect(github.calls).toEqual([]);
     });
 
     it("says `already` when GitHub reports the postcondition already held", async () => {
@@ -221,7 +283,9 @@ describe("an effect nothing has started", () => {
         await applierOver(github).applyAll([effect], configFor("active", "rev-abc"));
 
         expect(store.ledger.factsOf(keyOf(effect))).toMatchObject([
-            { kind: "sent", revision: "rev-abc" },
+            { kind: "sent", verb: "defineLabel", revision: "rev-abc" },
+            { kind: "landed", verb: "defineLabel", revision: "rev-abc" },
+            { kind: "sent", verb: "addLabel", revision: "rev-abc" },
         ]);
     });
 
@@ -237,7 +301,7 @@ describe("an effect nothing has started", () => {
         expect(outcome).toMatchObject({ outcome: "refused", code: "configurationChanged" });
         expect(callsOf(github, "addLabel")).toHaveLength(1);
         expect(store.ledger.open(FUTURE)).toEqual([]);
-        expect(store.ledger.stateOf(keyOf(effect), 1)).toMatchObject({
+        expect(store.ledger.stateOf(keyOf(effect), 2)).toMatchObject({
             kind: "settled",
             how: "refused",
         });
@@ -264,8 +328,13 @@ describe("an effect nothing has started", () => {
     it("refuses a plan it cannot build, and journals nothing", async () => {
         const github = fakeGitHub();
         const effect = labelEffect({ meaning: "inProgress" });
+        // A parsed document maps every meaning (D203); a hand-built one may not.
+        const config = configFor();
+        const labels = { ...config.mappings.labels };
+        delete (labels as Record<string, string>)["inProgress"];
+        const unmapped = { ...config, mappings: { ...config.mappings, labels } };
 
-        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+        const outcome = one(await applierOver(github).applyAll([effect], unmapped));
 
         expect(outcome).toMatchObject({ outcome: "refused", code: "labelUnmapped" });
         expect(github.calls).toEqual([]);
@@ -983,7 +1052,7 @@ describe("a label move that displaces the position the item held", () => {
         expect(outcome).toMatchObject({ outcome: "applied" });
         expect(github.calls).toEqual([`addLabel ${READY_LABEL}`, `removeLabel ${TRIAGE_LABEL}`]);
         expect(github.world.labels).toEqual([READY_LABEL]);
-        expect(store.ledger.stateOf(keyOf(swap), 2)).toMatchObject({
+        expect(store.ledger.stateOf(keyOf(swap), 3)).toMatchObject({
             kind: "settled",
             how: "landed",
         });
@@ -996,18 +1065,30 @@ describe("a label move that displaces the position the item held", () => {
      * clears it. A full re-gate here could only answer `preconditionStale`,
      * which is why a resume passes the standing gate instead.
      */
-    it("resumes at the second call and sends only that one", async () => {
+    it("resumes at the last call and sends only that one", async () => {
         const github = fakeGitHub({ labels: [TRIAGE_LABEL, READY_LABEL] });
+        const define = serializeCall({
+            capability: "intake",
+            item: ITEM,
+            call: {
+                verb: "defineLabel",
+                label: READY_LABEL,
+                color: "0e8a16",
+                description: "Triaged and ready to be picked up",
+            },
+        });
         const row = serializeCall({
             capability: "intake",
             item: ITEM,
             call: { verb: "addLabel", label: READY_LABEL },
         });
-        sent(keyOf(swap), row);
-        landed(keyOf(swap));
-        expect(store.ledger.stateOf(keyOf(swap), 2)).toMatchObject({
+        sent(keyOf(swap), define, { verb: "defineLabel" });
+        landed(keyOf(swap), { verb: "defineLabel" });
+        sent(keyOf(swap), row, { seq: 2 });
+        landed(keyOf(swap), { seq: 2 });
+        expect(store.ledger.stateOf(keyOf(swap), 3)).toMatchObject({
             kind: "resumable",
-            nextSeq: 2,
+            nextSeq: 3,
         });
 
         const outcome = one(await applierOver(github).applyAll([swap], configFor()));
@@ -1015,7 +1096,7 @@ describe("a label move that displaces the position the item held", () => {
         expect(outcome).toMatchObject({ outcome: "applied" });
         expect(github.calls).toEqual([`removeLabel ${TRIAGE_LABEL}`]);
         expect(github.world.labels).toEqual([READY_LABEL]);
-        expect(store.ledger.stateOf(keyOf(swap), 2)).toMatchObject({
+        expect(store.ledger.stateOf(keyOf(swap), 3)).toMatchObject({
             kind: "settled",
             how: "landed",
         });
@@ -1054,7 +1135,7 @@ describe("a label move that displaces the position the item held", () => {
         const github = fakeGitHub({ labels: [TRIAGE_LABEL] });
         github.faults.crashOn = { verb: "addLabel", when: "afterSend" };
         await expect(applierOver(github).applyAll([swap], configFor())).rejects.toThrow();
-        expect(store.ledger.stateOf(keyOf(swap), 2)).toMatchObject({ kind: "open", seq: 1 });
+        expect(store.ledger.stateOf(keyOf(swap), 3)).toMatchObject({ kind: "open", seq: 2 });
 
         github.faults.crashOn = null;
         const outcome = one(await applierOver(github).applyAll([swap], configFor()));
@@ -1112,10 +1193,10 @@ describe("a label move that displaces the position the item held", () => {
         });
         expect(github.calls).toEqual([`addLabel ${READY_LABEL}`]);
         expect(store.ledger.open(FUTURE)).toEqual([]);
-        expect(store.ledger.stateOf(keyOf(swap), 2)).toEqual({
+        expect(store.ledger.stateOf(keyOf(swap), 3)).toEqual({
             kind: "settled",
             how: "refused",
-            seq: 1,
+            seq: 2,
         });
     });
 });
@@ -1126,7 +1207,7 @@ describe("a label move that displaces the position the item held", () => {
  * D1, the capability study's first defect: a comment's identity is its ITEM
  * and its PURPOSE, and neither of those is the occasion that provoked it.
  *
- * The shape is prQuality's: one dashboard comment per pull request, rewritten
+ * The shape is prDashboard's: one dashboard comment per pull request, rewritten
  * as the checks report. Two deliveries about the same pull request are two
  * occasions — two effect ids, two journal rows — and exactly one comment.
  */
@@ -1477,10 +1558,12 @@ describe("a write no confirmed endpoint carries yet", () => {
         });
         expect(github.world.labels).toEqual([]);
         expect(store.ledger.factsOf(keyOf(effect))).toMatchObject([
-            { kind: "sent", seq: 1 },
-            { kind: "unsent", seq: 1, code: "writeUnsupported", detail: SAID },
+            { kind: "sent", seq: 1, verb: "defineLabel" },
+            { kind: "landed", seq: 1, verb: "defineLabel" },
+            { kind: "sent", seq: 2, verb: "addLabel" },
+            { kind: "unsent", seq: 2, code: "writeUnsupported", detail: SAID },
         ]);
-        expect(store.ledger.stateOf(keyOf(effect), 1)).toEqual({ kind: "resumable", nextSeq: 1 });
+        expect(store.ledger.stateOf(keyOf(effect), 2)).toEqual({ kind: "resumable", nextSeq: 2 });
         expect(store.ledger.open(FUTURE)).toEqual([]);
     });
 
@@ -1504,7 +1587,7 @@ describe("a write no confirmed endpoint carries yet", () => {
             `addLabel ${READY_LABEL}`,
         ]);
         expect(github.world.labels).toEqual([READY_LABEL]);
-        expect(store.ledger.stateOf(keyOf(effect), 1)).toMatchObject({
+        expect(store.ledger.stateOf(keyOf(effect), 2)).toMatchObject({
             kind: "settled",
             how: "landed",
         });
@@ -1522,7 +1605,7 @@ describe("a write no confirmed endpoint carries yet", () => {
         }
 
         // Every send was given back, so the sweep has nothing it could abandon.
-        expect(store.ledger.stateOf(keyOf(effect), 1)).toEqual({ kind: "resumable", nextSeq: 1 });
+        expect(store.ledger.stateOf(keyOf(effect), 2)).toEqual({ kind: "resumable", nextSeq: 2 });
         expect(store.ledger.open(FUTURE)).toEqual([]);
         expect(logged.map((entry) => entry.event)).not.toContain("effectAbandoned");
     });

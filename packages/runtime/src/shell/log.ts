@@ -5,7 +5,7 @@
  */
 
 import type { ReleaseDeliveryAfterFailureResult } from "../store/index.js";
-import type { Lane, Spent } from "./allowance.js";
+import type { Lane, Spent } from "@hiero-hackers/automation-core";
 import type { EffectOutcomeCode } from "./effects.js";
 
 /**
