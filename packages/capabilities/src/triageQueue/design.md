@@ -58,7 +58,11 @@ mappings:
 ```
 
 `lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
-and it goes to `ready`, so the arrival of that meaning is what completes triage. The people who can
+and it goes to `ready`, so the arrival of that meaning is what completes triage. The label that
+means `ready` is the repository's to spell under `mappings.labels.ready`; unmapped, it is read at
+the default `status: ready`. The App only ever watches for it — it defines `awaitingTriage` where
+the repository lacks it, and never creates `ready`. A repository whose ready label is spelled
+another way must map it, or the lock never lifts. The people who can
 add the label are the authorization — GitHub lets triage access and above apply labels — and no
 role is ever read, so "triaged" means exactly that: someone with that access marked it ready. `confirmUnlock` is inert without `lockUntilTriaged`.
 

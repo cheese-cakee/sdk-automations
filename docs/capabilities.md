@@ -46,7 +46,7 @@ you leave the key out; `docs/examples/full.yml` is the same catalogue with the o
 ```yaml
 enabled: true
 welcome: false # default — Post a welcome comment on a new issue, saying it is waiting for triage
-lockUntilTriaged: false # default — Lock a new issue's conversation until someone with triage access adds the ready label; the welcome is posted either way
+lockUntilTriaged: false # default — Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default "status: ready", never created by the App; the welcome is posted either way
 confirmUnlock: false # default — Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on
 ```
 

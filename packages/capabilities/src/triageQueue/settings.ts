@@ -9,7 +9,7 @@ export const TRIAGE_QUEUE_SETTINGS = spec({
     }),
     lockUntilTriaged: flag({
         default: false,
-        doc: "Lock a new issue's conversation until someone with triage access adds the ready label; the welcome is posted either way",
+        doc: 'Lock a new issue\'s conversation until someone with triage access adds the ready label — mappings.labels.ready, default "status: ready", never created by the App; the welcome is posted either way',
     }),
     confirmUnlock: flag({
         default: false,
