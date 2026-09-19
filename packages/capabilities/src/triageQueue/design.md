@@ -77,8 +77,9 @@ then the confirmation where asked.
 
 The release reads the label that arrived, not the position it produced. A `ready` added beside a
 stale triage label is a two-position conflict the map reports and never repairs (D35), and it is
-still an approval a person made — so the unlock is asked for anyway. A conflicted issue at open is
-skipped, as before.
+still an approval a person made — so the unlock is asked for anyway. Today's platform then refuses
+it, and refuses the clean case too (D207, protocol 8.6): see the limits below. A conflicted issue
+at open is skipped, as before.
 
 Never acts on: a removed label (nothing re-locks — the human's removal stands), any other label, a
 lock a human placed on a repository that never asked to lock, a bot-opened issue, a label a bot
@@ -90,9 +91,17 @@ information needed from the author, or closed as invalid, duplicate or out of sc
 handles the first and knows nothing of the others. Limits until phase 3, for whoever turns
 `lockUntilTriaged` on:
 
-- `ready` is the only release. A triage that ends in `blocked`, in a request for more information,
-  or in an area label leaves the lock on until a person unlocks by hand — and for the author who
-  was asked for more information, the lock is exactly what stops them answering.
+- **Nothing releases the lock yet.** The capability asks for the unlock when `ready` arrives, and
+  the platform refuses it: beside a stale triage label by rule 4, the conflict; on a clean position
+  by rule 5 at the apply gate, where the person's own `labeled` event ties with the write it caused
+  because the applier's externals carry no cause fingerprint (D207, protocol 8.6). Until that gate
+  carries the cause, a locked issue is unlocked by hand.
+- `ready` is the only release asked for. A triage that ends in `blocked`, in a request for more
+  information, or in an area label asks for nothing — and for the author who was asked for more
+  information, the lock is exactly what stops them answering.
+- An issue opened already carrying the triage label — a template applied it — is asked its
+  welcome and lock, and rule 5 refuses both: the label event is dated after the payload's
+  `updated_at` (protocol 8.6).
 - Closure needs nothing: a closed issue never reaches the capability, and a closed thread that
   stays locked is the ordinary GitHub outcome.
 - A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses
@@ -128,18 +137,19 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3 | triage completion: the repository lists what a triaged issue carries — a skill tier, a type, an area, each item opt-in — and the welcome becomes a checklist updated in place as labels arrive. With `readyWhenComplete: true` the App moves the issue to `ready` on the map's own edge when the last item lands, unlocks it, and says what completed; off, the list is advisory and a person still adds `ready`. An empty list is today's behaviour. A person adding `ready` always counts, whoever else was still missing; labels a bot added count toward the list. `blocked` and a needs-more-information label unlock so the author can answer, and the list waits | a `triage` section with one opt-in block per item · a `types` mapping family for label-based repositories · a `needsInfo` meaning and where it lives · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
+| 3 | first, the platform: the apply gate carries the cause fingerprint or dates the write at evaluation, so a person's own label can release (D207). Then triage completion: the repository lists what a triaged issue carries — a skill tier, a type, an area, each item opt-in — and the welcome becomes a checklist updated in place as labels arrive. With `readyWhenComplete: true` the App moves the issue to `ready` on the map's own edge when the last item lands, unlocks it, and says what completed; off, the list is advisory and a person still adds `ready`. An empty list is today's behaviour. A person adding `ready` always counts, whoever else was still missing; labels a bot added count toward the list. `blocked` and a needs-more-information label unlock so the author can answer, and the list waits | a `triage` section with one opt-in block per item · a `types` mapping family for label-based repositories · a `needsInfo` meaning and where it lives · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
 | 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
 ## Verified by
 
 | Scenario | Proves |
 |---|---|
-| Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order |
+| Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order (8.6: 18:41:20, :24, :25) |
 | Issue opened, `lockUntilTriaged` and `welcome: false` | the welcome still posts |
-| Issue opened already carrying the triage label (a template applied it) | welcome and lock, no second label |
+| Issue opened already carrying the triage label (a template applied it) | welcome and lock asked for, no second label; rule 5 refuses both live (8.6) |
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
-| `ready` added while the triage label is still on | the conflict is not a refusal: the unlock is asked for |
+| `ready` added while the triage label is still on | the unlock is asked for; the platform refuses it, rule 4 (8.6) |
+| `ready` added on a clean position | the unlock is asked for and permitted at decide; the apply gate refuses it, rule 5 (8.6) |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
 | `ready` added to a locked issue where `lockUntilTriaged` is off | nothing — the lock is a human's |
 | `ready` added by an automation | nothing |
@@ -147,5 +157,5 @@ flowchart LR
 | Issue opened by a bot | nothing, silently |
 | Conflicted issue at open | skipped and reported (D35) |
 | Sweep record | nothing — no arrival |
-| Redelivered `opened` | one welcome, one lock — the journal and the managed identity |
+| Redelivered `opened` | one welcome, one lock — the journal and the managed identity (8.6: `deliveryDuplicate`) |
 | `mode: dry-run` | every proposed write reported, none sent |
