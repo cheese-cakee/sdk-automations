@@ -88,7 +88,7 @@ const MISSING_VARIABLES =
 const CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 mappings:
@@ -112,7 +112,7 @@ capabilities:
 `;
 
 /**
- * The write path's own configuration. `welcome: false` on purpose: intake's
+ * The write path's own configuration. `welcome: false` on purpose: triageQueue's
  * second intent claims the triage meaning is ABSENT, and by the time it is
  * gated the first effect has already put the label there — so the comment
  * would be refused as `preconditionStale` and the case would be about that
@@ -121,7 +121,7 @@ capabilities:
 const ACTIVE_CONFIG = `schemaVersion: 2
 mode: active
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: false
 mappings:
@@ -879,12 +879,12 @@ describe("the sandbox entry point, as a process", () => {
                         expect(
                             decided.map((row) => [row.capability, row.verdict, row.code]),
                         ).toEqual([
-                            ["intake", "info", "capabilityExplained"],
-                            ["intake", "notice", "modeRecordsOnly"],
-                            ["intake", "info", "wouldApply"],
-                            ["intake", "info", "capabilityExplained"],
-                            ["intake", "notice", "modeRecordsOnly"],
-                            ["intake", "info", "wouldApply"],
+                            ["triageQueue", "info", "capabilityExplained"],
+                            ["triageQueue", "notice", "modeRecordsOnly"],
+                            ["triageQueue", "info", "wouldApply"],
+                            ["triageQueue", "info", "capabilityExplained"],
+                            ["triageQueue", "notice", "modeRecordsOnly"],
+                            ["triageQueue", "info", "wouldApply"],
                         ]);
                         // Every row names the repository this endpoint serves
                         // and the delivery that caused it.
@@ -985,7 +985,7 @@ describe("the sandbox entry point, as a process", () => {
                     });
                     expect(await decisionRows(storeFile)).toContainEqual(
                         expect.objectContaining({
-                            capability: "intake",
+                            capability: "triageQueue",
                             verdict: "applied",
                             code: null,
                             effectId: expect.any(String),

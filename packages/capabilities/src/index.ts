@@ -4,12 +4,16 @@
  */
 
 import { toEngine, type EngineCapability } from "@hiero-hackers/automation-core";
-import { intake } from "./intake/capability.js";
+import { triageQueue } from "./triageQueue/capability.js";
 import { prDashboard } from "./prDashboard/capability.js";
 import { inactivity } from "./inactivity/capability.js";
 import { configReport } from "./configReport/capability.js";
 
-export { intake, intakeDeclaration, type IntakeDeclaration } from "./intake/capability.js";
+export {
+    triageQueue,
+    triageQueueDeclaration,
+    type TriageQueueDeclaration,
+} from "./triageQueue/capability.js";
 export {
     prDashboard,
     prDashboardDeclaration,
@@ -28,7 +32,7 @@ export {
 
 /** Order is the production composition: a reordering is a behaviour change. */
 export const CAPABILITIES: readonly EngineCapability[] = [
-    toEngine(intake),
+    toEngine(triageQueue),
     toEngine(prDashboard),
     toEngine(inactivity),
     toEngine(configReport),

@@ -1,4 +1,4 @@
-/** Everything intake says to a contributor, and the words it says it in. */
+/** Everything triageQueue says to a contributor, and the words it says it in. */
 
 import { mentions } from "@hiero-hackers/automation-core/author";
 

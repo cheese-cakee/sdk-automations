@@ -1,7 +1,6 @@
 /**
- * intake — walk a new issue from opening to triage (`design.md`): the label,
- * the welcome a repository may ask for, and the lock it may hold until someone
- * with triage access marks the issue ready. The words are `messages.ts`.
+ * triageQueue — put a new issue in the triage queue: label it, welcome its author, hold it until triaged (`design.md`).
+ * The lock lifts when someone with triage access adds the ready label. The words are `messages.ts`.
  */
 
 import {
@@ -12,24 +11,24 @@ import {
     type PlatformHandle,
 } from "@hiero-hackers/automation-core/author";
 import { unlocked, welcome } from "./messages.js";
-import { INTAKE_SETTINGS } from "./settings.js";
+import { TRIAGE_QUEUE_SETTINGS } from "./settings.js";
 
-export const intakeDeclaration = declareCapability({
-    name: "intake",
+export const triageQueueDeclaration = declareCapability({
+    name: "triageQueue",
     triggers: [{ kind: "event", event: "issues" }],
-    settings: INTAKE_SETTINGS,
+    settings: TRIAGE_QUEUE_SETTINGS,
     requiredMappings: { labels: ["awaitingTriage"] },
     labels: ["awaitingTriage"],
     resolvers: ["isAutomationActor"],
     intents: ["applyMappedLabel", "postManagedComment", "lockIssue", "unlockIssue"],
 });
 
-export type IntakeDeclaration = typeof intakeDeclaration;
+export type TriageQueueDeclaration = typeof triageQueueDeclaration;
 
-type Facts = Parameters<Capability<IntakeDeclaration>["evaluate"]>[0];
-type View = CapabilityView<IntakeDeclaration>;
-type Platform = PlatformHandle<IntakeDeclaration>;
-type Intents = readonly IntentFor<IntakeDeclaration>[];
+type Facts = Parameters<Capability<TriageQueueDeclaration>["evaluate"]>[0];
+type View = CapabilityView<TriageQueueDeclaration>;
+type Platform = PlatformHandle<TriageQueueDeclaration>;
+type Intents = readonly IntentFor<TriageQueueDeclaration>[];
 
 /** The meaning whose arrival completes triage: the map's one edge out of `awaitingTriage`. */
 const TRIAGED = "ready";
@@ -44,11 +43,11 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
             "a conflict is reported, never repaired (D35)",
         );
     }
-    // Already positioned somewhere — intake is the entry gate only.
+    // Already positioned somewhere — triageQueue is the entry gate only.
     if (facts.position.state.meaning !== null) return [];
 
     const { welcome: welcomed, lockUntilTriaged } = config.settings;
-    const intents: IntentFor<IntakeDeclaration>[] = [
+    const intents: IntentFor<TriageQueueDeclaration>[] = [
         platform.intent({
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage" },
@@ -85,7 +84,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
 /** The release: a person's `ready` unlocks whatever else the labels say, and may be announced. */
 function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
     if (!config.settings.lockUntilTriaged) return [];
-    const intents: IntentFor<IntakeDeclaration>[] = [];
+    const intents: IntentFor<TriageQueueDeclaration>[] = [];
     if (facts.locked) {
         intents.push(
             platform.intent({
@@ -107,8 +106,8 @@ function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
     return intents;
 }
 
-export const intake: Capability<IntakeDeclaration> = {
-    declaration: intakeDeclaration,
+export const triageQueue: Capability<TriageQueueDeclaration> = {
+    declaration: triageQueueDeclaration,
 
     async evaluate(facts, config, platform) {
         const { arrival } = facts;

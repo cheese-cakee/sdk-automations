@@ -14,7 +14,7 @@ schemaVersion: 2 # the flat capability shape used by this catalogue
 mode: dry-run
 
 capabilities:
-  intake: # a new issue is labelled awaitingTriage
+  triageQueue: # a new issue is labelled awaitingTriage
     enabled: true
     welcome: true # and told so in a comment (default: false)
 

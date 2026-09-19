@@ -13,7 +13,7 @@ schemaVersion: 2
 mode: dry-run
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
 
 mappings:
@@ -67,7 +67,7 @@ be is named.
 schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
 mappings:
   labels:
@@ -80,7 +80,7 @@ mappings:
 schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
   prDashboard:

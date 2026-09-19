@@ -44,8 +44,8 @@ describe("every shipped capability's design page", () => {
 
     /** The negative control for the shape above: two near misses, both refused. */
     it("refuses a hyphen for the em-dash, and a missing purpose", () => {
-        expect(DESIGN_TITLE.test("# intake - walk a new issue")).toBe(false);
-        expect(DESIGN_TITLE.test("# intake")).toBe(false);
-        expect(DESIGN_TITLE.test("# intake — walk a new issue")).toBe(true);
+        expect(DESIGN_TITLE.test("# triageQueue - walk a new issue")).toBe(false);
+        expect(DESIGN_TITLE.test("# triageQueue")).toBe(false);
+        expect(DESIGN_TITLE.test("# triageQueue — walk a new issue")).toBe(true);
     });
 });

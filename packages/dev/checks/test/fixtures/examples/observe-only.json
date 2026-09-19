@@ -3,7 +3,7 @@
     "schemaVersion": 2,
     "mode": "observe",
     "capabilities": {
-        "intake": {
+        "triageQueue": {
             "enabled": true,
             "settings": {
                 "welcome": false,

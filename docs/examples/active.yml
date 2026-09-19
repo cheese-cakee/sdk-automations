@@ -12,7 +12,7 @@ schemaVersion: 2
 mode: active
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 

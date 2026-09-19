@@ -12,9 +12,9 @@ import {
     validateCapabilityDeclarations,
     type AnyIntent,
 } from "@hiero-hackers/automation-core";
-import { CAPABILITIES, inactivity, intake, prDashboard } from "../src/index.js";
+import { CAPABILITIES, inactivity, triageQueue, prDashboard } from "../src/index.js";
 import { INACTIVITY_SETTINGS } from "../src/inactivity/settings.js";
-import { INTAKE_SETTINGS } from "../src/intake/settings.js";
+import { TRIAGE_QUEUE_SETTINGS } from "../src/triageQueue/settings.js";
 import { PR_DASHBOARD_SETTINGS } from "../src/prDashboard/settings.js";
 import { configEnabling } from "@hiero-hackers/automation-core/author/testing";
 
@@ -61,14 +61,14 @@ describe("declared shape", () => {
 
     /**
      * The only probe that requires a meaning, and the one D84 is about: this
-     * list is what makes enabling intake without `awaitingTriage` a file
+     * list is what makes enabling triageQueue without `awaitingTriage` a file
      * error instead of a runtime silence.
      */
-    it("intake declares its actor lookup, writes, and required meaning", () => {
-        expect(intake.declaration).toEqual({
-            name: "intake",
+    it("triageQueue declares its actor lookup, writes, and required meaning", () => {
+        expect(triageQueue.declaration).toEqual({
+            name: "triageQueue",
             triggers: [{ kind: "event", event: "issues" }],
-            settings: INTAKE_SETTINGS,
+            settings: TRIAGE_QUEUE_SETTINGS,
             requiredMappings: { labels: ["awaitingTriage"] },
             labels: ["awaitingTriage"],
             facts: ["issue"],
@@ -154,7 +154,7 @@ describe("configuration isolation (contract.md §2)", () => {
     const config = configEnabling(
         NAMES,
         DECLARATIONS,
-        { intake: { welcome: true } },
+        { triageQueue: { welcome: true } },
         {
             labels: {
                 awaitingTriage: "status: triage",
@@ -167,7 +167,7 @@ describe("configuration isolation (contract.md §2)", () => {
     );
 
     it("projects the capability's own settings, as the parser resolved them", () => {
-        const view = projectCapabilityView(intake.declaration, config);
+        const view = projectCapabilityView(triageQueue.declaration, config);
         expect(view.settings).toEqual({
             welcome: true,
             lockUntilTriaged: false,
@@ -183,12 +183,12 @@ describe("configuration isolation (contract.md §2)", () => {
      */
     it("refuses an undeclared key rather than dropping it on the way in", () => {
         expect(() =>
-            configEnabling(NAMES, DECLARATIONS, { intake: { secretKnob: "not declared" } }),
+            configEnabling(NAMES, DECLARATIONS, { triageQueue: { secretKnob: "not declared" } }),
         ).toThrow(/unknown setting "secretKnob"/);
     });
 
     /**
-     * `intake`'s `welcome: true` is the block above, and this repository
+     * `triageQueue`'s `welcome: true` is the block above, and this repository
      * wrote nothing under `prDashboard` — so what arrives is prDashboard's own
      * spec at its own defaults, with its neighbour's answer nowhere in it.
      */
@@ -214,7 +214,7 @@ describe("configuration isolation (contract.md §2)", () => {
      * "mapped nothing" and "has no such family" are not the same absence.
      */
     it("reports mapped names without ever exposing a spelling", () => {
-        const view = projectCapabilityView(intake.declaration, config);
+        const view = projectCapabilityView(triageQueue.declaration, config);
         expect(view.mapped).toEqual({
             // The three the file spelled and the four at their defaults, in the table's order (D203).
             labels: [
@@ -238,12 +238,12 @@ describe("configuration isolation (contract.md §2)", () => {
 
 describe("intent screening", () => {
     const base = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: { owner: "o", repo: "r" },
         item: { kind: "issue", number: 1 },
         claims: { meaningsPresent: [], meaningsAbsent: [], closed: false },
         cause: { cause: "c", observedAt: new Date("2026-08-03T00:00:00.000Z") },
-        explanation: { capability: "intake", summary: "s", detail: [] },
+        explanation: { capability: "triageQueue", summary: "s", detail: [] },
     } as const;
     /**
      * The candidate under test, keyed the way the platform keys it. A literal
@@ -262,7 +262,7 @@ describe("intent screening", () => {
 
     it("refuses an intent the capability did not declare", () => {
         const undeclared = candidate({ operation: "unassign", desired: { login: "someone" } });
-        expect(screenIntent(undeclared, intake.declaration, position)).toMatchObject({
+        expect(screenIntent(undeclared, triageQueue.declaration, position)).toMatchObject({
             ok: false,
             code: "undeclaredIntent",
         });
@@ -274,7 +274,7 @@ describe("intent screening", () => {
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         });
-        expect(screenIntent(foreign, intake.declaration, position)).toMatchObject({
+        expect(screenIntent(foreign, triageQueue.declaration, position)).toMatchObject({
             ok: false,
             code: "foreignCapability",
         });
@@ -285,7 +285,7 @@ describe("intent screening", () => {
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         });
-        expect(screenIntent(unprojected, intake.declaration, null)).toMatchObject({
+        expect(screenIntent(unprojected, triageQueue.declaration, null)).toMatchObject({
             ok: false,
             code: "authoritativePositionUnavailable",
         });

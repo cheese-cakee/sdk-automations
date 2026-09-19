@@ -187,7 +187,7 @@ describe("P3 through the engine", () => {
     });
 
     it("the matrix is not vacuous: alone-runs do real, distinguishable work", async () => {
-        const intakeAlone = sliceFor(await runAll(["intake"]), "intake");
+        const intakeAlone = sliceFor(await runAll(["triageQueue"]), "triageQueue");
         expect(intakeAlone.approved.length).toBeGreaterThan(0);
         const prAlone = sliceFor(await runAll(["prDashboard"]), "prDashboard");
         expect(prAlone.approved.length).toBeGreaterThan(0);
@@ -283,7 +283,7 @@ describe("managed-comment identity is minted by the platform", () => {
     it("marks every comment the four records earn, and none of the labels", async () => {
         const comments = await approvedComments();
         /**
-         * Record order. A sweep record carries no `arrival`, so intake asks
+         * Record order. A sweep record carries no `arrival`, so triageQueue asks
          * for nothing on the sweep-shaped pair; the engine filters no trigger.
          */
         expect(
@@ -295,7 +295,7 @@ describe("managed-comment identity is minted by the platform", () => {
             })),
             "one row per managed comment the four fixture records earn, in record then registry order — a new capability that posts one adds its rows here by hand",
         ).toEqual([
-            { capability: "intake", item: 11, kind: "notice", topic: "welcome" },
+            { capability: "triageQueue", item: 11, kind: "notice", topic: "welcome" },
             { capability: "prDashboard", item: 12, kind: "summary", topic: "" },
             // `inactivity` is the one design that needs the discriminator: the
             // warning is about ONE assignee's clock (D145).
@@ -316,7 +316,7 @@ describe("managed-comment identity is minted by the platform", () => {
             );
         }
 
-        // The label intake also asks for is the control: an operation that
+        // The label triageQueue also asks for is the control: an operation that
         // posts nothing is handed no identity to post it under.
         const labels = (await runAll(NAMES))
             .flatMap((decision) => decision.approved)
@@ -354,10 +354,10 @@ describe("managed-comment identity is minted by the platform", () => {
     });
 });
 
-describe("intake conflict behavior", () => {
+describe("triageQueue conflict behavior", () => {
     it("reports a conflicted item in dry-run without approving a repair", async () => {
         const config = {
-            ...configEnabling(["intake"], DECLARATIONS, SETTINGS, MAPPINGS),
+            ...configEnabling(["triageQueue"], DECLARATIONS, SETTINGS, MAPPINGS),
             mode: "dry-run" as const,
         };
         const facts = webhookIssue({

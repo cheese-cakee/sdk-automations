@@ -23,7 +23,7 @@ const fact = (over: Partial<Fact> = {}): Fact => ({
     kind: "sent",
     at: AT,
     revision: "revision-1",
-    capability: "intake",
+    capability: "triageQueue",
     repository: REPOSITORY,
     item: ITEM,
     verb: "postComment",
@@ -41,10 +41,10 @@ const decision = (over: Partial<Decision> = {}): Decision => ({
     at: AT,
     repository: REPOSITORY,
     item: ITEM,
-    capability: "intake",
+    capability: "triageQueue",
     verdict: "info",
     code: "wouldApply",
-    detail: "dry-run: intake would applyMappedLabel",
+    detail: "dry-run: triageQueue would applyMappedLabel",
     effectId: null,
     ...over,
 });
@@ -135,8 +135,8 @@ describe("one item explained", () => {
                 "issue#40",
                 "effect effect-a  o/r  state: settled landed (seq 1 of ≥1)",
                 "effect effect-b  o/r  state: open (seq 1 of ≥1, attempts 2)",
-                `decision  ${later(4)}  sweep  sweep:o/r:issue#40  intake  refused  itemClosed  -  effect-b`,
-                `decision  ${AT}  webhook  pass-1  intake  info  wouldApply  dry-run: intake would applyMappedLabel  effect-a`,
+                `decision  ${later(4)}  sweep  sweep:o/r:issue#40  triageQueue  refused  itemClosed  -  effect-b`,
+                `decision  ${AT}  webhook  pass-1  triageQueue  info  wouldApply  dry-run: triageQueue would applyMappedLabel  effect-a`,
             ],
         });
     });

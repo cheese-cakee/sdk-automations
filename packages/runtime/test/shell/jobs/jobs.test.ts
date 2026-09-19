@@ -17,7 +17,7 @@ import {
     type ReadBack,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
-import { intake } from "@hiero-hackers/automation-capabilities";
+import { triageQueue } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import {
     createShell,
@@ -41,7 +41,7 @@ const FIXTURE = capture("issues.opened.json").bytes();
 const CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 mappings:
@@ -91,7 +91,7 @@ afterEach(() => {
     store.close();
 });
 
-function buildShell(capability: EngineCapability = toEngine(intake), tickMs = TICK_MS): Shell {
+function buildShell(capability: EngineCapability = toEngine(triageQueue), tickMs = TICK_MS): Shell {
     let tick = 0;
     const shell = createShell({
         secret: SECRET,
@@ -203,7 +203,7 @@ describe("one tick, four jobs", () => {
             createShell({
                 secret: SECRET,
                 store: doomed,
-                capabilities: [toEngine(intake)],
+                capabilities: [toEngine(triageQueue)],
                 seams: seamsOn(configFile),
                 repository: REPOSITORY,
                 tickMs: TICK_MS,
@@ -234,11 +234,11 @@ describe("one tick, four jobs", () => {
             createShell({
                 secret: SECRET,
                 store,
-                capabilities: [toEngine(intake)],
+                capabilities: [toEngine(triageQueue)],
                 seams: seamsOn(configFile),
                 repository: REPOSITORY,
                 tickMs: TICK_MS,
-                // The reader is never reached: `intake` runs on events, so the
+                // The reader is never reached: `triageQueue` runs on events, so the
                 // repository wants no sweeping and the firing reads nothing.
                 sweep: { allowance: spending() },
                 log,
@@ -267,7 +267,7 @@ describe("recovering effects on the clock, with no delivery to wake anything", (
     const ACTIVE_CONFIG = `schemaVersion: 2
 mode: active
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 mappings:
@@ -290,7 +290,7 @@ mappings:
             kind: "sent",
             at: new Date(BASE.getTime() - 60 * 60_000).toISOString(),
             revision,
-            capability: "intake",
+            capability: "triageQueue",
             repository: REPOSITORY,
             item,
             verb: "addLabel",
@@ -298,7 +298,7 @@ mappings:
             code: null,
             detail: null,
             payload: serializeCall({
-                capability: "intake",
+                capability: "triageQueue",
                 item,
                 call: { verb: "addLabel", label: LABEL },
             }),
@@ -326,7 +326,7 @@ mappings:
         const shell = createShell({
             secret: SECRET,
             store,
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             seams: seamsOn(configFile, {
                 writer: github.writer,
                 reader: github.reader,

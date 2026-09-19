@@ -19,7 +19,7 @@
  *   harness supplies the one line every document needs.
  * - `mappings` holds four families: three CLOSED (`labels`, `commands`,
  *   `skills`) and one OPEN (`alerts`). Every entry is a spelling string, so a
- *   design naming a family the platform does not have — intake's `types:`
+ *   design naming a family the platform does not have — triageQueue's `types:`
  *   block, whose phase table lists it as work to come — is refused as an
  *   unknown key. `travel` records which family refused a document before
  *   reading the settings without it.
@@ -97,7 +97,7 @@ const fixture = (name: string): string =>
 /**
  * A mapping family a design's block names that today's platform does not
  * have: the one a document may have to shed before the parser will read the
- * rest of it. `types` is intake's, whose phase table lists it as work to come.
+ * rest of it. `types` is triageQueue's, whose phase table lists it as work to come.
  */
 const UNSHIPPED_FAMILIES = ["types"];
 
@@ -1627,7 +1627,7 @@ describe("describeSpec", () => {
 
 // ─── The six designs' config sections, as fixtures ───────────────────
 
-describe("intake — packages/capabilities/src/intake/design.md", () => {
+describe("triageQueue — packages/capabilities/src/triageQueue/design.md", () => {
     /**
      * The two stations, as sections. Neither carries an `enabled` of its own —
      * "stations are opt-in per key", so each flag is its own consent and an
@@ -1638,7 +1638,7 @@ describe("intake — packages/capabilities/src/intake/design.md", () => {
      * Verified-by row — a checklist demanding a `skills` mapping the file never
      * made — is the unshipped family reader's, not this spec's (§3.3).
      */
-    const INTAKE_DESIGN = spec({
+    const TRIAGE_QUEUE_DESIGN = spec({
         onOpen: section({
             label: flag({ default: false }),
             welcome: flag({ default: false }),
@@ -1655,17 +1655,19 @@ describe("intake — packages/capabilities/src/intake/design.md", () => {
         }),
     });
 
-    const intake = declarationFor("intake", INTAKE_DESIGN, { labels: ["awaitingTriage"] });
+    const triageQueue = declarationFor("triageQueue", TRIAGE_QUEUE_DESIGN, {
+        labels: ["awaitingTriage"],
+    });
 
     it("reads the quarantine example: label, welcome, lock, then release on ready", () => {
-        const { refused, stripped, config } = travel("intake.1", intake);
+        const { refused, stripped, config } = travel("triageQueue.1", triageQueue);
 
         expect([refused, stripped]).toEqual([[], []]);
-        expect(Object.keys(config.capabilities.intake?.settings ?? {})).toEqual([
+        expect(Object.keys(config.capabilities.triageQueue?.settings ?? {})).toEqual([
             "onOpen",
             "approval",
         ]);
-        expect(viewOf(intake, config).settings).toEqual({
+        expect(viewOf(triageQueue, config).settings).toEqual({
             onOpen: { label: true, welcome: true, lock: true },
             approval: {
                 when: ["ready"],
@@ -1678,16 +1680,16 @@ describe("intake — packages/capabilities/src/intake/design.md", () => {
 
     /**
      * The `types` family does not ship: it had no reader anywhere in the tree,
-     * so it was deleted rather than documented. Intake's design page still
+     * so it was deleted rather than documented. TriageQueue's design page still
      * names it, under phase 3 and in this block, so the document is set aside
      * — as the family the platform does not have, which is the refusal a
      * maintainer holding this file gets today.
      */
     it("reads the C++ shape's advisory checklist, once the types family is set aside", () => {
-        const { refused, stripped, config } = travel("intake.2", intake);
+        const { refused, stripped, config } = travel("triageQueue.2", triageQueue);
 
         expect([refused, stripped]).toEqual([["unknownKey @ mappings.types"], ["types"]]);
-        expect(viewOf(intake, config).settings).toEqual({
+        expect(viewOf(triageQueue, config).settings).toEqual({
             onOpen: { label: true, welcome: false, lock: false },
             approval: {
                 when: ["ready"],
@@ -1700,15 +1702,15 @@ describe("intake — packages/capabilities/src/intake/design.md", () => {
 
     /** The third policy is no policy, and it parses as one: consent withheld. */
     it("reads the repository that never triages as a capability turned off", () => {
-        const { refused, config } = travel("intake.3", intake);
+        const { refused, config } = travel("triageQueue.3", triageQueue);
 
         expect(refused).toEqual([]);
-        expect(config.capabilities.intake?.enabled).toBe(false);
+        expect(config.capabilities.triageQueue?.enabled).toBe(false);
         // Both stations absent is both stations off — the section's own rule,
         // and the reason a repository states only the flags it wants. The
         // block is resolved either way: a disabled capability's settings are
         // read with the file, so a typo in one is caught today (D84's reason).
-        expect(viewOf(intake, config).settings).toEqual({
+        expect(viewOf(triageQueue, config).settings).toEqual({
             onOpen: { label: false, welcome: false, lock: false },
             approval: {
                 when: [],

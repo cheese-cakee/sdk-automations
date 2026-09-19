@@ -170,7 +170,7 @@ counter-writes — a maintainer assigning someone bypasses every gate on purpose
 |---|---|---|
 | 1 | `/assign` + `/unassign`, claimability meanings, the caps | nothing new: the `command` group (read by `issue_comment`) and the `actor` field ship · `assign` and `unassign` are write operations (`core/src/intents/operations/`) · `openAssignments` answers `{ item, meanings }[]` and its read is in `CONFIRMED_RESOLVER_READS`. What remains is the capability, and the trigger question the Declaration table names |
 | 2 | skill gates · `maxPerDay` · `minAccountAge` · `reclaimCooldown` | the `skills` mapping family (the config meaning-family reader) · a completed-count-by-skill resolver, repo-local · recent-claim times and App-release events (timeline reads, or the durable-state candidate) · account age on the actor |
-| 3 | position pairing — claim writes `inProgress`, release writes `ready`, when those meanings are mapped | the two-write recovery record (§operational needs); the `ready`-ownership conversation with intake |
+| 3 | position pairing — claim writes `inProgress`, release writes `ready`, when those meanings are mapped | the two-write recovery record (§operational needs); the `ready`-ownership conversation with triageQueue |
 | 4 | next-issue recommendation on merge — designed as its own capability, `merged.md` | demand evidence first; unranked. Role-readiness recognition is `advancement.md`'s job |
 
 | Declaration | Value |

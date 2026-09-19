@@ -112,7 +112,7 @@ function sent(effectId: string, payload: string, over: Partial<Fact> = {}): void
         kind: "sent",
         at: BASE.toISOString(),
         revision: "rev-1",
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: ITEM,
         verb: "addLabel",
@@ -137,7 +137,7 @@ function warn(effectId: string, item: ItemRef, snapshot: Omit<StoredWarning, "ef
         kind: "warned",
         at: snapshot.warnedAt,
         revision: "rev-1",
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item,
         verb: null,
@@ -173,7 +173,7 @@ describe("an effect nothing has started", () => {
 
         expect(outcome).toEqual({
             effectId: keyOf(effect),
-            capability: "intake",
+            capability: "triageQueue",
             operation: "applyMappedLabel",
             item: ITEM,
             outcome: "applied",
@@ -547,7 +547,7 @@ describe("recovering an effect nobody closed", () => {
     const orphan = (call: Parameters<typeof serializeCall>[0]["call"], attempts = 1): string => {
         const effectId = "orphan-effect";
         for (let attempt = 0; attempt < attempts; attempt += 1) {
-            sent(effectId, serializeCall({ capability: "intake", item: ITEM, call }), {
+            sent(effectId, serializeCall({ capability: "triageQueue", item: ITEM, call }), {
                 verb: call.verb,
             });
         }
@@ -660,7 +660,7 @@ describe("recovering an effect nobody closed", () => {
         orphan({ verb: "addLabel", label: READY_LABEL });
         const disabledAndOff = {
             ...configFor("disabled"),
-            capabilities: { intake: { enabled: false, settings: {} } },
+            capabilities: { triageQueue: { enabled: false, settings: {} } },
         };
 
         await applierOver(github).recover(openRow(), disabledAndOff);
@@ -1068,7 +1068,7 @@ describe("a label move that displaces the position the item held", () => {
     it("resumes at the last call and sends only that one", async () => {
         const github = fakeGitHub({ labels: [TRIAGE_LABEL, READY_LABEL] });
         const define = serializeCall({
-            capability: "intake",
+            capability: "triageQueue",
             item: ITEM,
             call: {
                 verb: "defineLabel",
@@ -1078,7 +1078,7 @@ describe("a label move that displaces the position the item held", () => {
             },
         });
         const row = serializeCall({
-            capability: "intake",
+            capability: "triageQueue",
             item: ITEM,
             call: { verb: "addLabel", label: READY_LABEL },
         });
@@ -1279,14 +1279,14 @@ describe("a second occasion of the same purpose on the same item", () => {
  */
 describe("a recorded send from a deployment before the schema bump", () => {
     const V1_BODY =
-        '<!-- hiero-automation:{"schemaVersion":1,"capability":"intake","kind":"summary","effect":"0a70e62c14228dbe"} -->\n\nthe summary';
+        '<!-- hiero-automation:{"schemaVersion":1,"capability":"triageQueue","kind":"summary","effect":"0a70e62c14228dbe"} -->\n\nthe summary';
 
     it("claims no comment at all, and cannot confirm the one it posts", async () => {
         const github = fakeGitHub({ comments: [appComment(7, V1_BODY)] });
         sent(
             "an-old-effect",
             serializeCall({
-                capability: "intake",
+                capability: "triageQueue",
                 item: ITEM,
                 call: { verb: "postComment", kind: "summary", body: V1_BODY },
             }),
@@ -1340,7 +1340,7 @@ describe("a managed comment this effect may already own", () => {
         sent(
             keyOf(effect),
             serializeCall({
-                capability: "intake",
+                capability: "triageQueue",
                 item: ITEM,
                 call: {
                     verb: "postComment",
@@ -1470,7 +1470,7 @@ describe("an operation the write surface does not have", () => {
             const github = fakeGitHub();
             sent(
                 `${name}-effect`,
-                serializeCall({ capability: "intake", item: ITEM, call: call as never }),
+                serializeCall({ capability: "triageQueue", item: ITEM, call: call as never }),
                 { verb: (call as { verb: string }).verb },
             );
 
@@ -1486,7 +1486,7 @@ describe("an operation the write surface does not have", () => {
         sent(
             "unassign-effect",
             serializeCall({
-                capability: "intake",
+                capability: "triageQueue",
                 item: ITEM,
                 call: { verb: "unassign", login: "sophie" },
             }),
@@ -1525,7 +1525,7 @@ describe("issue conversation moderation", () => {
         ["unlockIssue", { verb: "unlockIssue", reason: "approved" }, false],
     ] as const)("recovers a landed %s from the current lock state", async (name, call, locked) => {
         const github = fakeGitHub({ locked });
-        sent(`${name}-effect`, serializeCall({ capability: "intake", item: ITEM, call }), {
+        sent(`${name}-effect`, serializeCall({ capability: "triageQueue", item: ITEM, call }), {
             verb: call.verb,
         });
 
@@ -1778,7 +1778,7 @@ describe("the mutation lane a caller hands down", () => {
 
         expect(outcome).toEqual({
             effectId: keyOf(effect),
-            capability: "intake",
+            capability: "triageQueue",
             operation: "applyMappedLabel",
             item: ITEM,
             outcome: "refused",
@@ -1867,7 +1867,7 @@ describe("a warning effect's comment, once it lands", () => {
             cancelledBy: "a commit or a /working comment",
             reversesWith: "re-assign / reopen",
             actionClass: "clockTriggeredDestructive",
-            capability: "intake",
+            capability: "triageQueue",
             causeObservedAt: "2026-09-02T09:00:00.000Z",
             cause: "issue opened",
             item: "hiero-hackers/sdk-automations#164",
@@ -2120,7 +2120,7 @@ describe("a graced act at the apply-time re-gate", () => {
             cancelledBy: "a commit or a /working comment",
             reversesWith: "re-assign / reopen",
             actionClass: "clockTriggeredDestructive",
-            capability: "intake",
+            capability: "triageQueue",
             causeObservedAt: "2026-09-02T09:00:00.000Z",
             cause: "issue opened",
             item: "hiero-hackers/sdk-automations#164",
@@ -2284,7 +2284,7 @@ describe("the three sequences of rehearsal 8.3", () => {
         expect(first).toMatchObject({ outcome: "refused", code: "writeForbidden" });
         expect(second).toEqual({
             effectId: CLOSE_EFFECT_ID,
-            capability: "intake",
+            capability: "triageQueue",
             operation: "closePullRequest",
             item: PULL,
             outcome: "already",
@@ -2303,7 +2303,7 @@ describe("the three sequences of rehearsal 8.3", () => {
         warnTheClose();
         const github = fakeGitHub({ draft: true });
         const row = serializeCall({
-            capability: "intake",
+            capability: "triageQueue",
             item: PULL,
             call: { verb: "closePullRequest", reason: "closed after 60 days of inactivity." },
         });

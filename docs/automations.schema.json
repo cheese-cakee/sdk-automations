@@ -28,13 +28,13 @@
                     "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
                     "additionalProperties": false,
                     "properties": {
-                        "intake": {
+                        "triageQueue": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "description": "Run triageQueue. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
                                 "settings": {
@@ -748,13 +748,13 @@
                     "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
                     "additionalProperties": false,
                     "properties": {
-                        "intake": {
+                        "triageQueue": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "description": "Run triageQueue. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
                                 "welcome": {

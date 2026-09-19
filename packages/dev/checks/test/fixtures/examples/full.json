@@ -3,7 +3,7 @@
     "schemaVersion": 2,
     "mode": "dry-run",
     "capabilities": {
-        "intake": {
+        "triageQueue": {
             "enabled": true,
             "settings": {
                 "welcome": true,

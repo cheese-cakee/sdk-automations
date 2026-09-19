@@ -418,11 +418,11 @@ describe("audit findings, pinned (D51-D53)", () => {
             evalWrite(
                 request({
                     actionClass: "immediatePreventive",
-                    capability: "intake",
+                    capability: "triageQueue",
                     target: { item: "issue #42", change: "lock pending moderation" },
                 }),
                 context(),
-                anyCapability("intake"),
+                anyCapability("triageQueue"),
             ),
         ).toMatchObject({ outcome: "refuse", code: "preventiveGateUnavailable" });
     });

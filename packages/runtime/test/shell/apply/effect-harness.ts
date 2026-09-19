@@ -38,7 +38,7 @@ import {
     type WriteResult,
     type WriteVerbs,
 } from "@hiero-hackers/automation-core";
-import { intakeDeclaration } from "@hiero-hackers/automation-capabilities";
+import { triageQueueDeclaration } from "@hiero-hackers/automation-capabilities";
 import { expect } from "vitest";
 import type { Spending } from "../spending.js";
 
@@ -62,7 +62,7 @@ export const MERGE_LABEL = "status: ready to merge";
  * and a validated shape, and a hand-made one would let a test pass against a
  * document the real parser would have rejected.
  *
- * `intake` is enabled in EVERY mode, including `disabled`. The two are
+ * `triageQueue` is enabled in EVERY mode, including `disabled`. The two are
  * separate refusals with separate codes, and the capability rule runs first —
  * so a `disabled` document that also turned the capability off would refuse
  * under `capabilityDisabled` and never exercise the mode rule at all.
@@ -72,7 +72,7 @@ export function configFor(mode: RepositoryMode = "active", revision = "rev-1"): 
         `schemaVersion: 2
 mode: ${mode}
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: false
 mappings:
@@ -82,20 +82,20 @@ mappings:
     needsReview: "${REVIEW_LABEL}"
     readyToMerge: "${MERGE_LABEL}"
 `,
-        { revision, knownCapabilities: [intakeDeclaration] },
+        { revision, knownCapabilities: [triageQueueDeclaration] },
     );
     expect(result.ok, "the harness configuration parses").toBe(true);
     if (!result.ok) throw new Error("unreachable: asserted above");
     return result.config;
 }
 
-/** The same document with `intake` disabled, which is its own refusal. */
+/** The same document with `triageQueue` disabled, which is its own refusal. */
 export function configWithCapabilityOff(): RepositoryConfig {
     const result = parseConfigDocument(
         `schemaVersion: 2
 mode: active
 capabilities:
-  intake:
+  triageQueue:
     enabled: false
 mappings:
   labels:
@@ -104,7 +104,7 @@ mappings:
     needsReview: "${REVIEW_LABEL}"
     readyToMerge: "${MERGE_LABEL}"
 `,
-        { revision: "rev-1", knownCapabilities: [intakeDeclaration] },
+        { revision: "rev-1", knownCapabilities: [triageQueueDeclaration] },
     );
     expect(result.ok, "the harness configuration parses").toBe(true);
     if (!result.ok) throw new Error("unreachable: asserted above");
@@ -119,7 +119,7 @@ export const CAUSE_AT = new Date("2026-09-02T09:00:00.000Z");
 const CAUSE = { cause: "issue opened", observedAt: CAUSE_AT };
 
 const EXPLANATION = {
-    capability: "intake",
+    capability: "triageQueue",
     summary: "the issue is newly opened",
     detail: ["no position label was present"],
 };
@@ -136,14 +136,14 @@ export function labelEffect(
 ): Effect {
     const item = options.item ?? ITEM;
     const key = deriveIdempotencyKey({
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item,
         operation: "applyMappedLabel",
         cause: CAUSE,
     });
     const intent: Intent<"applyMappedLabel"> = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item,
         operation: "applyMappedLabel",
@@ -181,14 +181,14 @@ export function commentEffect(
     const cause =
         options.observedAt === undefined ? CAUSE : { ...CAUSE, observedAt: options.observedAt };
     const key = deriveIdempotencyKey({
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: ITEM,
         operation: "postManagedComment",
         cause,
     });
     const intent: Intent<"postManagedComment"> = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: ITEM,
         operation: "postManagedComment",
@@ -204,7 +204,7 @@ export function commentEffect(
         managedComment:
             options.withIdentity === false
                 ? null
-                : managedCommentOf({ capability: "intake", item: ITEM, kind, topic }),
+                : managedCommentOf({ capability: "triageQueue", item: ITEM, kind, topic }),
         records: null,
     };
 }
@@ -212,7 +212,7 @@ export function commentEffect(
 /**
  * The grace an inactivity-shaped act carries, and the two effects `decide()`
  * makes of it (grace.md §2): the platform's warning comment, and the act it is
- * holding back. Attributed to `intake` like every other effect here, because
+ * holding back. Attributed to `triageQueue` like every other effect here, because
  * this harness's repository document adopts exactly one capability and the
  * applier's gates read the document, not the design the words came from.
  *
@@ -238,7 +238,7 @@ export const WARNING_BODY = GRACE.warning.body;
 
 /** The act's own effect id — the key a warning is recorded under. */
 export const ACT_EFFECT_ID = deriveIdempotencyKey({
-    capability: "intake",
+    capability: "triageQueue",
     repository: REPOSITORY,
     item: ITEM,
     operation: "releaseAssignment",
@@ -248,7 +248,7 @@ export const ACT_EFFECT_ID = deriveIdempotencyKey({
 /** The graced act itself: two calls, the release and then its notice. */
 export function releaseEffect(): Effect {
     const intent: Intent<"releaseAssignment"> = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: ITEM,
         operation: "releaseAssignment",
@@ -262,7 +262,7 @@ export function releaseEffect(): Effect {
     return {
         intent,
         managedComment: managedCommentOf({
-            capability: "intake",
+            capability: "triageQueue",
             item: ITEM,
             kind: "notice",
             topic: GRACE.topic,
@@ -279,7 +279,7 @@ export const PULL: ItemRef = { kind: "pullRequest", number: 165 };
 
 /** The close's own effect id — the key its warning is recorded under. */
 export const CLOSE_EFFECT_ID = deriveIdempotencyKey({
-    capability: "intake",
+    capability: "triageQueue",
     repository: REPOSITORY,
     item: PULL,
     operation: "closePullRequest",
@@ -299,7 +299,7 @@ export function closeEffect(
     activityAt: Date | null = null,
 ): Effect {
     const intent: Intent<"closePullRequest"> = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: PULL,
         operation: "closePullRequest",
@@ -313,7 +313,7 @@ export function closeEffect(
     return {
         intent,
         managedComment: managedCommentOf({
-            capability: "intake",
+            capability: "triageQueue",
             item: PULL,
             kind: "notice",
             topic: mode,
@@ -326,7 +326,7 @@ export function closeEffect(
 export function warningEffect(): Effect {
     const effectId = `${ACT_EFFECT_ID}:warning`;
     const intent: Intent<"postManagedComment"> = {
-        capability: "intake",
+        capability: "triageQueue",
         repository: REPOSITORY,
         item: ITEM,
         operation: "postManagedComment",
@@ -340,7 +340,7 @@ export function warningEffect(): Effect {
     return {
         intent,
         managedComment: managedCommentOf({
-            capability: "intake",
+            capability: "triageQueue",
             item: ITEM,
             kind: "warning",
             topic: GRACE.topic,

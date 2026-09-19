@@ -27,7 +27,7 @@ import {
 import { configReport, configReportDeclaration } from "./capability.js";
 import { renderConfiguration, renderRejection, renderReport } from "./render.js";
 import { CONFIG_REPORT_SETTINGS } from "./settings.js";
-import { intakeDeclaration } from "../intake/capability.js";
+import { triageQueueDeclaration } from "../triageQueue/capability.js";
 import { prDashboardDeclaration } from "../prDashboard/capability.js";
 import { inactivityDeclaration } from "../inactivity/capability.js";
 import {
@@ -44,7 +44,7 @@ const REVISION = "sha256:abcdef012345";
 
 /** The declarations a proposed document is judged against: the real ones. */
 const KNOWN: readonly AdmittedCapability[] = [
-    intakeDeclaration,
+    triageQueueDeclaration,
     prDashboardDeclaration,
     inactivityDeclaration,
     configReportDeclaration,
@@ -103,7 +103,7 @@ const CLEAN = `schemaVersion: 2
 mode: active
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
   prDashboard:
@@ -133,7 +133,7 @@ const CASCADE = `schemaVersion: 2
 mode: active
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     annouce: true
   inactivity:
@@ -261,7 +261,7 @@ describe("configReport", () => {
                 "",
                 "**Capabilities**",
                 "",
-                "- intake — on",
+                "- triageQueue — on",
                 "  - welcome: true",
                 "  - lockUntilTriaged: false",
                 "  - confirmUnlock: false",
@@ -345,11 +345,11 @@ capabilities:
     enabled: true
   prDashboard:
     enabled: false
-  intake:
+  triageQueue:
     enabled: false
 `);
 
-        expect(body).toContain("Switched off: prDashboard, intake.");
+        expect(body).toContain("Switched off: prDashboard, triageQueue.");
     });
 
     it("renders a rejected file as line, path and message in document order", async () => {
@@ -357,7 +357,7 @@ capabilities:
         const errors = body.split("\n").filter((row) => row.startsWith("- line "));
 
         expect(errors).toEqual([
-            '- line 7 — capabilities.intake.annouce: capability "intake": unknown setting "annouce" \\(it declares: confirmUnlock, lockUntilTriaged, welcome\\)',
+            '- line 7 — capabilities.triageQueue.annouce: capability "triageQueue": unknown setting "annouce" \\(it declares: confirmUnlock, lockUntilTriaged, welcome\\)',
             '- line 10 — capabilities.inactivity.remindAfter: must be a duration: a whole number of hours or days, written "4h" or "14d"',
         ]);
         expect(body).toContain("the App would read no configuration from it at all");
@@ -671,7 +671,7 @@ mappings:
             schemaVersion: 2,
             mode: "active",
             capabilities: {
-                intake: { enabled: true, settings: {}, labels: ["awaitingTriage"] },
+                triageQueue: { enabled: true, settings: {}, labels: ["awaitingTriage"] },
                 configReport: { enabled: true, settings: {} },
             },
             mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
@@ -680,7 +680,7 @@ mappings:
 
         expect(body).toContain(
             [
-                "- intake — on",
+                "- triageQueue — on",
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 "- configReport — on, no settings",

@@ -1,6 +1,6 @@
 # One label, start to finish
 
-> The trace. A pull request is opened, `intake` wants the `awaitingTriage` label on it, and this
+> The trace. A pull request is opened, `triageQueue` wants the `awaitingTriage` label on it, and this
 > page follows that one label from GitHub's POST to GitHub's API call, naming each hop, its file,
 > and the one thing that hop protects. Read this before anything else in `design/`; the second
 > half is the walkthrough for writing a capability, and `design/guides/first-capability.md` is the
@@ -14,7 +14,7 @@
 | 2 | The delivery lane claims the delivery under a lease and loads the repository's `automations.yml` through the config source | `packages/runtime/src/shell/inbound/deliveries.ts` → `createDeliveries`; `packages/core/src/config/parse.ts` | one worker at a time; a rejected config records why and acts on nothing |
 | 3 | The delivery becomes facts: the normalizer reads the payload's labels and state, projects them through the repository's mappings into a `Projection`, and marks `unread` every fact group its row in `PRODUCERS` does not name | `packages/core/src/engine/normalize/pull-request.ts`; `packages/core/src/workflow/project.ts` → `projectPullRequest`; `packages/core/src/capability/producers.ts` → `PRODUCERS`; `design/contracts/facts.md` | a capability never sees a label string, and never sees a group nobody read |
 | 4 | `decide()` finds the enabled capabilities whose declaration reads this fact kind and whose needed groups were read, projects each a view of its own settings and the mapped names, and calls `evaluate` | `packages/core/src/engine/decide.ts` → `decide`, `intentsFrom`; `packages/core/src/capability/boundary.ts` | isolation: a capability sees its block, the names of the mappings, and its declared resolvers — nothing else (P3, P4) |
-| 5 | The capability returns intents: "set `awaitingTriage`, because `issueWithoutPosition`, claiming the item is open and the meaning absent" | `packages/capabilities/src/intake/capability.ts`; `packages/core/src/capability/factory.ts` → `buildIntent`, behind `platform.intent` | an intent is a request, dated by its occasion, with a stable identity |
+| 5 | The capability returns intents: "set `awaitingTriage`, because `issueWithoutPosition`, claiming the item is open and the meaning absent" | `packages/capabilities/src/triageQueue/capability.ts`; `packages/core/src/capability/factory.ts` → `buildIntent`, behind `platform.intent` | an intent is a request, dated by its occasion, with a stable identity |
 | 6 | The screen checks the intent names its own capability, a declared operation, its own item, and a legal transition on the workflow map | `packages/core/src/engine/invoke.ts` → `screenIntent` | a capability cannot act as another, on another item, or off the map |
 | 7 | The world is derived from the facts, not asserted: do the intent's claims hold against the projection the delivery carried? | `packages/core/src/safety/world.ts` → `deriveWorld` | a caller cannot assert a precondition its own delivery contradicts (D77) |
 | 8 | The safety ladder judges the write request: kill switch, mode, capability enabled, grant present, item open and unpaused, precondition holding, no newer human change | `packages/core/src/safety/write.ts` → `evaluateWrite`; `packages/core/src/safety/rules.ts`; `packages/core/src/intents/operations/` for the operation's class and permission | every refusal is a code an operator reads; a destructive class is refused here and judged only at the grace gate |
@@ -99,7 +99,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 1. **Write the design page**, four sections: what the output looks like (the rendered comments), the
    config block, how it works (a flowchart of the guards in order, the declaration and the phases),
    verified-by (the scenarios, which become the test titles). Read the exemplar nearest your shape:
-   `prDashboard` (webhook, resolvers, one comment), `intake` (webhook, labels, several stations),
+   `prDashboard` (webhook, resolvers, one comment), `triageQueue` (webhook, labels, several stations),
    `inactivity` (schedule, clocks, destructive acts — nine files, one per concern).
 2. **Baseline.** `pnpm -r test` and `pnpm format:check` before you touch anything, so a later red is
    yours. `pnpm -r test:coverage` is the MUTATION path — it runs Stryker, it is slow, and it is

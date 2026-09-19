@@ -211,7 +211,7 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "documentUnparseable",
         why: "the indentation does not describe a tree",
-        yaml: `capabilities:\n  intake:\n enabled: true\n`,
+        yaml: `capabilities:\n  triageQueue:\n enabled: true\n`,
     },
     {
         code: "documentUnparseable",
@@ -260,7 +260,7 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "duplicateKey",
         why: "a nested key is declared twice",
-        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: false\n    enabled: true\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: false\n    enabled: true\n`,
     },
 
     // ---- the document parsed, but is not a mapping ----
@@ -336,12 +336,12 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     {
         code: "capabilityEnabledNotBoolean",
         why: "a quoted true is a string, and truthy is not consent",
-        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: "true"\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: "true"\n`,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "1 is not a boolean either",
-        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: 1\n`,
+        yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: 1\n`,
     },
     {
         code: "capabilityUnknown",
@@ -360,7 +360,7 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         yaml: UNBUILT_DESIGNS_YAML,
         errorCount: 6,
         path: "capabilities.advancement",
-        messageIncludes: ["not available", "intake, prDashboard"],
+        messageIncludes: ["not available", "prDashboard, tracker, triageQueue"],
     },
     /**
      * D84, as the file a maintainer actually types. The misspelt setting is
@@ -372,9 +372,9 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         code: "unknownKey",
         why: "a settings key the capability never declared",
         yaml:
-            `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: true\n` +
             `    annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
-        path: "capabilities.intake.annouce",
+        path: "capabilities.triageQueue.annouce",
         errorCount: 1,
     },
     /**
@@ -387,9 +387,9 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         code: "settingInvalid",
         why: "a settings value the capability's spec cannot read",
         yaml:
-            `schemaVersion: 2\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: true\n` +
             `    announce: "yes"\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
-        path: "capabilities.intake.announce",
+        path: "capabilities.triageQueue.announce",
         errorCount: 1,
         messageIncludes: ["must be true or false"],
     },
@@ -605,8 +605,8 @@ const COMPLETE = {
     principals: {},
 };
 
-/** The names `COMPLETE`-based rows admit, so `intake` is never also unknown. */
-const INTAKE = admitting(["intake"]);
+/** The names `COMPLETE`-based rows admit, so `triageQueue` is never also unknown. */
+const INTAKE = admitting(["triageQueue"]);
 
 /** Two shipped capabilities, for the rows about what the App admits. */
 const SHIPPED = admitting(["prDashboard", "assignment"]);
@@ -618,7 +618,7 @@ const SHIPPED = admitting(["prDashboard", "assignment"]);
  */
 export const DOCUMENT_ADMISSIONS = [
     {
-        name: "intake",
+        name: "triageQueue",
         settings: spec({ announce: flag({ default: false }) }),
         requiredMappings: { labels: ["awaitingTriage"] },
     },
@@ -647,7 +647,7 @@ const TWO_COMMANDS_DECLARED = [
     },
 ] as const satisfies readonly AdmittedCapability[];
 
-/** `intake` alone, for the value rows about one capability's declaration. */
+/** `triageQueue` alone, for the value rows about one capability's declaration. */
 const INTAKE_DECLARED = [DOCUMENT_ADMISSIONS[0]];
 
 /** A capability needing two meanings, for the rows about accumulation. */
@@ -836,9 +836,9 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "unknownKey",
         why: "a key beside enabled is a setting, and this capability declares none",
-        raw: { ...COMPLETE, capabilities: { intake: { enabled: true, stray: 1 } } },
+        raw: { ...COMPLETE, capabilities: { triageQueue: { enabled: true, stray: 1 } } },
         known: INTAKE,
-        path: "capabilities.intake.stray",
+        path: "capabilities.triageQueue.stray",
     },
 
     // ---- settings keys, judged against the capability's declaration (D84) ----
@@ -854,12 +854,12 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: {
             schemaVersion: 2,
             capabilities: {
-                intake: { enabled: true, annouce: true },
+                triageQueue: { enabled: true, annouce: true },
             },
             mappings: { labels: { awaitingTriage: "status: triage" } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.annouce",
+        path: "capabilities.triageQueue.annouce",
         errorCount: 1,
         messageIncludes: ['unknown setting "annouce"', "it declares: announce"],
     },
@@ -873,10 +873,10 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         why: "a typo in a disabled block is caught now, not on the day it is enabled",
         raw: {
             schemaVersion: 2,
-            capabilities: { intake: { enabled: false, annouce: true } },
+            capabilities: { triageQueue: { enabled: false, annouce: true } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.annouce",
+        path: "capabilities.triageQueue.annouce",
         errorCount: 1,
     },
     {
@@ -899,10 +899,10 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "unknownKey",
         why: "__proto__ as a settings key is an ordinary undeclared one",
         raw: JSON.parse(
-            '{"schemaVersion":1,"capabilities":{"intake":{"enabled":false,"__proto__":{"announce":true}}}}',
+            '{"schemaVersion":1,"capabilities":{"triageQueue":{"enabled":false,"__proto__":{"announce":true}}}}',
         ),
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.__proto__",
+        path: "capabilities.triageQueue.__proto__",
         errorCount: 1,
     },
     /**
@@ -917,13 +917,13 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: {
             schemaVersion: 2,
             capabilities: {
-                intake: { enabled: false, annouce: true },
+                triageQueue: { enabled: false, annouce: true },
                 ghost: { enabled: false },
             },
         },
         known: INTAKE_DECLARED,
         alsoReports: ["capabilityUnknown"],
-        path: "capabilities.intake.annouce",
+        path: "capabilities.triageQueue.annouce",
         errorCount: 2,
     },
 
@@ -941,14 +941,14 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: {
             schemaVersion: 2,
             capabilities: {
-                intake: { enabled: true, announce: "yes" },
+                triageQueue: { enabled: true, announce: "yes" },
             },
             mappings: { labels: { awaitingTriage: "status: triage" } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.announce",
+        path: "capabilities.triageQueue.announce",
         errorCount: 1,
-        messageIncludes: ["capabilities.intake.announce: must be true or false"],
+        messageIncludes: ["capabilities.triageQueue.announce: must be true or false"],
     },
     /**
      * The other half of D84's reasoning, one level down: a DISABLED block's
@@ -960,17 +960,17 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         why: "a bad value in a disabled block is caught now, not on the day it is enabled",
         raw: {
             schemaVersion: 2,
-            capabilities: { intake: { enabled: false, announce: 1 } },
+            capabilities: { triageQueue: { enabled: false, announce: 1 } },
         },
         known: INTAKE_DECLARED,
-        path: "capabilities.intake.announce",
+        path: "capabilities.triageQueue.announce",
         errorCount: 1,
     },
 
     // ---- enabled without a meaning the capability requires (D84) ----
     /**
      * The gap `configuration.md` used to document honestly: this file was
-     * VALID, and intake skipped itself at runtime saying so only in a report.
+     * VALID, and triageQueue skipped itself at runtime saying so only in a report.
      * The path points at the line to add, not at the capability block.
      */
     {
@@ -1034,7 +1034,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         why: "a misspelt consent key, an unknown capability and an unmappable meaning are reported together",
         raw: {
             schemaVersion: 2,
-            capabilities: { intake: { enable: true }, ghost: { enabled: false } },
+            capabilities: { triageQueue: { enable: true }, ghost: { enabled: false } },
             mappings: { labels: { readyForDev: "status: ready" } },
         },
         known: INTAKE,
@@ -1045,21 +1045,21 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "capabilityEnabledNotBoolean",
         why: "1 is not a boolean",
-        raw: { schemaVersion: 2, capabilities: { intake: { enabled: 1 } } },
+        raw: { schemaVersion: 2, capabilities: { triageQueue: { enabled: 1 } } },
         known: INTAKE,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "a quoted true is a string",
-        raw: { schemaVersion: 2, capabilities: { intake: { enabled: "true" } } },
+        raw: { schemaVersion: 2, capabilities: { triageQueue: { enabled: "true" } } },
         known: INTAKE,
     },
     {
         code: "capabilityEnabledNotBoolean",
         why: "nor does yes mean yes",
-        raw: { ...COMPLETE, capabilities: { intake: { enabled: "yes" } } },
+        raw: { ...COMPLETE, capabilities: { triageQueue: { enabled: "yes" } } },
         known: INTAKE,
-        path: "capabilities.intake.enabled",
+        path: "capabilities.triageQueue.enabled",
     },
     {
         code: "capabilityUnknown",

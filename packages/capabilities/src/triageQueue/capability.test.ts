@@ -1,5 +1,5 @@
 /**
- * What intake decides at the entry gate. Each refusal is paired with the
+ * What triageQueue decides at the entry gate. Each refusal is paired with the
  * input that does produce a label intent.
  */
 
@@ -15,7 +15,7 @@ import {
     type ResolverSource,
     type WorkItemState,
 } from "@hiero-hackers/automation-core";
-import { intake, intakeDeclaration } from "./capability.js";
+import { triageQueue, triageQueueDeclaration } from "./capability.js";
 import {
     configEnabling,
     factsFor,
@@ -26,24 +26,26 @@ import {
 
 const ITEM = { kind: "issue", number: 11 } as const;
 
-const announcing = configEnabling(["intake"], [intakeDeclaration], { intake: { welcome: true } });
-const silent = configEnabling(["intake"], [intakeDeclaration]);
-const announcingView = projectCapabilityView(intakeDeclaration, announcing);
-const quarantining = configEnabling(["intake"], [intakeDeclaration], {
-    intake: { welcome: true, lockUntilTriaged: true, confirmUnlock: true },
+const announcing = configEnabling(["triageQueue"], [triageQueueDeclaration], {
+    triageQueue: { welcome: true },
 });
-const quarantineView = projectCapabilityView(intakeDeclaration, quarantining);
-const lockingOnly = configEnabling(["intake"], [intakeDeclaration], {
-    intake: { lockUntilTriaged: true },
+const silent = configEnabling(["triageQueue"], [triageQueueDeclaration]);
+const announcingView = projectCapabilityView(triageQueueDeclaration, announcing);
+const quarantining = configEnabling(["triageQueue"], [triageQueueDeclaration], {
+    triageQueue: { welcome: true, lockUntilTriaged: true, confirmUnlock: true },
 });
-const lockingView = projectCapabilityView(intakeDeclaration, lockingOnly);
+const quarantineView = projectCapabilityView(triageQueueDeclaration, quarantining);
+const lockingOnly = configEnabling(["triageQueue"], [triageQueueDeclaration], {
+    triageQueue: { lockUntilTriaged: true },
+});
+const lockingView = projectCapabilityView(triageQueueDeclaration, lockingOnly);
 
 const issue = (
     state: Partial<WorkItemState<IssueMeaning>>,
     over: Parameters<typeof webhookIssue>[0] = {},
 ) =>
     factsFor(
-        intakeDeclaration,
+        triageQueueDeclaration,
         webhookIssue({
             ...over,
             item: ITEM,
@@ -61,7 +63,7 @@ const conflicted = (
     over: Parameters<typeof webhookIssue>[0] = {},
 ) =>
     factsFor(
-        intakeDeclaration,
+        triageQueueDeclaration,
         webhookIssue({
             ...over,
             item: ITEM,
@@ -76,7 +78,7 @@ const conflicted = (
     );
 
 /**
- * The engine's own handle over one record, answering intake's one resolver.
+ * The engine's own handle over one record, answering triageQueue's one resolver.
  * The default answer is "a person"; `asked` is the login each question named.
  */
 function watch(record: Facts, actor: ResolverAnswer<boolean> = { ok: true, value: false }) {
@@ -85,16 +87,16 @@ function watch(record: Facts, actor: ResolverAnswer<boolean> = { ok: true, value
         asked.push((input as { readonly login: string }).login);
         return await Promise.resolve(actor as never);
     };
-    const handle = handleFor(intakeDeclaration, record, source);
+    const handle = handleFor(triageQueueDeclaration, record, source);
     return { platform: handle, handle, asked };
 }
 
-describe("intake", () => {
+describe("triageQueue", () => {
     it("Issue opened by a bot", async () => {
-        const record = factsFor(intakeDeclaration, webhookIssue({ author: "renovate[bot]" }));
+        const record = factsFor(triageQueueDeclaration, webhookIssue({ author: "renovate[bot]" }));
         const { platform, handle, asked } = watch(record, { ok: true, value: true });
 
-        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, announcingView, platform)).toEqual([]);
         // The AUTHOR, not the actor: the guard asks who opened the issue.
         expect(asked).toEqual(["renovate[bot]"]);
         // Silence, not a report: a machine's issue is not a problem.
@@ -110,11 +112,11 @@ describe("intake", () => {
         });
 
         // The platform ends the evaluation; nothing comes back to be gated.
-        await expect(intake.evaluate(record, announcingView, platform)).rejects.toBeDefined();
+        await expect(triageQueue.evaluate(record, announcingView, platform)).rejects.toBeDefined();
         expect(handle.skipped).toBe(true);
         expect(handle.explanations).toEqual([
             {
-                capability: "intake",
+                capability: "triageQueue",
                 summary: "Skipped: the isAutomationActor resolver could not answer.",
                 detail: ["resolver reason: rateLimited", "secondary rate limit"],
             },
@@ -125,10 +127,10 @@ describe("intake", () => {
         const record = conflicted(["ready", "inProgress"]);
         const { platform, handle } = watch(record);
 
-        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, announcingView, platform)).toEqual([]);
         expect(handle.explanations).toEqual([
             {
-                capability: "intake",
+                capability: "triageQueue",
                 summary: "Skipped: the item holds more than one workflow position.",
                 detail: [
                     "conflicting: ready, inProgress",
@@ -138,17 +140,17 @@ describe("intake", () => {
         ]);
     });
 
-    /** D84: the meaning intake requires is the parser's business, never a delivery's. */
+    /** D84: the meaning triageQueue requires is the parser's business, never a delivery's. */
     /** D203: a file that never maps `awaitingTriage` triages on the default spelling. */
     it("triages a repository that never mapped awaitingTriage, on its default spelling", () => {
         const file = (labels: Readonly<Record<string, string>>) =>
             parseConfig(
                 {
                     schemaVersion: 2,
-                    capabilities: { intake: { enabled: true, welcome: true } },
+                    capabilities: { triageQueue: { enabled: true, welcome: true } },
                     mappings: { labels },
                 },
-                { revision: "rev-1", knownCapabilities: [intakeDeclaration] },
+                { revision: "rev-1", knownCapabilities: [triageQueueDeclaration] },
             );
 
         const defaulted = file({ ready: "status: ready for dev" });
@@ -165,7 +167,7 @@ describe("intake", () => {
         const record = issue({ meaning: "inProgress" });
         const { platform, handle } = watch(record);
 
-        expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, announcingView, platform)).toEqual([]);
         expect(handle.explanations).toEqual([]);
     });
 
@@ -176,9 +178,9 @@ describe("intake", () => {
         const announceClaim = { meaningsPresent: [], meaningsAbsent: [], closed: false };
         const record = issue({});
 
-        expect(await intake.evaluate(record, announcingView, watch(record).platform)).toEqual([
+        expect(await triageQueue.evaluate(record, announcingView, watch(record).platform)).toEqual([
             {
-                capability: "intake",
+                capability: "triageQueue",
                 repository: REPOSITORY,
                 item: ITEM,
                 operation: "applyMappedLabel",
@@ -187,7 +189,7 @@ describe("intake", () => {
                 claims: claim,
                 cause: occasion,
                 explanation: {
-                    capability: "intake",
+                    capability: "triageQueue",
                     summary: "Placed the new issue in triage.",
                     detail: [],
                 },
@@ -195,7 +197,7 @@ describe("intake", () => {
                 idempotencyKey: expect.any(String),
             },
             {
-                capability: "intake",
+                capability: "triageQueue",
                 repository: REPOSITORY,
                 item: ITEM,
                 operation: "postManagedComment",
@@ -207,7 +209,7 @@ describe("intake", () => {
                 claims: announceClaim,
                 cause: occasion,
                 explanation: {
-                    capability: "intake",
+                    capability: "triageQueue",
                     summary: "Welcomed the author and said the issue awaits triage.",
                     detail: [],
                 },
@@ -219,9 +221,9 @@ describe("intake", () => {
 
     it("triages without a welcome when welcome is not configured", async () => {
         const record = issue({});
-        const intents = await intake.evaluate(
+        const intents = await triageQueue.evaluate(
             record,
-            projectCapabilityView(intakeDeclaration, silent),
+            projectCapabilityView(triageQueueDeclaration, silent),
             watch(record).platform,
         );
         expect(intents.map((intent) => intent.operation)).toEqual(["applyMappedLabel"]);
@@ -229,7 +231,7 @@ describe("intake", () => {
 
     it("welcomes before locking a newly opened issue", async () => {
         const record = issue({});
-        const intents = await intake.evaluate(record, quarantineView, watch(record).platform);
+        const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
 
         expect(intents.map((intent) => intent.operation)).toEqual([
             "applyMappedLabel",
@@ -249,7 +251,7 @@ describe("intake", () => {
     /** A lock without a word about why is the one outcome an author resents. */
     it("welcomes a locked issue even when welcome is off", async () => {
         const record = issue({});
-        const intents = await intake.evaluate(record, lockingView, watch(record).platform);
+        const intents = await triageQueue.evaluate(record, lockingView, watch(record).platform);
 
         expect(intents.map((intent) => intent.operation)).toEqual([
             "applyMappedLabel",
@@ -263,7 +265,7 @@ describe("intake", () => {
             { meaning: "ready" },
             { arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
-        const intents = await intake.evaluate(record, quarantineView, watch(record).platform);
+        const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
 
         expect(intents.map((intent) => intent.operation)).toEqual([
             "unlockIssue",
@@ -286,7 +288,7 @@ describe("intake", () => {
         );
 
         expect(
-            (await intake.evaluate(record, lockingView, watch(record).platform)).map(
+            (await triageQueue.evaluate(record, lockingView, watch(record).platform)).map(
                 (intent) => intent.operation,
             ),
         ).toEqual(["unlockIssue"]);
@@ -304,21 +306,21 @@ describe("intake", () => {
         const { platform, handle } = watch(record);
 
         expect(
-            (await intake.evaluate(record, quarantineView, platform)).map(
+            (await triageQueue.evaluate(record, quarantineView, platform)).map(
                 (intent) => intent.operation,
             ),
         ).toEqual(["unlockIssue", "postManagedComment"]);
         expect(handle.explanations).toEqual([]);
     });
 
-    it("confirms a ready label that arrived before intake could lock", async () => {
+    it("confirms a ready label that arrived before triageQueue could lock", async () => {
         const record = issue(
             { meaning: "ready" },
             { arrival: { kind: "label", meaning: "ready" }, locked: false },
         );
 
         expect(
-            (await intake.evaluate(record, quarantineView, watch(record).platform)).map(
+            (await triageQueue.evaluate(record, quarantineView, watch(record).platform)).map(
                 (intent) => intent.operation,
             ),
         ).toEqual(["postManagedComment"]);
@@ -331,13 +333,17 @@ describe("intake", () => {
             { arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
 
-        expect(await intake.evaluate(record, announcingView, watch(record).platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, announcingView, watch(record).platform)).toEqual(
+            [],
+        );
     });
 
     it("does not re-triage or re-lock a human label removal", async () => {
         const record = issue({}, { arrival: null, locked: false });
 
-        expect(await intake.evaluate(record, quarantineView, watch(record).platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, quarantineView, watch(record).platform)).toEqual(
+            [],
+        );
     });
 
     it("ignores a label that did not complete triage, without asking who sent it", async () => {
@@ -347,7 +353,7 @@ describe("intake", () => {
         );
         const { platform, asked } = watch(record);
 
-        expect(await intake.evaluate(record, quarantineView, platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, quarantineView, platform)).toEqual([]);
         expect(asked).toEqual([]);
     });
 
@@ -357,7 +363,9 @@ describe("intake", () => {
             { actor: null, arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
 
-        expect(await intake.evaluate(record, quarantineView, watch(record).platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, quarantineView, watch(record).platform)).toEqual(
+            [],
+        );
     });
 
     it("does not accept a ready label from an automation", async () => {
@@ -371,7 +379,7 @@ describe("intake", () => {
         );
         const { platform, asked } = watch(record, { ok: true, value: true });
 
-        expect(await intake.evaluate(record, quarantineView, platform)).toEqual([]);
+        expect(await triageQueue.evaluate(record, quarantineView, platform)).toEqual([]);
         expect(asked).toEqual(["triage-bot[bot]"]);
     });
 });

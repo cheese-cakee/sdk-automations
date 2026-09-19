@@ -19,7 +19,7 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
-import { intake, prDashboard } from "@hiero-hackers/automation-capabilities";
+import { triageQueue, prDashboard } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import {
     createShell,
@@ -39,7 +39,7 @@ const FIXTURE = capture("issues.opened.json").bytes();
 const CONFIG = `schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 mappings:
@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 function buildShell(
-    capability: EngineCapability = toEngine(intake),
+    capability: EngineCapability = toEngine(triageQueue),
     tickMs = 60_000,
     repository: { owner: string; repo: string } = REPOSITORY,
 ): Shell {
@@ -153,7 +153,7 @@ describe("the first slice, end to end", () => {
     });
 
     it("rejects duplicate direct capability names before returning a server", () => {
-        const intakeCapability = toEngine(intake);
+        const intakeCapability = toEngine(triageQueue);
         const prDashboardCapability = toEngine(prDashboard);
         expect(() =>
             createShell({
@@ -169,7 +169,7 @@ describe("the first slice, end to end", () => {
                 repository: REPOSITORY,
             }),
         ).toThrow(
-            'invalid capability declarations: duplicate capability name "intake"; duplicate capability name "prDashboard"',
+            'invalid capability declarations: duplicate capability name "triageQueue"; duplicate capability name "prDashboard"',
         );
     });
 
@@ -212,7 +212,7 @@ describe("the first slice, end to end", () => {
      * two repositories signs both identically.
      */
     it("refuses a delivery from a repository it does not serve", async () => {
-        const capability = toEngine(intake);
+        const capability = toEngine(triageQueue);
         const shell = buildShell(
             {
                 ...capability,
@@ -252,7 +252,7 @@ describe("the first slice, end to end", () => {
 
     it("rejects active mode canonically without deciding or retrying", async () => {
         writeFileSync(configFile, CONFIG.replace("mode: dry-run", "mode: active"));
-        const capability = toEngine(intake);
+        const capability = toEngine(triageQueue);
         const shell = buildShell({
             ...capability,
             evaluate: async () => {
@@ -399,7 +399,7 @@ describe("the first slice, end to end", () => {
         const shell = createShell({
             secret: SECRET,
             store,
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             seams: seamsOn(configFile),
             repository: REPOSITORY,
             clock: () => BASE,
@@ -425,7 +425,7 @@ describe("the first slice, end to end", () => {
         const shell = createShell({
             secret: SECRET,
             store,
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             seams: seamsOn(configFile),
             repository: REPOSITORY,
             log: () => {
@@ -472,7 +472,7 @@ describe("the first slice, end to end", () => {
         const shell = createShell({
             secret: SECRET,
             store,
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             seams: (repository) => {
                 asked.push(repository);
                 return seamsOn(configFile)();
@@ -501,7 +501,7 @@ describe("the first slice, end to end", () => {
         const shell = createShell({
             secret: SECRET,
             store,
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             seams: seamsOn(configFile),
             clock: () => BASE,
             log,

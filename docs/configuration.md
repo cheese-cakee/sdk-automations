@@ -21,7 +21,7 @@ schemaVersion: 2              # ── top level. Required for the flat capabili
 mode: dry-run                 # ── top level. Optional, default: observe
 
 capabilities:                 # ── top level. Optional, default: nothing enabled
-  intake:                     #    └─ one block per capability, keyed by its name
+  triageQueue:                     #    └─ one block per capability, keyed by its name
     enabled: true             #       └─ boolean, default: false
     welcome: true            #       └─ that capability's own options, keys defined by it
 
@@ -107,7 +107,7 @@ shipped default. See [Troubleshooting](troubleshooting.md#it-never-got-as-far-as
 | Required | no |
 | Default | `{}` — nothing enabled |
 
-Keys are capability names in camelCase (`intake`, `prDashboard`). Every name must belong to the
+Keys are capability names in camelCase (`triageQueue`, `prDashboard`). Every name must belong to the
 application's directly admitted capability list, whether `enabled` is `true` or `false`. Unknown
 names fail closed instead of being retained as compatibility entries.
 

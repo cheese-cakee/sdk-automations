@@ -5,7 +5,7 @@ its settings, its own tests, and the design page it is built against — and `sr
 as `CAPABILITIES`. The shell composes that list and names no capability, so adding one is a folder
 and a line. This package imports core and nothing else, and does no I/O.
 
-The four that ship, one line each: `intake` walks a new issue from opening to triage;
+The four that ship, one line each: `triageQueue` puts a new issue in the triage queue and holds it until triaged;
 `prDashboard` posts one dashboard comment telling a contributor what stops their pull request
 being ready to review; `inactivity` reminds about stalled work and then releases it; `configReport`
 comments on a pull request that changes `automations.yml`, saying what the App would read from it.

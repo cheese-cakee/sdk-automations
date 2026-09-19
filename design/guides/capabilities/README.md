@@ -7,7 +7,7 @@ the other one (D131).
 
 | Capability | Design |
 |---|---|
-| `intake` | `packages/capabilities/src/intake/design.md` |
+| `triageQueue` | `packages/capabilities/src/triageQueue/design.md` |
 | `prDashboard` | `packages/capabilities/src/prDashboard/design.md` |
 | `inactivity` | `packages/capabilities/src/inactivity/design.md` |
 | `configReport` | `packages/capabilities/src/configReport/design.md` |

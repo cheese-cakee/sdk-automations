@@ -45,7 +45,7 @@ const REPO_URL = "https://api.github.com/repos/Hiero-Hackers/SDK-Automations";
  */
 const KNOWN: readonly AdmittedCapability[] = [
     {
-        name: "intake",
+        name: "triageQueue",
         settings: spec({ announce: flag({ default: false, doc: "Say so in a comment." }) }),
         requiredMappings: { labels: ["awaitingTriage"] },
     },
@@ -96,7 +96,7 @@ const pullRequest = () => success(JSON.stringify({ number: 34, head: { sha: HEAD
 const PROPOSED = `schemaVersion: 2
 mode: active
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     announce: true
 mappings:
@@ -229,7 +229,7 @@ describe("configAtHead", () => {
         // The settings resolved against the spec that admitted them.
         expect(
             answer.ok && answer.value.touched && answer.value.result.ok
-                ? answer.value.result.config.capabilities["intake"]
+                ? answer.value.result.config.capabilities["triageQueue"]
                 : null,
         ).toEqual({ enabled: true, settings: { announce: true } });
         expect(urls()[2]).toBe(`${REPO_URL}/contents/automations.yml?ref=${HEAD}`);
@@ -239,7 +239,7 @@ describe("configAtHead", () => {
         const { resolve } = source([
             success(JSON.stringify([fileEntry()])),
             pullRequest(),
-            contents("schemaVersion: 2\ncapabilities:\n  intake:\n    enabled: yes please\n"),
+            contents("schemaVersion: 2\ncapabilities:\n  triageQueue:\n    enabled: yes please\n"),
         ]);
 
         const answer = await ask(resolve);

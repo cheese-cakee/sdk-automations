@@ -54,16 +54,16 @@ describe("the shipped examples", () => {
      * The declarations are read out of source text, so an expression that
      * matched nothing would admit every capability with no settings keys and
      * no required mappings — and every check below would pass in silence.
-     * `intake` is the capability that has both, so it is the one worth pinning.
+     * `triageQueue` is the capability that has both, so it is the one worth pinning.
      */
     it("reads each capability's declared settings keys and required mappings", () => {
-        const intake = KNOWN.find(({ name }) => name === "intake");
-        expect(Object.keys(intake?.settings ?? {})).toEqual([
+        const triageQueue = KNOWN.find(({ name }) => name === "triageQueue");
+        expect(Object.keys(triageQueue?.settings ?? {})).toEqual([
             "welcome",
             "lockUntilTriaged",
             "confirmUnlock",
         ]);
-        expect(intake?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });
+        expect(triageQueue?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });
     });
 
     /**
@@ -90,13 +90,13 @@ describe("the shipped examples", () => {
     /**
      * The negative controls for the two rules D84 added. Without them an
      * example could quietly stop exercising either — `observe-only.yml`
-     * enables `intake`, so dropping its `awaitingTriage` line is a one-word
+     * enables `triageQueue`, so dropping its `awaitingTriage` line is a one-word
      * edit away from a documented file the real shell refuses to parse.
      */
     /** D203: the meaning a capability requires is mapped by default, so the file parses. */
     it("accepts an enabled capability on the default spelling of the meaning it requires", () => {
         const unmapped = parseText(
-            "schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: true\n",
+            "schemaVersion: 1\ncapabilities:\n  triageQueue:\n    enabled: true\n",
             "unmapped",
         );
         expect(unmapped.ok ? unmapped.config.mappings.labels.awaitingTriage : unmapped.errors).toBe(
@@ -106,11 +106,11 @@ describe("the shipped examples", () => {
 
     it("refuses a settings key no capability declares", () => {
         const typo = parseText(
-            "schemaVersion: 1\ncapabilities:\n  intake:\n    enabled: false\n    annouce: true\n",
+            "schemaVersion: 1\ncapabilities:\n  triageQueue:\n    enabled: false\n    annouce: true\n",
             "typo",
         );
         expect(typo.ok ? [] : typo.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
-            "unknownKey @ capabilities.intake.annouce",
+            "unknownKey @ capabilities.triageQueue.annouce",
         ]);
     });
 
@@ -265,10 +265,10 @@ describe("the editor schema accepts the shipped examples", () => {
      */
     it("refuses a settings key no capability declares", () => {
         const typo = documentIn("full.yml") as {
-            capabilities: { intake: Record<string, unknown> };
+            capabilities: { triageQueue: Record<string, unknown> };
         };
-        typo.capabilities.intake = { enabled: true, annouce: true };
-        expect(failures(typo).join(" ")).toContain("/capabilities/intake");
+        typo.capabilities.triageQueue = { enabled: true, annouce: true };
+        expect(failures(typo).join(" ")).toContain("/capabilities/triageQueue");
     });
 });
 

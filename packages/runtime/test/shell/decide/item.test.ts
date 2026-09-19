@@ -17,7 +17,7 @@ import {
     type Facts,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
-import { intake } from "@hiero-hackers/automation-capabilities";
+import { triageQueue } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { Store } from "../../../src/store/index.js";
 import { spending } from "../spending.js";
@@ -38,7 +38,7 @@ const AT = "2026-08-07T10:00:01.000Z";
 const CONFIG_TEXT = `schemaVersion: 2
 mode: MODE
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: false
 mappings:
@@ -74,7 +74,7 @@ const RECORD: Facts = {
 };
 
 /** The one capability every case here decides through; the box knows no others. */
-const CAPABILITIES: readonly EngineCapability[] = [toEngine(intake)];
+const CAPABILITIES: readonly EngineCapability[] = [toEngine(triageQueue)];
 
 function configIn(mode: string): RepositoryConfig {
     const result = parseConfigDocument(CONFIG_TEXT.replace("MODE", mode), {
@@ -299,7 +299,7 @@ describe("the decision rows one pass writes", () => {
             at: AT,
             repository: REPOSITORY,
             item: ITEM,
-            capability: "intake",
+            capability: "triageQueue",
             detail: "Placed the new issue in triage.",
         });
     });
@@ -315,7 +315,7 @@ describe("the decision rows one pass writes", () => {
 
         expect(rows().filter(({ effectId }) => effectId !== null)).toEqual([
             expect.objectContaining({
-                capability: "intake",
+                capability: "triageQueue",
                 verdict: "applied",
                 code: null,
                 detail: null,

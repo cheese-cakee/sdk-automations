@@ -1,10 +1,10 @@
-# intake — walk a new issue from opening to triage
+# triageQueue — put a new issue in the triage queue: label it, welcome its author, hold it until triaged
 
 Not built: phase 3.
 
 ## What the output looks like
 
-Intake is the front gate every new issue passes through. "The team" in its comments means whoever
+TriageQueue is the front gate every new issue passes through. "The team" in its comments means whoever
 the repository gave triage access or above — the people GitHub lets add a label.
 
 On open, when the repository asked for a welcome:
@@ -25,11 +25,11 @@ On release, when the repository asked to confirm:
 
 ## What the config looks like
 
-Label only — the default once intake is enabled:
+Label only — the default once triageQueue is enabled:
 
 ```yaml
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
 ```
 
@@ -37,7 +37,7 @@ Label and welcome:
 
 ```yaml
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     welcome: true
 ```
@@ -46,7 +46,7 @@ Quarantine — label, welcome, lock; release when a person adds the `ready` labe
 
 ```yaml
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
     lockUntilTriaged: true
     confirmUnlock: true
@@ -76,7 +76,7 @@ skipped, as before.
 
 Never acts on: a removed label (nothing re-locks — the human's removal stands), any other label, a
 lock a human placed on a repository that never asked to lock, a bot-opened issue, a label a bot
-added, or a sweep. A sweep record carries no arrival, so intake asks for nothing on it: a missed
+added, or a sweep. A sweep record carries no arrival, so triageQueue asks for nothing on it: a missed
 `opened` webhook is not repaired on the next sweep (D206).
 
 ```mermaid
