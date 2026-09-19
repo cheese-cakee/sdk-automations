@@ -79,10 +79,16 @@ lock a human placed on a repository that never asked to lock, a bot-opened issue
 added, or a sweep. A sweep record carries no arrival, so triageQueue asks for nothing on it: a missed
 `opened` webhook is not repaired on the next sweep (D206).
 
-Limits until phase 3, for whoever turns `lockUntilTriaged` on:
+Triaging an issue has more than one outcome: ready for work, blocked on something, more
+information needed from the author, or closed as invalid, duplicate or out of scope. This phase
+handles the first and knows nothing of the others. Limits until phase 3, for whoever turns
+`lockUntilTriaged` on:
 
 - `ready` is the only release. A triage that ends in `blocked`, in a request for more information,
-  or in an area label leaves the lock on until a person unlocks by hand.
+  or in an area label leaves the lock on until a person unlocks by hand — and for the author who
+  was asked for more information, the lock is exactly what stops them answering.
+- Closure needs nothing: a closed issue never reaches the capability, and a closed thread that
+  stays locked is the ordinary GitHub outcome.
 - A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses
   every capability write on a blocked item, the unlock included.
 - An issue that arrives already carrying the triage label — an issue template applied it — is
