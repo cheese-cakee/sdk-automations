@@ -128,8 +128,8 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3 | every triage outcome releases, and the confirmation names it: `ready` ("open for work"), `blocked` ("waiting on…"), needs more information ("please add…"), or the first human label of any kind | a `needsInfo` meaning, and the decision where it lives — an issue-flow position competes with `awaitingTriage`, an alert is repository-named and needs a setting to point at it · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
-| 4 | advisory checks for skill tier, issue type and native project fields | issue type and native field values on the observation, a fact-shape change · the `skills` family read · a `types` mapping family for label-based repositories |
+| 3 | triage completion: the repository lists what a triaged issue carries — a skill tier, a type, an area, each item opt-in — and the welcome becomes a checklist updated in place as labels arrive. With `readyWhenComplete: true` the App moves the issue to `ready` on the map's own edge when the last item lands, unlocks it, and says what completed; off, the list is advisory and a person still adds `ready`. An empty list is today's behaviour. A person adding `ready` always counts, whoever else was still missing; labels a bot added count toward the list. `blocked` and a needs-more-information label unlock so the author can answer, and the list waits | a `triage` section with one opt-in block per item · a `types` mapping family for label-based repositories · a `needsInfo` meaning and where it lives · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
+| 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
 ## Verified by
 
