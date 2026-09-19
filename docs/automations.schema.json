@@ -48,7 +48,7 @@
                                         },
                                         "lockUntilTriaged": {
                                             "type": "boolean",
-                                            "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", never created by the App; the welcome is posted either way.",
+                                            "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", which no capability creates yet; the welcome is posted either way.",
                                             "default": false
                                         },
                                         "confirmUnlock": {
@@ -764,7 +764,7 @@
                                 },
                                 "lockUntilTriaged": {
                                     "type": "boolean",
-                                    "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", never created by the App; the welcome is posted either way.",
+                                    "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", which no capability creates yet; the welcome is posted either way.",
                                     "default": false
                                 },
                                 "confirmUnlock": {
