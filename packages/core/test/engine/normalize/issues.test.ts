@@ -80,7 +80,7 @@ describe("issues, through the real payloads", () => {
         });
         expect(o).toMatchObject({
             locked: false,
-            arrival: { kind: "label", meaning: "awaitingTriage" },
+            arrival: { kind: "label", change: "added", meaning: "awaitingTriage" },
         });
     });
 
@@ -133,6 +133,25 @@ describe("shapes derived from the real ones", () => {
         expect(result.facts.position).toMatchObject({
             kind: "conflict",
             positions: ["awaitingTriage", "ready"],
+        });
+    });
+
+    it("unlabeled: the removed mapped label becomes the arrival", () => {
+        const payload = fixture("issues.labeled.json") as {
+            action: string;
+            label: { name: string };
+            issue: { labels: unknown[] };
+        };
+        payload.action = "unlabeled";
+        payload.label.name = "status: triage";
+        payload.issue.labels = [{ name: "status: ready" }];
+
+        const result = normalizeDelivery("issues", payload, config);
+        expect(result.kind).toBe("facts");
+        if (result.kind !== "facts") throw new Error("unreachable");
+        expect(result.facts).toMatchObject({
+            arrival: { kind: "label", change: "removed", meaning: "awaitingTriage" },
+            position: { kind: "position", state: { meaning: "ready" } },
         });
     });
 

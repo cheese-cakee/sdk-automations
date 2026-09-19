@@ -883,7 +883,7 @@ describe("closure is a platform fact, not a capability's claim", () => {
         ]);
     });
 
-    it("uses the record time even when a capability supplies a later cutoff", async () => {
+    it("uses the platform's evaluation time instead of a capability's cutoff", async () => {
         const spoofed: EngineCapability = {
             ...claimless,
             async evaluate(facts: never): Promise<readonly AnyIntent[]> {
@@ -902,7 +902,31 @@ describe("closure is a platform fact, not a capability's claim", () => {
             [spoofed],
             {
                 ...externals,
-                latestHumanChangeAt: () => observed.observedAt,
+                evaluatedAt: new Date(observed.observedAt.getTime() + 1_000),
+                latestHumanChangeAt: () => null,
+            },
+        );
+
+        expect(decision.approved).toHaveLength(1);
+        expect(decision.approved[0]!.intent.evaluatedAt).toEqual(
+            new Date(observed.observedAt.getTime() + 1_000),
+        );
+        expect(decision.report.findings.map((finding) => finding.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
+    });
+
+    it("still refuses a human change between the observation and evaluation", async () => {
+        const observed = observedAs(null);
+        const decision = await decide(
+            { kind: "facts", facts: observed },
+            configIn("active"),
+            [claimless],
+            {
+                ...externals,
+                evaluatedAt: new Date(observed.observedAt.getTime() + 2_000),
+                latestHumanChangeAt: () => new Date(observed.observedAt.getTime() + 1_000),
             },
         );
 

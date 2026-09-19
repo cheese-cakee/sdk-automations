@@ -96,7 +96,11 @@ export interface IssueFacts {
     /** The issue transition this observation carries, or `null` when it carries none. */
     readonly arrival:
         | { readonly kind: "opened" }
-        | { readonly kind: "label"; readonly meaning: MappableMeaning | null }
+        | {
+              readonly kind: "label";
+              readonly change: "added" | "removed";
+              readonly meaning: MappableMeaning | null;
+          }
         | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;

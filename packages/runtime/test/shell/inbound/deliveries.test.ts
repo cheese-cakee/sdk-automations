@@ -129,6 +129,7 @@ function laneWith(wiring: Wiring) {
                 capabilities: wiring.capabilities,
                 externals,
                 repository,
+                clock: wiring.clock,
                 ...(wiring.applier === undefined ? {} : { applier: wiring.applier }),
             }),
         }),
@@ -352,6 +353,7 @@ describe("deliveries from two repositories", () => {
                         capabilities,
                         externals: () => stubbedExternals(),
                         repository,
+                        clock: () => new Date(BASE.getTime() + 1000),
                     }),
                 };
             },

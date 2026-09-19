@@ -15,6 +15,7 @@ import {
     authorLogin,
     isRecord,
     labelAdded,
+    labelRemoved,
     labelNames,
     repositoryOf,
     senderOf,
@@ -95,7 +96,10 @@ export function normalizeDelivery(
     const meanings = meaningsOfLabels(config, names);
     // The added label must intersect the item's own labels — the projection's source.
     const added = labelAdded(payload);
+    const removed = labelRemoved(payload);
     const arrivedMeaning = added === null ? null : (meaningsOfLabels(config, [added])[0] ?? null);
+    const removedMeaning =
+        removed === null ? null : (meaningsOfLabels(config, [removed])[0] ?? null);
     const carried = alertsOfLabels(config, names);
     const arrived =
         added === null ? [] : alertsOfLabels(config, [added]).filter((a) => carried.includes(a));
@@ -107,6 +111,7 @@ export function normalizeDelivery(
         author,
         meanings,
         arrivedMeaning,
+        removedMeaning,
         alerts: { carried, arrived },
         actor: senderOf(payload),
         observedAt,

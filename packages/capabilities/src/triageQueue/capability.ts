@@ -116,7 +116,14 @@ export const triageQueue: Capability<TriageQueueDeclaration> = {
     async evaluate(facts, config, platform) {
         const { arrival } = facts;
         if (arrival === null) return [];
-        if (arrival.kind === "label" && arrival.meaning !== TRIAGED) return [];
+        const completed =
+            arrival.kind === "label" &&
+            ((arrival.change === "added" && arrival.meaning === TRIAGED) ||
+                (arrival.change === "removed" &&
+                    arrival.meaning === "awaitingTriage" &&
+                    facts.position.kind === "position" &&
+                    facts.position.state.meaning === TRIAGED));
+        if (arrival.kind === "label" && !completed) return [];
 
         // The author opened it; the actor labelled it. Either may be a machine.
         const participant = arrival.kind === "opened" ? facts.author : (facts.actor?.login ?? null);

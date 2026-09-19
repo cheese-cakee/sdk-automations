@@ -286,7 +286,7 @@ describe("triageQueue", () => {
     it("unlocks and confirms when a person marks the issue ready", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", meaning: "ready" }, locked: true },
+            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
         );
         const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
 
@@ -307,7 +307,7 @@ describe("triageQueue", () => {
     it("unlocks without confirming when confirmUnlock is off", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", meaning: "ready" }, locked: true },
+            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
         );
 
         expect(
@@ -323,7 +323,7 @@ describe("triageQueue", () => {
      */
     it("unlocks a conflicted item — the release does not wait for the stale triage label", async () => {
         const record = conflicted(["awaitingTriage", "ready"], {
-            arrival: { kind: "label", meaning: "ready" },
+            arrival: { kind: "label", change: "added", meaning: "ready" },
             locked: true,
         });
         const { platform, handle } = watch(record);
@@ -336,10 +336,26 @@ describe("triageQueue", () => {
         expect(handle.explanations).toEqual([]);
     });
 
+    it("unlocks after the stale triage label is removed from a ready issue", async () => {
+        const record = issue(
+            { meaning: "ready" },
+            {
+                arrival: { kind: "label", change: "removed", meaning: "awaitingTriage" },
+                locked: true,
+            },
+        );
+
+        expect(
+            (await triageQueue.evaluate(record, quarantineView, watch(record).platform)).map(
+                (intent) => intent.operation,
+            ),
+        ).toEqual(["unlockIssue", "postManagedComment"]);
+    });
+
     it("confirms a ready label that arrived before triageQueue could lock", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", meaning: "ready" }, locked: false },
+            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: false },
         );
 
         expect(
@@ -353,7 +369,7 @@ describe("triageQueue", () => {
     it("leaves a locked issue alone when lockUntilTriaged is off", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", meaning: "ready" }, locked: true },
+            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
         );
 
         expect(await triageQueue.evaluate(record, announcingView, watch(record).platform)).toEqual(
@@ -372,7 +388,7 @@ describe("triageQueue", () => {
     it("ignores a label that did not complete triage, without asking who sent it", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", meaning: "blocked" }, locked: true },
+            { arrival: { kind: "label", change: "added", meaning: "blocked" }, locked: true },
         );
         const { platform, asked } = watch(record);
 
@@ -383,7 +399,11 @@ describe("triageQueue", () => {
     it("ignores a label arrival nobody sent", async () => {
         const record = issue(
             { meaning: "ready" },
-            { actor: null, arrival: { kind: "label", meaning: "ready" }, locked: true },
+            {
+                actor: null,
+                arrival: { kind: "label", change: "added", meaning: "ready" },
+                locked: true,
+            },
         );
 
         expect(await triageQueue.evaluate(record, quarantineView, watch(record).platform)).toEqual(
@@ -396,7 +416,7 @@ describe("triageQueue", () => {
             { meaning: "ready" },
             {
                 actor: { login: "triage-bot[bot]" },
-                arrival: { kind: "label", meaning: "ready" },
+                arrival: { kind: "label", change: "added", meaning: "ready" },
                 locked: true,
             },
         );

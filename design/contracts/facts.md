@@ -29,7 +29,11 @@ export interface IssueFacts {
     /** The issue transition carried by this observation, or `null` when there is none. */
     readonly arrival:
         | { readonly kind: "opened" }
-        | { readonly kind: "label"; readonly meaning: MappableMeaning | null }
+        | {
+              readonly kind: "label";
+              readonly change: "added" | "removed";
+              readonly meaning: MappableMeaning | null;
+          }
         | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
@@ -76,7 +80,7 @@ so there is no honest `Unread` for it and a payload without one is malformed. `a
 projection was. `actor` is a field whose value may be `null`, which is NOT an `Unread`: a swept item
 was read because a clock fired, so "nobody caused this" is a fact about the record rather than a
 group somebody skipped. Issue records also always carry `locked` and `arrival`; `arrival: null`
-means the observation carried no opening or added-label transition.
+means the observation carried no opening or label transition.
 
 **A pull-request record carries no head sha.** Nothing above names one, and no group holds one, so
 a capability that needs the commit a pull request currently points at asks a resolver for it — the

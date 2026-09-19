@@ -1775,6 +1775,7 @@ describe("the reader and the driver together", () => {
             capabilities,
             externals: () => stubbedExternals(),
             repository: REPOSITORY,
+            clock: () => NOW,
         });
         const lane = createDeliveries({
             store,
@@ -2060,6 +2061,7 @@ describe("an item the platform released within the minute", () => {
                     }),
                 }),
             repository: REPOSITORY,
+            clock: () => NOW,
         });
         const lane = createDeliveries({
             store: into,

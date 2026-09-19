@@ -132,6 +132,7 @@ export function createShell(options: ShellOptions): Shell {
                 capabilities: options.capabilities,
                 externals,
                 repository,
+                clock,
                 ...(applier === null ? {} : { applier }),
             }),
         };

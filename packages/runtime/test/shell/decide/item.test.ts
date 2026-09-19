@@ -106,6 +106,7 @@ function decider(wiring: Wiring = {}): DecideItem {
         capabilities: CAPABILITIES,
         externals: wiring.externals ?? (() => stubbedExternals()),
         repository: REPOSITORY,
+        clock: () => new Date(AT),
         ...(wiring.applier === undefined ? {} : { applier: wiring.applier }),
     });
 }
@@ -232,6 +233,7 @@ describe("the write path", () => {
         expect(wired.passes[0]!.effects.map((effect) => effect.intent.operation)).toEqual([
             "applyMappedLabel",
         ]);
+        expect(wired.passes[0]!.effects[0]!.intent.evaluatedAt).toEqual(new Date(AT));
         expect(decided).toMatchObject({
             kind: "decided",
             outcomes: [expect.objectContaining({ operation: "applyMappedLabel" })],

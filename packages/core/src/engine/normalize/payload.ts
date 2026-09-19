@@ -56,6 +56,14 @@ export function labelAdded(payload: Record<string, unknown>): string | null {
     return label["name"];
 }
 
+/** The label this delivery REMOVED, or `null` when it removed none. */
+export function labelRemoved(payload: Record<string, unknown>): string | null {
+    if (payload["action"] !== "unlabeled") return null;
+    const label = payload["label"];
+    if (!isRecord(label) || typeof label["name"] !== "string") return null;
+    return label["name"];
+}
+
 /** A valid Date from an ISO field, or null. */
 export function timestamp(value: unknown): Date | null {
     if (typeof value !== "string") return null;
@@ -89,6 +97,7 @@ export interface DeliveryFacts {
     readonly author: string;
     readonly meanings: readonly MappableMeaning[];
     readonly arrivedMeaning: MappableMeaning | null;
+    readonly removedMeaning: MappableMeaning | null;
     /** What this item carries, and what this delivery added — through `mappings.alerts`. */
     readonly alerts: Alerts;
     /** The delivery's sender, or `null` — see `senderOf`. */
