@@ -60,7 +60,7 @@ describe("the shipped examples", () => {
         const intake = KNOWN.find(({ name }) => name === "intake");
         expect(Object.keys(intake?.settings ?? {})).toEqual([
             "announce",
-            "unlockWhen",
+            "lockUntilTriaged",
             "confirmUnlock",
         ]);
         expect(intake?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });

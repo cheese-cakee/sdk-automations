@@ -4,16 +4,48 @@ Not built: phase 3.
 
 ## What the output looks like
 
-Intake can label a new issue, welcome its author, and keep the discussion locked until a maintainer
-adds an approval label. The approval label is the authorization: GitHub only lets people with
-triage access or above apply labels.
+On open, when the repository asked to announce:
+
+> 👋 Hi @alice — thanks for opening this issue. It is in the triage queue; a maintainer will review
+> it and follow up here.
+
+On open, when the repository locks until triage. This welcome is posted whether or not `announce`
+is on, because a lock with no word about why is the one outcome an author resents:
+
+> 👋 Hi @alice — thanks for opening this issue. It is in the triage queue, and the conversation is
+> locked until a maintainer reviews it. You do not need to do anything; we will unlock it and
+> follow up here.
+
+On release, when the repository asked to confirm:
+
+> ✅ Hi @alice — a maintainer approved this issue. It is open for discussion.
+
+## What the config looks like
+
+Label only — the default once intake is enabled:
+
+```yaml
+capabilities:
+  intake:
+    enabled: true
+```
+
+Label and welcome:
 
 ```yaml
 capabilities:
   intake:
     enabled: true
     announce: true
-    unlockWhen: [ready]
+```
+
+Quarantine — label, welcome, lock; release when a person adds the `ready` label:
+
+```yaml
+capabilities:
+  intake:
+    enabled: true
+    lockUntilTriaged: true
     confirmUnlock: true
 
 mappings:
@@ -22,55 +54,70 @@ mappings:
     ready: "status: ready for dev"
 ```
 
-`unlockWhen` does two jobs. A non-empty list locks new issues and names the mapped meanings that
-release them. An empty list leaves discussions unlocked. This prevents a configuration that locks
-issues without defining a release path.
+`lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
+and it goes to `ready`, so the arrival of that meaning is what completes triage. The people who can
+add the label are the authorization — GitHub lets triage access and above apply labels — and no
+role is ever read. `confirmUnlock` is inert without `lockUntilTriaged`.
 
-On `issues.opened`, intake:
+## How it works
 
-1. applies `awaitingTriage` when the issue has no workflow position;
-2. posts the welcome when `announce` is true;
-3. locks last when `unlockWhen` is not empty.
+Two stations on a new issue's front gate, both webhook-driven. On `issues.opened`: the
+`awaitingTriage` label, the welcome where asked or where locking, then the lock — last, so the
+author can read why. On `issues.labeled` carrying `ready`: the unlock where the issue is locked,
+then the confirmation where asked.
 
-On `issues.labeled`, intake unlocks when the newly added label maps to an `unlockWhen` meaning. It
-can then post one managed confirmation when `confirmUnlock` is true. If approval arrives before the
-lock write, the confirmation still posts and no unnecessary unlock is requested.
+The release reads the label that arrived, not the position it produced. A `ready` added beside a
+stale triage label is a two-position conflict the map reports and never repairs (D35), and it is
+still an approval a person made — so the unlock is asked for anyway. A conflicted issue at open is
+skipped, as before.
 
-Other issue actions do nothing. Removing a label never retriages or relocks the issue. Bot-authored
-and conflicted issues remain untouched.
+Never acts on: a removed label (nothing re-locks — the human's removal stands), any other label, a
+lock a human placed on a repository that never asked to lock, a bot-opened issue, a label a bot
+added, or a sweep. A sweep record carries no arrival, so intake asks for nothing on it: a missed
+`opened` webhook is not repaired on the next sweep (D206).
 
-## What the config looks like
+```mermaid
+flowchart LR
+    E["issues event"] --> A{"arrival?"}
+    A -->|"none, or a label other than ready"| N["nothing"]
+    A -->|"opened, or ready"| B{"a machine's?"}
+    B -->|yes| N
+    B -->|"opened"| C{"conflict, or already positioned?"}
+    C -->|yes| N
+    C -->|no| O["label · welcome · lock"]
+    B -->|"ready, lockUntilTriaged"| R["unlock · confirm"]
+```
 
 | Declaration | Value |
 |---|---|
 | `triggers` | `issues` |
-| `facts` / `needs` | `issue` / none |
-| `resolvers` | `isAutomationActor` |
-| `intents` | `applyMappedLabel`, `postManagedComment`, `lockIssue`, `unlockIssue` |
+| `facts` / `needs` | `issue`, no group read |
+| `resolvers` | `isAutomationActor` — asked about the author on `opened`, about the sender on `labeled` |
+| `intents` | `applyMappedLabel` · `postManagedComment` · `lockIssue` · `unlockIssue` |
 | `requiredMappings` | `labels: awaitingTriage` |
 | Permissions | repository `issues:read`, `issues:write` |
+| Platform needs | none — the issue record carries `locked` and `arrival` (D206) |
 
-The issue observation carries its current `locked` value and, for an issue event, the useful
-transition: opened, an added mapped label, or no intake transition. The raw webhook action stays
-inside normalization.
-
-## How it works
-
-| Phase | Status | Scope |
+| Phase | Ships | Needs first |
 |---|---|---|
-| 1 | shipped | awaiting-triage label and optional welcome |
-| 2 | shipped | lock on open, unlock on configured approval, optional confirmation |
-| 3 | not built | advisory checks for skill tier, issue type, and native project fields |
+| 1 | the label and the optional welcome | shipped |
+| 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
+| 3 | advisory checks for skill tier, issue type and native project fields | issue type and native field values on the observation, a fact-shape change · the `skills` family read · a `types` mapping family for label-based repositories |
 
 ## Verified by
 
 | Scenario | Proves |
 |---|---|
-| New issue with quarantine enabled | label, welcome, then lock |
-| Approval meaning added | unlock and optional confirmation |
-| Approval reaches the item before the lock | confirmation without an unnecessary unlock |
-| Approval label removed | no retriage and no relock |
-| Unrelated label added | no effect |
-| Bot-authored or conflicted issue | no effect |
-| Redelivered write | the journal and managed comment identity prevent duplication |
-| `mode: dry-run` | every proposed write is reported and none is sent |
+| Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order |
+| Issue opened, `lockUntilTriaged` and `announce: false` | the welcome still posts |
+| `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
+| `ready` added while the triage label is still on | the conflict is not a refusal: the unlock is asked for |
+| `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
+| `ready` added to a locked issue where `lockUntilTriaged` is off | nothing — the lock is a human's |
+| `ready` added by an automation | nothing |
+| A label other than `ready`, or a label removed | nothing, and the resolver is not asked |
+| Issue opened by a bot | nothing, silently |
+| Conflicted issue at open | skipped and reported (D35) |
+| Sweep record | nothing — no arrival |
+| Redelivered `opened` | one welcome, one lock — the journal and the managed identity |
+| `mode: dry-run` | every proposed write reported, none sent |

@@ -170,7 +170,7 @@ describe("configuration isolation (contract.md §2)", () => {
         const view = projectCapabilityView(intake.declaration, config);
         expect(view.settings).toEqual({
             announce: true,
-            unlockWhen: [],
+            lockUntilTriaged: false,
             confirmUnlock: false,
         });
     });

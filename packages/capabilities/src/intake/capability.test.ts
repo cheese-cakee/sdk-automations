@@ -30,9 +30,13 @@ const announcing = configEnabling(["intake"], [intakeDeclaration], { intake: { a
 const silent = configEnabling(["intake"], [intakeDeclaration]);
 const announcingView = projectCapabilityView(intakeDeclaration, announcing);
 const quarantining = configEnabling(["intake"], [intakeDeclaration], {
-    intake: { announce: true, unlockWhen: ["ready"], confirmUnlock: true },
+    intake: { announce: true, lockUntilTriaged: true, confirmUnlock: true },
 });
 const quarantineView = projectCapabilityView(intakeDeclaration, quarantining);
+const lockingOnly = configEnabling(["intake"], [intakeDeclaration], {
+    intake: { lockUntilTriaged: true },
+});
+const lockingView = projectCapabilityView(intakeDeclaration, lockingOnly);
 
 const issue = (
     state: Partial<WorkItemState<IssueMeaning>>,
@@ -52,10 +56,14 @@ const issue = (
     );
 
 /** The same issue, seen holding more than one position at once. */
-const conflicted = (...positions: readonly IssueMeaning[]) =>
+const conflicted = (
+    positions: readonly IssueMeaning[],
+    over: Parameters<typeof webhookIssue>[0] = {},
+) =>
     factsFor(
         intakeDeclaration,
         webhookIssue({
+            ...over,
             item: ITEM,
             position: {
                 kind: "conflict",
@@ -114,7 +122,7 @@ describe("intake", () => {
     });
 
     it("names both positions of a conflicted item, and repairs neither (D35)", async () => {
-        const record = conflicted("ready", "inProgress");
+        const record = conflicted(["ready", "inProgress"]);
         const { platform, handle } = watch(record);
 
         expect(await intake.evaluate(record, announcingView, platform)).toEqual([]);
@@ -194,7 +202,7 @@ describe("intake", () => {
                 desired: {
                     kind: "notice",
                     topic: "welcome",
-                    body: "Thanks for opening this. It has been placed in the triage queue.",
+                    body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue; a maintainer will review it and follow up here.",
                 },
                 claims: announceClaim,
                 cause: occasion,
@@ -231,20 +239,29 @@ describe("intake", () => {
         expect(intents[1]?.desired).toEqual({
             kind: "notice",
             topic: "welcome",
-            body: "Thanks for opening this. It has been placed in the triage queue and locked until a maintainer reviews it.",
+            body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue, and the conversation is locked until a maintainer reviews it. You do not need to do anything; we will unlock it and follow up here.",
         });
         expect(intents[2]?.desired).toEqual({
             reason: "the issue is waiting for maintainer review",
         });
     });
 
-    it("unlocks and confirms the approval meaning that arrived", async () => {
+    /** A lock without a word about why is the one outcome an author resents. */
+    it("welcomes a locked issue even when announce is off", async () => {
+        const record = issue({});
+        const intents = await intake.evaluate(record, lockingView, watch(record).platform);
+
+        expect(intents.map((intent) => intent.operation)).toEqual([
+            "applyMappedLabel",
+            "postManagedComment",
+            "lockIssue",
+        ]);
+    });
+
+    it("unlocks and confirms when a person marks the issue ready", async () => {
         const record = issue(
             { meaning: "ready" },
-            {
-                arrival: { kind: "label", meaning: "ready" },
-                locked: true,
-            },
+            { arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
         const intents = await intake.evaluate(record, quarantineView, watch(record).platform);
 
@@ -257,18 +274,47 @@ describe("intake", () => {
             {
                 kind: "notice",
                 topic: "approval",
-                body: "This issue was approved and is now open for discussion.",
+                body: "✅ Hi @opener — a maintainer approved this issue. It is open for discussion.",
             },
         ]);
+    });
+
+    it("unlocks without confirming when confirmUnlock is off", async () => {
+        const record = issue(
+            { meaning: "ready" },
+            { arrival: { kind: "label", meaning: "ready" }, locked: true },
+        );
+
+        expect(
+            (await intake.evaluate(record, lockingView, watch(record).platform)).map(
+                (intent) => intent.operation,
+            ),
+        ).toEqual(["unlockIssue"]);
+    });
+
+    /**
+     * The usual way a maintainer approves: `ready` goes on while the triage
+     * label is still there. The map reports the conflict; the approval stands.
+     */
+    it("unlocks a conflicted item — the approval does not wait for the stale triage label", async () => {
+        const record = conflicted(["awaitingTriage", "ready"], {
+            arrival: { kind: "label", meaning: "ready" },
+            locked: true,
+        });
+        const { platform, handle } = watch(record);
+
+        expect(
+            (await intake.evaluate(record, quarantineView, platform)).map(
+                (intent) => intent.operation,
+            ),
+        ).toEqual(["unlockIssue", "postManagedComment"]);
+        expect(handle.explanations).toEqual([]);
     });
 
     it("confirms an approval that arrived before intake could lock", async () => {
         const record = issue(
             { meaning: "ready" },
-            {
-                arrival: { kind: "label", meaning: "ready" },
-                locked: false,
-            },
+            { arrival: { kind: "label", meaning: "ready" }, locked: false },
         );
 
         expect(
@@ -278,25 +324,37 @@ describe("intake", () => {
         ).toEqual(["postManagedComment"]);
     });
 
-    it("does not re-triage or re-lock a human label removal", async () => {
+    /** A lock the repository never asked for is a human's, and stays. */
+    it("leaves a locked issue alone when lockUntilTriaged is off", async () => {
         const record = issue(
-            {},
-            {
-                arrival: null,
-                locked: false,
-            },
+            { meaning: "ready" },
+            { arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
+
+        expect(await intake.evaluate(record, announcingView, watch(record).platform)).toEqual([]);
+    });
+
+    it("does not re-triage or re-lock a human label removal", async () => {
+        const record = issue({}, { arrival: null, locked: false });
 
         expect(await intake.evaluate(record, quarantineView, watch(record).platform)).toEqual([]);
     });
 
-    it("ignores a labeled event that did not add an approval meaning", async () => {
+    it("ignores a label that did not complete triage, without asking who sent it", async () => {
         const record = issue(
             { meaning: "ready" },
-            {
-                arrival: { kind: "label", meaning: "blocked" },
-                locked: true,
-            },
+            { arrival: { kind: "label", meaning: "blocked" }, locked: true },
+        );
+        const { platform, asked } = watch(record);
+
+        expect(await intake.evaluate(record, quarantineView, platform)).toEqual([]);
+        expect(asked).toEqual([]);
+    });
+
+    it("ignores a label arrival nobody sent", async () => {
+        const record = issue(
+            { meaning: "ready" },
+            { actor: null, arrival: { kind: "label", meaning: "ready" }, locked: true },
         );
 
         expect(await intake.evaluate(record, quarantineView, watch(record).platform)).toEqual([]);

@@ -7,7 +7,7 @@
             "enabled": true,
             "settings": {
                 "announce": false,
-                "unlockWhen": [],
+                "lockUntilTriaged": false,
                 "confirmUnlock": false
             }
         }

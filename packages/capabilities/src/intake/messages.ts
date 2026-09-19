@@ -1,9 +1,15 @@
 /** Everything intake says to a contributor, and the words it says it in. */
 
-/** The notice a new issue earns when the repository asked to announce triage. */
-export const TRIAGE_ANNOUNCED = "Thanks for opening this. It has been placed in the triage queue.";
+import { mentions } from "@hiero-hackers/automation-core/author";
 
-export const TRIAGE_LOCKED =
-    "Thanks for opening this. It has been placed in the triage queue and locked until a maintainer reviews it.";
+/** The welcome a new issue earns; the locked form says why its author cannot reply yet. */
+export function welcome(author: string, locked: boolean): string {
+    const opening = `👋 Hi ${mentions([author])} — thanks for opening this issue. It is in the triage queue`;
+    return locked
+        ? `${opening}, and the conversation is locked until a maintainer reviews it. You do not need to do anything; we will unlock it and follow up here.`
+        : `${opening}; a maintainer will review it and follow up here.`;
+}
 
-export const TRIAGE_APPROVED = "This issue was approved and is now open for discussion.";
+/** The confirmation a released issue earns when the repository asked for one. */
+export const approved = (author: string): string =>
+    `✅ Hi ${mentions([author])} — a maintainer approved this issue. It is open for discussion.`;

@@ -46,24 +46,14 @@
                                             "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
                                             "default": false
                                         },
-                                        "unlockWhen": {
-                                            "type": "array",
-                                            "items": {
-                                                "enum": [
-                                                    "awaitingTriage",
-                                                    "ready",
-                                                    "inProgress",
-                                                    "needsReview",
-                                                    "needsRevision",
-                                                    "readyToMerge",
-                                                    "blocked"
-                                                ]
-                                            },
-                                            "description": "Lock a new issue until a human adds one of these mapped workflow meanings."
+                                        "lockUntilTriaged": {
+                                            "type": "boolean",
+                                            "description": "Lock a new issue's conversation until a person adds the ready label; the welcome is posted either way.",
+                                            "default": false
                                         },
                                         "confirmUnlock": {
                                             "type": "boolean",
-                                            "description": "Comment when an approval meaning unlocks an issue.",
+                                            "description": "Comment when the ready label unlocks an issue; inert unless lockUntilTriaged is on.",
                                             "default": false
                                         }
                                     }
@@ -772,24 +762,14 @@
                                     "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
                                     "default": false
                                 },
-                                "unlockWhen": {
-                                    "type": "array",
-                                    "items": {
-                                        "enum": [
-                                            "awaitingTriage",
-                                            "ready",
-                                            "inProgress",
-                                            "needsReview",
-                                            "needsRevision",
-                                            "readyToMerge",
-                                            "blocked"
-                                        ]
-                                    },
-                                    "description": "Lock a new issue until a human adds one of these mapped workflow meanings."
+                                "lockUntilTriaged": {
+                                    "type": "boolean",
+                                    "description": "Lock a new issue's conversation until a person adds the ready label; the welcome is posted either way.",
+                                    "default": false
                                 },
                                 "confirmUnlock": {
                                     "type": "boolean",
-                                    "description": "Comment when an approval meaning unlocks an issue.",
+                                    "description": "Comment when the ready label unlocks an issue; inert unless lockUntilTriaged is on.",
                                     "default": false
                                 }
                             }

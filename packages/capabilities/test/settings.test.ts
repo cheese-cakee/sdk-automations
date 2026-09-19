@@ -98,7 +98,7 @@ describe("the seeds' specs", () => {
     it("read the keys their declarations admit, with the defaults they document", () => {
         expect(viewFor(intake.declaration, {}).settings).toEqual({
             announce: false,
-            unlockWhen: [],
+            lockUntilTriaged: false,
             confirmUnlock: false,
         });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
