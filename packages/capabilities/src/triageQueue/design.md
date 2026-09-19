@@ -65,8 +65,9 @@ role is ever read, so "triaged" means exactly that: someone with that access mar
 ## How it works
 
 Two stations on a new issue's front gate, both webhook-driven. On `issues.opened`: the
-`awaitingTriage` label, the welcome where asked or where locking, then the lock — last, so the
-author can read why. On `issues.labeled` carrying `ready`: the unlock where the issue is locked,
+`awaitingTriage` label where the issue has no position yet, the welcome where asked or where
+locking, then the lock — last, so the author can read why. An issue a template already labelled
+`awaitingTriage` is still at the gate, so it is welcomed and locked without a second label. On `issues.labeled` carrying `ready`: the unlock where the issue is locked,
 then the confirmation where asked.
 
 The release reads the label that arrived, not the position it produced. A `ready` added beside a
@@ -91,10 +92,9 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
   stays locked is the ordinary GitHub outcome.
 - A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses
   every capability write on a blocked item, the unlock included.
-- An issue that arrives already carrying the triage label — an issue template applied it — is
-  already positioned, so it is neither welcomed nor locked.
 - Turning `lockUntilTriaged` off stops the release too: issues locked before the change need a
-  manual unlock.
+  manual unlock. GitHub's issue search finds them: `is:open is:locked` with the triage label's
+  spelling.
 - Triage done by a workflow token or another App never releases; only a person's label does.
 
 ```mermaid
@@ -103,7 +103,7 @@ flowchart LR
     A -->|"none, or a label other than ready"| N["nothing"]
     A -->|"opened, or ready"| B{"a machine's?"}
     B -->|yes| N
-    B -->|"opened"| C{"conflict, or already positioned?"}
+    B -->|"opened"| C{"conflict, or already past triage?"}
     C -->|yes| N
     C -->|no| O["label · welcome · lock"]
     B -->|"ready, lockUntilTriaged"| R["unlock · confirm"]
@@ -123,7 +123,7 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3 | every triage outcome releases, and the confirmation names it: `ready` ("open for work"), `blocked` ("waiting on…"), needs more information ("please add…"), or the first human label of any kind | a `needsInfo` meaning, and the decision where it lives — an issue-flow position competes with `awaitingTriage`, an alert is repository-named and needs a setting to point at it · the unlock exempted from the blocked pause, a safety-rule change with its own row · a template-applied triage label still welcomed and locked · a successor row to D206 |
+| 3 | every triage outcome releases, and the confirmation names it: `ready` ("open for work"), `blocked` ("waiting on…"), needs more information ("please add…"), or the first human label of any kind | a `needsInfo` meaning, and the decision where it lives — an issue-flow position competes with `awaitingTriage`, an alert is repository-named and needs a setting to point at it · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
 | 4 | advisory checks for skill tier, issue type and native project fields | issue type and native field values on the observation, a fact-shape change · the `skills` family read · a `types` mapping family for label-based repositories |
 
 ## Verified by
@@ -132,6 +132,7 @@ flowchart LR
 |---|---|
 | Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order |
 | Issue opened, `lockUntilTriaged` and `welcome: false` | the welcome still posts |
+| Issue opened already carrying the triage label (a template applied it) | welcome and lock, no second label |
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
 | `ready` added while the triage label is still on | the conflict is not a refusal: the unlock is asked for |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |

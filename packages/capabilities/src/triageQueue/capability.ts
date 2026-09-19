@@ -43,18 +43,22 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
             "a conflict is reported, never repaired (D35)",
         );
     }
-    // Already positioned somewhere — triageQueue is the entry gate only.
-    if (facts.position.state.meaning !== null) return [];
+    // Already past the gate — triageQueue is the entry gate only. A template-applied triage label is still at it.
+    const { meaning } = facts.position.state;
+    if (meaning !== null && meaning !== "awaitingTriage") return [];
 
     const { welcome: welcomed, lockUntilTriaged } = config.settings;
-    const intents: IntentFor<TriageQueueDeclaration>[] = [
-        platform.intent({
-            operation: "applyMappedLabel",
-            desired: { meaning: "awaitingTriage" },
-            cause: "issueWithoutPosition",
-            explain: "Placed the new issue in triage.",
-        }),
-    ];
+    const intents: IntentFor<TriageQueueDeclaration>[] = [];
+    if (meaning === null) {
+        intents.push(
+            platform.intent({
+                operation: "applyMappedLabel",
+                desired: { meaning: "awaitingTriage" },
+                cause: "issueWithoutPosition",
+                explain: "Placed the new issue in triage.",
+            }),
+        );
+    }
     if (welcomed || lockUntilTriaged) {
         intents.push(
             platform.intent({

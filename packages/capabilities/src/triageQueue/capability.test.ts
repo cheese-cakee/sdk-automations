@@ -163,6 +163,29 @@ describe("triageQueue", () => {
         );
     });
 
+    /** An issue template applied the triage label itself: the gate still welcomes and locks. */
+    it("welcomes and locks an issue a template already labelled awaitingTriage", async () => {
+        const record = issue({ meaning: "awaitingTriage" });
+        const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
+
+        expect(intents.map((intent) => intent.operation)).toEqual([
+            "postManagedComment",
+            "lockIssue",
+        ]);
+    });
+
+    it("leaves a template-labelled issue alone when neither welcome nor lock is asked", async () => {
+        const record = issue({ meaning: "awaitingTriage" });
+
+        expect(
+            await triageQueue.evaluate(
+                record,
+                projectCapabilityView(triageQueueDeclaration, silent),
+                watch(record).platform,
+            ),
+        ).toEqual([]);
+    });
+
     it("leaves an issue that already holds a position, silently", async () => {
         const record = issue({ meaning: "inProgress" });
         const { platform, handle } = watch(record);
