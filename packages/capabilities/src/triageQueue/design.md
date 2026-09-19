@@ -1,6 +1,6 @@
 # triageQueue — put a new issue in the triage queue: label it, welcome its author, hold it until triaged
 
-Not built: phase 3.
+Not built: phases 3–4.
 
 ## What the output looks like
 
@@ -79,6 +79,18 @@ lock a human placed on a repository that never asked to lock, a bot-opened issue
 added, or a sweep. A sweep record carries no arrival, so triageQueue asks for nothing on it: a missed
 `opened` webhook is not repaired on the next sweep (D206).
 
+Limits until phase 3, for whoever turns `lockUntilTriaged` on:
+
+- `ready` is the only release. A triage that ends in `blocked`, in a request for more information,
+  or in an area label leaves the lock on until a person unlocks by hand.
+- A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses
+  every capability write on a blocked item, the unlock included.
+- An issue that arrives already carrying the triage label — an issue template applied it — is
+  already positioned, so it is neither welcomed nor locked.
+- Turning `lockUntilTriaged` off stops the release too: issues locked before the change need a
+  manual unlock.
+- Triage done by a workflow token or another App never releases; only a person's label does.
+
 ```mermaid
 flowchart LR
     E["issues event"] --> A{"arrival?"}
@@ -105,7 +117,8 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3 | advisory checks for skill tier, issue type and native project fields | issue type and native field values on the observation, a fact-shape change · the `skills` family read · a `types` mapping family for label-based repositories |
+| 3 | every triage outcome releases, and the confirmation names it: `ready` ("open for work"), `blocked` ("waiting on…"), needs more information ("please add…"), or the first human label of any kind | a `needsInfo` meaning, and the decision where it lives — an issue-flow position competes with `awaitingTriage`, an alert is repository-named and needs a setting to point at it · the unlock exempted from the blocked pause, a safety-rule change with its own row · a template-applied triage label still welcomed and locked · a successor row to D206 |
+| 4 | advisory checks for skill tier, issue type and native project fields | issue type and native field values on the observation, a fact-shape change · the `skills` family read · a `types` mapping family for label-based repositories |
 
 ## Verified by
 
