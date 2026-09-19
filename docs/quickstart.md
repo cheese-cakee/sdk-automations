@@ -82,7 +82,7 @@ mode: dry-run
 capabilities:
   intake:
     enabled: true
-    announce: true
+    welcome: true
   prDashboard:
     enabled: true
     checks:

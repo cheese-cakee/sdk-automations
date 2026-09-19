@@ -23,7 +23,7 @@ mode: dry-run                 # ── top level. Optional, default: observe
 capabilities:                 # ── top level. Optional, default: nothing enabled
   intake:                     #    └─ one block per capability, keyed by its name
     enabled: true             #       └─ boolean, default: false
-    announce: true            #       └─ that capability's own options, keys defined by it
+    welcome: true            #       └─ that capability's own options, keys defined by it
 
 mappings:                     # ── top level. Optional, default: no meanings available
   labels:                     #    └─ one of four families that may appear under mappings

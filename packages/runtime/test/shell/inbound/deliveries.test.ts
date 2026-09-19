@@ -72,7 +72,7 @@ mode: dry-run
 capabilities:
   intake:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -324,8 +324,8 @@ describe("deliveries from two repositories", () => {
     /** Only the fixture's own repository announces, so the two configs decide differently. */
     const configFor = (repository: RepositoryRef): string =>
         CONFIG_TEXT.replace(
-            "announce: false",
-            `announce: ${String(repository.repo === REPOSITORY.repo)}`,
+            "welcome: false",
+            `welcome: ${String(repository.repo === REPOSITORY.repo)}`,
         );
 
     /** A lane serving whatever a payload names, recording which it was asked for. */

@@ -41,7 +41,7 @@ mode: dry-run
 capabilities:
   intake:
     enabled: true
-    announce: true
+    welcome: true
 mappings:
   labels:
     awaitingTriage: "status: triage"

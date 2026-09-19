@@ -74,7 +74,7 @@ mode: ${mode}
 capabilities:
   intake:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "${TRIAGE_LABEL}"

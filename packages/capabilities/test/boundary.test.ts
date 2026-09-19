@@ -154,7 +154,7 @@ describe("configuration isolation (contract.md §2)", () => {
     const config = configEnabling(
         NAMES,
         DECLARATIONS,
-        { intake: { announce: true } },
+        { intake: { welcome: true } },
         {
             labels: {
                 awaitingTriage: "status: triage",
@@ -169,7 +169,7 @@ describe("configuration isolation (contract.md §2)", () => {
     it("projects the capability's own settings, as the parser resolved them", () => {
         const view = projectCapabilityView(intake.declaration, config);
         expect(view.settings).toEqual({
-            announce: true,
+            welcome: true,
             lockUntilTriaged: false,
             confirmUnlock: false,
         });
@@ -188,7 +188,7 @@ describe("configuration isolation (contract.md §2)", () => {
     });
 
     /**
-     * `intake`'s `announce: true` is the block above, and this repository
+     * `intake`'s `welcome: true` is the block above, and this repository
      * wrote nothing under `prDashboard` — so what arrives is prDashboard's own
      * spec at its own defaults, with its neighbour's answer nowhere in it.
      */

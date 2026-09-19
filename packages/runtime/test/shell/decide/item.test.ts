@@ -40,7 +40,7 @@ mode: MODE
 capabilities:
   intake:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "status: triage"

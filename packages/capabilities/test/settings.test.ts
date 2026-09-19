@@ -97,7 +97,7 @@ const swept = sweptIssue({
 describe("the seeds' specs", () => {
     it("read the keys their declarations admit, with the defaults they document", () => {
         expect(viewFor(intake.declaration, {}).settings).toEqual({
-            announce: false,
+            welcome: false,
             lockUntilTriaged: false,
             confirmUnlock: false,
         });
@@ -143,13 +143,13 @@ describe("a settings block a seed cannot read", () => {
      * clean and intake reported itself unusable on every delivery it met.
      */
     it("is refused for intake before any delivery reaches it", () => {
-        const result = parsed(intake.declaration, { announce: "yes" });
+        const result = parsed(intake.declaration, { welcome: "yes" });
 
         expect(result.ok ? [] : result.errors).toEqual([
             {
                 code: "settingInvalid",
-                path: "capabilities.intake.announce",
-                message: "capabilities.intake.announce: must be true or false",
+                path: "capabilities.intake.welcome",
+                message: "capabilities.intake.welcome: must be true or false",
             },
         ]);
     });
@@ -255,7 +255,7 @@ describe("a settings block a seed cannot read", () => {
         const { platform } = watch(intake.declaration, issue);
         const announced = await intake.evaluate(
             issue,
-            viewFor(intake.declaration, { announce: true }),
+            viewFor(intake.declaration, { welcome: true }),
             platform,
         );
         expect(announced.map(({ operation }) => operation)).toEqual([

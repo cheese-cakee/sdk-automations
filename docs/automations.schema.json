@@ -41,19 +41,19 @@
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
-                                        "announce": {
+                                        "welcome": {
                                             "type": "boolean",
-                                            "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                            "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
                                             "default": false
                                         },
                                         "lockUntilTriaged": {
                                             "type": "boolean",
-                                            "description": "Lock a new issue's conversation until a person adds the ready label; the welcome is posted either way.",
+                                            "description": "Lock a new issue's conversation until someone with triage access adds the ready label; the welcome is posted either way.",
                                             "default": false
                                         },
                                         "confirmUnlock": {
                                             "type": "boolean",
-                                            "description": "Comment when the ready label unlocks an issue; inert unless lockUntilTriaged is on.",
+                                            "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                             "default": false
                                         }
                                     }
@@ -757,19 +757,19 @@
                                     "description": "Run intake. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
-                                "announce": {
+                                "welcome": {
                                     "type": "boolean",
-                                    "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                    "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
                                     "default": false
                                 },
                                 "lockUntilTriaged": {
                                     "type": "boolean",
-                                    "description": "Lock a new issue's conversation until a person adds the ready label; the welcome is posted either way.",
+                                    "description": "Lock a new issue's conversation until someone with triage access adds the ready label; the welcome is posted either way.",
                                     "default": false
                                 },
                                 "confirmUnlock": {
                                     "type": "boolean",
-                                    "description": "Comment when the ready label unlocks an issue; inert unless lockUntilTriaged is on.",
+                                    "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                     "default": false
                                 }
                             }

@@ -105,7 +105,7 @@ mode: active
 capabilities:
   intake:
     enabled: true
-    announce: true
+    welcome: true
   prDashboard:
     enabled: true
   inactivity:
@@ -262,7 +262,7 @@ describe("configReport", () => {
                 "**Capabilities**",
                 "",
                 "- intake — on",
-                "  - announce: true",
+                "  - welcome: true",
                 "  - lockUntilTriaged: false",
                 "  - confirmUnlock: false",
                 "  - labels it may set",
@@ -357,7 +357,7 @@ capabilities:
         const errors = body.split("\n").filter((row) => row.startsWith("- line "));
 
         expect(errors).toEqual([
-            '- line 7 — capabilities.intake.annouce: capability "intake": unknown setting "annouce" \\(it declares: announce, confirmUnlock, lockUntilTriaged\\)',
+            '- line 7 — capabilities.intake.annouce: capability "intake": unknown setting "annouce" \\(it declares: confirmUnlock, lockUntilTriaged, welcome\\)',
             '- line 10 — capabilities.inactivity.remindAfter: must be a duration: a whole number of hours or days, written "4h" or "14d"',
         ]);
         expect(body).toContain("the App would read no configuration from it at all");

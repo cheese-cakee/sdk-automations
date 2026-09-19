@@ -6,7 +6,7 @@
         "intake": {
             "enabled": true,
             "settings": {
-                "announce": true,
+                "welcome": true,
                 "lockUntilTriaged": false,
                 "confirmUnlock": false
             }

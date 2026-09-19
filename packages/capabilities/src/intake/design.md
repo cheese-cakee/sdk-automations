@@ -4,21 +4,24 @@ Not built: phase 3.
 
 ## What the output looks like
 
-On open, when the repository asked to announce:
+Intake is the front gate every new issue passes through. "The team" in its comments means whoever
+the repository gave triage access or above — the people GitHub lets add a label.
 
-> 👋 Hi @alice — thanks for opening this issue. It is in the triage queue; a maintainer will review
-> it and follow up here.
+On open, when the repository asked for a welcome:
 
-On open, when the repository locks until triage. This welcome is posted whether or not `announce`
+> 👋 Hi @alice — thanks for opening this issue. It is in the triage queue; the team will triage it and
+> follow up here.
+
+On open, when the repository locks until triage. This welcome is posted whether or not `welcome`
 is on, because a lock with no word about why is the one outcome an author resents:
 
 > 👋 Hi @alice — thanks for opening this issue. It is in the triage queue, and the conversation is
-> locked until a maintainer reviews it. You do not need to do anything; we will unlock it and
-> follow up here.
+> locked until the team has triaged it. You do not need to do anything: the lock lifts when the
+> issue is marked ready, and we will follow up here.
 
 On release, when the repository asked to confirm:
 
-> ✅ Hi @alice — a maintainer approved this issue. It is open for discussion.
+> ✅ Hi @alice — this issue has been triaged and marked ready. The conversation is open again.
 
 ## What the config looks like
 
@@ -36,7 +39,7 @@ Label and welcome:
 capabilities:
   intake:
     enabled: true
-    announce: true
+    welcome: true
 ```
 
 Quarantine — label, welcome, lock; release when a person adds the `ready` label:
@@ -57,7 +60,7 @@ mappings:
 `lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
 and it goes to `ready`, so the arrival of that meaning is what completes triage. The people who can
 add the label are the authorization — GitHub lets triage access and above apply labels — and no
-role is ever read. `confirmUnlock` is inert without `lockUntilTriaged`.
+role is ever read, so "triaged" means exactly that: someone with that access marked it ready. `confirmUnlock` is inert without `lockUntilTriaged`.
 
 ## How it works
 
@@ -109,7 +112,7 @@ flowchart LR
 | Scenario | Proves |
 |---|---|
 | Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order |
-| Issue opened, `lockUntilTriaged` and `announce: false` | the welcome still posts |
+| Issue opened, `lockUntilTriaged` and `welcome: false` | the welcome still posts |
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
 | `ready` added while the triage label is still on | the conflict is not a refusal: the unlock is asked for |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |

@@ -1,7 +1,7 @@
 /**
  * intake — walk a new issue from opening to triage (`design.md`): the label,
- * the welcome a repository may ask for, and the lock it may hold until a
- * maintainer marks the issue ready. The words are `messages.ts`.
+ * the welcome a repository may ask for, and the lock it may hold until someone
+ * with triage access marks the issue ready. The words are `messages.ts`.
  */
 
 import {
@@ -11,7 +11,7 @@ import {
     type IntentFor,
     type PlatformHandle,
 } from "@hiero-hackers/automation-core/author";
-import { approved, welcome } from "./messages.js";
+import { unlocked, welcome } from "./messages.js";
 import { INTAKE_SETTINGS } from "./settings.js";
 
 export const intakeDeclaration = declareCapability({
@@ -47,7 +47,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
     // Already positioned somewhere — intake is the entry gate only.
     if (facts.position.state.meaning !== null) return [];
 
-    const { announce, lockUntilTriaged } = config.settings;
+    const { welcome: welcomed, lockUntilTriaged } = config.settings;
     const intents: IntentFor<IntakeDeclaration>[] = [
         platform.intent({
             operation: "applyMappedLabel",
@@ -56,7 +56,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
             explain: "Placed the new issue in triage.",
         }),
     ];
-    if (announce || lockUntilTriaged) {
+    if (welcomed || lockUntilTriaged) {
         intents.push(
             platform.intent({
                 operation: "postManagedComment",
@@ -66,7 +66,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
                     body: welcome(facts.author, lockUntilTriaged),
                 },
                 cause: "issueWithoutPosition",
-                explain: "Announced the triage placement.",
+                explain: "Welcomed the author and said the issue awaits triage.",
             }),
         );
     }
@@ -74,15 +74,15 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
         intents.push(
             platform.intent({
                 operation: "lockIssue",
-                desired: { reason: "the issue is waiting for maintainer review" },
-                explain: "Locked the issue while it waits for review.",
+                desired: { reason: "the issue is waiting for triage" },
+                explain: "Locked the conversation until the issue is triaged.",
             }),
         );
     }
     return intents;
 }
 
-/** The release: a person's `ready` unlocks whatever else the labels say, and may be confirmed. */
+/** The release: a person's `ready` unlocks whatever else the labels say, and may be announced. */
 function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
     if (!config.settings.lockUntilTriaged) return [];
     const intents: IntentFor<IntakeDeclaration>[] = [];
@@ -90,8 +90,8 @@ function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
         intents.push(
             platform.intent({
                 operation: "unlockIssue",
-                desired: { reason: "a maintainer approved the issue" },
-                explain: "Unlocked the approved issue.",
+                desired: { reason: "a person marked the issue ready" },
+                explain: "Unlocked the conversation: the issue was marked ready.",
             }),
         );
     }
@@ -99,8 +99,8 @@ function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
         intents.push(
             platform.intent({
                 operation: "postManagedComment",
-                desired: { kind: "notice", topic: "approval", body: approved(facts.author) },
-                explain: "Confirmed the issue approval.",
+                desired: { kind: "notice", topic: "unlock", body: unlocked(facts.author) },
+                explain: "Said the issue is ready and its conversation open.",
             }),
         );
     }

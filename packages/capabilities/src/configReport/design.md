@@ -13,7 +13,7 @@ One comment per pull request, updated in place. When the file parses:
 > **Capabilities**
 >
 > - intake — on
->   - announce: true
+>   - welcome: true
 >   - labels it may set
 >     - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it
 > - prDashboard — on, no settings
@@ -59,7 +59,7 @@ When it does not parse:
 > all — one error anywhere rejects the whole document.
 >
 > - line 20 — capabilities.intake.annouce: capability "intake": unknown setting "annouce"
->   \(it declares: announce\)
+>   \(it declares: confirmUnlock, lockUntilTriaged, welcome\)
 > - line 32 — capabilities.inactivity.remindAfter: must be a duration: a whole number
 >   of hours or days, written "4h" or "14d"
 >   - and 3 places that inherit it

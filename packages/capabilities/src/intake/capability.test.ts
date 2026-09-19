@@ -26,11 +26,11 @@ import {
 
 const ITEM = { kind: "issue", number: 11 } as const;
 
-const announcing = configEnabling(["intake"], [intakeDeclaration], { intake: { announce: true } });
+const announcing = configEnabling(["intake"], [intakeDeclaration], { intake: { welcome: true } });
 const silent = configEnabling(["intake"], [intakeDeclaration]);
 const announcingView = projectCapabilityView(intakeDeclaration, announcing);
 const quarantining = configEnabling(["intake"], [intakeDeclaration], {
-    intake: { announce: true, lockUntilTriaged: true, confirmUnlock: true },
+    intake: { welcome: true, lockUntilTriaged: true, confirmUnlock: true },
 });
 const quarantineView = projectCapabilityView(intakeDeclaration, quarantining);
 const lockingOnly = configEnabling(["intake"], [intakeDeclaration], {
@@ -145,7 +145,7 @@ describe("intake", () => {
             parseConfig(
                 {
                     schemaVersion: 2,
-                    capabilities: { intake: { enabled: true, announce: true } },
+                    capabilities: { intake: { enabled: true, welcome: true } },
                     mappings: { labels },
                 },
                 { revision: "rev-1", knownCapabilities: [intakeDeclaration] },
@@ -202,13 +202,13 @@ describe("intake", () => {
                 desired: {
                     kind: "notice",
                     topic: "welcome",
-                    body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue; a maintainer will review it and follow up here.",
+                    body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue; the team will triage it and follow up here.",
                 },
                 claims: announceClaim,
                 cause: occasion,
                 explanation: {
                     capability: "intake",
-                    summary: "Announced the triage placement.",
+                    summary: "Welcomed the author and said the issue awaits triage.",
                     detail: [],
                 },
                 grace: null,
@@ -217,7 +217,7 @@ describe("intake", () => {
         ]);
     });
 
-    it("triages without announcing when announce is not configured", async () => {
+    it("triages without a welcome when welcome is not configured", async () => {
         const record = issue({});
         const intents = await intake.evaluate(
             record,
@@ -239,15 +239,15 @@ describe("intake", () => {
         expect(intents[1]?.desired).toEqual({
             kind: "notice",
             topic: "welcome",
-            body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue, and the conversation is locked until a maintainer reviews it. You do not need to do anything; we will unlock it and follow up here.",
+            body: "👋 Hi @opener — thanks for opening this issue. It is in the triage queue, and the conversation is locked until the team has triaged it. You do not need to do anything: the lock lifts when the issue is marked ready, and we will follow up here.",
         });
         expect(intents[2]?.desired).toEqual({
-            reason: "the issue is waiting for maintainer review",
+            reason: "the issue is waiting for triage",
         });
     });
 
     /** A lock without a word about why is the one outcome an author resents. */
-    it("welcomes a locked issue even when announce is off", async () => {
+    it("welcomes a locked issue even when welcome is off", async () => {
         const record = issue({});
         const intents = await intake.evaluate(record, lockingView, watch(record).platform);
 
@@ -270,11 +270,11 @@ describe("intake", () => {
             "postManagedComment",
         ]);
         expect(intents.map((intent) => intent.desired)).toEqual([
-            { reason: "a maintainer approved the issue" },
+            { reason: "a person marked the issue ready" },
             {
                 kind: "notice",
-                topic: "approval",
-                body: "✅ Hi @opener — a maintainer approved this issue. It is open for discussion.",
+                topic: "unlock",
+                body: "✅ Hi @opener — this issue has been triaged and marked ready. The conversation is open again.",
             },
         ]);
     });
@@ -293,10 +293,10 @@ describe("intake", () => {
     });
 
     /**
-     * The usual way a maintainer approves: `ready` goes on while the triage
-     * label is still there. The map reports the conflict; the approval stands.
+     * The usual way triage completes: `ready` goes on while the triage label
+     * is still there. The map reports the conflict; the release stands.
      */
-    it("unlocks a conflicted item — the approval does not wait for the stale triage label", async () => {
+    it("unlocks a conflicted item — the release does not wait for the stale triage label", async () => {
         const record = conflicted(["awaitingTriage", "ready"], {
             arrival: { kind: "label", meaning: "ready" },
             locked: true,
@@ -311,7 +311,7 @@ describe("intake", () => {
         expect(handle.explanations).toEqual([]);
     });
 
-    it("confirms an approval that arrived before intake could lock", async () => {
+    it("confirms a ready label that arrived before intake could lock", async () => {
         const record = issue(
             { meaning: "ready" },
             { arrival: { kind: "label", meaning: "ready" }, locked: false },
@@ -360,7 +360,7 @@ describe("intake", () => {
         expect(await intake.evaluate(record, quarantineView, watch(record).platform)).toEqual([]);
     });
 
-    it("does not accept an approval label from an automation", async () => {
+    it("does not accept a ready label from an automation", async () => {
         const record = issue(
             { meaning: "ready" },
             {

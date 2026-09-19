@@ -50,7 +50,7 @@ mode: observe
 capabilities:
   intake:
     enabled: false
-    announce: true
+    welcome: true
 mappings:
   labels:
     awaitingTriage: "status: awaiting triage"

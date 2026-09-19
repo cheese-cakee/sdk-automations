@@ -90,7 +90,7 @@ mode: dry-run
 capabilities:
   intake:
     enabled: true
-    announce: true
+    welcome: true
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -112,7 +112,7 @@ capabilities:
 `;
 
 /**
- * The write path's own configuration. `announce: false` on purpose: intake's
+ * The write path's own configuration. `welcome: false` on purpose: intake's
  * second intent claims the triage meaning is ABSENT, and by the time it is
  * gated the first effect has already put the label there — so the comment
  * would be refused as `preconditionStale` and the case would be about that
@@ -123,7 +123,7 @@ mode: active
 capabilities:
   intake:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "${TRIAGE_LABEL}"
