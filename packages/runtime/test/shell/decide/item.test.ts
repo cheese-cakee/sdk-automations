@@ -131,7 +131,7 @@ describe("what one item comes back as", () => {
         });
     });
 
-    it("does not run an event-only capability for a swept fact record", async () => {
+    it("writes nothing when the one capability declines a swept fact record", async () => {
         const decided = await decider()(swept, configIn("dry-run"), AT);
 
         expect(decided).toMatchObject({
@@ -304,7 +304,7 @@ describe("the decision rows one pass writes", () => {
         });
     });
 
-    it("writes no row when a sweep does not match the capability trigger", async () => {
+    it("writes no row when the capability asks for nothing on a sweep", async () => {
         await decider()(swept, configIn("dry-run"), AT);
 
         expect(rows()).toEqual([]);

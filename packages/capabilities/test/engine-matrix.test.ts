@@ -283,8 +283,8 @@ describe("managed-comment identity is minted by the platform", () => {
     it("marks every comment the four records earn, and none of the labels", async () => {
         const comments = await approvedComments();
         /**
-         * Record order. Event-only intake ignores sweep records even though
-         * they carry the same item kind.
+         * Record order. A sweep record carries no `arrival`, so intake asks
+         * for nothing on the sweep-shaped pair; the engine filters no trigger.
          */
         expect(
             comments.map((effect) => ({
