@@ -53,6 +53,7 @@ const NOW = new Date("2026-09-09T12:00:00.000Z");
 
 const TRIAGE_LABEL = "status: triage";
 const REVISION_LABEL = "status: needs revision";
+const SKILL_LABEL = "skill: beginner";
 
 function configWith(commands = '\n  commands:\n    working: "/working"'): RepositoryConfig {
     const result = parseConfigDocument(
@@ -62,6 +63,8 @@ mappings:
   labels:
     awaitingTriage: "${TRIAGE_LABEL}"
     needsRevision: "${REVISION_LABEL}"
+  skills:
+    beginner: "${SKILL_LABEL}"
 ${commands}
 `,
         { revision: "rev-facts-1", knownCapabilities: [] },
@@ -83,7 +86,7 @@ const ISSUE_ROW = {
     state: "open",
     locked: false,
     updated_at: "2026-09-01T09:00:00Z",
-    labels: [{ name: TRIAGE_LABEL }],
+    labels: [{ name: TRIAGE_LABEL }, { name: SKILL_LABEL }],
     user: { login: "ada" },
     assignees: [{ login: "ada" }],
 };
@@ -286,7 +289,7 @@ describe("the open-item list", () => {
             {
                 item: { kind: "issue", number: 12 },
                 author: "ada",
-                labels: [TRIAGE_LABEL],
+                labels: [TRIAGE_LABEL, "skill: beginner"],
                 assignees: ["ada"],
                 closedBy: null,
                 locked: false,
@@ -860,6 +863,7 @@ describe("the projection", () => {
             state: { meaning: "awaitingTriage", blocked: false, closedBy: null },
             ignored: [],
         });
+        expect(issue.skills).toEqual(["beginner"]);
         expect(pull.position).toMatchObject({ kind: "position", state: { meaning: null } });
     });
 

@@ -1,6 +1,6 @@
 # triageQueue — put a new issue in the triage queue: label it, welcome its author, hold it until triaged
 
-Not built: phases 3–4.
+Phase 3 has begun with an advisory skill checklist. Automatic transitions and phase 4 are not built.
 
 ## What the output looks like
 
@@ -57,6 +57,26 @@ mappings:
     ready: "status: ready for dev"
 ```
 
+Advisory skill requirement:
+
+```yaml
+capabilities:
+  triageQueue:
+    enabled: true
+    requirements:
+      skills: [beginner, advanced]
+
+mappings:
+  skills:
+    beginner: "skill: beginner"
+    advanced: "skill: advanced"
+```
+
+This adds one checklist row to the managed welcome. It is complete when the issue carries exactly
+one accepted mapped skill label. Missing, unaccepted, and conflicting skill labels keep the row
+open. Label changes update the same comment while the issue is awaiting triage. A workflow or App
+may add the skill label, but this setting never changes the issue's workflow state.
+
 `lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
 and it goes to `ready`, so the arrival of that meaning is what completes triage. The label that
 means `ready` is the repository's to spell under `mappings.labels.ready`; unmapped, it is read at
@@ -83,9 +103,11 @@ at `ready`. The platform never repairs a two-position conflict (D35). It waits f
 remove the stale triage label, then unlocks from the clean position. A conflicted issue at open is
 skipped, as before.
 
-Never acts on: an unrelated removed label (nothing re-locks — the human's removal stands), any other label, a
-lock a human placed on a repository that never asked to lock, a bot-opened issue, a label a bot
-added, or a sweep. A sweep record carries no arrival, so triageQueue asks for nothing on it: a missed
+Never acts on: an unrelated removed label (nothing re-locks — the human's removal stands), an
+unmapped label, a lock a human placed on a repository that never asked to lock, a bot-opened issue,
+an automated workflow-state label, or a sweep. A mapped skill label may come from a person or an
+automation because it only updates the advisory checklist. A sweep record carries no arrival, so
+triageQueue asks for nothing on it: a missed
 `opened` webhook is not repaired on the next sweep (D206).
 
 Triaging an issue has more than one outcome: ready for work, blocked on something, more
@@ -136,7 +158,8 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3 | triage completion: the repository lists what a triaged issue carries — a skill tier, a type, an area, each item opt-in — and the welcome becomes a checklist updated in place as labels arrive. With `readyWhenComplete: true` the App moves the issue to `ready` on the map's own edge when the last item lands, unlocks it, and says what completed; off, the list is advisory and a person still adds `ready`. An empty list is today's behaviour. A person adding `ready` always counts, whoever else was still missing; labels a bot added count toward the list. `blocked` and a needs-more-information label unlock so the author can answer, and the list waits | a `triage` section with one opt-in block per item · a `types` mapping family for label-based repositories · a `needsInfo` meaning and where it lives · the unlock exempted from the blocked pause, a safety-rule change with its own row · a successor row to D206 |
+| 3a | advisory skill requirement and managed checklist updates | shipped |
+| 3b | optional automatic completion, types, areas, blocked and needs-more-information outcomes | stable mappings and interaction rules for each new state; the unlock safety change needs its own decision |
 | 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
 ## Verified by

@@ -101,6 +101,7 @@ const facts: IssueFacts = {
     actor: null,
     locked: false,
     arrival: null,
+    skills: [],
     alerts: { carried: [], arrived: [] },
     command: "unread",
     position: {

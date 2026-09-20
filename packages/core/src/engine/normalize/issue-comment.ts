@@ -70,6 +70,7 @@ export const issueCommentNormalizer = {
                 actor: facts.actor,
                 locked,
                 arrival: null,
+                skills: facts.skills,
                 alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),

@@ -265,6 +265,8 @@ describe("configReport", () => {
                 "  - welcome: true",
                 "  - lockUntilTriaged: false",
                 "  - confirmUnlock: false",
+                "  - requirements",
+                "    - skills: none",
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 // `enabled: true` and nothing else, so every check is parked.
@@ -357,7 +359,7 @@ capabilities:
         const errors = body.split("\n").filter((row) => row.startsWith("- line "));
 
         expect(errors).toEqual([
-            '- line 7 — capabilities.triageQueue.annouce: capability "triageQueue": unknown setting "annouce" \\(it declares: confirmUnlock, lockUntilTriaged, welcome\\)',
+            '- line 7 — capabilities.triageQueue.annouce: capability "triageQueue": unknown setting "annouce" \\(it declares: confirmUnlock, lockUntilTriaged, requirements, welcome…',
             '- line 10 — capabilities.inactivity.remindAfter: must be a duration: a whole number of hours or days, written "4h" or "14d"',
         ]);
         expect(body).toContain("the App would read no configuration from it at all");

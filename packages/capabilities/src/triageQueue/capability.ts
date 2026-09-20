@@ -10,7 +10,7 @@ import {
     type IntentFor,
     type PlatformHandle,
 } from "@hiero-hackers/automation-core/author";
-import { unlocked, welcome } from "./messages.js";
+import { unlocked, welcome, type SkillChecklist } from "./messages.js";
 import { TRIAGE_QUEUE_SETTINGS } from "./settings.js";
 
 export const triageQueueDeclaration = declareCapability({
@@ -33,6 +33,32 @@ type Intents = readonly IntentFor<TriageQueueDeclaration>[];
 /** The meaning whose arrival completes triage: the map's one edge out of `awaitingTriage`. */
 const TRIAGED = "ready";
 
+function skillChecklist(facts: Facts, config: View): SkillChecklist | null {
+    const accepted = config.settings.requirements.skills;
+    if (accepted.length === 0) return null;
+    const [skill] = facts.skills;
+    if (skill === undefined) return "missing";
+    if (facts.skills.length > 1) return "conflict";
+    return accepted.includes(skill) ? "complete" : "unaccepted";
+}
+
+function welcomeIntent(facts: Facts, config: View, platform: Platform) {
+    return platform.intent({
+        operation: "postManagedComment",
+        desired: {
+            kind: "notice",
+            topic: "welcome",
+            body: welcome(
+                facts.author,
+                config.settings.lockUntilTriaged,
+                skillChecklist(facts, config),
+            ),
+        },
+        cause: "issueWithoutPosition",
+        explain: "Welcomed the author and said the issue awaits triage.",
+    });
+}
+
 /** The entry gate: the label, the welcome, then the lock — last, so the author can read why. */
 function onOpened(facts: Facts, config: View, platform: Platform): Intents {
     // A conflicted item has no position to reason from, and D35 forbids repair.
@@ -48,6 +74,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
     if (meaning !== null && meaning !== "awaitingTriage") return [];
 
     const { welcome: welcomed, lockUntilTriaged } = config.settings;
+    const checklist = skillChecklist(facts, config);
     const intents: IntentFor<TriageQueueDeclaration>[] = [];
     if (meaning === null) {
         intents.push(
@@ -59,20 +86,8 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
             }),
         );
     }
-    if (welcomed || lockUntilTriaged) {
-        intents.push(
-            platform.intent({
-                operation: "postManagedComment",
-                desired: {
-                    kind: "notice",
-                    topic: "welcome",
-                    body: welcome(facts.author, lockUntilTriaged),
-                },
-                cause: "issueWithoutPosition",
-                explain: "Welcomed the author and said the issue awaits triage.",
-            }),
-        );
-    }
+    if (welcomed || lockUntilTriaged || checklist !== null)
+        intents.push(welcomeIntent(facts, config, platform));
     if (lockUntilTriaged && !facts.locked) {
         intents.push(
             platform.intent({
@@ -83,6 +98,13 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
         );
     }
     return intents;
+}
+
+function onSkillChanged(facts: Facts, config: View, platform: Platform): Intents {
+    if (skillChecklist(facts, config) === null) return [];
+    if (facts.position.kind !== "position") return [];
+    if (facts.position.state.meaning !== "awaitingTriage") return [];
+    return [welcomeIntent(facts, config, platform)];
 }
 
 /** The release: a person's `ready` unlocks whatever else the labels say, and may be announced. */
@@ -116,16 +138,18 @@ export const triageQueue: Capability<TriageQueueDeclaration> = {
     async evaluate(facts, config, platform) {
         const { arrival } = facts;
         if (arrival === null) return [];
-        const completed =
-            arrival.kind === "label" &&
-            ((arrival.change === "added" && arrival.meaning === TRIAGED) ||
+        if (arrival.kind === "label") {
+            const completed =
+                (arrival.change === "added" && arrival.meaning === TRIAGED) ||
                 (arrival.change === "removed" &&
                     arrival.meaning === "awaitingTriage" &&
                     facts.position.kind === "position" &&
-                    facts.position.state.meaning === TRIAGED));
-        if (arrival.kind === "label" && !completed) return [];
+                    facts.position.state.meaning === TRIAGED);
+            if (!completed) {
+                return arrival.skill === null ? [] : onSkillChanged(facts, config, platform);
+            }
+        }
 
-        // The author opened it; the actor labelled it. Either may be a machine.
         const participant = arrival.kind === "opened" ? facts.author : (facts.actor?.login ?? null);
         if (participant === null) return [];
         if (await platform.ask("isAutomationActor", { login: participant })) return [];

@@ -62,6 +62,7 @@ const RECORD: Facts = {
     actor: null,
     locked: false,
     arrival: null,
+    skills: [],
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },

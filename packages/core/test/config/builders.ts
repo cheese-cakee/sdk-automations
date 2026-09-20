@@ -60,6 +60,7 @@ export interface ConfigOptions {
     readonly commands?: Record<string, string>;
     /** Alert name → the label carrying it, as a maintainer writes it. */
     readonly alerts?: Record<string, string>;
+    readonly skills?: Record<string, string>;
     /** The capability names the document declares, each with `enabled`. */
     readonly capabilities?: readonly string[];
     /** The consent every declared capability carries. Boolean, never truthy (§2.4). */
@@ -101,6 +102,7 @@ export function configWith({
     labels = {},
     commands = {},
     alerts = {},
+    skills = {},
     capabilities = [],
     enabled = true,
     settings = {},
@@ -117,7 +119,7 @@ export function configWith({
             capabilities: Object.fromEntries(
                 capabilities.map((name) => [name, { enabled, ...(settings[name] ?? {}) }]),
             ),
-            mappings: { labels, commands, alerts },
+            mappings: { labels, commands, skills, alerts },
         },
         { revision, knownCapabilities: admitting(known, specs) },
     );

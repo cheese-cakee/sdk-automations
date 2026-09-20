@@ -31,6 +31,7 @@ const issue: IssueFacts = {
     actor: null,
     locked: false,
     arrival: null,
+    skills: [],
     position: POSITION,
     alerts: { carried: [], arrived: [] },
     assignees: [],

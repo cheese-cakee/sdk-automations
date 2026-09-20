@@ -9,6 +9,7 @@ import {
     type Command,
     type MappableMeaning,
     type RepositoryConfig,
+    type Skill,
 } from "./schema.js";
 
 /** Sameness, in one place for the validator's collisions and this lookup (D55). */
@@ -53,6 +54,16 @@ export function alertsOfLabels(
     return Object.entries(config.mappings.alerts)
         .filter(([, label]) => carried.has(labelKey(label)))
         .map(([alert]) => alert);
+}
+
+export function skillsOfLabels(
+    config: RepositoryConfig,
+    labels: readonly string[],
+): readonly Skill[] {
+    const carried = new Set(labels.map(labelKey));
+    return Object.entries(config.mappings.skills)
+        .filter(([, label]) => carried.has(labelKey(label)))
+        .map(([skill]) => skill as Skill);
 }
 
 /**

@@ -1,6 +1,4 @@
-/** The settings triageQueue reads beside its `enabled`: three flags, one per thing a contributor sees. */
-
-import { flag, spec } from "@hiero-hackers/automation-core/author";
+import { flag, section, skills, spec } from "@hiero-hackers/automation-core/author";
 
 export const TRIAGE_QUEUE_SETTINGS = spec({
     welcome: flag({
@@ -15,4 +13,12 @@ export const TRIAGE_QUEUE_SETTINGS = spec({
         default: false,
         doc: "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on",
     }),
+    requirements: section(
+        {
+            skills: skills({
+                doc: "Require exactly one of these mapped skill labels before triage is complete",
+            }),
+        },
+        { doc: "Optional labels that the issue should carry before triage is complete" },
+    ),
 });

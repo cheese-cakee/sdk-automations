@@ -55,6 +55,25 @@
                                             "type": "boolean",
                                             "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                             "default": false
+                                        },
+                                        "requirements": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "skills": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "enum": [
+                                                            "goodFirstIssue",
+                                                            "beginner",
+                                                            "intermediate",
+                                                            "advanced"
+                                                        ]
+                                                    },
+                                                    "description": "Require exactly one of these mapped skill labels before triage is complete."
+                                                }
+                                            },
+                                            "description": "Optional labels that the issue should carry before triage is complete."
                                         }
                                     }
                                 }
@@ -771,6 +790,25 @@
                                     "type": "boolean",
                                     "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                     "default": false
+                                },
+                                "requirements": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "skills": {
+                                            "type": "array",
+                                            "items": {
+                                                "enum": [
+                                                    "goodFirstIssue",
+                                                    "beginner",
+                                                    "intermediate",
+                                                    "advanced"
+                                                ]
+                                            },
+                                            "description": "Require exactly one of these mapped skill labels before triage is complete."
+                                        }
+                                    },
+                                    "description": "Optional labels that the issue should carry before triage is complete."
                                 }
                             }
                         },

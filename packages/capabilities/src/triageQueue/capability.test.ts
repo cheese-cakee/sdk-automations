@@ -39,6 +39,13 @@ const lockingOnly = configEnabling(["triageQueue"], [triageQueueDeclaration], {
     triageQueue: { lockUntilTriaged: true },
 });
 const lockingView = projectCapabilityView(triageQueueDeclaration, lockingOnly);
+const advisory = configEnabling(
+    ["triageQueue"],
+    [triageQueueDeclaration],
+    { triageQueue: { requirements: { skills: ["beginner", "advanced"] } } },
+    { skills: { beginner: "skill: beginner", advanced: "skill: advanced" } },
+);
+const advisoryView = projectCapabilityView(triageQueueDeclaration, advisory);
 
 const issue = (
     state: Partial<WorkItemState<IssueMeaning>>,
@@ -194,6 +201,59 @@ describe("triageQueue", () => {
         expect(handle.explanations).toEqual([]);
     });
 
+    it.each([
+        [[], "- [ ] Add one skill label."],
+        [["beginner"], "- [x] Skill label added."],
+        [["goodFirstIssue"], "- [ ] Use one of the accepted skill labels."],
+        [["beginner", "advanced"], "- [ ] Keep exactly one skill label."],
+    ] as const)("shows the advisory skill checklist for %j", async (skills, row) => {
+        const record = issue({}, { skills: [...skills] });
+        const intents = await triageQueue.evaluate(record, advisoryView, watch(record).platform);
+
+        expect(intents).toContainEqual(
+            expect.objectContaining({
+                operation: "postManagedComment",
+                desired: expect.objectContaining({ body: expect.stringContaining(row) }),
+            }),
+        );
+    });
+
+    it("updates the checklist only for a mapped skill change at the triage gate", async () => {
+        const changed = issue(
+            { meaning: "awaitingTriage" },
+            {
+                actor: { login: "triage-bot[bot]" },
+                skills: ["beginner"],
+                arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
+            },
+        );
+        const watched = watch(changed, { ok: true, value: true });
+
+        expect(await triageQueue.evaluate(changed, advisoryView, watched.platform)).toEqual([
+            expect.objectContaining({ operation: "postManagedComment" }),
+        ]);
+        expect(watched.asked).toEqual([]);
+
+        const unrelated = issue(
+            { meaning: "awaitingTriage" },
+            { arrival: { kind: "label", change: "added", meaning: null, skill: null } },
+        );
+        expect(
+            await triageQueue.evaluate(unrelated, advisoryView, watch(unrelated).platform),
+        ).toEqual([]);
+
+        const pastTriage = issue(
+            { meaning: "ready" },
+            {
+                skills: ["beginner"],
+                arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
+            },
+        );
+        expect(
+            await triageQueue.evaluate(pastTriage, advisoryView, watch(pastTriage).platform),
+        ).toEqual([]);
+    });
+
     /** Both requests in full: one occasion, but the announcement claims only openness. */
     it("asks for the label and the announcement, in that order, on their own claims", async () => {
         const occasion = { cause: "issueWithoutPosition", observedAt: OBSERVED_AT };
@@ -286,7 +346,10 @@ describe("triageQueue", () => {
     it("unlocks and confirms when a person marks the issue ready", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
+            {
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
+                locked: true,
+            },
         );
         const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
 
@@ -307,7 +370,10 @@ describe("triageQueue", () => {
     it("unlocks without confirming when confirmUnlock is off", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
+            {
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
+                locked: true,
+            },
         );
 
         expect(
@@ -323,7 +389,7 @@ describe("triageQueue", () => {
      */
     it("unlocks a conflicted item — the release does not wait for the stale triage label", async () => {
         const record = conflicted(["awaitingTriage", "ready"], {
-            arrival: { kind: "label", change: "added", meaning: "ready" },
+            arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
             locked: true,
         });
         const { platform, handle } = watch(record);
@@ -340,7 +406,12 @@ describe("triageQueue", () => {
         const record = issue(
             { meaning: "ready" },
             {
-                arrival: { kind: "label", change: "removed", meaning: "awaitingTriage" },
+                arrival: {
+                    kind: "label",
+                    change: "removed",
+                    meaning: "awaitingTriage",
+                    skill: null,
+                },
                 locked: true,
             },
         );
@@ -355,7 +426,10 @@ describe("triageQueue", () => {
     it("confirms a ready label that arrived before triageQueue could lock", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: false },
+            {
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
+                locked: false,
+            },
         );
 
         expect(
@@ -369,7 +443,10 @@ describe("triageQueue", () => {
     it("leaves a locked issue alone when lockUntilTriaged is off", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", change: "added", meaning: "ready" }, locked: true },
+            {
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
+                locked: true,
+            },
         );
 
         expect(await triageQueue.evaluate(record, announcingView, watch(record).platform)).toEqual(
@@ -388,7 +465,10 @@ describe("triageQueue", () => {
     it("ignores a label that did not complete triage, without asking who sent it", async () => {
         const record = issue(
             { meaning: "ready" },
-            { arrival: { kind: "label", change: "added", meaning: "blocked" }, locked: true },
+            {
+                arrival: { kind: "label", change: "added", meaning: "blocked", skill: null },
+                locked: true,
+            },
         );
         const { platform, asked } = watch(record);
 
@@ -401,7 +481,7 @@ describe("triageQueue", () => {
             { meaning: "ready" },
             {
                 actor: null,
-                arrival: { kind: "label", change: "added", meaning: "ready" },
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
                 locked: true,
             },
         );
@@ -416,7 +496,7 @@ describe("triageQueue", () => {
             { meaning: "ready" },
             {
                 actor: { login: "triage-bot[bot]" },
-                arrival: { kind: "label", change: "added", meaning: "ready" },
+                arrival: { kind: "label", change: "added", meaning: "ready", skill: null },
                 locked: true,
             },
         );
