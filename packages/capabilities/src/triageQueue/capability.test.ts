@@ -30,6 +30,7 @@ const announcing = configEnabling(["triageQueue"], [triageQueueDeclaration], {
     triageQueue: { welcome: true },
 });
 const silent = configEnabling(["triageQueue"], [triageQueueDeclaration]);
+const silentView = projectCapabilityView(triageQueueDeclaration, silent);
 const announcingView = projectCapabilityView(triageQueueDeclaration, announcing);
 const quarantining = configEnabling(["triageQueue"], [triageQueueDeclaration], {
     triageQueue: { welcome: true, lockUntilTriaged: true, confirmUnlock: true },
@@ -238,10 +239,6 @@ describe("triageQueue", () => {
             { meaning: "awaitingTriage" },
             { arrival: { kind: "label", change: "added", meaning: null, skill: null } },
         );
-        expect(
-            await triageQueue.evaluate(unrelated, advisoryView, watch(unrelated).platform),
-        ).toEqual([]);
-
         const pastTriage = issue(
             { meaning: "ready" },
             {
@@ -249,9 +246,19 @@ describe("triageQueue", () => {
                 arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
             },
         );
-        expect(
-            await triageQueue.evaluate(pastTriage, advisoryView, watch(pastTriage).platform),
-        ).toEqual([]);
+        const conflict = conflicted(["awaitingTriage", "ready"], {
+            skills: ["beginner"],
+            arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
+        });
+
+        for (const [record, view] of [
+            [unrelated, advisoryView],
+            [changed, silentView],
+            [pastTriage, advisoryView],
+            [conflict, advisoryView],
+        ] as const) {
+            expect(await triageQueue.evaluate(record, view, watch(record).platform)).toEqual([]);
+        }
     });
 
     /** Both requests in full: one occasion, but the announcement claims only openness. */
