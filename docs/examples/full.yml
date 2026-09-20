@@ -14,9 +14,9 @@ schemaVersion: 2 # the flat capability shape used by this catalogue
 mode: dry-run
 
 capabilities:
-  intake: # a new issue is labelled awaitingTriage
+  triageQueue: # a new issue is labelled awaitingTriage
     enabled: true
-    announce: true # and told so in a comment (default: false)
+    welcome: true # and told so in a comment (default: false)
 
   prDashboard: # one comment per pull request, kept current: what stops it being reviewable
     enabled: true

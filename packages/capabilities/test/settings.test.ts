@@ -25,7 +25,7 @@ import {
     type TypedDeclaration,
 } from "@hiero-hackers/automation-core";
 import { CAPABILITIES } from "../src/index.js";
-import { intake } from "../src/intake/capability.js";
+import { triageQueue } from "../src/triageQueue/capability.js";
 import { inactivity } from "../src/inactivity/capability.js";
 import {
     configEnabling,
@@ -78,7 +78,7 @@ function watch<D extends TypedDeclaration>(
     return { platform: handle as unknown as PlatformHandle<D>, explained: handle.explanations };
 }
 
-/** intake reads a webhook record; it declares no need, so every group is unread. */
+/** triageQueue reads a webhook record; it declares no need, so every group is unread. */
 const issue = webhookIssue({ repository: REPO, observedAt: AT });
 
 /** inactivity reads a sweep record: an unread group would be a `factsUnread` skip. */
@@ -96,7 +96,11 @@ const swept = sweptIssue({
 
 describe("the seeds' specs", () => {
     it("read the keys their declarations admit, with the defaults they document", () => {
-        expect(viewFor(intake.declaration, {}).settings).toEqual({ announce: false });
+        expect(viewFor(triageQueue.declaration, {}).settings).toEqual({
+            welcome: false,
+            lockUntilTriaged: false,
+            confirmUnlock: false,
+        });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
             exemptBlocked: true,
             // Hours: a duration is written `14d` and resolves to 336.
@@ -136,16 +140,16 @@ describe("a settings block a seed cannot read", () => {
     /**
      * D38 extended from key names to values (C1). The file is refused whole,
      * with the path a maintainer edits — where the same file used to parse
-     * clean and intake reported itself unusable on every delivery it met.
+     * clean and triageQueue reported itself unusable on every delivery it met.
      */
-    it("is refused for intake before any delivery reaches it", () => {
-        const result = parsed(intake.declaration, { announce: "yes" });
+    it("is refused for triageQueue before any delivery reaches it", () => {
+        const result = parsed(triageQueue.declaration, { welcome: "yes" });
 
         expect(result.ok ? [] : result.errors).toEqual([
             {
                 code: "settingInvalid",
-                path: "capabilities.intake.announce",
-                message: "capabilities.intake.announce: must be true or false",
+                path: "capabilities.triageQueue.welcome",
+                message: "capabilities.triageQueue.welcome: must be true or false",
             },
         ]);
     });
@@ -246,12 +250,12 @@ describe("a settings block a seed cannot read", () => {
         expect(explained).toEqual([]);
     });
 
-    /** intake still reads the block it was handed, once the file is valid. */
+    /** triageQueue still reads the block it was handed, once the file is valid. */
     it("announces when the value the parser accepted says so", async () => {
-        const { platform } = watch(intake.declaration, issue);
-        const announced = await intake.evaluate(
+        const { platform } = watch(triageQueue.declaration, issue);
+        const announced = await triageQueue.evaluate(
             issue,
-            viewFor(intake.declaration, { announce: true }),
+            viewFor(triageQueue.declaration, { welcome: true }),
             platform,
         );
         expect(announced.map(({ operation }) => operation)).toEqual([

@@ -17,7 +17,7 @@ import {
     type Facts,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
-import { intake } from "@hiero-hackers/automation-capabilities";
+import { triageQueue } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { Store } from "../../../src/store/index.js";
 import { spending } from "../spending.js";
@@ -38,9 +38,9 @@ const AT = "2026-08-07T10:00:01.000Z";
 const CONFIG_TEXT = `schemaVersion: 2
 mode: MODE
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -60,6 +60,8 @@ const RECORD: Facts = {
     trigger: { kind: "sweep" },
     author: "opener",
     actor: null,
+    locked: false,
+    arrival: null,
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },
@@ -72,7 +74,7 @@ const RECORD: Facts = {
 };
 
 /** The one capability every case here decides through; the box knows no others. */
-const CAPABILITIES: readonly EngineCapability[] = [toEngine(intake)];
+const CAPABILITIES: readonly EngineCapability[] = [toEngine(triageQueue)];
 
 function configIn(mode: string): RepositoryConfig {
     const result = parseConfigDocument(CONFIG_TEXT.replace("MODE", mode), {
@@ -104,6 +106,7 @@ function decider(wiring: Wiring = {}): DecideItem {
         capabilities: CAPABILITIES,
         externals: wiring.externals ?? (() => stubbedExternals()),
         repository: REPOSITORY,
+        clock: () => new Date(AT),
         ...(wiring.applier === undefined ? {} : { applier: wiring.applier }),
     });
 }
@@ -129,11 +132,14 @@ describe("what one item comes back as", () => {
         });
     });
 
-    it("answers a fact record the same way, with no delivery anywhere in it (D173)", async () => {
+    it("writes nothing when the one capability declines a swept fact record", async () => {
         const decided = await decider()(swept, configIn("dry-run"), AT);
 
-        expect(decided).toMatchObject({ kind: "decided", outcomes: [] });
-        expect(decided.kind === "decided" && decided.report.findings.length).toBeGreaterThan(0);
+        expect(decided).toMatchObject({
+            kind: "decided",
+            report: { findings: [] },
+            outcomes: [],
+        });
     });
 
     /**
@@ -227,6 +233,7 @@ describe("the write path", () => {
         expect(wired.passes[0]!.effects.map((effect) => effect.intent.operation)).toEqual([
             "applyMappedLabel",
         ]);
+        expect(wired.passes[0]!.effects[0]!.intent.evaluatedAt).toEqual(new Date(AT));
         expect(decided).toMatchObject({
             kind: "decided",
             outcomes: [expect.objectContaining({ operation: "applyMappedLabel" })],
@@ -294,22 +301,15 @@ describe("the decision rows one pass writes", () => {
             at: AT,
             repository: REPOSITORY,
             item: ITEM,
-            capability: "intake",
+            capability: "triageQueue",
             detail: "Placed the new issue in triage.",
         });
     });
 
-    it("names the sweep and the schedule row the firing claimed", async () => {
+    it("writes no row when the capability asks for nothing on a sweep", async () => {
         await decider()(swept, configIn("dry-run"), AT);
 
-        expect(rows()).toContainEqual(
-            expect.objectContaining({
-                passId: SCHEDULE,
-                source: "sweep",
-                sourceId: SCHEDULE,
-                capability: "intake",
-            }),
-        );
+        expect(rows()).toEqual([]);
     });
 
     it("carries the effect id on the row an outcome writes", async () => {
@@ -317,7 +317,7 @@ describe("the decision rows one pass writes", () => {
 
         expect(rows().filter(({ effectId }) => effectId !== null)).toEqual([
             expect.objectContaining({
-                capability: "intake",
+                capability: "triageQueue",
                 verdict: "applied",
                 code: null,
                 detail: null,

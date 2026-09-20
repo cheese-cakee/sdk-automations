@@ -162,10 +162,10 @@ describe("a rejection with a path carries the line that path sits on", () => {
      */
     it("an unknown setting points at the setting, not at its block", () => {
         const [error] = errorsOf(
-            `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `schemaVersion: 1\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: true\n` +
                 `    annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
         );
-        expect(error?.path).toBe("capabilities.intake.annouce");
+        expect(error?.path).toBe("capabilities.triageQueue.annouce");
         expect(error?.line).toBe(6);
     });
 
@@ -225,9 +225,9 @@ describe("a rejection with a path carries the line that path sits on", () => {
      */
     it("Windows line endings do not drift", () => {
         const [error] = errorsOf(
-            `schemaVersion: 1\r\nmode: observe\r\ncapabilities:\r\n  intake:\r\n    enabled: yes please\r\n`,
+            `schemaVersion: 1\r\nmode: observe\r\ncapabilities:\r\n  triageQueue:\r\n    enabled: yes please\r\n`,
         );
-        expect(error?.path).toBe("capabilities.intake.enabled");
+        expect(error?.path).toBe("capabilities.triageQueue.enabled");
         expect(error?.line).toBe(5);
     });
 

@@ -69,7 +69,7 @@ describe("what the platform mints", () => {
      * the whole of D145.
      */
     it.each([
-        ["capability", { capability: "intake" }],
+        ["capability", { capability: "triageQueue" }],
         ["item kind", { item: { kind: "issue", number: 12 } as const }],
         ["item number", { item: { kind: "pullRequest", number: 13 } as const }],
         ["kind", { kind: "warning" as const }],
@@ -102,7 +102,7 @@ describe("what the platform mints", () => {
             deriveManagedMarker({ ...identity, kind }),
         );
         expect(new Set(markers).size).toBe(MANAGED_COMMENT_KINDS.length);
-        expect(deriveManagedMarker({ ...identity, capability: "intake" })).not.toBe(
+        expect(deriveManagedMarker({ ...identity, capability: "triageQueue" })).not.toBe(
             deriveManagedMarker(identity),
         );
     });
@@ -291,7 +291,7 @@ describe("does this comment stand under this identity?", () => {
             why({ body: marker, authoredByApp: false }),
             why({ body: "a human wrote this", authoredByApp: true }),
             why({
-                body: deriveManagedMarker({ ...identity, capability: "intake" }),
+                body: deriveManagedMarker({ ...identity, capability: "triageQueue" }),
                 authoredByApp: true,
             }),
         ]).toEqual([...MANAGED_COMMENT_MISMATCHES]);
@@ -309,7 +309,7 @@ describe("does this comment stand under this identity?", () => {
 
     /** Each field of the identity is load-bearing, one at a time. */
     it.each([
-        ["capability", { capability: "intake" }],
+        ["capability", { capability: "triageQueue" }],
         ["kind", { kind: "warning" as const }],
         ["topic", { topic: "alice" }],
         ["item", { item: { kind: "issue", number: 12 } as const }],

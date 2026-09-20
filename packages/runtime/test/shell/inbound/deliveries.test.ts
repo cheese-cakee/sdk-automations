@@ -30,7 +30,11 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
-import { inactivity, intake, intakeDeclaration } from "@hiero-hackers/automation-capabilities";
+import {
+    inactivity,
+    triageQueue,
+    triageQueueDeclaration,
+} from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { createDeliveries } from "../../../src/shell/inbound/deliveries.js";
 import { createItemDecider } from "../../../src/shell/decide/item.js";
@@ -65,14 +69,14 @@ const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
 /** The issue that fixture opens, which is what every decision row here is about. */
 const ITEM = { kind: "issue", number: 164 } as const;
 
-// Maps awaitingTriage because intake requires it: enabling without the
+// Maps awaitingTriage because triageQueue requires it: enabling without the
 // mapping is now a configRejected, which has its own coverage in core.
 const CONFIG_TEXT = `schemaVersion: 2
 mode: dry-run
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
-    announce: false
+    welcome: false
 mappings:
   labels:
     awaitingTriage: "status: triage"
@@ -125,6 +129,7 @@ function laneWith(wiring: Wiring) {
                 capabilities: wiring.capabilities,
                 externals,
                 repository,
+                clock: wiring.clock,
                 ...(wiring.applier === undefined ? {} : { applier: wiring.applier }),
             }),
         }),
@@ -167,7 +172,7 @@ function completions(): { readonly deliveryId: string; readonly kind: string }[]
 describe("a config source that cannot answer", () => {
     const withSource = (load: ConfigSource["load"], atMs = 1000) =>
         laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource: { load },
             clock: () => new Date(BASE.getTime() + atMs),
         });
@@ -214,7 +219,7 @@ describe("a delivery from another repository", () => {
         return {
             reads: () => reads,
             lane: laneWith({
-                capabilities: [toEngine(intake)],
+                capabilities: [toEngine(triageQueue)],
                 configSource: {
                     load: async () => {
                         reads += 1;
@@ -324,13 +329,13 @@ describe("deliveries from two repositories", () => {
     /** Only the fixture's own repository announces, so the two configs decide differently. */
     const configFor = (repository: RepositoryRef): string =>
         CONFIG_TEXT.replace(
-            "announce: false",
-            `announce: ${String(repository.repo === REPOSITORY.repo)}`,
+            "welcome: false",
+            `welcome: ${String(repository.repo === REPOSITORY.repo)}`,
         );
 
     /** A lane serving whatever a payload names, recording which it was asked for. */
     function installationLane(asked: string[]) {
-        const capabilities = [toEngine(intake)];
+        const capabilities = [toEngine(triageQueue)];
         return createDeliveries({
             store,
             capabilities,
@@ -348,6 +353,7 @@ describe("deliveries from two repositories", () => {
                         capabilities,
                         externals: () => stubbedExternals(),
                         repository,
+                        clock: () => new Date(BASE.getTime() + 1000),
                     }),
                 };
             },
@@ -401,7 +407,7 @@ describe("a delivery under a suspended installation", () => {
 
     const suspendedLane = () =>
         laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource: untouchable,
             clock: () => new Date(BASE.getTime() + 1000),
             suspended: true,
@@ -438,7 +444,7 @@ describe("a delivery under a suspended installation", () => {
 describe("a crash counts an attempt", () => {
     it("the delivery survives its lane and is retried once its wait is up", async () => {
         const failing = laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource,
             externals: () => {
                 throw new Error("live externals unavailable");
@@ -450,13 +456,13 @@ describe("a crash counts an attempt", () => {
 
         // Durable but waiting: the attempt bought thirty seconds, and the
         // millisecond before them claims nothing.
-        expect(await lane(toEngine(intake), 30_999).processOnce()).toBe(false);
-        expect(await lane(toEngine(intake), 31_000).processOnce()).toBe(true);
+        expect(await lane(toEngine(triageQueue), 30_999).processOnce()).toBe(false);
+        expect(await lane(toEngine(triageQueue), 31_000).processOnce()).toBe(true);
         expect(completions()).toEqual([{ deliveryId: GUID as string, kind: "decision" }]);
     });
 
     it("an empty queue reports itself instead of pretending to work", async () => {
-        const healthy = lane(toEngine(intake));
+        const healthy = lane(toEngine(triageQueue));
         expect(await healthy.processOnce()).toBe(true);
         expect(await healthy.processOnce()).toBe(false);
         expect(completions()).toHaveLength(1);
@@ -471,17 +477,17 @@ describe("a crash counts an attempt", () => {
             ),
         ).toBeDefined();
 
-        const fresh = lane(toEngine(intake), 10 * 60_000);
+        const fresh = lane(toEngine(triageQueue), 10 * 60_000);
         expect(await fresh.processOnce()).toBe(false);
         expect(completions()).toEqual([]);
 
-        const stale = lane(toEngine(intake), 16 * 60_000);
+        const stale = lane(toEngine(triageQueue), 16 * 60_000);
         expect(await stale.processOnce()).toBe(true);
         expect(completions()).toHaveLength(1);
     });
 
     it("starts a new drain after the previous queue became empty", async () => {
-        const healthy = lane(toEngine(intake));
+        const healthy = lane(toEngine(triageQueue));
         await healthy.drain();
         expect(completions()).toHaveLength(1);
 
@@ -497,7 +503,7 @@ describe("a crash counts an attempt", () => {
 
     it("does not persist or complete after its delivery claim is released", async () => {
         const lostClaim: EngineCapability = {
-            declaration: intakeDeclaration,
+            declaration: triageQueueDeclaration,
             evaluate: async () => {
                 expect(store.inbox.requeueStuckDeliveries("2026-08-07T10:00:01.000Z")).toEqual([
                     GUID,
@@ -538,7 +544,7 @@ describe("a crash counts an attempt", () => {
         // the failed attempt cannot be counted against it. A drain that kept
         // going would re-claim it forever, so this test hangs if it does.
         const lostClaim: EngineCapability = {
-            declaration: intakeDeclaration,
+            declaration: triageQueueDeclaration,
             evaluate: async () => {
                 store.inbox.requeueStuckDeliveries("2026-08-07T10:30:00.000Z");
                 return [];
@@ -570,7 +576,7 @@ describe("a read this lane's allowance refused", () => {
     /** A lane charged one core read per delivery, with the clock in the case's hands. */
     function charged(allowance: Spending, at: () => Date) {
         return laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource,
             externals: () => {
                 allowance.charge("core");
@@ -656,7 +662,7 @@ describe("a read this lane's allowance refused", () => {
         expect(allowance.refusals()).toBe(1);
 
         const quiet = laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource,
             clock: () => new Date(BASE.getTime() + 1_000),
             allowance,
@@ -680,7 +686,7 @@ describe("a poison delivery", () => {
     /** One whole drain at one instant, failing everything but HEALTHY. */
     async function drainAt(offsetMs: number): Promise<void> {
         await laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource,
             externals: ({ payload }) => {
                 consulted++;
@@ -814,7 +820,7 @@ describe("the two answers the box gives this lane", () => {
 
     function withConfig(text: string, applier?: Applier) {
         return laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource: {
                 load: async () => ({ ok: true, document: { revision: "rev-a", text } }),
             },
@@ -836,7 +842,7 @@ describe("the two answers the box gives this lane", () => {
         expect(completions()).toEqual([{ deliveryId: GUID as string, kind: "decision" }]);
         expect(store.ledger.decisionsOn(REPOSITORY, ITEM)).toContainEqual(
             expect.objectContaining({
-                capability: "intake",
+                capability: "triageQueue",
                 verdict: "applied",
                 effectId: expect.any(String),
             }),
@@ -845,7 +851,7 @@ describe("the two answers the box gives this lane", () => {
 
     /** One instant for the whole pass, so the rows cannot disagree with each other. */
     it("stamps every row the box wrote with the instant the lane read once", async () => {
-        expect(await lane(toEngine(intake)).processOnce()).toBe(true);
+        expect(await lane(toEngine(triageQueue)).processOnce()).toBe(true);
 
         const rows = store.ledger.decisionsOn(REPOSITORY, ITEM);
         expect(rows.length).toBeGreaterThan(0);
@@ -864,7 +870,7 @@ describe("the two answers the box gives this lane", () => {
 describe("the configuration this lane reads", () => {
     const reading = (load: ConfigSource["load"]) =>
         laneWith({
-            capabilities: [toEngine(intake)],
+            capabilities: [toEngine(triageQueue)],
             configSource: { load },
             clock: () => BASE,
         });

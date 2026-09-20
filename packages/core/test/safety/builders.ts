@@ -39,7 +39,7 @@ export const config = (over?: Partial<RepositoryConfig>): RepositoryConfig => ({
     capabilities: {
         assignment: { enabled: true, settings: {} },
         inactivity: { enabled: true, settings: {} },
-        intake: { enabled: true, settings: {} },
+        triageQueue: { enabled: true, settings: {} },
     },
     mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
     principals: {},

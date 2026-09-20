@@ -86,10 +86,10 @@ describe("skipped", () => {
     it("explains with an empty detail list when it was given none", () => {
         const { platform, explained } = watch();
 
-        skipped(platform, "intake", "Skipped: nothing to do.");
+        skipped(platform, "triageQueue", "Skipped: nothing to do.");
 
         expect(explained).toEqual([
-            { capability: "intake", summary: "Skipped: nothing to do.", detail: [] },
+            { capability: "triageQueue", summary: "Skipped: nothing to do.", detail: [] },
         ]);
     });
 

@@ -84,7 +84,7 @@ describe("hostile keys survive as data, never as prototype", () => {
         for (const name of ["constructor", "toString", "hasOwnProperty"]) {
             const result = parseConfig(
                 { schemaVersion: 1, capabilities: { [name]: { enabled: false } } },
-                { revision: "rev-test", knownCapabilities: admitting(["intake"]) },
+                { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
             );
             expect(result.ok).toBe(false);
             if (!result.ok) {
@@ -102,13 +102,13 @@ describe("hostile keys survive as data, never as prototype", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
-                capabilities: { intake: { enabled: false, toString: 1 } },
+                capabilities: { triageQueue: { enabled: false, toString: 1 } },
             },
             {
                 revision: "rev-test",
                 knownCapabilities: [
                     {
-                        name: "intake",
+                        name: "triageQueue",
                         settings: spec({ announce: flag({ default: false }) }),
                         requiredMappings: {},
                     },
@@ -117,7 +117,7 @@ describe("hostile keys survive as data, never as prototype", () => {
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.map((e) => e.path)).toEqual(["capabilities.intake.toString"]);
+            expect(result.errors.map((e) => e.path)).toEqual(["capabilities.triageQueue.toString"]);
         }
     });
 

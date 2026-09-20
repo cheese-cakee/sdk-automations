@@ -11,9 +11,9 @@ schemaVersion: 2
 mode: observe
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
-    announce: false
+    welcome: false
 
 mappings:
   labels: # every other meaning keeps its default spelling; this one is spelled the repository's way

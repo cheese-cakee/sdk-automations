@@ -48,9 +48,9 @@ an exception.
 schemaVersion: 2
 mode: observe
 capabilities:
-  intake:
+  triageQueue:
     enabled: false
-    announce: true
+    welcome: true
 mappings:
   labels:
     awaitingTriage: "status: awaiting triage"

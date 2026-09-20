@@ -52,6 +52,7 @@ export interface ItemDeciderOptions {
     readonly externals: ExternalsForDelivery;
     /** The one repository this endpoint serves, and the one every report names. */
     readonly repository: RepositoryRef;
+    readonly clock: () => Date;
     /** The write path, when a composition root has wired one. Absent, `mode: active` ends as `modeUnsupported` before `decide()` runs — the shell genuinely has no effect path. */
     readonly applier?: Applier;
 }
@@ -82,7 +83,7 @@ function passOf(input: ItemInput): Pick<DecidedPass, "passId" | "source" | "sour
 }
 
 export function createItemDecider(options: ItemDeciderOptions): DecideItem {
-    const { store, capabilities, externals, repository, applier } = options;
+    const { store, capabilities, externals, repository, clock, applier } = options;
 
     /**
      * The recorded warning binds to the store HERE, because it is the store's own record rather than the item's, so every composition holding one can answer it with credentials or without (grace.md §2).
@@ -92,13 +93,15 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
     /** One item's externals as CORE takes them — both lanes' only way in. */
     const externalsFor = async (
         delivery: Parameters<ExternalsForDelivery>[0],
-    ): Promise<Externals> => ({ ...(await externals(delivery)), warningFor });
+        evaluatedAt: Date,
+    ): Promise<Externals> => ({ ...(await externals(delivery)), warningFor, evaluatedAt });
 
     /** Stations 5–10 live behind one call: normalize, evaluate, screen, derive, gate. */
     const decideOn = async (
         input: ItemInput,
         config: RepositoryConfig,
         passId: string,
+        evaluatedAt: Date,
     ): Promise<Decision> =>
         decide(
             askedOf(input, repository),
@@ -106,11 +109,14 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
             capabilities,
             // Built per item: the live path binds its ordering-evidence memo to this one.
 
-            await externalsFor({
-                payload: input.kind === "delivery" ? input.payload : undefined,
-                deliveryId: passId,
-                config,
-            }),
+            await externalsFor(
+                {
+                    payload: input.kind === "delivery" ? input.payload : undefined,
+                    deliveryId: passId,
+                    config,
+                },
+                evaluatedAt,
+            ),
         );
 
     return async (input, config, at, allowance) => {
@@ -119,7 +125,7 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
             return { kind: "modeUnsupported", reason: MODE_UNSUPPORTED };
         }
         const pass = passOf(input);
-        const decision = await decideOn(input, config, pass.passId);
+        const decision = await decideOn(input, config, pass.passId, clock());
         // Only in active mode, so a future mode cannot acquire a write path by accident.
 
         const outcomes =

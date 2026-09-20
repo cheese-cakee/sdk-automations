@@ -82,7 +82,7 @@ describe("expectedHolds — the claim against the world", () => {
         expect(expectedHolds(claims, at([]))).toBe(false);
     });
 
-    it("absent must be absent — the intake case", () => {
+    it("absent must be absent — the triageQueue case", () => {
         const claims = {
             meaningsPresent: [],
             meaningsAbsent: ["awaitingTriage"],

@@ -12,7 +12,7 @@ spelling), its own block's keys, and nothing another capability was given.
 <!-- generated: capabilities -->
 | Capability | What it does | Wakes on | Needs mapped | Settings keys | May write | Design |
 |---|---|---|---|---|---|---|
-| `intake` | walk a new issue from its opening to triaged, ready work | the `issues` webhook | `labels.awaitingTriage` | `announce` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date | [design page](../packages/capabilities/src/intake/design.md) |
+| `triageQueue` | put a new issue in the triage queue: label it, welcome its author, hold it until triaged | the `issues` webhook | `labels.awaitingTriage` | `welcome`, `lockUntilTriaged`, `confirmUnlock` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date; a lock on an issue; an unlock | [design page](../packages/capabilities/src/triageQueue/design.md) |
 | `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
 | `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
 | `configReport` | one comment on a pull request that changes `automations.yml`, saying what the App would read from it | the `pull_request` webhook | nothing required | none | a comment it keeps up to date | [design page](../packages/capabilities/src/configReport/design.md) |
@@ -41,11 +41,13 @@ Each block below goes under `capabilities.<name>:`, shown with the value the App
 you leave the key out; `docs/examples/full.yml` is the same catalogue with the options overridden.
 
 <!-- generated: settings -->
-### `intake`
+### `triageQueue`
 
 ```yaml
 enabled: true
-announce: false # default — Comment on a new issue to say it is waiting for triage, rather than only labelling it
+welcome: false # default — Post a welcome comment on a new issue, saying it is waiting for triage
+lockUntilTriaged: false # default — Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default "status: ready", which no capability creates yet; the welcome is posted either way
+confirmUnlock: false # default — Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on
 ```
 
 ### `prDashboard`
@@ -135,7 +137,7 @@ instead. [Troubleshooting](troubleshooting.md) lists every code a report can car
 
 ```yaml
 capabilities:
-  intake:
+  triageQueue:
     enabled: true             # consent — literally true, nothing that looks like it
     announce: true            # this capability's own keys, from the table above
 ```

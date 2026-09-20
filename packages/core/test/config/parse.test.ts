@@ -297,19 +297,19 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             {
                 schemaVersion: 1,
                 capabilities: {
-                    intake: { enabled: true, settings: { announce: true } },
+                    triageQueue: { enabled: true, settings: { announce: true } },
                 },
             },
             {
                 revision: "rev-test",
-                knownCapabilities: admitting(["intake"], {
-                    intake: spec({ announce: flag({ default: false }) }),
+                knownCapabilities: admitting(["triageQueue"], {
+                    triageQueue: spec({ announce: flag({ default: false }) }),
                 }),
             },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(result.config.capabilities.intake?.settings).toEqual({ announce: true });
+            expect(result.config.capabilities.triageQueue?.settings).toEqual({ announce: true });
         }
     });
 
@@ -318,20 +318,20 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             {
                 schemaVersion: 1,
                 capabilities: {
-                    intake: { enabled: true, settings: { announce: true }, announce: false },
+                    triageQueue: { enabled: true, settings: { announce: true }, announce: false },
                 },
             },
             {
                 revision: "rev-test",
-                knownCapabilities: admitting(["intake"], {
-                    intake: spec({ announce: flag({ default: false }) }),
+                knownCapabilities: admitting(["triageQueue"], {
+                    triageQueue: spec({ announce: flag({ default: false }) }),
                 }),
             },
         );
         expect(result.ok).toBe(false);
         if (!result.ok)
             expect(result.errors.map((error) => error.path)).toContain(
-                "capabilities.intake.announce",
+                "capabilities.triageQueue.announce",
             );
     });
 
@@ -341,11 +341,11 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
      */
     it("an omitted enabled leaves the capability off, not on", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { intake: {} } },
-            { revision: "rev-test", knownCapabilities: admitting(["intake"]) },
+            { schemaVersion: 1, capabilities: { triageQueue: {} } },
+            { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
         );
         expect(result.ok).toBe(true);
-        if (result.ok) expect(result.config.capabilities.intake?.enabled).toBe(false);
+        if (result.ok) expect(result.config.capabilities.triageQueue?.enabled).toBe(false);
     });
 
     /**
@@ -375,12 +375,12 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
      */
     it("a disabled capability requires none of its meanings", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { intake: { enabled: false } } },
+            { schemaVersion: 1, capabilities: { triageQueue: { enabled: false } } },
             {
                 revision: "rev-test",
                 knownCapabilities: [
                     {
-                        name: "intake",
+                        name: "triageQueue",
                         settings: spec({ announce: flag({ default: false }) }),
                         requiredMappings: { labels: ["awaitingTriage"] },
                     },
@@ -388,7 +388,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             },
         );
         expect(result.ok).toBe(true);
-        if (result.ok) expect(result.config.capabilities.intake?.enabled).toBe(false);
+        if (result.ok) expect(result.config.capabilities.triageQueue?.enabled).toBe(false);
     });
 
     /**
@@ -402,14 +402,14 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             {
                 schemaVersion: 1,
                 capabilities: {
-                    intake: { enabled: false },
+                    triageQueue: { enabled: false },
                     triage: { enabled: false },
                 },
             },
             {
                 revision: "rev-test",
-                knownCapabilities: admitting(["intake", "triage"], {
-                    intake: spec({
+                knownCapabilities: admitting(["triageQueue", "triage"], {
+                    triageQueue: spec({
                         announce: flag({ default: true }),
                         after: duration({ default: "7d" }),
                     }),
@@ -418,7 +418,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         );
         expect(result.ok).toBe(true);
         if (!result.ok) return;
-        expect(result.config.capabilities.intake?.settings).toEqual({
+        expect(result.config.capabilities.triageQueue?.settings).toEqual({
             announce: true,
             after: 7 * 24,
         });

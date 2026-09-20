@@ -28,22 +28,32 @@
                     "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
                     "additionalProperties": false,
                     "properties": {
-                        "intake": {
+                        "triageQueue": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "description": "Run triageQueue. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
                                 "settings": {
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
-                                        "announce": {
+                                        "welcome": {
                                             "type": "boolean",
-                                            "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                            "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
+                                            "default": false
+                                        },
+                                        "lockUntilTriaged": {
+                                            "type": "boolean",
+                                            "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", which no capability creates yet; the welcome is posted either way.",
+                                            "default": false
+                                        },
+                                        "confirmUnlock": {
+                                            "type": "boolean",
+                                            "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                             "default": false
                                         }
                                     }
@@ -738,18 +748,28 @@
                     "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
                     "additionalProperties": false,
                     "properties": {
-                        "intake": {
+                        "triageQueue": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Run intake. Consent is literally true; absent leaves it off.",
+                                    "description": "Run triageQueue. Consent is literally true; absent leaves it off.",
                                     "default": false
                                 },
-                                "announce": {
+                                "welcome": {
                                     "type": "boolean",
-                                    "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                    "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
+                                    "default": false
+                                },
+                                "lockUntilTriaged": {
+                                    "type": "boolean",
+                                    "description": "Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default \"status: ready\", which no capability creates yet; the welcome is posted either way.",
+                                    "default": false
+                                },
+                                "confirmUnlock": {
+                                    "type": "boolean",
+                                    "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                     "default": false
                                 }
                             }

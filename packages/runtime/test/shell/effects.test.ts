@@ -295,33 +295,33 @@ describe("the operation a call belongs to", () => {
 
 describe("the journal row", () => {
     const rowFor = (call: Call): string =>
-        serializeCall({ capability: "intake", item: ITEM, call });
+        serializeCall({ capability: "triageQueue", item: ITEM, call });
 
     /** The exact bytes, because a resend reads them and a reader greps them. */
     it("spells a comment call one way", () => {
         expect(rowFor({ verb: "postComment", kind: "summary", body: "hello" })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"postComment","kind":"summary","body":"hello"}',
         );
     });
 
     it("spells a label call one way", () => {
         expect(rowFor({ verb: "removeLabel", label: TRIAGE_LABEL })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"removeLabel","label":"status: triage"}',
         );
     });
 
     it("spells an add-label call one way", () => {
         expect(rowFor({ verb: "addLabel", label: READY_LABEL })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"addLabel","label":"status: ready"}',
         );
     });
 
     it("spells an assign one way", () => {
         expect(rowFor({ verb: "assign", login: "sophie" })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"assign","login":"sophie"}',
         );
     });
@@ -331,14 +331,14 @@ describe("the journal row", () => {
         ["unlockIssue", "a maintainer approved it"],
     ])("spells a %s one way", (verb, reason) => {
         expect(rowFor({ verb, reason } as Call)).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 `"verb":"${verb}","reason":"${reason}"}`,
         );
     });
 
     it("spells an unassign one way", () => {
         expect(rowFor({ verb: "unassign", login: "sophie" })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"unassign","login":"sophie"}',
         );
     });
@@ -350,21 +350,21 @@ describe("the journal row", () => {
      */
     it("spells a clock-triggered release one way", () => {
         expect(rowFor({ verb: "releaseAssignment", login: "sophie" })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"releaseAssignment","login":"sophie"}',
         );
     });
 
     it("spells a pull-request close one way", () => {
         expect(rowFor({ verb: "closePullRequest", reason: "stale for 60 days" })).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"closePullRequest","reason":"stale for 60 days"}',
         );
     });
 
     it("spells a define one way, the colour and description after the name", () => {
         expect(rowFor(DEFINE_READY)).toBe(
-            '{"capability":"intake","item":{"kind":"issue","number":164},' +
+            '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
                 '"verb":"defineLabel","label":"status: ready","color":"0e8a16",' +
                 '"description":"Triaged and ready to be picked up"}',
         );
@@ -383,7 +383,7 @@ describe("the journal row", () => {
         [{ verb: "unlockIssue", reason: "a maintainer approved it" }],
     ] as [Call][])("round-trips %o", (call) => {
         expect(parseJournaledCall(rowFor(call))).toEqual({
-            capability: "intake",
+            capability: "triageQueue",
             item: ITEM,
             call,
         });
@@ -392,13 +392,13 @@ describe("the journal row", () => {
     it("round-trips a pull request's number and kind", () => {
         const item = { kind: "pullRequest", number: 7 } as const;
         const row = serializeCall({
-            capability: "intake",
+            capability: "triageQueue",
             item,
             call: { verb: "addLabel", label: READY_LABEL },
         });
 
         expect(parseJournaledCall(row)).toEqual({
-            capability: "intake",
+            capability: "triageQueue",
             item,
             call: { verb: "addLabel", label: READY_LABEL },
         });
@@ -411,72 +411,72 @@ describe("the journal row", () => {
         ["no capability", '{"item":{"kind":"issue","number":1},"verb":"addLabel","label":"l"}'],
         [
             "a define without a colour",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","description":"d"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","description":"d"}',
         ],
         [
             "a define without a description",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","color":"0e8a16"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"defineLabel","label":"l","color":"0e8a16"}',
         ],
         [
             "a label verb no handler owns",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"paintLabel","label":"l"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"paintLabel","label":"l"}',
         ],
         [
             "an empty capability",
             '{"capability":"","item":{"kind":"issue","number":1},"verb":"addLabel","label":"l"}',
         ],
-        ["no item", '{"capability":"intake","verb":"addLabel","label":"l"}'],
+        ["no item", '{"capability":"triageQueue","verb":"addLabel","label":"l"}'],
         [
             "an entity kind nothing declares",
-            '{"capability":"intake","item":{"kind":"discussion","number":1},"verb":"addLabel","label":"l"}',
+            '{"capability":"triageQueue","item":{"kind":"discussion","number":1},"verb":"addLabel","label":"l"}',
         ],
         [
             "an item number that is not whole",
-            '{"capability":"intake","item":{"kind":"issue","number":1.5},"verb":"addLabel","label":"l"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1.5},"verb":"addLabel","label":"l"}',
         ],
         [
             "an item number below one",
-            '{"capability":"intake","item":{"kind":"issue","number":0},"verb":"addLabel","label":"l"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":0},"verb":"addLabel","label":"l"}',
         ],
         [
             "a verb nothing sends",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"closeIssue"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"closeIssue"}',
         ],
         [
             "a label call with no label",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"addLabel"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"addLabel"}',
         ],
         [
             "a comment call with no body",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"postComment","kind":"summary"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"postComment","kind":"summary"}',
         ],
         [
             "a comment purpose the catalogue does not hold",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"postComment","kind":"gossip","body":"b"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"postComment","kind":"gossip","body":"b"}',
         ],
         [
             "an assign with no login",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"assign","login":""}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"assign","login":""}',
         ],
         [
             "an unassign with no login",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"unassign","login":""}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"unassign","login":""}',
         ],
         [
             "a release with no login",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"releaseAssignment"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"releaseAssignment"}',
         ],
         [
             "a close with no reason",
-            '{"capability":"intake","item":{"kind":"pullRequest","number":1},"verb":"closePullRequest","reason":""}',
+            '{"capability":"triageQueue","item":{"kind":"pullRequest","number":1},"verb":"closePullRequest","reason":""}',
         ],
         [
             "a lock with no reason",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"lockIssue"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"lockIssue"}',
         ],
         [
             "an unlock with no reason",
-            '{"capability":"intake","item":{"kind":"issue","number":1},"verb":"unlockIssue"}',
+            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"unlockIssue"}',
         ],
     ])("reads %s as no call at all", (_label, row) => {
         expect(parseJournaledCall(row)).toBeNull();
@@ -488,7 +488,7 @@ describe("the journal row", () => {
      * this platform never wrote.
      */
     it("reads own properties only", () => {
-        const row = JSON.stringify(JSON.parse('{"__proto__":{"capability":"intake"}}'));
+        const row = JSON.stringify(JSON.parse('{"__proto__":{"capability":"triageQueue"}}'));
 
         expect(parseJournaledCall(row)).toBeNull();
     });
@@ -531,7 +531,7 @@ describe("planning a graced act", () => {
         const plan = planFor(releaseEffect(), config);
         const notice = plan.ok ? plan.calls[1]! : null;
 
-        expect(serializeCall({ capability: "intake", item: ITEM, call: notice! })).toContain(
+        expect(serializeCall({ capability: "triageQueue", item: ITEM, call: notice! })).toContain(
             '"verb":"postComment","kind":"notice"',
         );
         expect(operationOf(notice!)).toBe("postManagedComment");

@@ -33,7 +33,7 @@ export type ConfigErrorCode =
 
 /**
  * One reason a document was rejected. `path` is dotted, like
- * `capabilities.intake.enabled`, or `null`; the code and the path are the contract.
+ * `capabilities.triageQueue.enabled`, or `null`; the code and the path are the contract.
  */
 export interface ConfigError {
     readonly code: ConfigErrorCode;

@@ -27,7 +27,7 @@ import { admitting } from "../config/builders.js";
 
 const item: Subject = {
     kind: "item",
-    capability: "intake",
+    capability: "triageQueue",
     item: { kind: "issue", number: 7 },
 };
 
@@ -114,7 +114,7 @@ describe("screens and explanations", () => {
 
     it("a capability's explanation carries no severity of its own", () => {
         const f = explanationFinding(
-            { capability: "intake", summary: "Placed in triage.", detail: ["no position"] },
+            { capability: "triageQueue", summary: "Placed in triage.", detail: ["no position"] },
             item,
         );
         expect(f.severity).toBe("info");
@@ -124,7 +124,7 @@ describe("screens and explanations", () => {
 });
 
 describe("configuration findings", () => {
-    const known = admitting(["intake"]);
+    const known = admitting(["triageQueue"]);
 
     it("a valid configuration reports its mode", () => {
         const result = parseConfig(
@@ -254,7 +254,7 @@ describe("a report is read by filtering, not by structure", () => {
 
     it("an explanation's detail survives into the finding unchanged", () => {
         const f = explanationFinding(
-            { capability: "intake", summary: "s", detail: ["a", "b"] },
+            { capability: "triageQueue", summary: "s", detail: ["a", "b"] },
             item,
         );
         expect(f.detail).toEqual(["a", "b"]);

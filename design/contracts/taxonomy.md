@@ -68,7 +68,7 @@ label.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> awaitingTriage: A new issue is observed and intake is enabled.
+    [*] --> awaitingTriage: A new issue is observed and triageQueue is enabled.
     awaitingTriage --> ready: A maintainer completes triage.
     ready --> inProgress: A contributor is assigned.
     inProgress --> ready: The last contributor unassigns or an approved reclaim completes.
@@ -78,7 +78,7 @@ stateDiagram-v2
 ```
 
 This state diagram describes the candidate Hiero profile. A repository that enables assignment without
-intake may map or create `ready` manually. A repository that does not enable contribution assignment does not
+triageQueue may map or create `ready` manually. A repository that does not enable contribution assignment does not
 need the issue flow at all.
 
 The assignment capability must keep the assignee state and the mapped workflow meaning consistent. The exact

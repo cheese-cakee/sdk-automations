@@ -12,8 +12,8 @@ One comment per pull request, updated in place. When the file parses:
 >
 > **Capabilities**
 >
-> - intake — on
->   - announce: true
+> - triageQueue — on
+>   - welcome: true
 >   - labels it may set
 >     - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it
 > - prDashboard — on, no settings
@@ -58,8 +58,8 @@ When it does not parse:
 > The file at `sha256:2e2637a3a3f5` is rejected, so the App would read no configuration from it at
 > all — one error anywhere rejects the whole document.
 >
-> - line 20 — capabilities.intake.annouce: capability "intake": unknown setting "annouce"
->   \(it declares: announce\)
+> - line 20 — capabilities.triageQueue.annouce: capability "triageQueue": unknown setting "annouce"
+>   \(it declares: confirmUnlock, lockUntilTriaged, welcome\)
 > - line 32 — capabilities.inactivity.remindAfter: must be a duration: a whole number
 >   of hours or days, written "4h" or "14d"
 >   - and 3 places that inherit it

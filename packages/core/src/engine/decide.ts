@@ -61,6 +61,8 @@ import { wouldApplyFinding, writeRequestFor } from "./change.js";
 export interface Externals {
     readonly killSwitchActive: boolean;
     readonly installationGrants: readonly PermissionGrant[];
+    /** When this decision began, carried by approved effects into their apply-time gate. */
+    readonly evaluatedAt?: Date;
     /** Ordering evidence per item; `"unknown"` is a safe conflict (safety.md §3). */
     readonly latestHumanChangeAt: (
         item: ItemRef,
@@ -285,6 +287,11 @@ async function gateIntent(
         { ...parsed, evaluatedAt: new Date(facts.observedAt.getTime()) },
         config,
     );
+    const evaluatedAt = externals.evaluatedAt ?? facts.observedAt;
+    const forApply = (approved: AnyIntent): AnyIntent => ({
+        ...approved,
+        evaluatedAt: new Date(evaluatedAt.getTime()),
+    });
     const subject = {
         kind: "item",
         capability: declaration.name,
@@ -341,7 +348,7 @@ async function gateIntent(
     const grace = intent.grace ?? null;
     if (grace === null) {
         const verdict = evaluateWrite(writeRequestFor(intent), config, contextFor(intent));
-        return said(outcomeOf(intent, verdict, config, subject, null));
+        return said(outcomeOf(forApply(intent), verdict, config, subject, null));
     }
 
     const recorded = await recordedWarning(intent.idempotencyKey, externals);
@@ -363,7 +370,7 @@ async function gateIntent(
         const warning = warningEffectFor(intent, grace);
         const verdict = evaluateWrite(writeRequestFor(warning), config, contextFor(warning));
         return said(
-            outcomeOf(warning, verdict, config, subject, {
+            outcomeOf(forApply(warning), verdict, config, subject, {
                 effectId: intent.idempotencyKey,
                 request: writeRequestFor(intent),
                 gracePeriodHours: grace.hours,
@@ -384,7 +391,7 @@ async function gateIntent(
         contextFor(intent),
         facts.observedAt,
     );
-    return said(outcomeOf(intent, verdict, config, subject, null));
+    return said(outcomeOf(forApply(intent), verdict, config, subject, null));
 }
 
 /**

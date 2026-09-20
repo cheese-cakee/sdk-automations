@@ -12,9 +12,9 @@ schemaVersion: 2
 mode: active
 
 capabilities:
-  intake:
+  triageQueue:
     enabled: true
-    announce: true
+    welcome: true
 
   prDashboard:
     enabled: true

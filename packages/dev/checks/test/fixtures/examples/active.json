@@ -3,10 +3,12 @@
     "schemaVersion": 2,
     "mode": "active",
     "capabilities": {
-        "intake": {
+        "triageQueue": {
             "enabled": true,
             "settings": {
-                "announce": true
+                "welcome": true,
+                "lockUntilTriaged": false,
+                "confirmUnlock": false
             }
         },
         "prDashboard": {
