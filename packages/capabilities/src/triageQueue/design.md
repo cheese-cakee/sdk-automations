@@ -1,6 +1,7 @@
 # triageQueue — put a new issue in the triage queue: label it, welcome its author, hold it until triaged
 
-Phase 3 has begun with an advisory skill checklist. Automatic transitions and phase 4 are not built.
+Phase 3 has begun: the welcome carries a checklist, skill first. Nothing moves the issue yet; the
+flip to `ready`, the other items, and phase 4 are not built.
 
 ## What the output looks like
 
@@ -18,6 +19,15 @@ is on, because a lock with no word about why is the one outcome an author resent
 > 👋 Hi @alice — thanks for opening this issue. It is in the triage queue, and the conversation is
 > locked until the team has triaged it. You do not need to do anything: the lock lifts when the
 > issue is marked ready, and we will follow up here.
+
+On open, when the repository asked for a skill requirement. The row is status for the author, who
+cannot add labels; the team sets the tier, and the row is rewritten as labels move:
+
+> 👋 Hi @alice — thanks for opening this issue. It is in the triage queue; the team will triage it
+> and follow up here.
+>
+> Triage checklist:
+> - [ ] Skill level — the team sets one skill label
 
 On release, when the repository asked to confirm:
 
@@ -57,14 +67,14 @@ mappings:
     ready: "status: ready for dev"
 ```
 
-Advisory skill requirement:
+Skill requirement — the welcome carries a checklist:
 
 ```yaml
 capabilities:
   triageQueue:
     enabled: true
     requirements:
-      skills: [beginner, advanced]
+      skill: true
 
 mappings:
   skills:
@@ -72,10 +82,20 @@ mappings:
     advanced: "skill: advanced"
 ```
 
-This adds one checklist row to the managed welcome. It is complete when the issue carries exactly
-one accepted mapped skill label. Missing, unaccepted, and conflicting skill labels keep the row
-open. Label changes update the same comment while the issue is awaiting triage. A workflow or App
-may add the skill label, but this setting never changes the issue's workflow state.
+`requirements` is one opt-in flag per thing a triaged issue carries; skill is the first, and each
+later item (type, area) is another flag and another row. A flag on with nothing mapped in its
+family is refused when the file is read. Any requirement posts the welcome, `welcome` or not,
+because the checklist lives in it. The skill row is done when the issue carries exactly one mapped
+tier, whichever the file maps — the mapping is the accepted set. No tier, or more than one, leaves
+it open, and the row says which. A skill label arriving or leaving while the issue awaits triage
+rewrites the same comment, whoever moved the label; the issue must still be a person's. Nothing
+moves the issue: when the flip to `ready` is built it reads "every row done" off this same list.
+The App never sets a skill label, so it never creates one (D202 covers only labels it sets); the
+repository creates the tiers it maps.
+
+Known limit: two label events on one issue inside the same second share an occasion, so the second
+rewrite is refused as a repeat and the checklist shows the first event's state until the next label
+moves. What identifies an occasion is the platform's question, not this capability's.
 
 `lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
 and it goes to `ready`, so the arrival of that meaning is what completes triage. The label that
@@ -106,9 +126,9 @@ skipped, as before.
 Never acts on: an unrelated removed label (nothing re-locks — the human's removal stands), an
 unmapped label, a lock a human placed on a repository that never asked to lock, a bot-opened issue,
 an automated workflow-state label, or a sweep. A mapped skill label may come from a person or an
-automation because it only updates the advisory checklist. A sweep record carries no arrival, so
-triageQueue asks for nothing on it: a missed
-`opened` webhook is not repaired on the next sweep (D206).
+automation: it only rewrites the welcome, and only on a person's issue. A sweep record carries no
+arrival, so triageQueue asks for nothing on it: a missed `opened` webhook is not repaired on the
+next sweep (D206).
 
 Triaging an issue has more than one outcome: ready for work, blocked on something, more
 information needed from the author, or closed as invalid, duplicate or out of scope. This phase
@@ -142,13 +162,16 @@ flowchart LR
     C -->|yes| N
     C -->|no| O["label · welcome · lock"]
     B -->|"ready, lockUntilTriaged"| R["unlock · confirm"]
+    A -->|"a skill label moved"| K{"a requirement, still awaiting triage, a person's issue?"}
+    K -->|yes| W["rewrite the welcome"]
+    K -->|no| N
 ```
 
 | Declaration | Value |
 |---|---|
 | `triggers` | `issues` |
 | `facts` / `needs` | `issue`, no group read |
-| `resolvers` | `isAutomationActor` — asked about the author on `opened`, about the sender on `labeled` |
+| `resolvers` | `isAutomationActor` — asked about the author on `opened` and on a checklist label, about the sender on `ready` |
 | `intents` | `applyMappedLabel` · `postManagedComment` · `lockIssue` · `unlockIssue` |
 | `requiredMappings` | `labels: awaitingTriage` |
 | Permissions | repository `issues:read`, `issues:write` |
@@ -158,8 +181,8 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3a | advisory skill requirement and managed checklist updates | shipped |
-| 3b | optional automatic completion, types, areas, blocked and needs-more-information outcomes | stable mappings and interaction rules for each new state; the unlock safety change needs its own decision |
+| 3a | the checklist in the welcome, rewritten as labels move; `requirements.skill` | shipped — unit-verified only; a live run of a label move is pending |
+| 3b | the flip: `ready` on the map's own edge when every row is done, then the unlock and a word on what completed; more rows — type, area — each a flag and a row; `blocked` and needs-more-information outcomes | a `types` mapping family · a `needsInfo` meaning · the unlock exempted from the blocked pause, a safety-rule change with its own row · the occasion identity for same-second label events |
 | 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
 ## Verified by
@@ -173,6 +196,8 @@ flowchart LR
 | `ready` added while the triage label is still on | the conflict is not repaired; removing the stale triage label retries the release from `ready` |
 | `ready` added on a clean position | unlock and optional confirmation; fresh live confirmation pending after D208 |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
+| a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state; unit only, no live run yet |
+| a skill label on a bot-opened issue, or off the gate, or without the requirement | nothing, and no question asked off the gate |
 | `ready` added to a locked issue where `lockUntilTriaged` is off | nothing — the lock is a human's |
 | `ready` added by an automation | nothing |
 | A label other than `ready`, or an unrelated label removed | nothing, and the resolver is not asked |
