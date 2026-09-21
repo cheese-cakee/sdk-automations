@@ -100,7 +100,7 @@ describe("the seeds' specs", () => {
             welcome: false,
             lockUntilTriaged: false,
             confirmUnlock: false,
-            requirements: { skills: [] },
+            requirements: { skill: false },
         });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
             exemptBlocked: true,

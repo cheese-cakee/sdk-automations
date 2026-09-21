@@ -45,11 +45,11 @@ you leave the key out; `docs/examples/full.yml` is the same catalogue with the o
 
 ```yaml
 enabled: true
-welcome: false # default — Post a welcome comment on a new issue, saying it is waiting for triage
+welcome: false # default — Post a welcome comment on a new issue, saying it is waiting for triage; a requirement below posts it too
 lockUntilTriaged: false # default — Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default "status: ready", which no capability creates yet; the welcome is posted either way
 confirmUnlock: false # default — Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on
-requirements: # default — Optional labels that the issue should carry before triage is complete
-  skills: [] # none — Require exactly one of these mapped skill labels before triage is complete
+requirements: # default — What a triaged issue carries, one opt-in item each, shown as a checklist in the welcome; nothing moves the issue yet
+  skill: false # default — Exactly one mapped skill label, from mappings.skills; the repository creates those labels
 ```
 
 ### `prDashboard`

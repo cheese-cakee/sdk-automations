@@ -1,9 +1,9 @@
-import { flag, section, skills, spec } from "@hiero-hackers/automation-core/author";
+import { flag, section, spec } from "@hiero-hackers/automation-core/author";
 
 export const TRIAGE_QUEUE_SETTINGS = spec({
     welcome: flag({
         default: false,
-        doc: "Post a welcome comment on a new issue, saying it is waiting for triage",
+        doc: "Post a welcome comment on a new issue, saying it is waiting for triage; a requirement below posts it too",
     }),
     lockUntilTriaged: flag({
         default: false,
@@ -15,10 +15,14 @@ export const TRIAGE_QUEUE_SETTINGS = spec({
     }),
     requirements: section(
         {
-            skills: skills({
-                doc: "Require exactly one of these mapped skill labels before triage is complete",
+            skill: flag({
+                default: false,
+                needs: "skills",
+                doc: "Exactly one mapped skill label, from mappings.skills; the repository creates those labels",
             }),
         },
-        { doc: "Optional labels that the issue should carry before triage is complete" },
+        {
+            doc: "What a triaged issue carries, one opt-in item each, shown as a checklist in the welcome; nothing moves the issue yet",
+        },
     ),
 });

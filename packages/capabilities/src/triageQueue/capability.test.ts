@@ -43,7 +43,7 @@ const lockingView = projectCapabilityView(triageQueueDeclaration, lockingOnly);
 const advisory = configEnabling(
     ["triageQueue"],
     [triageQueueDeclaration],
-    { triageQueue: { requirements: { skills: ["beginner", "advanced"] } } },
+    { triageQueue: { requirements: { skill: true } } },
     { skills: { beginner: "skill: beginner", advanced: "skill: advanced" } },
 );
 const advisoryView = projectCapabilityView(triageQueueDeclaration, advisory);
@@ -203,62 +203,114 @@ describe("triageQueue", () => {
     });
 
     it.each([
-        [[], "- [ ] Add one skill label."],
-        [["beginner"], "- [x] Skill label added."],
-        [["goodFirstIssue"], "- [ ] Use one of the accepted skill labels."],
-        [["beginner", "advanced"], "- [ ] Keep exactly one skill label."],
-    ] as const)("shows the advisory skill checklist for %j", async (skills, row) => {
-        const record = issue({}, { skills: [...skills] });
-        const intents = await triageQueue.evaluate(record, advisoryView, watch(record).platform);
+        [[], "- [ ] Skill level — the team sets one skill label"],
+        [["beginner"], "- [x] Skill level — beginner"],
+        [
+            ["beginner", "advanced"],
+            "- [ ] Skill level — more than one skill label; the team keeps one",
+        ],
+    ] as const)(
+        "welcomes with the checklist row for skills %j, even with welcome off",
+        async (skills, row) => {
+            const record = issue({}, { skills: [...skills] });
+            const intents = await triageQueue.evaluate(
+                record,
+                advisoryView,
+                watch(record).platform,
+            );
 
-        expect(intents).toContainEqual(
-            expect.objectContaining({
-                operation: "postManagedComment",
-                desired: expect.objectContaining({ body: expect.stringContaining(row) }),
-            }),
+            expect(intents.map((intent) => intent.operation)).toEqual([
+                "applyMappedLabel",
+                "postManagedComment",
+            ]);
+            expect(intents[1]?.desired).toMatchObject({
+                topic: "welcome",
+                body: expect.stringContaining(`\n\nTriage checklist:\n${row}`),
+            });
+        },
+    );
+
+    /** The skill label may come from anyone; the issue must still be a person's. */
+    it.each([
+        ["added", ["beginner"], "- [x] Skill level — beginner"],
+        ["removed", [], "- [ ] Skill level — the team sets one skill label"],
+    ] as const)(
+        "rewrites the welcome when a skill label is %s while awaiting triage",
+        async (change, skills, row) => {
+            const record = issue(
+                { meaning: "awaitingTriage" },
+                {
+                    actor: { login: "triage-bot[bot]" },
+                    skills: [...skills],
+                    arrival: { kind: "label", change, meaning: null, skill: "beginner" },
+                },
+            );
+            const { platform, asked } = watch(record);
+
+            expect(await triageQueue.evaluate(record, advisoryView, platform)).toEqual([
+                expect.objectContaining({
+                    operation: "postManagedComment",
+                    cause: { cause: "triageChecklistChanged", observedAt: OBSERVED_AT },
+                    desired: expect.objectContaining({ body: expect.stringContaining(row) }),
+                }),
+            ]);
+            expect(asked).toEqual(["opener"]);
+        },
+    );
+
+    it("never gains a welcome through a skill label when a bot opened the issue", async () => {
+        const record = issue(
+            { meaning: "awaitingTriage" },
+            {
+                author: "renovate[bot]",
+                skills: ["beginner"],
+                arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
+            },
         );
+        const { platform, asked } = watch(record, { ok: true, value: true });
+
+        expect(await triageQueue.evaluate(record, advisoryView, platform)).toEqual([]);
+        expect(asked).toEqual(["renovate[bot]"]);
     });
 
-    it("updates the checklist only for a mapped skill change at the triage gate", async () => {
-        const changed = issue(
-            { meaning: "awaitingTriage" },
-            {
-                actor: { login: "triage-bot[bot]" },
-                skills: ["beginner"],
-                arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
-            },
-        );
-        const watched = watch(changed, { ok: true, value: true });
-
-        expect(await triageQueue.evaluate(changed, advisoryView, watched.platform)).toEqual([
-            expect.objectContaining({ operation: "postManagedComment" }),
-        ]);
-        expect(watched.asked).toEqual([]);
-
-        const unrelated = issue(
-            { meaning: "awaitingTriage" },
-            { arrival: { kind: "label", change: "added", meaning: null, skill: null } },
-        );
-        const pastTriage = issue(
-            { meaning: "ready" },
-            {
-                skills: ["beginner"],
-                arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
-            },
-        );
-        const conflict = conflicted(["awaitingTriage", "ready"], {
+    it("leaves a skill label alone off the gate, without a requirement, or on an unmapped label", async () => {
+        const skilled = {
             skills: ["beginner"],
             arrival: { kind: "label", change: "added", meaning: null, skill: "beginner" },
-        });
+        } as const;
+        const cases = [
+            [issue({ meaning: "awaitingTriage" }, skilled), silentView],
+            [issue({ meaning: "ready" }, skilled), advisoryView],
+            [conflicted(["awaitingTriage", "ready"], skilled), advisoryView],
+            [
+                issue(
+                    { meaning: "awaitingTriage" },
+                    { arrival: { kind: "label", change: "added", meaning: null, skill: null } },
+                ),
+                advisoryView,
+            ],
+        ] as const;
 
-        for (const [record, view] of [
-            [unrelated, advisoryView],
-            [changed, silentView],
-            [pastTriage, advisoryView],
-            [conflict, advisoryView],
-        ] as const) {
-            expect(await triageQueue.evaluate(record, view, watch(record).platform)).toEqual([]);
+        for (const [record, view] of cases) {
+            const { platform, asked } = watch(record);
+            expect(await triageQueue.evaluate(record, view, platform)).toEqual([]);
+            expect(asked).toEqual([]);
         }
+    });
+
+    it("refuses the skill requirement when the file maps no skill tier", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 2,
+                capabilities: { triageQueue: { enabled: true, requirements: { skill: true } } },
+            },
+            { revision: "rev-1", knownCapabilities: [triageQueueDeclaration] },
+        );
+
+        expect(result.ok).toBe(false);
+        expect(result.ok ? [] : result.errors.map((error) => error.message)).toEqual([
+            expect.stringContaining("needs at least one entry under mappings.skills"),
+        ]);
     });
 
     /** Both requests in full: one occasion, but the announcement claims only openness. */

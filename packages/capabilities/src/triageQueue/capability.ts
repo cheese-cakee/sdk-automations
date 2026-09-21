@@ -10,7 +10,7 @@ import {
     type IntentFor,
     type PlatformHandle,
 } from "@hiero-hackers/automation-core/author";
-import { unlocked, welcome, type SkillChecklist } from "./messages.js";
+import { skillRow, unlocked, welcome, type ChecklistRow } from "./messages.js";
 import { TRIAGE_QUEUE_SETTINGS } from "./settings.js";
 
 export const triageQueueDeclaration = declareCapability({
@@ -29,33 +29,35 @@ type Facts = Parameters<Capability<TriageQueueDeclaration>["evaluate"]>[0];
 type View = CapabilityView<TriageQueueDeclaration>;
 type Platform = PlatformHandle<TriageQueueDeclaration>;
 type Intents = readonly IntentFor<TriageQueueDeclaration>[];
+type LabelArrival = Extract<Facts["arrival"], { readonly kind: "label" }>;
 
 /** The meaning whose arrival completes triage: the map's one edge out of `awaitingTriage`. */
 const TRIAGED = "ready";
 
-function skillChecklist(facts: Facts, config: View): SkillChecklist | null {
-    const accepted = config.settings.requirements.skills;
-    if (accepted.length === 0) return null;
-    const [skill] = facts.skills;
-    if (skill === undefined) return "missing";
-    if (facts.skills.length > 1) return "conflict";
-    return accepted.includes(skill) ? "complete" : "unaccepted";
+/** The rows the repository asked for, in a fixed order; empty when it asked for none. */
+function checklist(facts: Facts, config: View): readonly ChecklistRow[] {
+    const rows: ChecklistRow[] = [];
+    if (config.settings.requirements.skill) rows.push(skillRow(facts.skills));
+    return rows;
 }
 
-function welcomeIntent(facts: Facts, config: View, platform: Platform) {
+/** The one managed welcome, posted at the gate and rewritten as the checklist changes. */
+function welcomeIntent(
+    facts: Facts,
+    config: View,
+    platform: Platform,
+    rows: readonly ChecklistRow[],
+    occasion: { readonly cause: string; readonly explain: string },
+) {
     return platform.intent({
         operation: "postManagedComment",
         desired: {
             kind: "notice",
             topic: "welcome",
-            body: welcome(
-                facts.author,
-                config.settings.lockUntilTriaged,
-                skillChecklist(facts, config),
-            ),
+            body: welcome(facts.author, config.settings.lockUntilTriaged, rows),
         },
-        cause: "issueWithoutPosition",
-        explain: "Welcomed the author and said the issue awaits triage.",
+        cause: occasion.cause,
+        explain: occasion.explain,
     });
 }
 
@@ -74,7 +76,7 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
     if (meaning !== null && meaning !== "awaitingTriage") return [];
 
     const { welcome: welcomed, lockUntilTriaged } = config.settings;
-    const checklist = skillChecklist(facts, config);
+    const rows = checklist(facts, config);
     const intents: IntentFor<TriageQueueDeclaration>[] = [];
     if (meaning === null) {
         intents.push(
@@ -86,8 +88,14 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
             }),
         );
     }
-    if (welcomed || lockUntilTriaged || checklist !== null)
-        intents.push(welcomeIntent(facts, config, platform));
+    if (welcomed || lockUntilTriaged || rows.length > 0) {
+        intents.push(
+            welcomeIntent(facts, config, platform, rows, {
+                cause: "issueWithoutPosition",
+                explain: "Welcomed the author and said the issue awaits triage.",
+            }),
+        );
+    }
     if (lockUntilTriaged && !facts.locked) {
         intents.push(
             platform.intent({
@@ -100,11 +108,18 @@ function onOpened(facts: Facts, config: View, platform: Platform): Intents {
     return intents;
 }
 
-function onSkillChanged(facts: Facts, config: View, platform: Platform): Intents {
-    if (skillChecklist(facts, config) === null) return [];
+/** A checklist label moved while the issue waits: the welcome is rewritten, and nothing else. */
+function onChecklistChanged(facts: Facts, config: View, platform: Platform): Intents {
+    const rows = checklist(facts, config);
+    if (rows.length === 0) return [];
     if (facts.position.kind !== "position") return [];
     if (facts.position.state.meaning !== "awaitingTriage") return [];
-    return [welcomeIntent(facts, config, platform)];
+    return [
+        welcomeIntent(facts, config, platform, rows, {
+            cause: "triageChecklistChanged",
+            explain: "Updated the triage checklist in the welcome.",
+        }),
+    ];
 }
 
 /** The release: a person's `ready` unlocks whatever else the labels say, and may be announced. */
@@ -132,30 +147,37 @@ function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
     return intents;
 }
 
+/** `ready` arrived, or the stale triage label left an issue already at `ready`. */
+function completesTriage(facts: Facts, arrival: LabelArrival): boolean {
+    if (arrival.change === "added") return arrival.meaning === TRIAGED;
+    return (
+        arrival.meaning === "awaitingTriage" &&
+        facts.position.kind === "position" &&
+        facts.position.state.meaning === TRIAGED
+    );
+}
+
 export const triageQueue: Capability<TriageQueueDeclaration> = {
     declaration: triageQueueDeclaration,
 
+    // The author opened it; the actor labelled it. Either may be a machine, and only a person's
+    // issue is welcomed or released — but a checklist label may come from anyone.
     async evaluate(facts, config, platform) {
         const { arrival } = facts;
         if (arrival === null) return [];
-        if (arrival.kind === "label") {
-            const completed =
-                (arrival.change === "added" && arrival.meaning === TRIAGED) ||
-                (arrival.change === "removed" &&
-                    arrival.meaning === "awaitingTriage" &&
-                    facts.position.kind === "position" &&
-                    facts.position.state.meaning === TRIAGED);
-            if (!completed) {
-                return arrival.skill === null ? [] : onSkillChanged(facts, config, platform);
-            }
+        const machine = (login: string) => platform.ask("isAutomationActor", { login });
+
+        if (arrival.kind === "opened") {
+            return (await machine(facts.author)) ? [] : onOpened(facts, config, platform);
         }
-
-        const participant = arrival.kind === "opened" ? facts.author : (facts.actor?.login ?? null);
-        if (participant === null) return [];
-        if (await platform.ask("isAutomationActor", { login: participant })) return [];
-
-        return arrival.kind === "opened"
-            ? onOpened(facts, config, platform)
-            : onTriaged(facts, config, platform);
+        if (completesTriage(facts, arrival)) {
+            const actor = facts.actor?.login ?? null;
+            if (actor === null || (await machine(actor))) return [];
+            return onTriaged(facts, config, platform);
+        }
+        if (arrival.skill === null) return [];
+        const update = onChecklistChanged(facts, config, platform);
+        if (update.length === 0) return [];
+        return (await machine(facts.author)) ? [] : update;
     },
 };

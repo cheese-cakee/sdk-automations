@@ -266,7 +266,7 @@ describe("configReport", () => {
                 "  - lockUntilTriaged: false",
                 "  - confirmUnlock: false",
                 "  - requirements",
-                "    - skills: none",
+                "    - skill: false",
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 // `enabled: true` and nothing else, so every check is parked.

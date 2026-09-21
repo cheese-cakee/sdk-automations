@@ -172,7 +172,7 @@ describe("configuration isolation (contract.md §2)", () => {
             welcome: true,
             lockUntilTriaged: false,
             confirmUnlock: false,
-            requirements: { skills: [] },
+            requirements: { skill: false },
         });
     });
 

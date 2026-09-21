@@ -10,7 +10,7 @@
                 "lockUntilTriaged": false,
                 "confirmUnlock": false,
                 "requirements": {
-                    "skills": []
+                    "skill": false
                 }
             }
         },

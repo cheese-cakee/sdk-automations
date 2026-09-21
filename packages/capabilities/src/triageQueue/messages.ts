@@ -1,27 +1,37 @@
 /** Everything triageQueue says to a contributor, and the words it says it in. */
 
-import { mentions } from "@hiero-hackers/automation-core/author";
+import { mentions, type Skill } from "@hiero-hackers/automation-core/author";
 
-export type SkillChecklist = "missing" | "unaccepted" | "conflict" | "complete";
+/** One line of the triage checklist. Every row done is what a later phase's flip to `ready` reads. */
+export interface ChecklistRow {
+    readonly done: boolean;
+    readonly text: string;
+}
 
-const skillRows: Readonly<Record<SkillChecklist, string>> = {
-    missing: "- [ ] Add one skill label.",
-    unaccepted: "- [ ] Use one of the accepted skill labels.",
-    conflict: "- [ ] Keep exactly one skill label.",
-    complete: "- [x] Skill label added.",
-};
+/** The skill row: status for the author, who cannot add labels — the team sets exactly one tier. */
+export function skillRow(skills: readonly Skill[]): ChecklistRow {
+    const [tier] = skills;
+    if (tier === undefined)
+        return { done: false, text: "Skill level — the team sets one skill label" };
+    if (skills.length > 1) {
+        return { done: false, text: "Skill level — more than one skill label; the team keeps one" };
+    }
+    return { done: true, text: `Skill level — ${tier}` };
+}
 
 /** The welcome a new issue earns; the locked form says why its author cannot reply yet, and what lifts it. */
 export function welcome(
     author: string,
     locked: boolean,
-    skill: SkillChecklist | null = null,
+    checklist: readonly ChecklistRow[],
 ): string {
     const opening = `👋 Hi ${mentions([author])} — thanks for opening this issue. It is in the triage queue`;
     const message = locked
         ? `${opening}, and the conversation is locked until the team has triaged it. You do not need to do anything: the lock lifts when the issue is marked ready, and we will follow up here.`
         : `${opening}; the team will triage it and follow up here.`;
-    return skill === null ? message : `${message}\n\nTriage checklist:\n${skillRows[skill]}`;
+    if (checklist.length === 0) return message;
+    const rows = checklist.map((row) => `- [${row.done ? "x" : " "}] ${row.text}`);
+    return `${message}\n\nTriage checklist:\n${rows.join("\n")}`;
 }
 
 /** The notice a released issue earns when the repository asked for one. */
