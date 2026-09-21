@@ -97,10 +97,11 @@ export function spec<const S extends Spec>(fields: S): S {
     return fields;
 }
 
-/** A boolean. Absent reads as the default; anything else is a problem. */
+/** A boolean; absent reads as the default. `needs` names a family that must map something for `true`. */
 export function flag(options: {
     readonly default: boolean;
     readonly doc?: string;
+    readonly needs?: keyof SettingsView["mapped"];
 }): Field<boolean> {
     return {
         describe: () => ({
@@ -108,12 +109,17 @@ export function flag(options: {
             doc: options.doc ?? null,
             absent: "default",
             default: options.default,
+            ...(options.needs === undefined ? {} : { needs: options.needs }),
         }),
         read(key, scope) {
             const path = dot(scope.path, key);
             if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: options.default };
             const value = scope.raw[key];
             if (typeof value !== "boolean") return problem(path, "must be true or false");
+            const family = options.needs;
+            if (value && family !== undefined && scope.view.mapped[family].length === 0) {
+                return problem(path, `needs at least one entry under mappings.${family}`);
+            }
             return { ok: true, value };
         },
     };

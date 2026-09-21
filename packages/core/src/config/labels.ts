@@ -6,6 +6,7 @@
 import {
     COMMANDS,
     MAPPABLE_MEANINGS,
+    SKILL_TIERS,
     type Command,
     type MappableMeaning,
     type RepositoryConfig,
@@ -29,17 +30,33 @@ export function meaningOfLabel(config: RepositoryConfig, label: string): Mappabl
     return null;
 }
 
+/** The members of a closed family whose labels are carried, in the family's own order. */
+function carriedOf<M extends string>(
+    family: readonly M[],
+    mapped: Partial<Readonly<Record<M, string>>>,
+    labels: readonly string[],
+): readonly M[] {
+    const carried = new Set(labels.map(labelKey));
+    return family.filter((member) => {
+        const label = mapped[member];
+        return label !== undefined && carried.has(labelKey(label));
+    });
+}
+
 /** Every mapped meaning in a set of labels, in `MAPPABLE_MEANINGS` order. */
 export function meaningsOfLabels(
     config: RepositoryConfig,
     labels: readonly string[],
 ): readonly MappableMeaning[] {
-    const present = new Set<MappableMeaning>();
-    for (const label of labels) {
-        const meaning = meaningOfLabel(config, label);
-        if (meaning !== null) present.add(meaning);
-    }
-    return MAPPABLE_MEANINGS.filter((m) => present.has(m));
+    return carriedOf(MAPPABLE_MEANINGS, config.mappings.labels, labels);
+}
+
+/** Every mapped skill tier in a set of labels, easiest first (D127). */
+export function skillsOfLabels(
+    config: RepositoryConfig,
+    labels: readonly string[],
+): readonly Skill[] {
+    return carriedOf(SKILL_TIERS, config.mappings.skills, labels);
 }
 
 /**
@@ -54,16 +71,6 @@ export function alertsOfLabels(
     return Object.entries(config.mappings.alerts)
         .filter(([, label]) => carried.has(labelKey(label)))
         .map(([alert]) => alert);
-}
-
-export function skillsOfLabels(
-    config: RepositoryConfig,
-    labels: readonly string[],
-): readonly Skill[] {
-    const carried = new Set(labels.map(labelKey));
-    return Object.entries(config.mappings.skills)
-        .filter(([, label]) => carried.has(labelKey(label)))
-        .map(([skill]) => skill as Skill);
 }
 
 /**

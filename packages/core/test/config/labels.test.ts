@@ -152,9 +152,9 @@ describe("alertsOfLabels", () => {
     });
 });
 
-it("reads mapped skill labels in ladder order", () => {
+it("reads mapped skill labels in ladder order, however the file lists them", () => {
     const skilled = configWith({
-        skills: { beginner: "skill: beginner", advanced: "skill: advanced" },
+        skills: { advanced: "skill: advanced", beginner: "skill: beginner" },
     });
     expect(skillsOfLabels(skilled, ["SKILL: ADVANCED", "bug", "skill: beginner"])).toEqual([
         "beginner",
