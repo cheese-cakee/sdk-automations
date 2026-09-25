@@ -140,8 +140,8 @@ function fullestIn(
         } else if (field.absent === "problem") {
             written[key] = smallestValue(key, field, names);
         } else if (field.kind === "flag") {
-            // A flag is a switch, and "fullest" throws every switch.
-            written[key] = true;
+            // A flag is a switch, and "fullest" throws every switch its family allows.
+            written[key] = field.needs === undefined || names.mapped[field.needs].length > 0;
         } else if (field.default !== undefined) {
             written[key] = field.default;
         }
@@ -293,7 +293,11 @@ export function recordFrom<P extends ProducerName, K extends FactKind>(
         // Nobody causes a sweep; a delivery has a sender. Neither is a group.
         actor: producer === "sweep" ? null : { login: "actor" },
         ...(kind === "issue"
-            ? { locked: false, arrival: producer === "issues" ? { kind: "opened" } : null }
+            ? {
+                  locked: false,
+                  arrival: producer === "issues" ? { kind: "opened" } : null,
+                  skills: [],
+              }
             : {}),
         position: OPEN,
         alerts: { carried: [], arrived: [] },

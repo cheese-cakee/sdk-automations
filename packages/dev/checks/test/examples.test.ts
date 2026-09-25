@@ -62,6 +62,7 @@ describe("the shipped examples", () => {
             "welcome",
             "lockUntilTriaged",
             "confirmUnlock",
+            "requirements",
         ]);
         expect(triageQueue?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });
     });

@@ -280,6 +280,22 @@ describe("flag", () => {
             "announce: must be true or false",
         ]);
     });
+
+    it("refuses `true` on a flag whose family maps nothing; `false` and absent pass", () => {
+        const needy = spec({ skill: flag({ default: false, needs: "skills" }) });
+        expect(problemsOf(readFrom(needy, view({ skill: true })))).toEqual([
+            "skill: needs at least one entry under mappings.skills",
+        ]);
+        expect(readFrom(needy, view({ skill: false }))).toEqual({
+            ok: true,
+            value: { skill: false },
+        });
+        expect(readFrom(needy, view({}))).toEqual({ ok: true, value: { skill: false } });
+        expect(readFrom(needy, view({ skill: true }, { skills: ["beginner"] }))).toEqual({
+            ok: true,
+            value: { skill: true },
+        });
+    });
 });
 
 describe("duration", () => {

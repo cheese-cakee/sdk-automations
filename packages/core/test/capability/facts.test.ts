@@ -87,6 +87,7 @@ const issue = (projection: Projection<IssueMeaning>): IssueFacts => ({
     actor: null,
     locked: false,
     arrival: null,
+    skills: [],
     position: projection,
     alerts: { carried: [], arrived: [] },
     assignees: UNREAD,

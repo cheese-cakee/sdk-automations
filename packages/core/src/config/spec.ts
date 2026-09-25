@@ -76,6 +76,8 @@ export interface FieldDescription {
     readonly absent: "default" | "inherited" | "null" | "empty" | "parked" | "problem";
     /** `flag`, `count`, and a `duration` that declares one — the written form for a duration. */
     readonly default?: boolean | number | string;
+    /** `flag` — the family that must map something before the flag may be `true`. */
+    readonly needs?: keyof SettingsView["mapped"];
     /** `oneOf` — the choices, in the order it lists them. */
     readonly values?: readonly string[];
     /** `duration` — the field name it cascades from (§3.1). */

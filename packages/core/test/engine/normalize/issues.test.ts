@@ -155,6 +155,32 @@ describe("shapes derived from the real ones", () => {
         });
     });
 
+    it.each([
+        ["labeled", [{ name: "skill: beginner" }], "added", ["beginner"]],
+        ["unlabeled", [], "removed", []],
+    ] as const)(
+        "%s: reads the changed skill and the skills still carried",
+        (action, labels, change, skills) => {
+            const payload = fixture("issues.labeled.json") as {
+                action: string;
+                label: { name: string };
+                issue: { labels: unknown[] };
+            };
+            payload.action = action;
+            payload.label.name = "skill: beginner";
+            payload.issue.labels = [...labels];
+            const skilled = configWith({ skills: { beginner: "skill: beginner" } });
+
+            const result = normalizeDelivery("issues", payload, skilled);
+            expect(result.kind).toBe("facts");
+            if (result.kind !== "facts") throw new Error("unreachable");
+            expect(result.facts).toMatchObject({
+                skills,
+                arrival: { kind: "label", change, meaning: null, skill: "beginner" },
+            });
+        },
+    );
+
     it("a cross-flow label is ignored diagnostics, never a conflict (D35)", () => {
         const result = normalizeDelivery(
             "issues",

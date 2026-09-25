@@ -33,12 +33,15 @@ export interface IssueFacts {
               readonly kind: "label";
               readonly change: "added" | "removed";
               readonly meaning: MappableMeaning | null;
+              readonly skill: Skill | null;
           }
         | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
     /** The open-keyed family: what this item carries, and what just arrived. */
     readonly alerts: { readonly carried: readonly string[]; readonly arrived: readonly string[] };
+    /** The mapped skill labels currently carried by the issue. */
+    readonly skills: readonly Skill[];
     readonly assignees: readonly AssigneeClock[] | Unread;
     readonly links: { readonly openPullRequests: readonly ItemRef[] } | Unread;
     /** `null` is a READ group whose delivery carried no command; only `Unread` means nobody looked. */
@@ -73,11 +76,12 @@ export const FACT_GROUPS = ["assignees", "links", "review", "readiness", "comman
 
 `AssigneeClock` and `LinkedIssue` (an item with its assignees' clocks) keep their current shapes.
 
-**Five fields are never groups.** `position` is one, because every producer reads labels and state
+**These fields are never groups.** `position` is one, because every producer reads labels and state
 and the safety world is derived from it. `author` is another: an item nobody opened does not exist,
 so there is no honest `Unread` for it and a payload without one is malformed. `alerts` is the third
 — every producer reads the item's labels already, and the family is read off the same list the
-projection was. `actor` is a field whose value may be `null`, which is NOT an `Unread`: a swept item
+projection was. Issue `skills` are read from that same label list. `actor` is a field whose value
+may be `null`, which is NOT an `Unread`: a swept item
 was read because a clock fired, so "nobody caused this" is a fact about the record rather than a
 group somebody skipped. Issue records also always carry `locked` and `arrival`; `arrival: null`
 means the observation carried no opening or label transition.

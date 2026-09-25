@@ -43,7 +43,7 @@
                                     "properties": {
                                         "welcome": {
                                             "type": "boolean",
-                                            "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
+                                            "description": "Post a welcome comment on a new issue, saying it is waiting for triage; a requirement below posts it too.",
                                             "default": false
                                         },
                                         "lockUntilTriaged": {
@@ -55,6 +55,18 @@
                                             "type": "boolean",
                                             "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                             "default": false
+                                        },
+                                        "requirements": {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "skill": {
+                                                    "type": "boolean",
+                                                    "description": "Exactly one mapped skill label, from mappings.skills; the repository creates those labels.",
+                                                    "default": false
+                                                }
+                                            },
+                                            "description": "What a triaged issue carries, one opt-in item each, shown as a checklist in the welcome; nothing moves the issue yet."
                                         }
                                     }
                                 }
@@ -759,7 +771,7 @@
                                 },
                                 "welcome": {
                                     "type": "boolean",
-                                    "description": "Post a welcome comment on a new issue, saying it is waiting for triage.",
+                                    "description": "Post a welcome comment on a new issue, saying it is waiting for triage; a requirement below posts it too.",
                                     "default": false
                                 },
                                 "lockUntilTriaged": {
@@ -771,6 +783,18 @@
                                     "type": "boolean",
                                     "description": "Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on.",
                                     "default": false
+                                },
+                                "requirements": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "skill": {
+                                            "type": "boolean",
+                                            "description": "Exactly one mapped skill label, from mappings.skills; the repository creates those labels.",
+                                            "default": false
+                                        }
+                                    },
+                                    "description": "What a triaged issue carries, one opt-in item each, shown as a checklist in the welcome; nothing moves the issue yet."
                                 }
                             }
                         },

@@ -10,6 +10,7 @@ import {
     alertsOfLabels,
     labelKey,
     meaningsOfLabels,
+    skillsOfLabels,
     producerReads,
     projectIssue,
     projectPullRequest,
@@ -780,6 +781,7 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
                 ...observed(listed),
                 locked: listed.locked,
                 arrival: null,
+                skills: skillsOfLabels(config, listed.labels),
                 position: projectIssue({
                     closedBy: listed.closedBy,
                     meanings: meanings(listed),

@@ -191,6 +191,13 @@ describe("the block that switches a spec on", () => {
         const read = readSettings(REQUIRED, NAMES, fullest);
         expect(read.ok ? [] : read.problems.map((p) => p.path)).toEqual([]);
     });
+
+    it("throws a flag that needs a family only where the names map one", () => {
+        const needy = spec({ skill: flag({ default: false, needs: "skills" }) });
+        expect(fullestValidSettings(needy, NAMES)).toEqual({ skill: false });
+        const skilled = { ...NAMES, mapped: { ...NAMES.mapped, skills: ["beginner"] } };
+        expect(fullestValidSettings(needy, skilled)).toEqual({ skill: true });
+    });
 });
 
 describe("the enumerator a matrix walks", () => {

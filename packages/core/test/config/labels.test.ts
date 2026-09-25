@@ -14,6 +14,7 @@ import {
     MAPPABLE_MEANINGS,
     meaningOfLabel,
     meaningsOfLabels,
+    skillsOfLabels,
 } from "../../src/config/index.js";
 import { configWith } from "./builders.js";
 
@@ -149,6 +150,16 @@ describe("alertsOfLabels", () => {
         expect(alertsOfLabels(alerting, ["status: blocked", "whatever"])).toEqual([]);
         expect(alertsOfLabels(configWith({}), ["P0-🔥"])).toEqual([]);
     });
+});
+
+it("reads mapped skill labels in ladder order, however the file lists them", () => {
+    const skilled = configWith({
+        skills: { advanced: "skill: advanced", beginner: "skill: beginner" },
+    });
+    expect(skillsOfLabels(skilled, ["SKILL: ADVANCED", "bug", "skill: beginner"])).toEqual([
+        "beginner",
+        "advanced",
+    ]);
 });
 
 /**

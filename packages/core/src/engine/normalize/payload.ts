@@ -4,7 +4,7 @@
  */
 
 import type { Actor, Alerts, RepositoryRef } from "../../catalogue.js";
-import type { MappableMeaning, RepositoryConfig } from "../../config/index.js";
+import type { MappableMeaning, RepositoryConfig, Skill } from "../../config/index.js";
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -98,6 +98,9 @@ export interface DeliveryFacts {
     readonly meanings: readonly MappableMeaning[];
     readonly arrivedMeaning: MappableMeaning | null;
     readonly removedMeaning: MappableMeaning | null;
+    readonly skills: readonly Skill[];
+    readonly arrivedSkill: Skill | null;
+    readonly removedSkill: Skill | null;
     /** What this item carries, and what this delivery added — through `mappings.alerts`. */
     readonly alerts: Alerts;
     /** The delivery's sender, or `null` — see `senderOf`. */

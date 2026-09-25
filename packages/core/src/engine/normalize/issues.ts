@@ -39,14 +39,21 @@ export const issuesNormalizer = {
                     facts.action === "opened"
                         ? { kind: "opened" }
                         : facts.action === "labeled"
-                          ? { kind: "label", change: "added", meaning: facts.arrivedMeaning }
+                          ? {
+                                kind: "label",
+                                change: "added",
+                                meaning: facts.arrivedMeaning,
+                                skill: facts.arrivedSkill,
+                            }
                           : facts.action === "unlabeled"
                             ? {
                                   kind: "label",
                                   change: "removed",
                                   meaning: facts.removedMeaning,
+                                  skill: facts.removedSkill,
                               }
                             : null,
+                skills: facts.skills,
                 alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),

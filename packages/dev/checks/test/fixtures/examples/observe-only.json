@@ -8,7 +8,10 @@
             "settings": {
                 "welcome": false,
                 "lockUntilTriaged": false,
-                "confirmUnlock": false
+                "confirmUnlock": false,
+                "requirements": {
+                    "skill": false
+                }
             }
         }
     },

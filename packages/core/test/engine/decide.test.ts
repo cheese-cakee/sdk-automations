@@ -90,6 +90,7 @@ const webhookIssue = (over: Partial<IssueFacts> = {}): IssueFacts => ({
     actor: { login: "opener" },
     locked: false,
     arrival: null,
+    skills: [],
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },
