@@ -1,8 +1,9 @@
 # Quickstart
 
-> The App runs in a personal development sandbox. It is not hosted for general use yet. These steps assume an operator has installed and started it for your repository.
+> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
 
-Configure an installed repository with one file and one merge.
+Once an operator installs and starts the App for your repository, configure it with one file and
+one merge.
 
 ## Add the file
 
