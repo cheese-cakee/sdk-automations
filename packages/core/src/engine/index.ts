@@ -5,7 +5,6 @@ export { describeChange, writeRequestFor } from "./change.js";
 export {
     EngineHandle,
     handleFor,
-    readIntent,
     screenIntent,
     toEngine,
     type EngineCapability,

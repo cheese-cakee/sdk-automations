@@ -16,26 +16,24 @@ carries.
 <!-- generated: facts -->
 | Kind | Groups |
 |---|---|
-| `issue` | `assignees`, `links`, `command` |
+| `issue` | `locked`, `skills`, `assignees`, `links` |
 | `pullRequest` | `assignees`, `links`, `review`, `readiness` |
 <!-- /generated -->
 
 Every record also carries the repository, the item, `observedAt`, the trigger, `author`, `actor`,
-`alerts` and `position` — the projection every gate judges by. None of those four is a group.
+and `position` — the projection every gate judges by. None of those three is a group.
 `position` is read by every producer and the safety world is derived from it, so an unprojected
 record would refuse every intent `preconditionStale` (D141); `author` has no honest absence, since an
-item nobody opened does not exist; `alerts` is read off the same label list the projection was; and
-`actor` is `null` on a sweep, which is a FACT about the record rather than a group somebody skipped.
-Issue records also carry the current discussion lock and any opening or added-label transition.
+item nobody opened does not exist; and `actor` is `null` on a sweep, which is a FACT about the record
+rather than a group somebody skipped. Issue records also carry the current discussion lock and any
+opening or added-label transition.
 
 `assignees` is each assignee with the clock that assignment started; `links` is an issue's open
 linked pull requests, and on a pull request each linked issue with its own assignees' clocks;
 `review` is the changes-requested decision, `reapableSince` and the last commit; `readiness` is the
-draft flag, its own group because it is the one readiness fact a webhook can read; and `command` is
-what a contributor typed in a comment, projected through `mappings.commands` so a capability reads
-`assign` and never `/assign`. `review` and `readiness` are the pull request's alone and `command` is
-the issue's. There is no group for the App's own standing warning: the platform holds that record
-itself (`design/guides/grace.md` §4).
+draft flag, its own group because it is the one readiness fact a webhook can read. `review` and
+`readiness` are the pull request's alone. There is no group for the App's own standing warning: the
+platform holds that record itself (`design/guides/grace.md` §4).
 
 A group is read or marked `"unread"`. A capability declares the kinds it reads and the groups it
 needs, and the engine invokes it only when every group it needs was read — otherwise it records

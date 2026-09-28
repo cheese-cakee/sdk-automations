@@ -1,14 +1,10 @@
 /**
  * The issue-comment family: what an `issue_comment` delivery becomes once the
- * shared preamble has read it — an ordinary issue record whose command is a
- * fact group projected through `mappings.commands`, so a capability reads
- * `assign`, never `/assign`. Only a `created` action carries a command; an
- * edit reads `command: null`, not `UNREAD`.
+ * shared preamble has read it — an ordinary issue record.
  */
 
-import { UNREAD, type CommandFacts } from "../../catalogue.js";
+import { UNREAD } from "../../catalogue.js";
 import type { ProducedFacts } from "../../capability/index.js";
-import { commandInComment } from "../../config/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
 import { isRecord, lockedOf, timestamp, type DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";
@@ -29,16 +25,6 @@ function commentOf(
     if (typeof comment["body"] !== "string" || !isRecord(user) || at === null) return null;
     if (typeof user["login"] !== "string" || user["login"] === "") return null;
     return { body: comment["body"], by: user["login"], at };
-}
-
-/** The command this delivery issued, or `null` for a delivery that issued none. */
-function commandIssued(
-    facts: DeliveryFacts,
-    comment: { readonly body: string; readonly by: string; readonly at: Date },
-): CommandFacts | null {
-    if (facts.payload["action"] !== "created") return null;
-    const command = commandInComment(facts.config, comment.body);
-    return command === null ? null : { command, by: comment.by, at: comment.at };
 }
 
 /** The `issue_comment` entry of the registry. */
@@ -75,14 +61,12 @@ export const issueCommentNormalizer = {
                 locked,
                 arrival: null,
                 skills: facts.skills,
-                alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),
                     meanings: facts.meanings,
                 }),
                 assignees: UNREAD,
                 links: UNREAD,
-                command: commandIssued(facts, comment),
             } satisfies ProducedFacts<"issue_comment", "issue">,
         };
     },

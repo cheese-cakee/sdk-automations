@@ -1,6 +1,6 @@
 # merged — when a pull request merges, thank the author and point at what comes next
 
-Not built: phases 1, 2.
+Not built: phases 1, 2. `count` and `principal` left the settings toolkit unused; this design brings them back.
 
 ## What the output looks like
 

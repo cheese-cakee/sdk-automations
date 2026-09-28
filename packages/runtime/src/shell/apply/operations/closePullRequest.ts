@@ -5,6 +5,7 @@ import { text } from "./row.js";
 
 export const closePullRequest: OperationHandler<"closePullRequest"> = {
     verbs: ["closePullRequest"],
+    traits: { recordsWarning: false, activityRead: true },
 
     /** The reason travels on the call, because the row is what a resend reads. */
     plan: (effect) =>

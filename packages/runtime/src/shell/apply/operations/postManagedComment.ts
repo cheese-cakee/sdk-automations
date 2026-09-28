@@ -42,6 +42,7 @@ const matchedComment = async (
 
 export const postManagedComment: OperationHandler<"postManagedComment"> = {
     verbs: ["postComment"],
+    traits: { recordsWarning: true, activityRead: false },
 
     plan(effect) {
         if (effect.managedComment === null) {

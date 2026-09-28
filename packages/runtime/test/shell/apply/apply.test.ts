@@ -1521,8 +1521,8 @@ describe("issue conversation moderation", () => {
     });
 
     it.each([
-        ["lockIssue", { verb: "lockIssue", reason: "triage" }, true],
-        ["unlockIssue", { verb: "unlockIssue", reason: "approved" }, false],
+        ["lockIssue", { verb: "lockIssue" }, true],
+        ["unlockIssue", { verb: "unlockIssue" }, false],
     ] as const)("recovers a landed %s from the current lock state", async (name, call, locked) => {
         const github = fakeGitHub({ locked });
         sent(`${name}-effect`, serializeCall({ capability: "triageQueue", item: ITEM, call }), {

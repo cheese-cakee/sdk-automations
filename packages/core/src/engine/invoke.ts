@@ -1,13 +1,12 @@
 /**
  * The engine's side of a call to a capability whose declaration type it cannot
  * know: it holds a heterogeneous list and so has no single `D`, works against
- * the erased shapes here, and screens what comes back (D175).
+ * the erased shapes here, and screens what comes back (D175). The shape of what
+ * comes back is the compiler's (D209); the screens judge meaning.
  */
 
 import {
-    MANAGED_COMMENT_KINDS,
     type Facts,
-    type IntentCatalogue,
     type IntentOperation,
     type ResolverAnswer,
     type ResolverInput,
@@ -26,12 +25,11 @@ import {
     deriveIdempotencyKey,
     INTENT_OPERATIONS,
     type AnyIntent,
-    type DestructiveGrace,
     type Intent,
     type IntentScreen,
 } from "../intents/index.js";
-import { MAPPABLE_MEANINGS, type MappableMeaning } from "../config/index.js";
-import { MIN_GRACE_HOURS, PULL_REQUEST_MODES, type PullRequestMode } from "../safety/index.js";
+import type { MappableMeaning } from "../config/index.js";
+import { MIN_GRACE_HOURS } from "../safety/index.js";
 import {
     canTransitionIssue,
     canTransitionPr,
@@ -43,174 +41,6 @@ import {
 } from "../workflow/index.js";
 
 // ─── The erased call ─────────────────────────────────────────────────
-
-function own(value: unknown, key: string): unknown {
-    if (typeof value !== "object" || value === null) return undefined;
-    return Object.hasOwn(value, key) ? (value as Record<string, unknown>)[key] : undefined;
-}
-
-function item(
-    value: unknown,
-): { readonly kind: "issue" | "pullRequest"; readonly number: number } | null {
-    const kind = own(value, "kind");
-    const number = own(value, "number");
-    return (kind === "issue" || kind === "pullRequest") &&
-        typeof number === "number" &&
-        Number.isSafeInteger(number) &&
-        number > 0
-        ? { kind, number }
-        : null;
-}
-
-/** One `ConfigError`, re-read: the four fields a report renders. */
-function configError(value: unknown): unknown | null {
-    const code = own(value, "code");
-    const message = own(value, "message");
-    const path = own(value, "path");
-    const line = own(value, "line");
-    if (typeof code !== "string" || typeof message !== "string") return null;
-    if (path !== null && typeof path !== "string") return null;
-    if (line !== undefined && (typeof line !== "number" || !Number.isSafeInteger(line)))
-        return null;
-    return line === undefined ? { code, message, path } : { code, message, path, line };
-}
-
-/**
- * `configAtHead`'s union, read to the depth a reader of it branches on. The
- * parsed `RepositoryConfig` is checked for being a mapping and no further (D77).
- */
-function configAtHead(value: unknown): unknown | null {
-    const touched = own(value, "touched");
-    if (touched === false) return { touched: false };
-    if (touched !== true) return null;
-
-    const revision = own(value, "revision");
-    const result = own(value, "result");
-    const ok = own(result, "ok");
-    if (typeof revision !== "string" || revision.length === 0) return null;
-
-    if (ok === true) {
-        const config = own(result, "config");
-        return typeof config === "object" && config !== null
-            ? { touched: true, revision, result: { ok: true, config } }
-            : null;
-    }
-    if (ok !== false) return null;
-
-    const errors = own(result, "errors");
-    if (!Array.isArray(errors)) return null;
-    const read = errors.map(configError);
-    return read.every((error) => error !== null)
-        ? { touched: true, revision, result: { ok: false, errors: read } }
-        : null;
-}
-
-/** A list answer's entries, or `null` when the answer is not a list at all. */
-function entriesOf(value: unknown): readonly unknown[] | null {
-    return Array.isArray(value) ? [...(value as readonly unknown[])] : null;
-}
-
-/** `assigneesOf` — logins, as written. */
-function assignees(value: unknown): unknown | null {
-    const listed = entriesOf(value);
-    if (listed === null) return null;
-    return listed.every((entry) => typeof entry === "string") ? [...listed] : null;
-}
-
-/** `linkedIssues` — the items a pull request closes. */
-function linked(value: unknown): unknown | null {
-    const listed = entriesOf(value);
-    if (listed === null) return null;
-    const items = listed.map(item);
-    return items.every((entry) => entry !== null) ? items : null;
-}
-
-/** `commitAttestations` — the five facts a quality check judges, per commit. */
-function attestations(value: unknown): unknown | null {
-    const listed = entriesOf(value);
-    if (listed === null) return null;
-    const commits = listed.map((entry) => {
-        const sha = own(entry, "sha");
-        const summary = own(entry, "summary");
-        const signedOff = own(entry, "signedOff");
-        const verified = own(entry, "verified");
-        const merge = own(entry, "merge");
-        return typeof sha === "string" &&
-            typeof summary === "string" &&
-            typeof signedOff === "boolean" &&
-            typeof verified === "boolean" &&
-            typeof merge === "boolean"
-            ? { sha, summary, signedOff, verified, merge }
-            : null;
-    });
-    return commits.every((entry) => entry !== null) ? commits : null;
-}
-
-/** `openAssignments` — each held item with the meanings it carries. */
-function assignments(value: unknown): unknown | null {
-    const listed = entriesOf(value);
-    if (listed === null) return null;
-    const held = listed.map((entry) => {
-        const target = item(own(entry, "item"));
-        const meanings = own(entry, "meanings");
-        return target !== null &&
-            Array.isArray(meanings) &&
-            meanings.every(
-                (meaning) =>
-                    typeof meaning === "string" && MAPPABLE_MEANINGS.includes(meaning as never),
-            )
-            ? { item: target, meanings: [...meanings] }
-            : null;
-    });
-    return held.every((entry) => entry !== null) ? held : null;
-}
-
-/** A resolver added to the catalogue needs a reader above, or this file does not build. */
-function assertNever(_query: never): null {
-    return null;
-}
-
-/** One resolver's answer value, re-read to the shape its catalogue entry promises. */
-function answerValue(query: ResolverName, value: unknown): unknown | null {
-    switch (query) {
-        case "isAutomationActor":
-        case "mergeability":
-            return typeof value === "boolean" ? value : null;
-        case "configAtHead":
-            return configAtHead(value);
-        case "assigneesOf":
-            return assignees(value);
-        case "linkedIssues":
-            return linked(value);
-        case "commitAttestations":
-            return attestations(value);
-        case "openAssignments":
-            return assignments(value);
-        default:
-            return assertNever(query);
-    }
-}
-
-function resolverAnswer(query: ResolverName, value: unknown): ResolverAnswer<unknown> | null {
-    try {
-        const ok = own(value, "ok");
-        if (ok === true) {
-            const answer = answerValue(query, own(value, "value"));
-            return answer === null ? null : { ok: true, value: answer };
-        }
-        const reason = own(value, "reason");
-        const detail = own(value, "detail");
-        return ok === false &&
-            ["noPermission", "rateLimited", "unavailable", "notConfigured"].includes(
-                reason as string,
-            ) &&
-            typeof detail === "string"
-            ? { ok: false, reason: reason as never, detail }
-            : null;
-    } catch {
-        return null;
-    }
-}
 
 /** A capability with its declaration type erased — what a list can hold. */
 export interface EngineCapability {
@@ -263,6 +93,7 @@ export function isSkipSignal(thrown: unknown): thrown is SkipSignal {
 /**
  * The handle a capability is given: it refuses an undeclared resolver without
  * throwing, into `violations`; a throwing resolver source goes to `failures`.
+ * An answer is the adapter's, verified at the network edge, and trusted here.
  */
 export class EngineHandle {
     readonly explanations: StructuredExplanation[] = [];
@@ -323,12 +154,7 @@ export class EngineHandle {
             return { ok: false, reason: "unavailable", detail: "no resolver source supplied" };
         }
         try {
-            const answer: unknown = await this.source(query, input as never);
-            const read = resolverAnswer(query, answer);
-            if (read !== null) return read;
-            const detail = "the resolver source returned a malformed answer";
-            this.failures.push(`${query}: ${detail}`);
-            return { ok: false, reason: "unavailable", detail };
+            return await this.source(query, input as never);
         } catch (thrown) {
             // `unavailable`, never an empty value: a source that threw established nothing.
             const detail = thrownDetail(thrown);
@@ -356,171 +182,7 @@ export function handleFor<D extends TypedDeclaration>(
 
 // ─── The intents that come back ──────────────────────────────────────
 
-function stringList(value: unknown): readonly string[] | null {
-    if (!Array.isArray(value)) return null;
-    const copy = [...value];
-    return copy.every((entry) => typeof entry === "string") ? copy : null;
-}
-
-function desiredOf(
-    operation: IntentOperation,
-    value: unknown,
-): IntentCatalogue[IntentOperation] | null {
-    if (operation === "postManagedComment") {
-        const kind = own(value, "kind");
-        const topic = own(value, "topic");
-        const mention = own(value, "mention");
-        const body = own(value, "body");
-        if (
-            !MANAGED_COMMENT_KINDS.includes(kind as never) ||
-            (topic !== undefined && typeof topic !== "string") ||
-            (mention !== undefined && typeof mention !== "string") ||
-            typeof body !== "string"
-        ) {
-            return null;
-        }
-        return {
-            kind: kind as (typeof MANAGED_COMMENT_KINDS)[number],
-            ...(topic === undefined ? {} : { topic }),
-            ...(mention === undefined ? {} : { mention }),
-            body,
-        };
-    }
-    if (operation === "applyMappedLabel") {
-        const meaning = own(value, "meaning");
-        const cause = own(value, "cause");
-        return typeof meaning === "string" && typeof cause === "string"
-            ? { meaning: meaning as MappableMeaning, cause: cause as never }
-            : null;
-    }
-    const key =
-        operation === "assign" || operation === "unassign" || operation === "releaseAssignment"
-            ? "login"
-            : "reason";
-    const text = own(value, key);
-    return typeof text === "string" && text.length > 0 ? ({ [key]: text } as never) : null;
-}
-
-function graceOf(value: unknown): DestructiveGrace | null | undefined {
-    if (value === null || value === undefined) return null;
-    const hours = own(value, "hours");
-    const topic = own(value, "topic");
-    const warning = own(value, "warning");
-    const notice = own(value, "notice");
-    const cancelledBy = own(value, "cancelledBy");
-    const reversesWith = own(value, "reversesWith");
-    const activityAt = own(value, "activityAt");
-    const warningBody = own(warning, "body");
-    const noticeBody = own(notice, "body");
-    if (
-        typeof hours !== "number" ||
-        !Number.isFinite(hours) ||
-        (topic !== undefined && typeof topic !== "string") ||
-        typeof warningBody !== "string" ||
-        typeof noticeBody !== "string" ||
-        typeof cancelledBy !== "string" ||
-        cancelledBy.length === 0 ||
-        typeof reversesWith !== "string" ||
-        reversesWith.length === 0 ||
-        (activityAt !== null &&
-            (!(activityAt instanceof Date) || !Number.isFinite(activityAt.getTime())))
-    ) {
-        return undefined;
-    }
-    return {
-        hours,
-        ...(topic === undefined ? {} : { topic }),
-        warning: { body: warningBody },
-        notice: { body: noticeBody },
-        cancelledBy,
-        reversesWith,
-        activityAt: activityAt === null ? null : new Date(activityAt.getTime()),
-    };
-}
-
-export function readIntent(value: unknown): AnyIntent | null {
-    try {
-        const capability = own(value, "capability");
-        const repository = own(value, "repository");
-        const owner = own(repository, "owner");
-        const repo = own(repository, "repo");
-        const item = own(value, "item");
-        const kind = own(item, "kind");
-        const number = own(item, "number");
-        const operation = own(value, "operation");
-        const claims = own(value, "claims");
-        const present = stringList(own(claims, "meaningsPresent"));
-        const absent = stringList(own(claims, "meaningsAbsent"));
-        const closed = own(claims, "closed");
-        // Absent is no claim, which is what every value written before the
-        // mode was claimable carries — so an old record parses as claiming
-        // nothing rather than as malformed.
-        const mode = own(claims, "pullRequestMode");
-        const cause = own(value, "cause");
-        const causeName = own(cause, "cause");
-        const observedAt = own(cause, "observedAt");
-        const deliveryId = own(cause, "deliveryId");
-        const explanation = own(value, "explanation");
-        const explanationCapability = own(explanation, "capability");
-        const summary = own(explanation, "summary");
-        const detail = stringList(own(explanation, "detail"));
-        const idempotencyKey = own(value, "idempotencyKey");
-        if (
-            typeof capability !== "string" ||
-            typeof owner !== "string" ||
-            owner.length === 0 ||
-            typeof repo !== "string" ||
-            repo.length === 0 ||
-            (kind !== "issue" && kind !== "pullRequest") ||
-            typeof number !== "number" ||
-            !Number.isSafeInteger(number) ||
-            number < 1 ||
-            typeof operation !== "string" ||
-            !Object.hasOwn(INTENT_OPERATIONS, operation) ||
-            present === null ||
-            absent === null ||
-            !present.every((entry) => MAPPABLE_MEANINGS.includes(entry as never)) ||
-            !absent.every((entry) => MAPPABLE_MEANINGS.includes(entry as never)) ||
-            (closed !== null && typeof closed !== "boolean") ||
-            (mode !== undefined && !PULL_REQUEST_MODES.includes(mode as never)) ||
-            typeof causeName !== "string" ||
-            !(observedAt instanceof Date) ||
-            (deliveryId !== undefined && typeof deliveryId !== "string") ||
-            typeof explanationCapability !== "string" ||
-            typeof summary !== "string" ||
-            detail === null ||
-            typeof idempotencyKey !== "string"
-        ) {
-            return null;
-        }
-        const desired = desiredOf(operation as IntentOperation, own(value, "desired"));
-        const grace = graceOf(own(value, "grace"));
-        if (desired === null || grace === undefined) return null;
-        return {
-            capability,
-            repository: { owner, repo },
-            item: { kind, number },
-            operation,
-            claims: {
-                meaningsPresent: present as readonly MappableMeaning[],
-                meaningsAbsent: absent as readonly MappableMeaning[],
-                closed,
-                ...(mode === undefined ? {} : { pullRequestMode: mode as PullRequestMode }),
-            },
-            desired,
-            cause: {
-                cause: causeName,
-                observedAt: new Date(observedAt.getTime()),
-                ...(deliveryId === undefined ? {} : { deliveryId }),
-            },
-            explanation: { capability: explanationCapability, summary, detail },
-            idempotencyKey,
-            grace,
-        } as AnyIntent;
-    } catch {
-        return null;
-    }
-}
+// ─── The intents that come back ──────────────────────────────────────
 
 /**
  * Is the move this intent would make from the authoritative projected
@@ -609,7 +271,8 @@ function screenGrace(intent: AnyIntent): IntentScreen {
             reason: `"${intent.operation}" is not clock-triggered destructive, so the grace terms it carries name a warning and a notice the platform would never post (grace.md §1)`,
         };
     }
-    if (grace !== null && !(grace.hours >= MIN_GRACE_HOURS)) {
+    // A non-finite grace is not a period at all, so it is below any floor.
+    if (grace !== null && !(Number.isFinite(grace.hours) && grace.hours >= MIN_GRACE_HOURS)) {
         return {
             ok: false,
             code: "graceBelowFloor",
@@ -620,22 +283,14 @@ function screenGrace(intent: AnyIntent): IntentScreen {
 }
 
 /**
- * The per-intent screen, run on everything `evaluate` returns; it repeats at
- * runtime what the typed handle already checks when compiled.
+ * The per-intent screen, run on everything `evaluate` returns: what the compiler
+ * cannot judge — attribution, the derived key, the grace terms, the map.
  */
 export function screenIntent(
-    value: unknown,
+    intent: AnyIntent,
     declaration: TypedDeclaration,
     projection: Projection<MappableMeaning> | null,
 ): IntentScreen {
-    const intent = readIntent(value);
-    if (intent === null) {
-        return {
-            ok: false,
-            code: "malformedIntent",
-            reason: "the capability returned a malformed intent",
-        };
-    }
     if (intent.capability !== declaration.name) {
         return {
             ok: false,

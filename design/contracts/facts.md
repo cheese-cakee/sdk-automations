@@ -24,8 +24,6 @@ export interface IssueFacts {
     readonly author: string;
     /** Who caused this record, or `null` on a sweep. Never a group either. */
     readonly actor: { readonly login: string } | null;
-    /** GitHub's current discussion lock state. */
-    readonly locked: boolean;
     /** The issue transition carried by this observation, or `null` when there is none. */
     readonly arrival:
         | { readonly kind: "opened" }
@@ -38,14 +36,12 @@ export interface IssueFacts {
         | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
-    /** The open-keyed family: what this item carries, and what just arrived. */
-    readonly alerts: { readonly carried: readonly string[]; readonly arrived: readonly string[] };
-    /** The mapped skill labels currently carried by the issue. */
-    readonly skills: readonly Skill[];
+    /** GitHub's discussion lock state — a group every producer reads, seen only when declared. */
+    readonly locked: boolean | Unread;
+    /** The mapped skill tiers the issue carries — the same. */
+    readonly skills: readonly Skill[] | Unread;
     readonly assignees: readonly AssigneeClock[] | Unread;
     readonly links: { readonly openPullRequests: readonly ItemRef[] } | Unread;
-    /** `null` is a READ group whose delivery carried no command; only `Unread` means nobody looked. */
-    readonly command: { readonly command: Command; readonly by: string; readonly at: Date } | null | Unread;
 }
 
 export interface PullRequestFacts {
@@ -57,7 +53,6 @@ export interface PullRequestFacts {
     readonly author: string;
     readonly actor: { readonly login: string } | null;
     readonly position: Projection<PrMeaning>;
-    readonly alerts: { readonly carried: readonly string[]; readonly arrived: readonly string[] };
     readonly assignees: readonly AssigneeClock[] | Unread;
     readonly links: { readonly issues: readonly LinkedIssue[] } | Unread;
     readonly review: {
@@ -71,20 +66,19 @@ export interface PullRequestFacts {
 
 export type Facts = IssueFacts | PullRequestFacts;
 export const FACT_KINDS = ["issue", "pullRequest"] as const;
-export const FACT_GROUPS = ["assignees", "links", "review", "readiness", "command"] as const;
+export const FACT_GROUPS = ["locked", "skills", "assignees", "links", "review", "readiness"] as const;
 ```
 
 `AssigneeClock` and `LinkedIssue` (an item with its assignees' clocks) keep their current shapes.
 
-**These fields are never groups.** `position` is one, because every producer reads labels and state
-and the safety world is derived from it. `author` is another: an item nobody opened does not exist,
-so there is no honest `Unread` for it and a payload without one is malformed. `alerts` is the third
-— every producer reads the item's labels already, and the family is read off the same list the
-projection was. Issue `skills` are read from that same label list. `actor` is a field whose value
-may be `null`, which is NOT an `Unread`: a swept item
-was read because a clock fired, so "nobody caused this" is a fact about the record rather than a
-group somebody skipped. Issue records also always carry `locked` and `arrival`; `arrival: null`
-means the observation carried no opening or label transition.
+**Readable and visible are two questions.** Whether a producer CAN read a field is the producer's
+row; whether a capability SEES it is its declaration (D211). `locked` and `skills` are read by every
+issue producer, off the payload or the list, and are still groups: a capability that did not declare
+them has no business branching on them, and `FactsFor` types them `Unread` for it. The base a
+record always carries is what identifies the observation: `position`, because the safety world is
+derived from it; `author`, because an item nobody opened does not exist; `actor`, `null` on a sweep,
+which is a fact and not an `Unread`; and, on an issue, `arrival` — the transition this observation
+carries, `null` when it carries none, and never a group because a sweep carries none by nature.
 
 **A pull-request record carries no head sha.** Nothing above names one, and no group holds one, so
 a capability that needs the commit a pull request currently points at asks a resolver for it — the
@@ -103,13 +97,13 @@ this table is generated from it by `pnpm contracts`. One row per producer and pe
 record of; `—` is a group that kind does not carry.
 
 <!-- generated: producers -->
-| Producer | Kind | position | assignees | links | review | readiness | command |
-|---|---|---|---|---|---|---|---|
-| `issues` | `issue` | read | unread | unread | — | — | unread |
-| `issue_comment` | `issue` | read | unread | unread | — | — | read |
-| `pull_request` | `pullRequest` | read | unread | unread | unread | read | — |
-| `sweep` | `issue` | read | read | read | — | — | unread |
-| `sweep` | `pullRequest` | read | read | read | read | read | — |
+| Producer | Kind | position | locked | skills | assignees | links | review | readiness |
+|---|---|---|---|---|---|---|---|---|
+| `issues` | `issue` | read | read | read | unread | unread | — | — |
+| `issue_comment` | `issue` | read | read | read | unread | unread | — | — |
+| `pull_request` | `pullRequest` | read | — | — | unread | unread | unread | read |
+| `sweep` | `issue` | read | read | read | read | read | — | — |
+| `sweep` | `pullRequest` | read | — | — | read | read | read | read |
 <!-- /generated -->
 
 A producer marks a group unread rather than inventing a value: an empty assignee list from a

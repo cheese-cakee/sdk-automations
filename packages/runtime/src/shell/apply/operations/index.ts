@@ -14,7 +14,7 @@ import type { Call, JournaledCall, Plan } from "../../effects.js";
 import { applyMappedLabel } from "./applyMappedLabel.js";
 import { assign } from "./assign.js";
 import { closePullRequest } from "./closePullRequest.js";
-import type { Confirmation, OperationHandler, SendContext } from "./handler.js";
+import type { Confirmation, OperationHandler, OperationTraits, SendContext } from "./handler.js";
 import { lockIssue } from "./lockIssue.js";
 import { postManagedComment } from "./postManagedComment.js";
 import { releaseAssignment } from "./releaseAssignment.js";
@@ -55,6 +55,9 @@ export function operationOf(call: Call): IntentOperation {
 
     return OWNER_OF_VERB.get(call.verb)!;
 }
+
+/** What the choreography may ask of an operation without naming it. */
+export const traitsOf = (operation: IntentOperation): OperationTraits => HANDLERS[operation].traits;
 
 // ─── The row ─────────────────────────────────────────────────────────
 

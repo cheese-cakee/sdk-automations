@@ -2,7 +2,7 @@
  * `design/guides/capability-kits.md` §3 holds the constructor table the
  * settings vocabulary generates.
  *
- * The table was a hand copy of fifteen constructors, and a constructor whose
+ * The table was a hand copy of the constructors, and a constructor whose
  * reader changed what an absent key means left the guide saying the old thing
  * — the drift `catalogue-drift.test.ts` exists for, one layer down. Two of the
  * three columns are now derived, and the third is a reviewed sentence in
@@ -31,19 +31,18 @@ describe("capability-kits.md holds the constructor table the vocabulary generate
     });
 
     /**
-     * The table's rows are FORMS, not constructors: three of the fifteen
-     * answer differently depending on what they were given, and a row
-     * averaging them would be true of neither. So the row count is the check
-     * that no form was lost, and the fifteen kinds are the check that no
-     * constructor was.
+     * The table's rows are FORMS, not constructors: two of the six answer
+     * differently depending on what they were given, and a row averaging them
+     * would be true of neither. So the row count is the check that no form was
+     * lost, and the six kinds are the check that no constructor was.
      */
     it("shows every constructor, at least one row each", () => {
         const [constructors] = renderConstructorTable();
         const rows = [...(constructors?.markdown ?? "").matchAll(/^\| `([a-zA-Z]+)\(/gm)].map(
             (m) => m[1]!,
         );
-        expect(new Set(rows).size).toBe(15);
-        expect(rows.length).toBeGreaterThan(15);
+        expect(new Set(rows).size).toBe(6);
+        expect(rows.length).toBeGreaterThan(6);
     });
 
     it("proves the check can fail", () => {

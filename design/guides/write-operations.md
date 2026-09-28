@@ -1,8 +1,9 @@
-# Write operations — three same-named files
+# Write operations — two modules and a row
 
-> **The contract a write operation is built to (D133).** A write operation is one module per layer —
-> core, shell, adapter — registered in a mapped-type registry per layer, so that forgetting a layer
-> fails to compile in that layer. This page is the three module contracts, the absolute
+> **The contract a write operation is built to (D133, D210).** A write operation is a core module and
+> a shell handler, each registered in a mapped-type registry, plus one row in the adapter's request
+> table and one shape in the client's endpoint table — so forgetting any of the four fails to compile
+> where it is missing. This page is the two module contracts, the two tables, the absolute
 > payload-compatibility rule, and the five write rules `decide()` cannot judge.
 
 ## 1. The recipe
@@ -12,12 +13,12 @@ Adding a write operation touches exactly this, and nothing else:
 | Layer | Adds | The compiler catches |
 |---|---|---|
 | core | `core/src/intents/operations/<op>` — the platform's facts and the change wording — plus one key in `IntentCatalogue` | a key with no module, at the core registry |
-| shell | `runtime/src/shell/apply/operations/<op>` — plan · serialize · parse · send · confirm — plus its call type in the `Call` union | a key with no handler, at the shell registry; a call the union does not hold, at `plan` |
-| adapter | `runtime/src/adapter/writes/operations/<op>` — the verb builders — plus any endpoint it reaches in the client's confirmed table | a key with no transport, at the adapter registry |
+| shell | `runtime/src/shell/apply/operations/<op>` — traits · plan · serialize · parse · send · confirm — plus its call type in the `Call` union | a key with no handler, at the shell registry; a call the union does not hold, at `plan` |
+| adapter | one verb on `WriteVerbs` (`core/src/seams.ts`) and its row in `runtime/src/adapter/writes/requests.ts`; one shape in `runtime/src/adapter/client/endpoints.ts` | a verb with no row, at the request table; a shape whose grant or body disagrees with the row, at `permission.test.ts` |
 
-Each registry is typed `{ readonly [K in IntentOperation]: <Contract><K> }` and is the only place
-the operations are listed. A module never imports its same-named sibling in another package; the
-three same names are a convention for the file finder, not a dependency (the cruiser's layer rules
+Both registries are typed `{ readonly [K in IntentOperation]: <Contract><K> }` and are the only
+places the operations are listed. A module never imports its same-named sibling in another package;
+the same names are a convention for the file finder, not a dependency (the cruiser's layer rules
 hold unchanged). Layer boundaries are untouched: core decides, the shell orchestrates, the adapter
 talks to GitHub.
 
@@ -72,9 +73,18 @@ the pattern `invoke.ts` established for erased capability types.
 speak in operations; a handler owns every call verb its operation sends.
 
 ```ts
+export interface OperationTraits {
+    /** A landed call of this operation is the warning a graced act promised (grace.md §3). */
+    readonly recordsWarning: boolean;
+    /** The fresh gate reads the pull request's activity before a graced act of this operation. */
+    readonly activityRead: boolean;
+}
+
 export interface OperationHandler<K extends IntentOperation> {
     /** The call verbs this operation's rows carry — `operationOf` is derived from these. */
     readonly verbs: readonly Call["verb"][];
+    /** What the choreography asks of the operation through `traitsOf`, never by naming it (D210). */
+    readonly traits: OperationTraits;
     /** The calls one approved effect takes, in send order, or the reason it takes none. */
     plan(effect: Effect & { intent: Intent<K> }, config: RepositoryConfig): Plan;
     /** The row fields after the head — `verb` first, then the call's own, in row order. */
@@ -92,6 +102,7 @@ export interface SendContext {
     readonly item: ItemRef;
     readonly writer: WriteVerbs;
     readonly reader: ReadBack;
+    readonly allowance: Allowance | undefined;
     /** Is a comment the one THIS CALL would be? Authorship and marker, both required (D125). */
     isMine(body: string): (comment: CommentFact) => boolean;
 }
@@ -112,57 +123,38 @@ handler may ADD a verb, and may never rename a verb, rename or reorder a field, 
 `parse` refuses. The proof is the per-verb pins of the literal payload strings in
 `packages/runtime/test/shell/effects.test.ts`, which are unchanged.
 
-## 4. Adapter — `writes/operations/<op>`
+## 4. Adapter — the request table and the shapes
 
-**The transport contract.** Keyed by the same operation names, which the adapter already imports
-from core.
+**The request table** (`writes/requests.ts`). One row per verb of `WriteVerbs`, typed
+`{ readonly [V in keyof WriteVerbs]: (repository, ...own) => BuiltWrite }`, so a verb added to the
+seam with no row fails to compile there. A row builds the `GitHubWriteRequest` and says what its 404
+means (`NotFoundMeaning`, the one thing only this layer knows). `writeVerbsOf` composes the whole
+surface from the table with one cast: each verb's own arguments precede its allowance, so the
+builder's arity splits them. The send-and-classify mechanism stays one function in `writes.ts`.
 
-```ts
-/** What a builder may use: the repository, and the one shared send-and-classify mechanism. */
-export interface VerbContext {
-    readonly repository: RepositoryRef;
-    apply(request: GitHubWriteRequest, notFound: NotFoundMeaning): Promise<WriteResult>;
-}
+**The shapes** (`client/endpoints.ts`). One `EndpointShape` per confirmed endpoint: method and path
+tail, the grant it needs, whether it carries a `body`, the `lane` it sends on, and the keys its
+landing stales (D176). The admission gate matches a built URL against the shapes in one walk and
+reads the body rule off the match; the client reads the lane. The matcher and the builder stay two
+spellings in two files — the D129 rule that a gate must not trust the builder's string is kept —
+and `permission.test.ts` holds them to each other: every row is admitted as the shape of its own
+name, carries a body exactly where the shape says, and the shape's grant is the operation's
+permission (D62).
 
-export interface OperationTransport {
-    /** The verbs this operation contributes — none at all is a legal, refusing transport. */
-    verbs(context: VerbContext): Partial<WriteVerbs>;
-}
-```
+The vocabulary the rows return in — `WriteResult` and `WriteVerbs`, with the read-back's
+`ReadBack`, `ReadBackOutcome`, `Presence`, `CommentFact` and `ItemFacts` — lives in
+`packages/core/src/seams.ts`; the shell and the adapter name one definition. `assign` and `unassign`
+have no verb and no shape: the shell refuses them at `send`, and the real ones land as a verb, a
+row and a shape, not as new files.
 
-A transport declares verbs only; the endpoints they may reach are the client's table.
-`WriteEndpoint`, `EndpointShape` and `writeEndpointOf` sit in
-`packages/runtime/src/adapter/client/endpoints.ts`, one shape per confirmed endpoint with the grant
-it needs and the keys its landing stales (D176). The admission gate keeps its origin pin, its
-GraphQL gate, its body rule and the grant precheck, and matches a built URL against those shapes in
-one walk, which keeps the preamble every shape shares — no query or fragment,
-`repos/{owner}/{repo}/issues`, encoded names — in one place and hands each shape only its method and
-the path's tail. The send-and-classify mechanism stays one function in the writes file and reaches
-the builders as `apply`. The vocabulary the builders return in — `WriteResult` and `WriteVerbs`,
-with the read-back's `ReadBack`, `ReadBackOutcome`, `Presence`, `CommentFact` and `ItemFacts` —
-lives in `packages/core/src/seams.ts`, and the allowance view both layers read in
-`packages/core/src/github/allowance.ts`; the shell and the adapter name one definition, so a new
-verb is one line in one place. `NotFoundMeaning` stays in the transport file, which is the only
-layer that knows what a 404 means. `createWriteVerbs` composes the verbs the transports
-contribute, and the `WriteVerbs` interface
-stays the closed surface the shell sees. The matcher and the builder stay two spellings in two
-files: the D129 rule that a gate must not trust the builder's string is kept. `unassign` is a
-transport with no verbs today, which is exactly why the shell refuses it at send; the real unassign
-lands as a verb in that module and a shape in the client's table, not as a new file. `assign`,
-`lockIssue` and `unlockIssue` were added in that shape and no other: each is three files per §1, its
-`send` refuses naming the endpoint the matrix has no row for, and its `confirm` answers `"unknown"`
-because nothing reads an assignee list or a lock state either.
-
-The read-back stays whole in R2: two resources do not earn a split (D89), and the third — an
-assignee read — arrives with the real unassign and is the trigger to move each operation's reader
-beside its transport.
+The read-back stays whole: its split per operation is pending (§6).
 
 ## 5. What the compiler proves, per layer
 
 The proof each layer's registry owes: add a scratch key to `IntentCatalogue` and confirm that the
 core registry fails to compile; add a scratch shell handler without a registry line and confirm the
-shell registry fails; add a scratch transport the same way for the adapter. Each error must land on
-the registry object, not on a downstream use. Then delete the scratch.
+shell registry fails; add a scratch verb to `WriteVerbs` and confirm the request table fails. Each
+error must land on the registry object, not on a downstream use. Then delete the scratch.
 
 ## 6. Declined, with triggers
 
@@ -171,7 +163,10 @@ the registry object, not on a downstream use. Then delete the scratch.
 - **Deriving `Call` and `WriteEndpoint` from the registries** rather than writing the unions:
   declined — the union line is one edit per operation and reads as the closed vocabulary it is;
   derivation trades that for a type-level puzzle. Reopen if the unions pass a dozen members.
-- **Splitting the read-back per operation**: deferred to the real unassign (§4).
+- **One transport file per operation** (D136): reversed by D210 — a transport was twenty lines
+  building one URL, and the shape table already listed the endpoint; the row is the spelling now.
+- **Splitting the read-back per operation**: deferred to the real unassign; its trigger, an assignee
+  read, has fired and the split is pending.
 - **Storing the operation in the `sent` fact**: declined — the operation follows from the fact's
   `verb` through the handler's `verbs`, and a stored copy could disagree with it.
 

@@ -4,7 +4,7 @@
  * from. Every constructor but `spec` takes an optional `doc` for `describe()`.
  */
 
-import type { Command, MappableMeaning, OpenMappingFamily, Skill } from "../config/index.js";
+import type { MappableMeaning } from "../config/index.js";
 import { MIN_GRACE_HOURS } from "../safety/index.js";
 import {
     describeSpec,
@@ -90,7 +90,7 @@ function strangers(
         }));
 }
 
-// ─── The fifteen constructors ────────────────────────────────────────
+// ─── The six constructors ────────────────────────────────────────────
 
 /** The spec, pinned. Identity at runtime; the point is the `const` parameter. */
 export function spec<const S extends Spec>(fields: S): S {
@@ -245,27 +245,6 @@ export function duration(options: DurationOptions & { readonly doc?: string } = 
     };
 }
 
-/** A whole number, zero or more. */
-export function count(options: { readonly default: number; readonly doc?: string }): Field<number> {
-    return {
-        describe: () => ({
-            kind: "count",
-            doc: options.doc ?? null,
-            absent: "default",
-            default: options.default,
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: options.default };
-            const value = scope.raw[key];
-            if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-                return problem(path, "must be a whole number, zero or more");
-            }
-            return { ok: true, value };
-        },
-    };
-}
-
 /** A string, for guide links and references. Never parsed, never followed. */
 export function text(options: { readonly optional: false; readonly doc?: string }): Field<string>;
 export function text(options: {
@@ -304,13 +283,12 @@ export function text(options: {
  * is a problem rather than a silent miss.
  */
 function mappedList<T extends string>(
-    kind: "meanings" | "commands" | "skills",
     family: keyof SettingsView["mapped"],
     nouns: { readonly one: string; readonly many: string },
     doc: string | undefined,
 ): Field<readonly T[]> {
     return {
-        describe: () => ({ kind, doc: doc ?? null, absent: "empty" }),
+        describe: () => ({ kind: "meanings", doc: doc ?? null, absent: "empty" }),
         read(key, scope) {
             const path = dot(scope.path, key);
             if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: [] };
@@ -344,66 +322,7 @@ export function meanings(
         readonly doc?: string;
     } = {},
 ): Field<readonly MappableMeaning[]> {
-    return mappedList("meanings", "labels", { one: "a meaning", many: "meanings" }, options.doc);
-}
-
-/** A list of mapped commands — the words a capability answers to. */
-export function commands(options: { readonly doc?: string } = {}): Field<readonly Command[]> {
-    return mappedList("commands", "commands", { one: "a command", many: "commands" }, options.doc);
-}
-
-/** A list of mapped skill tiers, in the repository's own order of listing. */
-export function skills(options: { readonly doc?: string } = {}): Field<readonly Skill[]> {
-    return mappedList(
-        "skills",
-        "skills",
-        { one: "a skill tier", many: "skill tiers" },
-        options.doc,
-    );
-}
-
-/** A principal the document declares, by NAME; a name it never declared is a problem. */
-export function principal(options: {
-    readonly optional: false;
-    readonly doc?: string;
-}): Field<string>;
-export function principal(options: {
-    readonly optional: true;
-    readonly doc?: string;
-}): Field<string | null>;
-export function principal(options: {
-    readonly optional: boolean;
-    readonly doc?: string;
-}): Field<string | null>;
-export function principal(options: {
-    readonly optional: boolean;
-    readonly doc?: string;
-}): Field<string | null> {
-    return {
-        describe: () => ({
-            kind: "principal",
-            doc: options.doc ?? null,
-            absent: options.optional ? "null" : "problem",
-            optional: options.optional,
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            if (!Object.hasOwn(scope.raw, key)) {
-                return options.optional
-                    ? { ok: true, value: null }
-                    : problem(path, "must name a principal");
-            }
-            const value = scope.raw[key];
-            if (typeof value !== "string") return problem(path, "must name a principal");
-            if (!scope.view.principals.includes(value)) {
-                return problem(
-                    path,
-                    `${JSON.stringify(value)} is not a principal this repository declares`,
-                );
-            }
-            return { ok: true, value };
-        },
-    };
+    return mappedList("labels", { one: "a meaning", many: "meanings" }, options.doc);
 }
 
 /**
@@ -431,60 +350,6 @@ export function section<const F extends Spec>(
             const read = readScope(fields, inner(stated, path, fields, scope));
             if (unknown.length === 0) return read;
             return { ok: false, problems: [...unknown, ...(read.ok ? [] : read.problems)] };
-        },
-    };
-}
-
-/** What a `sections` mapping takes beyond its fields. */
-export interface SectionsOptions {
-    readonly doc?: string;
-    /** The open-keyed mapping family every key must name; absent leaves keys free-form. */
-    readonly keys?: OpenMappingFamily;
-}
-
-/**
- * A mapping of same-shaped sections, keyed by names that are the repository's
- * own — `subscriptions`, `pillars`. Entries keep the file's own key order.
- */
-export function sections<const F extends Spec>(
-    fields: F,
-    options: SectionsOptions = {},
-): Field<Readonly<Record<string, SettingsOf<F>>>> {
-    const entry = section(fields);
-    return {
-        describe: () => ({
-            kind: "sections",
-            doc: options.doc ?? null,
-            absent: "empty",
-            ...(options.keys === undefined ? {} : { keys: options.keys }),
-            fields: describeSpec(fields),
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: {} };
-            const raw = scope.raw[key];
-            if (!isRecord(raw)) return problem(path, "must be a mapping");
-
-            const family = options.keys;
-            const problems: SettingsProblem[] = [];
-            const read: [string, SettingsOf<F>][] = [];
-            const level = inner(raw, path, {}, scope);
-            for (const name of Object.keys(raw)) {
-                if (family !== undefined && !scope.view.mapped[family].includes(name)) {
-                    problems.push({
-                        code: "settingInvalid",
-                        path: dot(path, name),
-                        message: `${JSON.stringify(name)} is not an alert this repository has mapped`,
-                    });
-                    continue;
-                }
-                const one = entry.read(name, level);
-                if (one.ok) read.push([name, one.value]);
-                else problems.push(...one.problems);
-            }
-            return problems.length > 0
-                ? { ok: false, problems }
-                : { ok: true, value: Object.fromEntries(read) };
         },
     };
 }
@@ -524,136 +389,6 @@ export function block<const F extends Spec>(
             }
             if (!read.ok) return read;
             return { ok: true, value: { enabled: true, ...read.value } };
-        },
-    };
-}
-
-/**
- * A mapping of same-shaped enabled-blocks, keyed by names that are the
- * repository's own — `roles`. Each entry reads exactly as `block` does.
- */
-export function blocks<const F extends Spec>(
-    fields: F,
-    options: { readonly doc?: string } = {},
-): Field<Readonly<Record<string, BlockOf<F>>>> {
-    const entry = block(fields);
-    return {
-        describe: () => ({
-            kind: "blocks",
-            doc: options.doc ?? null,
-            absent: "empty",
-            fields: describeSpec(fields),
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: {} };
-            const raw = scope.raw[key];
-            if (!isRecord(raw)) return problem(path, "must be a mapping");
-
-            const problems: SettingsProblem[] = [];
-            const read: [string, BlockOf<F>][] = [];
-            const level = inner(raw, path, {}, scope);
-            for (const name of Object.keys(raw)) {
-                const one = entry.read(name, level);
-                if (one.ok) read.push([name, one.value]);
-                else problems.push(...one.problems);
-            }
-            return problems.length > 0
-                ? { ok: false, problems }
-                : { ok: true, value: Object.fromEntries(read) };
-        },
-    };
-}
-
-/**
- * A group of OPTIONAL members drawn from a CLOSED vocabulary — `pillars`. A
- * member the file did not state reads `null` rather than at its defaults.
- */
-export function closed<const F extends Spec>(
-    fields: F,
-    options: { readonly doc?: string } = {},
-): Field<{ readonly [K in keyof F]: (F[K] extends Field<infer T> ? T : never) | null }> {
-    type Members = { readonly [K in keyof F]: (F[K] extends Field<infer T> ? T : never) | null };
-    return {
-        describe: () => ({
-            kind: "closed",
-            doc: options.doc ?? null,
-            absent: "null",
-            fields: describeSpec(fields),
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            const stated = Object.hasOwn(scope.raw, key) ? scope.raw[key] : {};
-            if (!isRecord(stated)) return problem(path, "must be a mapping");
-
-            const problems: SettingsProblem[] = [...strangers(stated, Object.keys(fields), path)];
-            const level = inner(stated, path, fields, scope);
-            const read: [string, unknown][] = [];
-            for (const [name, field] of Object.entries(fields)) {
-                if (!Object.hasOwn(stated, name)) {
-                    read.push([name, null]);
-                    continue;
-                }
-                const one = field.read(name, level);
-                if (one.ok) read.push([name, one.value]);
-                else problems.push(...one.problems);
-            }
-            return problems.length > 0
-                ? { ok: false, problems }
-                : { ok: true, value: Object.fromEntries(read) as Members };
-        },
-    };
-}
-
-/**
- * A list of free text — `uncounted: [review substance, triage judgement]`. The
- * entries are DISPLAY TEXT: shape is checked and nothing else.
- */
-export function texts(options: { readonly doc?: string } = {}): Field<readonly string[]> {
-    return {
-        describe: () => ({ kind: "texts", doc: options.doc ?? null, absent: "empty" }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: [] };
-            const value = scope.raw[key];
-            if (!Array.isArray(value)) return problem(path, "must be a list of text");
-            const problems: SettingsProblem[] = [];
-            const listed: string[] = [];
-            for (const [index, entry] of value.entries()) {
-                if (typeof entry === "string") listed.push(entry);
-                else {
-                    problems.push({
-                        code: "settingInvalid",
-                        path: `${path}.${String(index)}`,
-                        message: "must be text",
-                    });
-                }
-            }
-            return problems.length > 0 ? { ok: false, problems } : { ok: true, value: listed };
-        },
-    };
-}
-
-/** A closed choice — `noticeOn: latestActivity | trackingIssue`. */
-export function oneOf<const V extends readonly string[]>(
-    values: V,
-    options: { readonly doc?: string } = {},
-): Field<V[number]> {
-    return {
-        describe: () => ({
-            kind: "oneOf",
-            doc: options.doc ?? null,
-            absent: "problem",
-            values,
-        }),
-        read(key, scope) {
-            const path = dot(scope.path, key);
-            const listed = `must be one of ${values.join(", ")}`;
-            if (!Object.hasOwn(scope.raw, key)) return problem(path, listed);
-            const value = scope.raw[key];
-            const chosen = values.find((allowed) => allowed === value);
-            if (chosen === undefined) return problem(path, listed);
-            return { ok: true, value: chosen };
         },
     };
 }

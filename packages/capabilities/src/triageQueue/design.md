@@ -93,9 +93,8 @@ moves the issue: when the flip to `ready` is built it reads "every row done" off
 The App never sets a skill label, so it never creates one (D202 covers only labels it sets); the
 repository creates the tiers it maps.
 
-Known limit: two label events on one issue inside the same second share an occasion, so the second
-rewrite is refused as a repeat and the checklist shows the first event's state until the next label
-moves. What identifies an occasion is the platform's question, not this capability's.
+Two label events on one issue inside one second once shared an occasion, so the second rewrite was
+refused as a repeat; #193 keyed event effects by delivery id and closed that.
 
 `lockUntilTriaged` needs no release list: the workflow map has one edge out of `awaitingTriage`,
 and it goes to `ready`, so the arrival of that meaning is what completes triage. The label that
@@ -170,7 +169,7 @@ flowchart LR
 | Declaration | Value |
 |---|---|
 | `triggers` | `issues` |
-| `facts` / `needs` | `issue`, no group read |
+| `facts` / `needs` | `issue`, needing `locked` and `skills` — both on the payload |
 | `resolvers` | `isAutomationActor` — asked about the author on `opened` and on a checklist label, about the sender on `ready` |
 | `intents` | `applyMappedLabel` · `postManagedComment` · `lockIssue` · `unlockIssue` |
 | `requiredMappings` | `labels: awaitingTriage` |
@@ -182,7 +181,7 @@ flowchart LR
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
 | 3a | the checklist in the welcome, rewritten as labels move; `requirements.skill` | shipped — unit-verified only; a live run of a label move is pending |
-| 3b | the flip: `ready` on the map's own edge when every row is done, then the unlock and a word on what completed; more rows — type, area — each a flag and a row; `blocked` and needs-more-information outcomes | a `types` mapping family · a `needsInfo` meaning · the unlock exempted from the blocked pause, a safety-rule change with its own row · the occasion identity for same-second label events |
+| 3b | the flip: `ready` on the map's own edge when every row is done, then the unlock and a word on what completed; more rows — type, area — each a flag and a row; `blocked` and needs-more-information outcomes | a `types` mapping family · a `needsInfo` meaning · the unlock exempted from the blocked pause, a safety-rule change with its own row |
 | 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
 ## Verified by

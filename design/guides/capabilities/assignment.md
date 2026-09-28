@@ -1,6 +1,6 @@
 # assignment — let a contributor claim work, and release it again
 
-Not built: phases 1, 2, 3, 4.
+Not built: phases 1, 2, 3, 4. `principal` left the settings toolkit unused; this design brings it back.
 
 ## What the output looks like
 

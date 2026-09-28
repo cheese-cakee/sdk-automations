@@ -7,7 +7,6 @@
  */
 
 import {
-    alertsOfLabels,
     labelKey,
     meaningsOfLabels,
     skillsOfLabels,
@@ -87,13 +86,14 @@ export const CONFIRMED_SWEEP_READS: readonly SweepRead[] = [
  * Keyed by `FactGroup`, so a group added to core is a missing property here first.
  */
 export const GROUP_READS: { readonly [G in FactGroup]: readonly SweepRead[] } = {
+    // Both ride on the open-items list: no read of their own.
+    locked: [],
+    skills: [],
     assignees: ["assignedAt", "lastWorkingAt"],
     links: ["linkedIssuesBatch", "linkedIssues", "assignedAt", "lastWorkingAt"],
     review: ["changesRequested", "reapableSince", "lastCommitAt"],
     /** A WEBHOOK can read `draft` and cannot read the other three (`design/contracts/facts.md` §2). */
     readiness: ["draft"],
-    /** The sweep makes no comment record; its `PRODUCERS` row, not this table, stops the group. */
-    command: [],
 };
 
 function isConfirmed(read: SweepRead): boolean {
@@ -702,13 +702,6 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
 
     const meanings = (listed: OpenItem) => meaningsOfLabels(config, listed.labels);
 
-    // Nothing ARRIVES on a sweep: the empty list is the fact, not a gap in the read.
-
-    const alerts = (listed: OpenItem) => ({
-        carried: alertsOfLabels(config, listed.labels),
-        arrived: [],
-    });
-
     /**
      * Whether either kind wants links at all; the batch is not sent when neither does.
      * An issue's `links` are the inverse of a pull request's, so one need is enough.
@@ -758,7 +751,6 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         trigger: { kind: "sweep" } as const,
         author: listed.author,
         actor: null,
-        alerts: alerts(listed),
     });
 
     /** The `links` group as the record holds it, from the batch the driver read. */
@@ -798,9 +790,6 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
                     links === UNREAD || !needed("issue", "links")
                         ? UNREAD
                         : { openPullRequests: links },
-                // The sweep makes no comment record, so its row leaves this group unread.
-
-                command: UNREAD,
             };
         },
 

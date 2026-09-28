@@ -58,14 +58,12 @@ export const issuesNormalizer = {
                               }
                             : null,
                 skills: facts.skills,
-                alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),
                     meanings: facts.meanings,
                 }),
                 assignees: UNREAD,
                 links: UNREAD,
-                command: UNREAD,
             } satisfies ProducedFacts<"issues", "issue">,
         };
     },

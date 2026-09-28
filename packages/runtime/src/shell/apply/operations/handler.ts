@@ -77,9 +77,18 @@ export function planWithNotice(effect: Effect, act: Call): Plan {
     };
 }
 
+/** What the choreography around a handler must know about its operation, declared rather than hard-coded (D210). */
+export interface OperationTraits {
+    /** A landed call of this operation is the warning a graced act promised (grace.md §3). */
+    readonly recordsWarning: boolean;
+    /** The fresh gate reads the pull request's activity before a graced act of this operation. */
+    readonly activityRead: boolean;
+}
+
 export interface OperationHandler<K extends IntentOperation> {
     /** The call verbs this operation's rows carry — `operationOf` is derived from these. */
     readonly verbs: readonly Call["verb"][];
+    readonly traits: OperationTraits;
     /** The calls one approved effect takes, in send order, or the reason it takes none. */
     plan(effect: Effect & { intent: Intent<K> }, config: RepositoryConfig): Plan;
     /** The row fields after the head — `verb` first, then the call's own, in row order. */

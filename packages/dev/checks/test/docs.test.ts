@@ -18,8 +18,6 @@ import {
     duration,
     flag,
     MAPPABLE_MEANINGS,
-    oneOf,
-    principal,
     REPOSITORY_MODES,
     spec,
     text,
@@ -348,7 +346,6 @@ describe("docs/capabilities.md", () => {
             spec({
                 announce: flag({ default: false, doc: "Say so in a comment" }),
                 guide: text({ optional: true, doc: "A page explaining how to link an issue" }),
-                owner: principal({ optional: true, doc: "Pinged when a check fails" }),
             }),
         );
 
@@ -356,7 +353,6 @@ describe("docs/capabilities.md", () => {
             "enabled: true",
             "announce: false # default — Say so in a comment",
             '# guide: "…" — optional; A page explaining how to link an issue',
-            '# owner: "…" — optional; Pinged when a check fails',
             "```",
         ]);
         expect(bareKeys(rendered)).toEqual([]);
@@ -367,28 +363,21 @@ describe("docs/capabilities.md", () => {
      * offered commented out — leaving it out is already a rejected file — so it
      * is shown as a line with a placeholder naming what it takes. A maintainer
      * who copies the placeholder unchanged is refused at that key's own path,
-     * which is where they can act on it; a closed choice names its first value
-     * instead, and copying that writes a legal file.
+     * which is where they can act on it.
      */
     it("writes a key the file must state with a placeholder naming what it takes", () => {
         const rendered = settingsTree(
             "throwaway",
             spec({
                 remindAfter: duration({ doc: "How long the wait may run" }),
-                notify: principal({ optional: false, doc: "Addressed when the clock runs out" }),
                 guide: text({ optional: false, doc: "The page the notice points at" }),
-                noticeOn: oneOf(["latestActivity", "trackingIssue"] as const, {
-                    doc: "Where the notice is posted",
-                }),
             }),
         );
 
         expect(rendered.split("\n").slice(3)).toEqual([
             "enabled: true",
             "remindAfter: <duration> # required — How long the wait may run",
-            "notify: <principal> # required — Addressed when the clock runs out",
             "guide: <text> # required — The page the notice points at",
-            'noticeOn: "latestActivity" # required, one of latestActivity | trackingIssue — Where the notice is posted',
             "```",
         ]);
         expect(bareKeys(rendered)).toEqual([]);

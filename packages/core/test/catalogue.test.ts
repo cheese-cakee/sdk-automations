@@ -33,10 +33,8 @@ const issue: IssueFacts = {
     arrival: null,
     skills: [],
     position: POSITION,
-    alerts: { carried: [], arrived: [] },
     assignees: [],
     links: UNREAD,
-    command: UNREAD,
 };
 const pullRequest: PullRequestFacts = {
     kind: "pullRequest",
@@ -47,7 +45,6 @@ const pullRequest: PullRequestFacts = {
     author: "opener",
     actor: null,
     position: POSITION,
-    alerts: { carried: [], arrived: [] },
     assignees: UNREAD,
     links: { issues: [] },
     review: UNREAD,
@@ -57,9 +54,10 @@ const pullRequest: PullRequestFacts = {
 describe("which kind carries which group", () => {
     it("each kind carries its own groups and no other kind's", () => {
         expect(FACT_GROUPS.filter((group) => carriesFactGroup("issue", group))).toEqual([
+            "locked",
+            "skills",
             "assignees",
             "links",
-            "command",
         ]);
         expect(FACT_GROUPS.filter((group) => carriesFactGroup("pullRequest", group))).toEqual([
             "assignees",
@@ -74,20 +72,22 @@ describe("whether a producer left a group unread", () => {
     it("reads each group of an issue record", () => {
         expect(FACT_GROUPS.map((group) => factGroupUnread(issue, group))).toEqual([
             false,
-            true,
             false,
             false,
             true,
+            false,
+            false,
         ]);
     });
 
     it("reads each group of a pull-request record", () => {
         expect(FACT_GROUPS.map((group) => factGroupUnread(pullRequest, group))).toEqual([
+            false,
+            false,
             true,
             false,
             true,
             true,
-            false,
         ]);
     });
 

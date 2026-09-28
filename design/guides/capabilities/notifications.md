@@ -1,6 +1,6 @@
 # notifications — ping the right people when a configured label arrives
 
-Not built: phase 2.
+Not built: phase 2. `sections` left the settings toolkit unused; this design brings it back.
 
 ## What the output looks like
 
@@ -74,7 +74,7 @@ flowchart LR
 
 | Phase | Ships | Needs first |
 |---|---|---|
-| 1 | label-arrival pings | nothing — the open-keyed `alerts` family ships (`config/schema.ts`, `OPEN_MAPPING_FAMILIES`), and both fact kinds carry `alerts` as a plain always-read field, projected through `mappings.alerts` |
+| 1 | label-arrival pings | the `alerts` fact group, as a declared need: it left the catalogue with nothing reading it. The open-keyed `alerts` family stays (`config/schema.ts`, `OPEN_MAPPING_FAMILIES`) |
 | 2 | field-value alerts — the native `Priority` form | issue-field values on the observations · the App experiment: do field edits deliver a webhook, and on which event? · a matrix row for the field read |
 
 Not planned: direct Discord/Slack sends — the GitHub↔Slack/Discord integrations forward the

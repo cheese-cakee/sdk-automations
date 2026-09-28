@@ -1,5 +1,5 @@
 /**
- * The issue-comment family: what a `/assign` in a comment becomes.
+ * The issue-comment family: what a comment delivery becomes.
  *
  * PROVENANCE, stated because this file cannot make the claim its siblings do.
  * `issues.test.ts` and `pull-request.test.ts` run on real captured deliveries,
@@ -64,53 +64,15 @@ const factsOf = (payload: unknown, cfg: RepositoryConfig = config) => {
 };
 
 describe("what an issue comment becomes", () => {
-    it("a created comment carrying the mapped word: the command, its author, its instant", () => {
+    it("a created comment produces an ordinary issue record, no group read", () => {
         const facts = factsOf(delivery("/assign"));
 
-        expect(facts.command).toEqual({
-            command: "assign",
-            by: "alice",
-            at: new Date(AT),
-        });
         expect(facts.trigger).toEqual({
             kind: "event",
             event: "issue_comment",
         });
-        // The command is the ONE group this producer reads.
         expect(facts.assignees).toBe(UNREAD);
         expect(facts.links).toBe(UNREAD);
-    });
-
-    it("the capability sees the meaning, never the repository's spelling", () => {
-        const taken = configWith({ commands: { assign: "/take" } });
-
-        expect(factsOf(delivery("/take"), taken).command).toMatchObject({ command: "assign" });
-        // And the platform's own name is not a command unless mapped to one.
-        expect(factsOf(delivery("/assign"), taken).command).toBeNull();
-    });
-
-    it("an ordinary comment: read, and carrying no command", () => {
-        expect(factsOf(delivery("thanks, I'll take a look this week")).command).toBeNull();
-    });
-
-    it("an edited comment is never executed", () => {
-        expect(factsOf(delivery("/assign", { action: "edited" })).command).toBeNull();
-        expect(factsOf(delivery("/assign", { action: "deleted" })).command).toBeNull();
-    });
-
-    it("a command must begin a line: quoting one does not execute it", () => {
-        expect(factsOf(delivery("> /assign\n\nI think you meant to type that")).command).toBeNull();
-        expect(factsOf(delivery("you could try /assign here")).command).toBeNull();
-        expect(factsOf(delivery("hello\n  /assign  \nthanks")).command).toMatchObject({
-            command: "assign",
-        });
-    });
-
-    it("case and trailing words do not defeat the word", () => {
-        expect(factsOf(delivery("/UNASSIGN @bob")).command).toMatchObject({
-            command: "unassign",
-            by: "alice",
-        });
     });
 
     it("a comment on a pull request is consumed and unreadable, not ignored", () => {
@@ -143,14 +105,9 @@ describe("what an issue comment becomes", () => {
         }
     });
 
-    it("a command on a closed issue is still read: the projection says it is closed", () => {
+    it("a comment on a closed issue is still read: the projection says it is closed", () => {
         const facts = factsOf(delivery("/assign", { closed: true }));
 
-        expect(facts.command).toMatchObject({ command: "assign" });
         expect(facts.position).toMatchObject({ state: { closedBy: "closedByHuman" } });
-    });
-
-    it("a repository that mapped no command word has no commands at all", () => {
-        expect(factsOf(delivery("/assign"), configWith({})).command).toBeNull();
     });
 });

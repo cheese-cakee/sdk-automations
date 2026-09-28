@@ -18,7 +18,7 @@
  * `TOP_LEVEL_KEYS` and `MAPPING_SECTION_KEYS` decide what the document admits,
  * and `describeSpec` decides what each capability's `settings` block admits.
  * The map from a field's kind to a subschema is exhaustive over
- * `FieldDescription["kind"]`, so a sixteenth constructor fails to compile here
+ * `FieldDescription["kind"]`, so a seventh constructor fails to compile here
  * until an editor knows what to do with it.
  */
 
@@ -139,14 +139,7 @@ function blockSchema(fields: Described): Subschema {
     };
 }
 
-/**
- * The shape one kind of field takes, with no sentence and no default on it yet.
- *
- * A `principal` gets no `enum`: its legal values are this document's own
- * `principals` keys, which a schema cannot enumerate, so the sentence below
- * says where to look instead — the one place a kind's rule is told rather than
- * checked.
- */
+/** The shape one kind of field takes, with no sentence and no default on it yet. */
 function shapeOf(field: FieldDescription): Subschema {
     switch (field.kind) {
         case "flag":
@@ -157,31 +150,14 @@ function shapeOf(field: FieldDescription): Subschema {
             // ceiling is a comparison against a constant no pattern carries,
             // so it stays the parser's, like the relation and the cascade.
             return { type: "string", pattern: DURATION_PATTERN.source };
-        case "count":
-            return { type: "integer", minimum: 0 };
         case "text":
             return { type: "string" };
-        case "principal":
-            return { type: "string" };
-        case "oneOf":
-            return { enum: [...(field.values ?? [])] };
         case "meanings":
             return { type: "array", items: { enum: [...MAPPABLE_MEANINGS] } };
-        case "commands":
-            return { type: "array", items: { enum: [...COMMANDS] } };
-        case "skills":
-            return { type: "array", items: { enum: [...SKILL_TIERS] } };
-        case "texts":
-            return { type: "array", items: { type: "string" } };
         case "section":
-        case "closed":
             return groupSchema(field.fields ?? {});
         case "block":
             return blockSchema(field.fields ?? {});
-        case "sections":
-            return { type: "object", additionalProperties: groupSchema(field.fields ?? {}) };
-        case "blocks":
-            return { type: "object", additionalProperties: blockSchema(field.fields ?? {}) };
         default: {
             // A kind with no shape is a constructor no editor can check.
             const unhandled: never = field.kind;
@@ -192,15 +168,11 @@ function shapeOf(field: FieldDescription): Subschema {
 
 /**
  * What a reader of the schema is told beyond the shape: the sentence, and the
- * rule two kinds carry that their shape cannot say.
- *
- * A `principal`'s legal values are this document's own `principals` keys,
- * which a schema cannot enumerate. A `duration`'s pattern says which strings
- * pass but not what they MEAN, and an editor underlining `2w` with nothing but
- * a regex leaves a maintainer guessing at which units exist.
+ * rule a `duration`'s shape cannot say — its pattern says which strings pass
+ * but not what they MEAN, and an editor underlining `2w` with nothing but a
+ * regex leaves a maintainer guessing at which units exist.
  */
 const KIND_RULES: Partial<Record<FieldDescription["kind"], string>> = {
-    principal: "Names a key of this file's `principals` section.",
     duration:
         "A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
 };

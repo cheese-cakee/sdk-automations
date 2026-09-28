@@ -106,7 +106,6 @@ const SHIPPED = [
     declaring("stale", ["assignees", "links"]),
     declaring("prOnly", ["assignees"], ["pullRequest"]),
     declaring("onComment", ["review"], FACT_KINDS, [{ kind: "event", event: "pull_request" }]),
-    declaring("onCommand", ["command"]),
 ];
 
 const enabling = (...names: readonly string[]) =>
@@ -150,15 +149,6 @@ describe("the groups a repository's enabled set needs", () => {
     it("takes nothing from a capability that makes no record of this kind", () => {
         expect(groupsNeeded(enabling("prOnly"), SHIPPED, "issue")).toEqual([]);
         expect(groupsNeeded(enabling("prOnly"), SHIPPED, "pullRequest")).toEqual(["assignees"]);
-    });
-
-    /**
-     * `command` is carried by an issue and read by `issue_comment` alone, so
-     * the boot check refuses this declaration. The intersection is the second
-     * guard: a group the sweep does not read is never asked for.
-     */
-    it("never returns a group the sweep's own row does not read", () => {
-        expect(groupsNeeded(enabling("onCommand"), SHIPPED, "issue")).toEqual([]);
     });
 });
 

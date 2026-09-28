@@ -88,7 +88,7 @@ settings or the list of problems. Every constructor but `spec` also takes a `doc
 saying what the key is — which `describe()` reports beside the field's kind, its default and what an
 absent key reads as, so `describeSpec(spec)` is the whole of what a generated page, `full.yml` or an
 editor schema is written from; a shipped key left without that sentence fails the repository checks.
-The vocabulary is what the six designs' config sections need and
+The vocabulary is what the shipped capabilities' config sections need and
 nothing more:
 
 <!-- generated: constructors -->
@@ -97,21 +97,11 @@ nothing more:
 | `flag({ default })` | a boolean | `default` |
 | `duration({ default })` | a length of time, written 4h or 14d | `default` |
 | `duration({ inherits })` | a length of time, written 4h or 14d | `inherited` |
-| `count({ default })` | a whole number, zero or more | `default` |
 | `text({ optional: true })` | a string | `null` |
 | `text({ optional: false })` | a string | `problem` |
-| `texts()` | a list of free display text | `empty` |
-| `oneOf(values)` | a closed choice | `problem` |
 | `meanings()` | a list of mapped label meanings | `empty` |
-| `commands()` | a list of mapped commands | `empty` |
-| `skills()` | a list of mapped skill tiers | `empty` |
-| `principal({ optional: true })` | a principal the document declares, by name | `null` |
-| `principal({ optional: false })` | a principal the document declares, by name | `problem` |
 | `section(fields)` | a plain group of fields with no consent of its own | `default` |
-| `sections(fields, { keys? })` | a mapping of same-shaped groups | `empty` |
 | `block(fields)` | an enabled-block | `parked` |
-| `blocks(fields)` | a mapping of same-shaped enabled-blocks | `empty` |
-| `closed(fields)` | a group of OPTIONAL members drawn from a closed vocabulary | `null` |
 <!-- /generated -->
 
 `Absent reads as` is `describe().absent` off a real instance, in its own six words: `default` the
@@ -120,11 +110,9 @@ stated default, `inherited` the nearest enclosing level's value, `null` nothing,
 wrong TYPE is a problem in every row, so no row says so.
 
 **`problem` is a demand on DOCUMENTS, not only on this spec.** A required key is one every document
-that enables the capability has to state, `docs/examples/full.yml` included, and a `principal` is
-required twice over: the document must also declare the name it points at under `principals:`, or
-the key it states is itself a problem. So a key made required is a documentation edit per example
-that enables the capability, and the estimate is owed before the key is added rather than after the
-first example goes red.
+that enables the capability has to state, `docs/examples/full.yml` included. So a key made required
+is a documentation edit per example that enables the capability, and the estimate is owed before the
+key is added rather than after the first example goes red.
 
 The rule each constructor carries beyond that is prose no `describe()` reports, and it is here:
 
@@ -137,9 +125,7 @@ The rule each constructor carries beyond that is prose no `describe()` reports, 
   ladder → capability default, and the two floors and the ceiling ride on top of it (§3.1). The
   value is bounded above by `MAX_CLOCK_HOURS`, a century, because a clock becomes a date: a
   capability that renders the day it promises throws on a gap no `Date` can hold, and a bound is
-  the only reading that catches that at the maintainer's own path. `count` has no ceiling and
-  should not borrow this one — a count is never added to an instant.
-- **`count`** — `0` may mean "uncapped"; the capability says so in prose, the reader does not.
+  the only reading that catches that at the maintainer's own path.
 - **`text`** — for guide links and references. Never parsed, never followed. It is repository-written
   text, so a capability that prints one puts it through `inert()` first
   (`packages/core/src/capability/facts.ts`): a plain `https://host/path` survives that unchanged and
@@ -147,37 +133,20 @@ The rule each constructor carries beyond that is prose no `describe()` reports, 
   the address stops being a link. A configured address is never rendered as a markdown link with the
   title as its text — the brackets and parentheses would be escaped with the rest — so a design
   writes "the Signing Guide (configured link)" and the comment prints title and address as text.
-- **`meanings`, `commands`, `skills`** — each entry must be one this repository mapped in that
-  family, and an unmapped one is a problem: a guard naming a meaning demands its mapping. The tier
-  ladder's ORDER is `SKILL_TIERS`, not the order a repository listed them in.
-- **`texts`** — checked for shape and nothing else. Its entries are display text, rendered into a
-  sentence and never compared with a label, a command or a meaning.
-- **`principal`** — must be one the document declares.
+- **`meanings`** — each entry must be one this repository mapped in that family, and an unmapped
+  one is a problem: a guard naming a meaning demands its mapping.
 - **`section`** — the station the group configures is switched by its own flags (`onOpen`,
   `approval`, a skill tier, a pillar), never by a consent key it does not have.
-- **`sections`** — the open-keyed form (`subscriptions`, `roles`, `pillars`); keys are the
-  repository's own, and `keys` names an OPEN mapping family every key must be found in
-  (`subscriptions` are keyed by alert). The entries keep the ORDER the file wrote them in, which is
-  what a design promising "each is one line of the comment, in this order" rests on.
-- **`closed`** — `pillars`: a member the file did not state reads `null` rather than at its
-  defaults, because "no `mergedPRs` pillar" and "a `mergedPRs` pillar of zero" are different
-  requirements.
 - **`block`** — consent is `enabled: true` and nothing else. A block that is absent or says anything
   else is parked, and its other fields are NOT read.
-- **`blocks`** — the per-item pattern (`roles`); keys are the repository's own and every entry is
-  the same shape. A CLOSED list of named members is not this, and one whose members differ in shape
-  is not this twice over: that is `section({ … block(…) … })`, a member per name, each stating its
-  own fields — which is what inactivity's shipped `reapWhen` is.
-- **`oneOf`** — `noticeOn: latestActivity | trackingIssue`. No optional form, and inside `closed` it
-  needs none: a member the file never stated is read by nobody.
 
-**`text` and `principal` are overloaded on `optional`**, and they are the only two whose TYPE an
+**`text` is overloaded on `optional`**, and it is the only one in the vocabulary whose TYPE an
 option changes: the required form reads `string`, not `string | null`, because a value the file has
 to state is one the parser already made `null` impossible for. Nothing else in the vocabulary
 narrows this way — a required `duration` is still a `number`, and there is no required list.
 
-**Every group constructor sweeps its own keys** (D4). `section`, `block`, and the two mappings of
-them each report a key the spec does not name, at that key's own dotted path. D84's sweep reaches
+**Every group constructor sweeps its own keys** (D4). `section` and `block` each report a key the
+spec does not name, at that key's own dotted path. D84's sweep reaches
 the TOP of a settings block and stops, so a reader that walked its spec's keys and never looked at
 the file's left a misspelt `mergedPRz:` counting nothing and saying nothing — the silent zero a
 closed vocabulary exists to refuse. `block` counts `enabled` among its own keys, because consent is
@@ -238,18 +207,15 @@ configuration check will render its annotations from (config-schema §7).
 ### 3.3 What a spec is not
 
 No conditional fields, no cross-field computation beyond the two relations above, no defaults that
-depend on another field's value, no custom reader functions in a spec. One reader the designs name
-is still absent: a SCALAR sibling of `skills()`, which is what checking advancement's `minTier`
-against `mappings.skills` would need — `oneOf(SKILL_TIERS)` reads the tier name today and cannot ask
-whether the repository mapped it. Where a design states a cross-field rule — advancement's `noticeIssue` required by
-`noticeOn: trackingIssue` — the design's config is what moves, to a structural form (a group under
-the choice that needs it), never the toolkit. A design that needs one of
-those has found a config shape the six designs do not have, and the vocabulary grows by one
+depend on another field's value, no custom reader functions in a spec. Where a design states a
+cross-field rule — advancement's `noticeIssue` required by `noticeOn: trackingIssue` — the design's
+config is what moves, to a structural form (a group under the choice that needs it), never the
+toolkit. A design that needs a config shape the shipped capabilities do not have grows the vocabulary by one
 constructor in this file with its rule stated — never by a hook in a capability.
 
 ## 4. Declined, with triggers
 
-- **A schema library** (zod and kin): declined — the vocabulary is fifteen constructors with rules the
+- **A schema library** (zod and kin): declined — the vocabulary is six constructors with rules the
   designs state in prose, and a library's error shape would replace `ConfigError`'s. Reopen never.
 - **A `Verdict` ladder with a `climb` combinator**: BUILT (D138) and removed (D143). It was the one
   shape whose cost the first promotion could measure, and the measurement was against it: a verdict

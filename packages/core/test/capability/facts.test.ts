@@ -89,10 +89,8 @@ const issue = (projection: Projection<IssueMeaning>): IssueFacts => ({
     arrival: null,
     skills: [],
     position: projection,
-    alerts: { carried: [], arrived: [] },
     assignees: UNREAD,
     links: UNREAD,
-    command: UNREAD,
 });
 
 const assignee = (
@@ -158,7 +156,6 @@ describe("what a record read of the native modes", () => {
             state: { meaning: null, blocked: false, closedBy: null },
             ignored: [],
         },
-        alerts: { carried: [], arrived: [] },
         assignees: UNREAD,
         links: UNREAD,
         review: UNREAD,
@@ -447,7 +444,6 @@ describe("moveTo (D5)", () => {
             state: { meaning, blocked: false, closedBy: null },
             ignored: [],
         },
-        alerts: { carried: [], arrived: [] },
         assignees: UNREAD,
         links: UNREAD,
         review: UNREAD,

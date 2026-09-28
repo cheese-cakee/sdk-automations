@@ -47,7 +47,6 @@ export const pullRequestNormalizer = {
                 },
                 author: facts.author,
                 actor: facts.actor,
-                alerts: facts.alerts,
                 position: projectPullRequest({
                     closedBy: prClosure(facts.item),
                     meanings: facts.meanings,

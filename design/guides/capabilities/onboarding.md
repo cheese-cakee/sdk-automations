@@ -1,6 +1,6 @@
 # onboarding — when a new contributor takes an issue, bring the people and the pages to them
 
-Not built: phases 1, 2, 3, 4.
+Not built: phases 1, 2, 3, 4. `principal` left the settings toolkit unused; this design brings it back.
 
 ## What the output looks like
 

@@ -10,7 +10,6 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import {
     parseConfigDocument,
     toEngine,
-    UNREAD,
     type Effect,
     type EngineCapability,
     type Allowance,
@@ -68,10 +67,8 @@ const RECORD: Facts = {
         state: { meaning: null, blocked: false, closedBy: null },
         ignored: [],
     },
-    alerts: { carried: [], arrived: [] },
     assignees: [],
     links: { openPullRequests: [] },
-    command: UNREAD,
 };
 
 /** The one capability every case here decides through; the box knows no others. */

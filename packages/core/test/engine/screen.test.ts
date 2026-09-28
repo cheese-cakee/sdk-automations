@@ -12,7 +12,7 @@ import {
     spec,
     type AnyIntent,
 } from "../../src/index.js";
-import { readIntent, screenIntent } from "../../src/engine/invoke.js";
+import { screenIntent } from "../../src/engine/invoke.js";
 
 const declaration = declareCapability({
     name: "fixture",
@@ -71,68 +71,7 @@ describe("screenIntent", () => {
         expect(screenIntent(intent(), declaration, position())).toEqual({ ok: true });
     });
 
-    it.each([null, {}, { operation: "applyMappedLabel" }])(
-        "refuses malformed runtime value %#",
-        (value) => {
-            expect(screenIntent(value, declaration, position())).toMatchObject({
-                ok: false,
-                code: "malformedIntent",
-            });
-        },
-    );
-
-    it.each([
-        { ...intent(), operation: "unknown" },
-        { ...intent(), desired: { meaning: "ready" } },
-        {
-            ...intent(),
-            claims: { meaningsPresent: new Array(1), meaningsAbsent: [], closed: false },
-        },
-        {
-            ...intent(),
-            grace: {
-                days: Number.POSITIVE_INFINITY,
-                warning: { body: "warn" },
-                notice: { body: "done" },
-                cancelledBy: "activity",
-                reversesWith: "retry",
-                activityAt: null,
-            },
-        },
-        {
-            ...intent(),
-            grace: {
-                days: 7,
-                warning: { body: "warn" },
-                notice: { body: "done" },
-                cancelledBy: "activity",
-                reversesWith: "retry",
-                activityAt: new Date("invalid"),
-            },
-        },
-    ])("refuses malformed nested value %#", (value) => {
-        expect(screenIntent(value, declaration, position())).toMatchObject({
-            ok: false,
-            code: "malformedIntent",
-        });
-    });
-
-    it("contains hostile property access", () => {
-        const value = new Proxy(
-            {},
-            {
-                getOwnPropertyDescriptor: () => {
-                    throw new Error("no");
-                },
-            },
-        );
-        expect(screenIntent(value, declaration, position())).toMatchObject({
-            ok: false,
-            code: "malformedIntent",
-        });
-    });
-
-    it("refuses foreign, undeclared, and malformed intents with distinct reasons", () => {
+    it("refuses foreign, undeclared, and undated intents with distinct reasons", () => {
         const candidates = [
             screenIntent(intent({ capability: "other" }), declaration, position()),
             screenIntent(
@@ -167,11 +106,9 @@ describe("screenIntent", () => {
     });
 
     /**
-     * The key is the store's `effect_id` (D65), and the screen exists for the
-     * same reason the others do: a capability is ordinary code that can be
-     * built from `unknown`, so the boundary re-derives rather than trusting
-     * what came back. A capability free to name its own key could merge two
-     * effects into one, or split a redelivery into two comments.
+     * The key is the store's `effect_id` (D65), so the boundary re-derives it:
+     * a capability free to name its own key could merge two effects into one,
+     * or split a redelivery into two comments.
      */
     it("refuses an intent whose idempotency key is not the derived one", () => {
         const screen = screenIntent(intent({ idempotencyKey: "k" }), declaration, position());
@@ -262,17 +199,13 @@ describe("screenIntent", () => {
             screenIntent(
                 intent({ operation: "unassign", desired: { login: "someone" } }),
                 declaration,
-                null,
+                position(),
             ),
         ).toEqual({ ok: true });
     });
 });
 
-/**
- * The claim vocabulary as the boundary reads it. A capability is ordinary code
- * that can be built from `unknown`, so the mode claim is checked against the
- * closed list here rather than trusted from the compiler.
- */
+/** The claim vocabulary: a mode the compiler admits passes the screen; the ladder judges it (D209). */
 describe("the pull-request mode claim", () => {
     const position = {
         kind: "position" as const,
@@ -294,32 +227,6 @@ describe("the pull-request mode claim", () => {
         expect(screenIntent(claiming("changesRequested"), declaration, position)).toEqual({
             ok: true,
         });
-    });
-
-    it.each([
-        ["a mode nobody has", "readyToMerge"],
-        ["a meaning", "needsRevision"],
-        ["a number", 1],
-    ])("refuses %s as a mode", (_label, mode) => {
-        expect(screenIntent(claiming(mode), declaration, position)).toMatchObject({
-            ok: false,
-            code: "malformedIntent",
-        });
-    });
-
-    /**
-     * The compatibility claim: a value written before the mode was claimable
-     * carries no such key, and must read back as CLAIMING NOTHING rather than
-     * as malformed or as a claim of `undefined`.
-     */
-    it("reads a claim with no mode as one that makes none", () => {
-        const parsed = readIntent(intent());
-        expect(parsed?.claims).toEqual({
-            meaningsPresent: [],
-            meaningsAbsent: [],
-            closed: false,
-        });
-        expect(parsed !== null && "pullRequestMode" in parsed.claims).toBe(false);
     });
 });
 

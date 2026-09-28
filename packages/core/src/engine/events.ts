@@ -7,12 +7,7 @@
  */
 
 import { isWebhookProducer, type WebhookProducer } from "../capability/index.js";
-import {
-    alertsOfLabels,
-    meaningsOfLabels,
-    skillsOfLabels,
-    type RepositoryConfig,
-} from "../config/index.js";
+import { meaningsOfLabels, skillsOfLabels, type RepositoryConfig } from "../config/index.js";
 import { issueCommentNormalizer } from "./normalize/issue-comment.js";
 import { issuesNormalizer } from "./normalize/issues.js";
 import {
@@ -109,9 +104,6 @@ export function normalizeDelivery(
     const skills = skillsOfLabels(config, names);
     const arrivedSkill = added === null ? null : (skillsOfLabels(config, [added])[0] ?? null);
     const removedSkill = removed === null ? null : (skillsOfLabels(config, [removed])[0] ?? null);
-    const carried = alertsOfLabels(config, names);
-    const arrived =
-        added === null ? [] : alertsOfLabels(config, [added]).filter((a) => carried.includes(a));
 
     return normalizer.normalize({
         repository,
@@ -124,7 +116,6 @@ export function normalizeDelivery(
         skills,
         arrivedSkill,
         removedSkill,
-        alerts: { carried, arrived },
         actor: senderOf(payload),
         observedAt,
         ...(deliveryId === undefined ? {} : { deliveryId }),

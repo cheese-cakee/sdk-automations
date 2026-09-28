@@ -3,10 +3,9 @@
  *
  * Two halves, in the order a reader meets them. The constructors first, each
  * against the rule its row of §3's table states, and then against what it says
- * about itself; then the six capability designs, whose `automations.yml`
+ * about itself; then the three capability designs, whose `automations.yml`
  * examples are the fixtures under `fixtures/settings/`. The second half is the
- * acceptance claim: the toolkit is proved against all six designs before the
- * second capability's code exists.
+ * acceptance claim: the toolkit is proved against all three designs.
  *
  * The specs below are the DESIGNS' — including for the three capabilities that
  * have code, whose `settings.ts` today declares only the keys the seed reads.
@@ -30,10 +29,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
     block,
-    blocks,
-    closed,
-    commands,
-    count,
     declareCapability,
     describeSpec,
     duration,
@@ -43,20 +38,14 @@ import {
     meanings,
     MIN_GRACE_HOURS,
     MIN_REAP_HOURS,
-    oneOf,
     parseConfig,
     parseDuration,
     parseConfigDocument,
-    principal,
     projectCapabilityView,
     readSettings,
     section,
-    sections,
-    skills,
-    SKILL_TIERS,
     spec,
     text,
-    texts,
     writeDuration,
     type CapabilityView,
     type ConfigResult,
@@ -250,7 +239,7 @@ function readFrom<const S extends Spec>(
 const problemsOf = (result: { ok: boolean; problems?: readonly SettingsProblem[] }): string[] =>
     (result.problems ?? []).map((problem) => `${problem.path}: ${problem.message}`);
 
-// ─── The fifteen constructors ────────────────────────────────────────
+// ─── The six constructors ───────────────────────────────────────────
 
 describe("flag", () => {
     const fields = spec({ announce: flag({ default: false }) });
@@ -454,53 +443,6 @@ describe("the written form", () => {
         expect(writeDuration(MAX_CLOCK_HOURS)).toBe("36500d");
     });
 });
-
-describe("count", () => {
-    const fields = spec({ maxOpen: count({ default: 2 }) });
-
-    it("reads a whole number, zero included — what zero MEANS is the capability's", () => {
-        expect(readFrom(fields, view({ maxOpen: 0 }))).toEqual({
-            ok: true,
-            value: { maxOpen: 0 },
-        });
-        expect(readFrom(fields, view({}))).toEqual({ ok: true, value: { maxOpen: 2 } });
-    });
-
-    it.each([
-        ["a fraction", 1.5],
-        ["a negative cap", -2],
-        ["a string", "2"],
-    ])("reports %s", (_why, value) => {
-        expect(problemsOf(readFrom(fields, view({ maxOpen: value })))).toEqual([
-            "maxOpen: must be a whole number, zero or more",
-        ]);
-    });
-
-    /**
-     * A count is never added to an instant, so `days`'s ceiling is not its:
-     * `maxOpen: 2147483647` is an absurd cap and an honest one, and the
-     * capability's own prose is what says whether it means anything.
-     */
-    it("has no ceiling of its own", () => {
-        expect(readFrom(fields, view({ maxOpen: Number.MAX_SAFE_INTEGER }))).toEqual({
-            ok: true,
-            value: { maxOpen: Number.MAX_SAFE_INTEGER },
-        });
-    });
-
-    /**
-     * What `0` means is said in the sentence or nowhere: the description
-     * carries the `doc` its constructor was given and invents no reading of
-     * zero, so a generated page or schema cannot promise one either.
-     */
-    it("says what zero means only when the capability's sentence says it", () => {
-        expect(count({ default: 0 }).describe().doc).toBe(null);
-        expect(count({ default: 0, doc: "How many at once; 0 is uncapped" }).describe().doc).toBe(
-            "How many at once; 0 is uncapped",
-        );
-    });
-});
-
 describe("text", () => {
     it("reads a string, and renders without it when it is optional", () => {
         const fields = spec({ guide: text({ optional: true }) });
@@ -559,88 +501,6 @@ describe("meanings", () => {
         ]);
     });
 });
-
-/**
- * The other two families, on `meanings()`'s pattern. Each reads its OWN family
- * and no other, which is the claim worth making: a reader that reached for
- * `mapped.labels` would pass every test above and let a capability gate on a
- * command the repository never mapped.
- */
-describe("commands and skills", () => {
-    const fields = spec({ answersTo: commands(), gates: skills() });
-    const repository = {
-        meanings: ["ready"],
-        commands: ["assign", "working"],
-        skills: ["beginner"],
-    };
-
-    it("reads each family's own mapped names, and an absent list as none", () => {
-        expect(readFrom(fields, view({ answersTo: ["working"] }, repository))).toEqual({
-            ok: true,
-            value: { answersTo: ["working"], gates: [] },
-        });
-        expect(readFrom(fields, view({ gates: ["beginner"] }, repository))).toEqual({
-            ok: true,
-            value: { answersTo: [], gates: ["beginner"] },
-        });
-    });
-
-    it("does not let one family satisfy another, and says so in that family's words", () => {
-        expect(
-            problemsOf(
-                readFrom(fields, view({ answersTo: ["beginner"], gates: ["ready"] }, repository)),
-            ),
-        ).toEqual([
-            'answersTo.0: "beginner" is not a command this repository has mapped',
-            'gates.0: "ready" is not a skill tier this repository has mapped',
-        ]);
-    });
-
-    it("reports a list that is not a list, in each family's plural", () => {
-        expect(
-            problemsOf(readFrom(fields, view({ answersTo: "/assign", gates: "beginner" }))),
-        ).toEqual([
-            "answersTo: must be a list of commands",
-            "gates: must be a list of skill tiers",
-        ]);
-    });
-});
-
-describe("principal", () => {
-    const fields = spec({ notify: principal({ optional: false }) });
-
-    it("reads the NAME of a principal the document declares", () => {
-        expect(
-            readFrom(
-                fields,
-                view({ notify: "maintainerTeam" }, { principals: ["maintainerTeam"] }),
-            ),
-        ).toEqual({ ok: true, value: { notify: "maintainerTeam" } });
-    });
-
-    it("renders without the ping when it is optional and absent", () => {
-        expect(readFrom(spec({ notify: principal({ optional: true }) }), view({}))).toEqual({
-            ok: true,
-            value: { notify: null },
-        });
-    });
-
-    it("reports a name the document never declared, and an absent required one", () => {
-        expect(
-            problemsOf(
-                readFrom(
-                    fields,
-                    view({ notify: "triageTeam" }, { principals: ["maintainerTeam"] }),
-                ),
-            ),
-        ).toEqual(['notify: "triageTeam" is not a principal this repository declares']);
-        expect(problemsOf(readFrom(fields, view({})))).toEqual(["notify: must name a principal"]);
-        expect(problemsOf(readFrom(fields, view({ notify: 7 })))).toEqual([
-            "notify: must name a principal",
-        ]);
-    });
-});
-
 describe("section", () => {
     const fields = spec({
         onOpen: section({ label: flag({ default: false }), welcome: flag({ default: true }) }),
@@ -791,34 +651,25 @@ describe("the unknown-key sweep every group makes (D4)", () => {
     });
 
     it("a block counts its consent among its own keys, and nothing else", () => {
-        const fields = spec({ pullRequests: block({ reapAfter: count({ default: 0 }) }) });
+        const fields = spec({ pullRequests: block({ reapAfter: flag({ default: false }) }) });
 
         expect(
             problemsOf(
-                readFrom(fields, view({ pullRequests: { enabled: true, reapAfter: 5, nope: 1 } })),
+                readFrom(
+                    fields,
+                    view({ pullRequests: { enabled: true, reapAfter: true, nope: 1 } }),
+                ),
             ),
         ).toEqual(['pullRequests.nope: "nope" is not one of enabled, reapAfter']);
     });
 
     it("a parked block sweeps nothing: its fields were never read", () => {
-        const fields = spec({ pullRequests: block({ reapAfter: count({ default: 0 }) }) });
+        const fields = spec({ pullRequests: block({ reapAfter: flag({ default: false }) }) });
 
         expect(readFrom(fields, view({ pullRequests: { enabled: false, nope: 1 } }))).toEqual({
             ok: true,
             value: { pullRequests: { enabled: false } },
         });
-    });
-
-    it("each entry of a mapping of groups sweeps as the group it is", () => {
-        const asSections = spec({ pillars: sections({ atLeast: count({ default: 0 }) }) });
-        const asBlocks = spec({ roles: blocks({ atLeast: count({ default: 0 }) }) });
-
-        expect(
-            problemsOf(readFrom(asSections, view({ pillars: { mergedPRs: { atLeest: 1 } } }))),
-        ).toEqual(['pillars.mergedPRs.atLeest: "atLeest" is not one of atLeast']);
-        expect(
-            problemsOf(readFrom(asBlocks, view({ roles: { committer: { enabled: true, x: 1 } } }))),
-        ).toEqual(['roles.committer.x: "x" is not one of enabled, atLeast']);
     });
 
     it("names what a group with no fields of its own takes, which is nothing", () => {
@@ -850,89 +701,6 @@ describe("the unknown-key sweep every group makes (D4)", () => {
         ]);
     });
 });
-
-describe("sections", () => {
-    const fields = spec({ subscriptions: sections({ notify: principal({ optional: false }) }) });
-    const teams = { principals: ["maintainerTeam", "triageTeam"] };
-
-    it("reads a mapping whose keys are the repository's own", () => {
-        expect(
-            readFrom(
-                fields,
-                view(
-                    {
-                        subscriptions: {
-                            critical: { notify: "maintainerTeam" },
-                            high: { notify: "triageTeam" },
-                        },
-                    },
-                    teams,
-                ),
-            ),
-        ).toEqual({
-            ok: true,
-            value: {
-                subscriptions: {
-                    critical: { notify: "maintainerTeam" },
-                    high: { notify: "triageTeam" },
-                },
-            },
-        });
-    });
-
-    it("reads an absent mapping as no entries", () => {
-        expect(readFrom(fields, view({}, teams))).toEqual({
-            ok: true,
-            value: { subscriptions: {} },
-        });
-    });
-
-    it("reports one entry's problem without losing the others", () => {
-        expect(
-            problemsOf(
-                readFrom(
-                    fields,
-                    view(
-                        { subscriptions: { critical: { notify: "nobody" }, high: "triageTeam" } },
-                        teams,
-                    ),
-                ),
-            ),
-        ).toEqual([
-            'subscriptions.critical.notify: "nobody" is not a principal this repository declares',
-            "subscriptions.high: must be a mapping",
-        ]);
-    });
-
-    it("reports a mapping that is not one, at the mapping's own path", () => {
-        expect(problemsOf(readFrom(fields, view({ subscriptions: ["critical"] }, teams)))).toEqual([
-            "subscriptions: must be a mapping",
-        ]);
-    });
-});
-
-/**
- * The `keys` option on its own: a mapping whose keys must name entries of the
- * one open family, rather than being free-form as the suite above's are.
- */
-describe("sections keyed by a mapping family", () => {
-    const fields = spec({
-        advice: sections({ ask: flag({ default: false }) }, { keys: "alerts" }),
-    });
-
-    it("reads an entry keyed by an alert the repository mapped", () => {
-        expect(
-            readFrom(fields, view({ advice: { p0: { ask: true } } }, { alerts: ["p0"] })),
-        ).toEqual({ ok: true, value: { advice: { p0: { ask: true } } } });
-    });
-
-    it("reports a key naming an alert nobody mapped, in that family's own words", () => {
-        expect(
-            problemsOf(readFrom(fields, view({ advice: { epic: {} } }, { alerts: ["p0"] }))),
-        ).toEqual(['advice.epic: "epic" is not an alert this repository has mapped']);
-    });
-});
-
 describe("block", () => {
     const fields = spec({
         checklist: block({ skillTier: flag({ default: false }), guide: text({ optional: true }) }),
@@ -990,153 +758,6 @@ describe("block", () => {
     });
 });
 
-describe("blocks", () => {
-    const fields = spec({ checks: blocks({ guide: text({ optional: true }) }) });
-
-    it("reads a mapping whose keys are the repository's own", () => {
-        expect(
-            readFrom(
-                fields,
-                view({
-                    checks: {
-                        dcoSignoff: { enabled: true, guide: "https://example.test/dco" },
-                        gpgSignature: { enabled: false },
-                    },
-                }),
-            ),
-        ).toEqual({
-            ok: true,
-            value: {
-                checks: {
-                    dcoSignoff: { enabled: true, guide: "https://example.test/dco" },
-                    gpgSignature: { enabled: false },
-                },
-            },
-        });
-    });
-
-    it("reads an absent mapping as no entries", () => {
-        expect(readFrom(fields, view({}))).toEqual({ ok: true, value: { checks: {} } });
-    });
-
-    it("reports one entry's problem without losing the others", () => {
-        expect(
-            problemsOf(
-                readFrom(
-                    fields,
-                    view({ checks: { dcoSignoff: { enabled: true, guide: 7 }, gpg: "on" } }),
-                ),
-            ),
-        ).toEqual(["checks.dcoSignoff.guide: must be text", "checks.gpg: must be a mapping"]);
-    });
-
-    it("reports a mapping that is not one", () => {
-        expect(problemsOf(readFrom(fields, view({ checks: ["dcoSignoff"] })))).toEqual([
-            "checks: must be a mapping",
-        ]);
-    });
-});
-
-describe("oneOf", () => {
-    const fields = spec({ noticeOn: oneOf(["latestActivity", "trackingIssue"]) });
-
-    it("reads a listed choice", () => {
-        expect(readFrom(fields, view({ noticeOn: "trackingIssue" }))).toEqual({
-            ok: true,
-            value: { noticeOn: "trackingIssue" },
-        });
-    });
-
-    it("reports an unlisted one, and an absent one, by listing the choices", () => {
-        expect(problemsOf(readFrom(fields, view({ noticeOn: "somewhere" })))).toEqual([
-            "noticeOn: must be one of latestActivity, trackingIssue",
-        ]);
-        expect(problemsOf(readFrom(fields, view({})))).toEqual([
-            "noticeOn: must be one of latestActivity, trackingIssue",
-        ]);
-    });
-});
-
-describe("closed", () => {
-    const fields = spec({
-        pillars: closed({
-            reviews: section({ atLeast: count({ default: 0 }) }),
-            mergedPRs: closed({ atLeast: count({ default: 0 }), minTier: skills() }),
-        }),
-    });
-
-    it("answers null for a member the file did not state", () => {
-        expect(readFrom(fields, view({ pillars: { reviews: { atLeast: 9 } } }))).toEqual({
-            ok: true,
-            value: { pillars: { reviews: { atLeast: 9 }, mergedPRs: null } },
-        });
-    });
-
-    it("answers null for every member when the group itself is absent", () => {
-        expect(readFrom(fields, view({}))).toEqual({
-            ok: true,
-            value: { pillars: { reviews: null, mergedPRs: null } },
-        });
-    });
-
-    it("reports a key outside the vocabulary rather than dropping it", () => {
-        expect(
-            problemsOf(readFrom(fields, view({ pillars: { mergedPRz: { atLeast: 1 } } }))),
-        ).toEqual(['pillars.mergedPRz: "mergedPRz" is not one of reviews, mergedPRs']);
-    });
-
-    it("reports a stranger and a bad member together", () => {
-        expect(
-            problemsOf(readFrom(fields, view({ pillars: { nope: {}, reviews: { atLeast: -1 } } }))),
-        ).toEqual([
-            'pillars.nope: "nope" is not one of reviews, mergedPRs',
-            "pillars.reviews.atLeast: must be a whole number, zero or more",
-        ]);
-    });
-
-    it("reports a group that is not a mapping", () => {
-        expect(problemsOf(readFrom(fields, view({ pillars: 3 })))).toEqual([
-            "pillars: must be a mapping",
-        ]);
-    });
-
-    it("nests, so a parameter on the wrong pillar is caught the same way", () => {
-        expect(
-            problemsOf(
-                readFrom(
-                    fields,
-                    view({ pillars: { mergedPRs: { atLeast: 1, window: 12 } } }, { skills: [] }),
-                ),
-            ),
-        ).toEqual(['pillars.mergedPRs.window: "window" is not one of atLeast, minTier']);
-    });
-});
-
-describe("texts", () => {
-    const fields = spec({ uncounted: texts() });
-
-    it("reads a list of free display text", () => {
-        expect(readFrom(fields, view({ uncounted: ["review substance", "mentorship"] }))).toEqual({
-            ok: true,
-            value: { uncounted: ["review substance", "mentorship"] },
-        });
-    });
-
-    it("absent is no entries", () => {
-        expect(readFrom(fields, view({}))).toEqual({ ok: true, value: { uncounted: [] } });
-    });
-
-    it("reports a value that is not a list, and every entry that is not text", () => {
-        expect(problemsOf(readFrom(fields, view({ uncounted: "mentorship" })))).toEqual([
-            "uncounted: must be a list of text",
-        ]);
-        expect(problemsOf(readFrom(fields, view({ uncounted: ["ok", 3, false] })))).toEqual([
-            "uncounted.1: must be text",
-            "uncounted.2: must be text",
-        ]);
-    });
-});
-
 // ─── The cascade, the relation, and the report ───────────────────────
 
 describe("the cascade (§3.1)", () => {
@@ -1145,7 +766,10 @@ describe("the cascade (§3.1)", () => {
         reapAfter: duration({ default: "21d" }),
         pullRequests: block({
             reapAfter: duration({ inherits: "reapAfter" }),
-            reapWhen: blocks({ reapAfter: duration({ inherits: "reapAfter" }) }),
+            reapWhen: section({
+                draft: block({ reapAfter: duration({ inherits: "reapAfter" }) }),
+                needsRevision: block({ reapAfter: duration({ inherits: "reapAfter" }) }),
+            }),
         }),
     });
 
@@ -1185,7 +809,10 @@ describe("the cascade (§3.1)", () => {
         expect(value.pullRequests).toEqual({
             enabled: true,
             reapAfter: 21 * 24,
-            reapWhen: { draft: { enabled: true, reapAfter: 21 * 24 } },
+            reapWhen: {
+                draft: { enabled: true, reapAfter: 21 * 24 },
+                needsRevision: { enabled: false },
+            },
         });
     });
 
@@ -1215,7 +842,11 @@ describe("the cascade (§3.1)", () => {
         expect(resolve({ pullRequests: { enabled: true } })).toEqual({
             remindAfter: 14 * 24,
             reapAfter: 21 * 24,
-            pullRequests: { enabled: true, reapAfter: 21 * 24, reapWhen: {} },
+            pullRequests: {
+                enabled: true,
+                reapAfter: 21 * 24,
+                reapWhen: { draft: { enabled: false }, needsRevision: { enabled: false } },
+            },
         });
     });
 });
@@ -1443,15 +1074,6 @@ describe("describe", () => {
         expect(Object.keys(duration().describe())).toEqual(["kind", "doc", "absent"]);
     });
 
-    it("count: a whole number, and its default", () => {
-        expect(count({ default: 2, doc: "How many at once" }).describe()).toStrictEqual({
-            kind: "count",
-            doc: "How many at once",
-            absent: "default",
-            default: 2,
-        });
-    });
-
     it("text: optional reads null, required is a problem", () => {
         expect(text({ optional: true, doc: "A guide link" }).describe()).toStrictEqual({
             kind: "text",
@@ -1467,52 +1089,11 @@ describe("describe", () => {
         });
     });
 
-    it("principal: the same two arms as text, under its own kind", () => {
-        expect(principal({ optional: true, doc: "Who to cc" }).describe()).toStrictEqual({
-            kind: "principal",
-            doc: "Who to cc",
-            absent: "null",
-            optional: true,
-        });
-        expect(principal({ optional: false }).describe()).toStrictEqual({
-            kind: "principal",
-            doc: null,
-            absent: "problem",
-            optional: false,
-        });
-    });
-
-    it("the three mapped lists keep their own kinds, and all read absent as empty", () => {
+    it("meanings: the mapped list keeps its own kind, absent as empty", () => {
         expect(meanings({ doc: "Meanings that claim" }).describe()).toStrictEqual({
             kind: "meanings",
             doc: "Meanings that claim",
             absent: "empty",
-        });
-        expect(commands({ doc: "Words it answers to" }).describe()).toStrictEqual({
-            kind: "commands",
-            doc: "Words it answers to",
-            absent: "empty",
-        });
-        expect(skills().describe()).toStrictEqual({ kind: "skills", doc: null, absent: "empty" });
-    });
-
-    it("texts: free display text, absent as no entries", () => {
-        expect(texts({ doc: "What is not counted" }).describe()).toStrictEqual({
-            kind: "texts",
-            doc: "What is not counted",
-            absent: "empty",
-        });
-        expect(texts().describe()).toStrictEqual({ kind: "texts", doc: null, absent: "empty" });
-    });
-
-    it("oneOf: the choices, in the order it lists them, and no default to fall to", () => {
-        expect(
-            oneOf(["latestActivity", "trackingIssue"], { doc: "Where to say it" }).describe(),
-        ).toStrictEqual({
-            kind: "oneOf",
-            doc: "Where to say it",
-            absent: "problem",
-            values: ["latestActivity", "trackingIssue"],
         });
     });
 
@@ -1528,25 +1109,6 @@ describe("describe", () => {
             absent: "default",
             fields: { label: { kind: "flag", doc: "Apply it", absent: "default", default: true } },
         });
-    });
-
-    it("sections: the open family it keys by, when it names one", () => {
-        const fields = { atLeast: count({ default: 0, doc: "How many" }) };
-        expect(
-            sections(fields, { keys: "alerts", doc: "Who hears what" }).describe(),
-        ).toStrictEqual({
-            kind: "sections",
-            doc: "Who hears what",
-            absent: "empty",
-            keys: "alerts",
-            fields: { atLeast: { kind: "count", doc: "How many", absent: "default", default: 0 } },
-        });
-        expect(Object.keys(sections(fields).describe())).toEqual([
-            "kind",
-            "doc",
-            "absent",
-            "fields",
-        ]);
     });
 
     it("block: absent is parked, not defaulted", () => {
@@ -1565,45 +1127,10 @@ describe("describe", () => {
         });
     });
 
-    it("blocks: a mapping of them is absent as no entries", () => {
-        expect(
-            blocks(
-                { guide: text({ optional: true, doc: "A link" }) },
-                { doc: "Each check" },
-            ).describe(),
-        ).toStrictEqual({
-            kind: "blocks",
-            doc: "Each check",
-            absent: "empty",
-            fields: { guide: { kind: "text", doc: "A link", absent: "null", optional: true } },
-        });
-    });
-
-    it("closed: an unstated member is null, which is the group's own absent", () => {
-        expect(
-            closed(
-                { mergedPRs: count({ default: 0, doc: "How many" }) },
-                { doc: "Pillars" },
-            ).describe(),
-        ).toStrictEqual({
-            kind: "closed",
-            doc: "Pillars",
-            absent: "null",
-            fields: {
-                mergedPRs: { kind: "count", doc: "How many", absent: "default", default: 0 },
-            },
-        });
-    });
-
     /** The absence a check reads: `null` is what the shipped-spec sweep fails on. */
     it.each([
-        ["count", count({ default: 0 })],
-        ["oneOf", oneOf(["latestActivity"])],
         ["section", section({})],
-        ["sections", sections({})],
         ["block", block({})],
-        ["blocks", blocks({})],
-        ["closed", closed({})],
     ] as const)("%s written without a sentence says it has none", (_kind, field) => {
         expect(field.describe().doc).toBeNull();
     });
@@ -1641,7 +1168,7 @@ describe("describeSpec", () => {
     });
 });
 
-// ─── The six designs' config sections, as fixtures ───────────────────
+// ─── The three designs' config sections, as fixtures ─────────────────
 
 describe("triageQueue — packages/capabilities/src/triageQueue/design.md", () => {
     /**
@@ -1739,11 +1266,16 @@ describe("triageQueue — packages/capabilities/src/triageQueue/design.md", () =
 });
 
 describe("prDashboard — packages/capabilities/src/prDashboard/design.md", () => {
-    /** The whole section, in three constructors. `assignedIssues` nests, which is its dependency. */
+    /** The four fixed checks, `assignedIssues` nesting inside the one that carries it. */
     const PR_DASHBOARD_DESIGN = spec({
-        checks: blocks({
-            guide: text({ optional: true }),
-            assignedIssues: block({ guide: text({ optional: true }) }),
+        checks: section({
+            dcoSignoff: block({ guide: text({ optional: true }) }),
+            gpgSignature: block({ guide: text({ optional: true }) }),
+            mergeConflicts: block({}),
+            linkedIssues: block({
+                guide: text({ optional: true }),
+                assignedIssues: block({ guide: text({ optional: true }) }),
+            }),
         }),
         applyLabels: flag({ default: false }),
     });
@@ -1762,17 +1294,13 @@ describe("prDashboard — packages/capabilities/src/prDashboard/design.md", () =
                 dcoSignoff: {
                     enabled: true,
                     guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide",
-                    assignedIssues: { enabled: false },
                 },
                 gpgSignature: {
                     enabled: true,
                     guide: "https://github.com/<org>/<repo>/wiki/Signing-Guide",
-                    assignedIssues: { enabled: false },
                 },
                 mergeConflicts: {
                     enabled: true,
-                    guide: null,
-                    assignedIssues: { enabled: false },
                 },
                 linkedIssues: {
                     enabled: true,
@@ -1787,11 +1315,13 @@ describe("prDashboard — packages/capabilities/src/prDashboard/design.md", () =
         });
     });
 
-    it("reads the trimmed setup as two checks and no label mode", () => {
+    it("reads the trimmed setup as two checks, the rest parked, and no label mode", () => {
         expect(read("prDashboard.2")).toEqual({
             checks: {
-                dcoSignoff: { enabled: true, guide: null, assignedIssues: { enabled: false } },
-                mergeConflicts: { enabled: true, guide: null, assignedIssues: { enabled: false } },
+                dcoSignoff: { enabled: true, guide: null },
+                gpgSignature: { enabled: false },
+                mergeConflicts: { enabled: true },
+                linkedIssues: { enabled: false },
             },
             applyLabels: false,
         });
@@ -1852,7 +1382,11 @@ describe("inactivity — packages/capabilities/src/inactivity/design.md", () => 
         pullRequests: block({
             remindAfter: duration({ inherits: "remindAfter" }),
             reap: section({ after: duration({ inherits: "reap.after" }) }),
-            reapWhen: blocks({ ...reapingLadder }),
+            reapWhen: section({
+                draft: block({ ...reapingLadder }),
+                changesRequested: block({ ...reapingLadder }),
+                needsRevision: block({ ...reapingLadder }),
+            }),
         }),
     });
 
@@ -1950,378 +1484,5 @@ describe("inactivity — packages/capabilities/src/inactivity/design.md", () => 
         expect(
             remindOnly.ok ? remindOnly.config.capabilities.inactivity?.settings.issues : null,
         ).toEqual({ enabled: true, remindAfter: 14 * 24, reap: { enabled: false } });
-    });
-});
-
-describe("advancement — design/guides/capabilities/advancement.md", () => {
-    /**
-     * A role IS an enabled-block, so `roles` stays `blocks`: each role states
-     * `enabled`, and a role turned off must not have its pillars read. Its
-     * `uncounted` is free display text, which is `texts()`.
-     *
-     * `pillars` is `closed()` and not `sections()`, and D4 is why. Each pillar
-     * carries its OWN parameters — `minTier` is `mergedPRs`'s and `outcome` is
-     * `issuesAuthored`'s — so one open-keyed shape for all four would have to
-     * admit every parameter on every pillar, and before D4 it admitted them by
-     * dropping them in silence. A closed group names the four pillars, gives
-     * each its own fields, and reports a fifth at its own path.
-     *
-     * `oneOf` still has no optional form, and inside `closed()` it does not
-     * need one: a member the file never stated reads `null` and its reader
-     * never runs. That is what makes `minTier` and `outcome` readable here at
-     * last. What `oneOf` cannot do is check a tier against `mappings.skills` —
-     * a scalar sibling of `skills()` would, and adding one is a change to §3's
-     * table rather than a test's business.
-     *
-     * The doc's one cross-field rule — `noticeIssue` required by
-     * `noticeOn: trackingIssue` — is unread on purpose. §3.3 moves the DESIGN's
-     * config to a structural form (a group under the choice that needs it)
-     * rather than growing the toolkit a dependency; until then both fields are
-     * read flat and the pairing is nobody's rule here.
-     */
-    const ADVANCEMENT_DESIGN = spec({
-        noticeOn: oneOf(["latestActivity", "trackingIssue"]),
-        noticeIssue: count({ default: 0 }),
-        mentionCandidate: flag({ default: true }),
-        reference: text({ optional: true }),
-        roles: blocks({
-            uncounted: texts(),
-            pillars: closed({
-                activeWeeks: section({
-                    atLeast: count({ default: 0 }),
-                    window: count({ default: 0 }),
-                }),
-                mergedPRs: section({
-                    atLeast: count({ default: 0 }),
-                    minTier: oneOf(SKILL_TIERS),
-                }),
-                reviews: section({ atLeast: count({ default: 0 }) }),
-                issuesAuthored: section({
-                    atLeast: count({ default: 0 }),
-                    outcome: oneOf(["accepted", "completed"]),
-                }),
-            }),
-        }),
-    });
-
-    const advancement = declarationFor("advancement", ADVANCEMENT_DESIGN);
-
-    it("reads the three-role governance ladder, skills family and all", () => {
-        const { refused, stripped, config } = travel("advancement.1", advancement);
-
-        expect([refused, stripped]).toEqual([[], []]);
-        expect(viewOf(advancement, config).settings).toEqual({
-            noticeOn: "latestActivity",
-            noticeIssue: 0,
-            mentionCandidate: true,
-            reference:
-                "https://github.com/hiero-ledger/governance/blob/main/roles/advancement-qualifications.md",
-            roles: {
-                juniorCommitter: {
-                    enabled: true,
-                    uncounted: [
-                        "review substance",
-                        "triage judgement",
-                        "community support",
-                        "responsiveness",
-                    ],
-                    pillars: {
-                        activeWeeks: { atLeast: 8, window: 12 },
-                        mergedPRs: { atLeast: 5, minTier: "beginner" },
-                        reviews: { atLeast: 9 },
-                        issuesAuthored: { atLeast: 3, outcome: "accepted" },
-                    },
-                },
-                committer: {
-                    enabled: true,
-                    uncounted: [
-                        "standing as junior committer",
-                        "review depth",
-                        "breadth",
-                        "judgement",
-                        "mentorship",
-                    ],
-                    pillars: {
-                        activeWeeks: { atLeast: 20, window: 40 },
-                        mergedPRs: { atLeast: 20, minTier: "intermediate" },
-                        reviews: { atLeast: 20 },
-                        issuesAuthored: { atLeast: 6, outcome: "completed" },
-                    },
-                },
-                maintainer: {
-                    enabled: true,
-                    uncounted: [
-                        "standing as committer",
-                        "technical mastery",
-                        "design leadership",
-                        "review depth and judgement",
-                        "API and compatibility judgement",
-                        "debugging depth",
-                        "stewardship",
-                        "mentorship",
-                        "community leadership",
-                        "escalation",
-                    ],
-                    pillars: {
-                        activeWeeks: { atLeast: 30, window: 52 },
-                        mergedPRs: { atLeast: 10, minTier: "advanced" },
-                        reviews: { atLeast: 40 },
-                        // The one pillar this role does not weigh, and
-                        // `null` is how a closed group says so — not a
-                        // threshold of zero anyone could meet by doing
-                        // nothing.
-                        issuesAuthored: null,
-                    },
-                },
-            },
-        });
-    });
-
-    it("reads the tracking-issue venue, its issue number, and the silent candidate", () => {
-        const { refused, config } = travel("advancement.2", advancement);
-
-        expect(refused).toEqual([]);
-        expect(viewOf(advancement, config).settings).toEqual({
-            noticeOn: "trackingIssue",
-            noticeIssue: 7,
-            mentionCandidate: false,
-            reference: null,
-            roles: {
-                trustedReviewer: {
-                    enabled: true,
-                    uncounted: ["review quality"],
-                    pillars: {
-                        activeWeeks: { atLeast: 10, window: 16 },
-                        mergedPRs: null,
-                        reviews: { atLeast: 25 },
-                        issuesAuthored: null,
-                    },
-                },
-            },
-        });
-    });
-
-    /** Consent is the block's, and a role withdrawn takes its pillars with it. */
-    it("does not read the pillars of a role turned off", () => {
-        const { config } = travel("advancement.2", advancement);
-        const paused = withSettings(config, advancement, {
-            noticeOn: "trackingIssue",
-            roles: { trustedReviewer: { enabled: false, pillars: { reviews: 25 } } },
-        });
-
-        expect(refusalsOf(paused)).toEqual([]);
-        if (!paused.ok) return;
-        expect(viewOf(advancement, paused.config).settings).toEqual(
-            expect.objectContaining({ roles: { trustedReviewer: { enabled: false } } }),
-        );
-    });
-});
-
-describe("assignment — design/guides/capabilities/assignment.md", () => {
-    /**
-     * One tier of the skill ladder. The four tiers share a shape and differ
-     * only in what a repository states, so an unstated parameter is that
-     * tier's default rather than a second way of writing zero.
-     *
-     * `maxOpen` here is the doc's "tier override of the cap". It is read flat,
-     * not as a cascade: §3.1's cascade is a `days` relation, and a `count` has
-     * none — which tier's cap wins is the capability's own arithmetic.
-     */
-    const TIER = spec({
-        maxOpen: count({ default: 0 }),
-        maxCompletions: count({ default: 0 }),
-        requiresPrevious: count({ default: 0 }),
-        supportTeam: principal({ optional: true }),
-    });
-
-    /**
-     * The three commands blocks, their caps, and the meaning sets that decide
-     * claimability. Each is a `block` because each states `enabled`; the four
-     * tiers inside `skillGates` are sections, because the ladder's names are
-     * the platform's and a tier consents to nothing — the gate above it does.
-     */
-    const ASSIGNMENT_DESIGN = spec({
-        autoAssign: block({
-            claimableOnlyWhen: meanings(),
-            notClaimableWhen: meanings(),
-            capIgnores: meanings(),
-            maxOpen: count({ default: 0 }),
-            maxPerDay: count({ default: 0 }),
-            minAccountAge: duration({ default: "0d" }),
-        }),
-        unassign: block({}),
-        skillGates: block({
-            goodFirstIssue: section(TIER),
-            beginner: section(TIER),
-            intermediate: section(TIER),
-            advanced: section(TIER),
-        }),
-    });
-
-    const assignment = declarationFor("assignment", ASSIGNMENT_DESIGN);
-
-    /** Every tier parameter at its default — what a stated tier is read against. */
-    const NO_TIER = { maxOpen: 0, maxCompletions: 0, requiresPrevious: 0, supportTeam: null };
-
-    it("reads the caps-only repository, and parks the gates it turned off", () => {
-        const { refused, stripped, config } = travel("assignment.1", assignment);
-
-        expect([refused, stripped]).toEqual([[], []]);
-        expect(viewOf(assignment, config).settings).toEqual({
-            autoAssign: {
-                enabled: true,
-                claimableOnlyWhen: [],
-                notClaimableWhen: [],
-                capIgnores: [],
-                maxOpen: 2,
-                maxPerDay: 1,
-                minAccountAge: 7 * 24,
-            },
-            unassign: { enabled: true },
-            skillGates: { enabled: false },
-        });
-    });
-
-    it("reads every meaning set of the ready-for-dev repository", () => {
-        const { refused, stripped, config } = travel("assignment.2", assignment);
-
-        expect([refused, stripped]).toEqual([[], []]);
-        expect(viewOf(assignment, config).settings).toEqual({
-            autoAssign: {
-                enabled: true,
-                claimableOnlyWhen: ["ready"],
-                notClaimableWhen: ["blocked", "awaitingTriage", "inProgress"],
-                capIgnores: ["needsReview", "blocked"],
-                maxOpen: 2,
-                maxPerDay: 1,
-                minAccountAge: 7 * 24,
-            },
-            unassign: { enabled: true },
-            skillGates: {
-                enabled: true,
-                goodFirstIssue: {
-                    ...NO_TIER,
-                    maxCompletions: 2,
-                    supportTeam: "gfiSupportTeam",
-                },
-                beginner: { ...NO_TIER, requiresPrevious: 1 },
-                intermediate: { ...NO_TIER, requiresPrevious: 3 },
-                advanced: { ...NO_TIER, requiresPrevious: 10 },
-            },
-        });
-    });
-
-    /**
-     * The third example states its guards and not the mappings they name — it
-     * is an excerpt of a file, not a file. Read on its own it is exactly the
-     * case the doc's own rule describes: a guard naming a meaning demands its
-     * mapping, and an unmapped one is reported with the entry that named it.
-     *
-     * Since C1 that refusal is the PARSER's, which is why this excerpt no
-     * longer travels: the file a maintainer would push is rejected whole,
-     * naming the entry rather than the capability.
-     */
-    /** The excerpt never maps `blocked`; its default spelling stands in (D203). */
-    it("accepts the guard meaning this excerpt never mapped, on its default spelling", () => {
-        const result = parseConfigDocument(documentOf("assignment.3"), {
-            revision: "rev-assignment.3",
-            knownCapabilities: [assignment],
-        });
-
-        expect(refusalsOf(result)).toEqual([]);
-    });
-});
-
-describe("notifications — design/guides/capabilities/notifications.md", () => {
-    /**
-     * A subscription is a plain group (`{ notify: <principal> }`) keyed by an
-     * alert name the repository invented, which is `sections` exactly — and
-     * since the alerts wave, keyed by an alert the file actually maps.
-     *
-     * BOTH halves of the doc's unusable row are read now: an unknown principal
-     * is reported at the subscription that named it, and an unmapped alert at
-     * the subscription's own key.
-     */
-    const NOTIFICATIONS_DESIGN = spec({
-        subscriptions: sections({ notify: principal({ optional: false }) }, { keys: "alerts" }),
-    });
-
-    const notifications = declarationFor("notifications", NOTIFICATIONS_DESIGN);
-
-    /**
-     * Both of the design's blocks travel end to end, which is what one family
-     * reader bought: they are the same schema twice, differing only in the
-     * words two repositories chose. The native project field the design also
-     * names is phase 2 and is not a shape the document may carry — the entry's
-     * value widens to a union the day that read has an endpoint row.
-     */
-    it("reads notifications.1's subscriptions, each to a mapped alert and a declared principal", () => {
-        const { refused, stripped, config } = travel("notifications.1", notifications);
-
-        expect([refused, stripped]).toEqual([[], []]);
-        expect(config.mappings.alerts).toEqual({
-            critical: "priority: critical",
-            high: "priority: high",
-        });
-        expect(viewOf(notifications, config).settings).toEqual({
-            subscriptions: {
-                critical: { notify: "maintainerTeam" },
-                high: { notify: "triageTeam" },
-            },
-        });
-    });
-
-    it("refuses the native field form — an alert is spelled by a label", () => {
-        const native = parseConfigDocument(
-            `schemaVersion: 2\n${fixture("notifications.1").replace(
-                `critical: "priority: critical"`,
-                "critical: { field: Priority, value: Critical }",
-            )}`,
-            { revision: "rev-notifications.native", knownCapabilities: [notifications] },
-        );
-
-        expect(native.ok).toBe(false);
-        if (native.ok) return;
-        expect(native.errors.map((e) => `${e.code} @ ${String(e.path)}`)).toEqual([
-            "alertInvalid @ mappings.alerts.critical",
-        ]);
-    });
-
-    it("reads notifications.2's subscriptions, each to a mapped alert and a declared principal", () => {
-        const { refused, stripped, config } = travel("notifications.2", notifications);
-
-        expect([refused, stripped]).toEqual([[], []]);
-        expect(config.mappings.alerts).toEqual({ p0: "P0-🔥", security: "Security" });
-        expect(viewOf(notifications, config).mapped.alerts).toEqual(["p0", "security"]);
-        expect(config.principals["securityTeam"]).toMatch(/^hiero-ledger\//);
-        expect(viewOf(notifications, config).settings).toEqual({
-            subscriptions: {
-                p0: { notify: "maintainerTeam" },
-                security: { notify: "securityTeam" },
-            },
-        });
-    });
-
-    /** The doc's own Verified-by row, now whole — and now at parse time. */
-    it("refuses a subscription naming an unmapped alert", () => {
-        const { config } = travel("notifications.2", notifications);
-        const unmapped = withSettings(config, notifications, {
-            subscriptions: { critical: { notify: "maintainerTeam" } },
-        });
-
-        expect(unmapped.ok ? [] : unmapped.errors.map((e) => e.message)).toEqual([
-            'capabilities.notifications.subscriptions.critical: "critical" is not an alert this repository has mapped',
-        ]);
-    });
-
-    it("refuses a subscription pinging a principal the file never declared", () => {
-        const { config } = travel("notifications.2", notifications);
-        const unknown = withSettings(config, notifications, {
-            subscriptions: { p0: { notify: "releaseTeam" } },
-        });
-
-        expect(unknown.ok ? [] : unknown.errors.map((e) => e.message)).toEqual([
-            'capabilities.notifications.subscriptions.p0.notify: "releaseTeam" is not a principal this repository declares',
-        ]);
     });
 });

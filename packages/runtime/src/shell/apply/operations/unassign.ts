@@ -5,6 +5,7 @@ import { text } from "./row.js";
 
 export const unassign: OperationHandler<"unassign"> = {
     verbs: ["unassign"],
+    traits: { recordsWarning: false, activityRead: false },
 
     plan: (effect) => ({
         ok: true,
@@ -21,7 +22,7 @@ export const unassign: OperationHandler<"unassign"> = {
     /** Refused here rather than earlier, so plan, row and dispatch stay identical. */
     send: async () => ({
         outcome: "unsupported",
-        detail: "no confirmed write endpoint unassigns; the adapter has four, and none of them is this",
+        detail: "no confirmed write endpoint unassigns",
     }),
 
     // Unreachable: `send` refuses this verb before it is proved.

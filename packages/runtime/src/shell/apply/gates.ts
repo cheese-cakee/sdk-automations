@@ -34,6 +34,7 @@ import type { Ledger } from "../../store/index.js";
 import { detailOf } from "../log.js";
 import type { EffectOutcomeCode } from "../effects.js";
 import type { Pass, PassResult } from "./actions.js";
+import { traitsOf } from "./operations/index.js";
 
 /**
  * A FRESH externals set, built per apply pass.
@@ -239,7 +240,7 @@ export function createGates(options: GateOptions): Gates {
             }
             const request = writeRequestFor(intent);
             const activity =
-                intent.grace !== null && intent.operation === "closePullRequest"
+                intent.grace !== null && traitsOf(intent.operation).activityRead
                     ? await reader.pullRequestActivity(
                           intent.item,
                           pass.config.mappings.commands.working,

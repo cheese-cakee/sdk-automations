@@ -45,23 +45,13 @@ export {
 } from "../capability/facts.js";
 export {
     block,
-    blocks,
-    closed,
-    commands,
-    count,
     duration,
     flag,
     MAX_CLOCK_HOURS,
     meanings,
-    oneOf,
-    principal,
     section,
-    sections,
-    skills,
     spec,
     text,
-    texts,
-    type SectionsOptions,
 } from "../capability/settings.js";
 export type { BlockOf, SettingsOf, Spec } from "../config/spec.js";
 export { LABEL_DEFAULTS } from "../config/label-defaults.js";

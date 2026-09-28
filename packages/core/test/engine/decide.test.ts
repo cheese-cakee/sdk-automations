@@ -96,10 +96,8 @@ const webhookIssue = (over: Partial<IssueFacts> = {}): IssueFacts => ({
         state: { meaning: null, blocked: false, closedBy: null },
         ignored: [],
     },
-    alerts: { carried: [], arrived: [] },
     assignees: UNREAD,
     links: UNREAD,
-    command: UNREAD,
     ...over,
 });
 
@@ -1064,27 +1062,6 @@ describe("every fallible seam is contained", () => {
         ]);
         expect(problems(decision.report)[0]!.summary).toContain("socket hang up");
         expect(decision.approved).toHaveLength(1);
-    });
-
-    it("treats a malformed resolver answer as unavailable", async () => {
-        const asker: EngineCapability = {
-            declaration: declareCapability({ ...brittle, resolvers: ["linkedIssues"] }) as never,
-            async evaluate(_o: never, _c: never, platform: never): Promise<readonly AnyIntent[]> {
-                const handle = platform as {
-                    resolve(q: string, i: unknown): Promise<{ ok: boolean; reason?: string }>;
-                };
-                expect(await handle.resolve("linkedIssues", {})).toMatchObject({
-                    ok: false,
-                    reason: "unavailable",
-                });
-                return [];
-            },
-        };
-        const decision = await decide(delivery("issues.opened.json"), twoCapabilities, [asker], {
-            ...externals,
-            resolve: async () => ({ ok: true }) as never,
-        });
-        expect(decision.report.findings.map((finding) => finding.code)).toEqual(["resolverFailed"]);
     });
 
     /**

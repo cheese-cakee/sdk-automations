@@ -217,12 +217,7 @@ describe("shapes derived from the real ones", () => {
  * families share GitHub's label namespace and the parser refuses the overlap
  * (the position's default spelling included, D203).
  */
-describe("the actor and the alerts a delivery carries", () => {
-    const alerting = configWith({
-        labels: { awaitingTriage: "position: triage" },
-        alerts: { triage: "status: triage" },
-    });
-
+describe("the actor a delivery carries", () => {
     const withPayload = (over: Record<string, unknown>): unknown => ({
         ...(fixture("issues.labeled.json") as Record<string, unknown>),
         ...over,
@@ -232,52 +227,12 @@ describe("the actor and the alerts a delivery carries", () => {
         expect(observed("issues.labeled.json").actor).toEqual({ login: "scrubbed-1" });
     });
 
-    it("carries an alert the item holds, and says it arrived on a labeled delivery", () => {
-        const o = normalizeDelivery("issues", fixture("issues.labeled.json"), alerting);
-        expect(o.kind).toBe("facts");
-        if (o.kind !== "facts") return;
-        expect(o.facts.alerts).toEqual({ carried: ["triage"], arrived: ["triage"] });
-    });
-
-    it("carries the alert but says nothing arrived when the action is not labeled", () => {
-        const o = normalizeDelivery("issues", withPayload({ action: "edited" }), alerting);
-        expect(o.kind).toBe("facts");
-        if (o.kind !== "facts") return;
-        expect(o.facts.alerts).toEqual({ carried: ["triage"], arrived: [] });
-    });
-
-    /** A payload disagreeing with itself: the added label is not on the item. */
-    it("refuses to say an alert arrived that the item does not carry", () => {
-        const o = normalizeDelivery(
-            "issues",
-            withPayload({ label: { name: "Security" } }),
-            configWith({
-                labels: { awaitingTriage: "position: triage" },
-                alerts: { triage: "status: triage", security: "Security" },
-            }),
-        );
-        expect(o.kind).toBe("facts");
-        if (o.kind !== "facts") return;
-        expect(o.facts.alerts).toEqual({ carried: ["triage"], arrived: [] });
-    });
-
-    it.each([
-        ["an unreadable label", { label: { name: 7 } }],
-        ["no label at all", { label: undefined }],
-        ["a label that is not a record", { label: "status: triage" }],
-    ])("says nothing arrived for %s", (_why, over) => {
-        const o = normalizeDelivery("issues", withPayload(over), alerting);
-        expect(o.kind).toBe("facts");
-        if (o.kind !== "facts") return;
-        expect(o.facts.alerts.arrived).toEqual([]);
-    });
-
     it.each([
         ["no sender", { sender: undefined }],
         ["a sender that is not a record", { sender: "scrubbed-1" }],
         ["a login that is not a string", { sender: { login: 7 } }],
     ])("reads a null actor for %s, without refusing the delivery", (_why, over) => {
-        const o = normalizeDelivery("issues", withPayload(over), alerting);
+        const o = normalizeDelivery("issues", withPayload(over), config);
         expect(o.kind).toBe("facts");
         if (o.kind !== "facts") return;
         expect(o.facts.actor).toBeNull();

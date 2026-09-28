@@ -75,8 +75,8 @@ export type Call =
     | { readonly verb: "unassign"; readonly login: string }
     | { readonly verb: "releaseAssignment"; readonly login: string }
     | { readonly verb: "closePullRequest"; readonly reason: string }
-    | { readonly verb: "lockIssue"; readonly reason: string }
-    | { readonly verb: "unlockIssue"; readonly reason: string };
+    | { readonly verb: "lockIssue" }
+    | { readonly verb: "unlockIssue" };
 
 /** One call as its `sent` fact spells it — the fact's `payload`, parsed. */
 export interface JournaledCall {

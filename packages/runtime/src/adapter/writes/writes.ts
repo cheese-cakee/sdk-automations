@@ -14,8 +14,7 @@ import {
     type GitHubWriteRequest,
     type WriteIdempotency,
 } from "../client/contract.js";
-import { writeVerbsOf } from "./operations/index.js";
-import type { NotFoundMeaning } from "./operations/transport.js";
+import { writeVerbsOf, type NotFoundMeaning } from "./requests.js";
 
 /** GitHub's prose, documented rather than probed: a reword falls back to `forbidden`. */
 export const LABEL_ABSENT = {
@@ -128,5 +127,5 @@ export function createWriteVerbs({ http, repository }: WriteVerbsOptions): Write
         return resultOfFailure(request, outcome.failure, notFound, outcome.body ?? "");
     };
 
-    return writeVerbsOf({ repository, apply });
+    return writeVerbsOf(repository, apply);
 }

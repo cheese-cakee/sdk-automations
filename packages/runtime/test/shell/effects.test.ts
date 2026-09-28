@@ -266,13 +266,10 @@ describe("planning the clock's two acts", () => {
      * matrix. Two operations rather than one with a flag: a row should name
      * the direction it went.
      */
-    it.each([
-        ["lockIssue", "until a maintainer reviews it"],
-        ["unlockIssue", "a maintainer approved it"],
-    ])("plans a %s as one call carrying its reason", (operation, reason) => {
-        expect(planFor(asOperation(operation, { reason }), config)).toEqual({
+    it.each([["lockIssue"], ["unlockIssue"]])("plans a %s as one call", (operation) => {
+        expect(planFor(asOperation(operation, {}), config)).toEqual({
             ok: true,
-            calls: [{ verb: operation, reason }],
+            calls: [{ verb: operation }],
         });
     });
 });
@@ -286,8 +283,8 @@ describe("the operation a call belongs to", () => {
         [{ verb: "unassign", login: "sophie" }, "unassign"],
         [{ verb: "releaseAssignment", login: "sophie" }, "releaseAssignment"],
         [{ verb: "closePullRequest", reason: "r" }, "closePullRequest"],
-        [{ verb: "lockIssue", reason: "r" }, "lockIssue"],
-        [{ verb: "unlockIssue", reason: "r" }, "unlockIssue"],
+        [{ verb: "lockIssue" }, "lockIssue"],
+        [{ verb: "unlockIssue" }, "unlockIssue"],
     ] as [Call, string][])("reads %o as %s", (call, operation) => {
         expect(operationOf(call)).toBe(operation);
     });
@@ -326,13 +323,10 @@ describe("the journal row", () => {
         );
     });
 
-    it.each([
-        ["lockIssue", "until a maintainer reviews it"],
-        ["unlockIssue", "a maintainer approved it"],
-    ])("spells a %s one way", (verb, reason) => {
-        expect(rowFor({ verb, reason } as Call)).toBe(
+    it.each([["lockIssue"], ["unlockIssue"]])("spells a %s one way", (verb) => {
+        expect(rowFor({ verb } as Call)).toBe(
             '{"capability":"triageQueue","item":{"kind":"issue","number":164},' +
-                `"verb":"${verb}","reason":"${reason}"}`,
+                `"verb":"${verb}"}`,
         );
     });
 
@@ -379,8 +373,8 @@ describe("the journal row", () => {
         [{ verb: "unassign", login: "sophie" }],
         [{ verb: "releaseAssignment", login: "sophie" }],
         [{ verb: "closePullRequest", reason: "stale for 60 days" }],
-        [{ verb: "lockIssue", reason: "until a maintainer reviews it" }],
-        [{ verb: "unlockIssue", reason: "a maintainer approved it" }],
+        [{ verb: "lockIssue" }],
+        [{ verb: "unlockIssue" }],
     ] as [Call][])("round-trips %o", (call) => {
         expect(parseJournaledCall(rowFor(call))).toEqual({
             capability: "triageQueue",
@@ -469,14 +463,6 @@ describe("the journal row", () => {
         [
             "a close with no reason",
             '{"capability":"triageQueue","item":{"kind":"pullRequest","number":1},"verb":"closePullRequest","reason":""}',
-        ],
-        [
-            "a lock with no reason",
-            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"lockIssue"}',
-        ],
-        [
-            "an unlock with no reason",
-            '{"capability":"triageQueue","item":{"kind":"issue","number":1},"verb":"unlockIssue"}',
         ],
     ])("reads %s as no call at all", (_label, row) => {
         expect(parseJournaledCall(row)).toBeNull();

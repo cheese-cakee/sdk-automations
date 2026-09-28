@@ -1,6 +1,6 @@
 # advancement — notice when a contributor clears the countable floor for a role
 
-Not built: phases 1, 2, 3.
+Not built: phases 1, 2, 3. `oneOf` left the settings toolkit unused; this design brings it back.
 
 ## What the output looks like
 

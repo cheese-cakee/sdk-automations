@@ -40,11 +40,7 @@
 
 import {
     block,
-    blocks,
     carriesFactGroup,
-    closed,
-    commands,
-    count,
     duration,
     describeSpec,
     FACT_GROUPS,
@@ -54,17 +50,12 @@ import {
     MAPPABLE_MEANINGS,
     meanings,
     MEANING_FACTS,
-    oneOf,
-    principal,
     PRODUCER_NAMES,
     producerReads,
     producesKind,
     RESOLVER_NAMES,
     section,
-    sections,
-    skills,
     text,
-    texts,
     type DeclaredTrigger,
     type Field,
     type FieldDescription,
@@ -588,10 +579,7 @@ function declaredAt(level: Described, path: readonly string[]): unknown {
 
 /** The comment beside one key: what leaving it out means, then what it is for. */
 function keyComment(field: FieldDescription): string {
-    const choices = field.values === undefined ? "" : `, one of ${field.values.join(" | ")}`;
-    const keyed =
-        field.keys === undefined ? "" : `, each key one you mapped under mappings.${field.keys}`;
-    const note = `${ABSENT_NOTES[field.absent]}${choices}${keyed}`;
+    const note = ABSENT_NOTES[field.absent];
     return field.doc === null ? note : `${note} — ${field.doc}`;
 }
 
@@ -606,23 +594,17 @@ function keyComment(field: FieldDescription): string {
  * so a placeholder copied unchanged is refused at that key's own path — which
  * is the one place a maintainer can act on it — while a bare key teaches the
  * one mistake this tree exists to prevent.
- *
- * A closed choice names its first value instead. There the vocabulary IS the
- * placeholder, and a maintainer who copies it has written a legal file.
  */
 function placeholder(field: FieldDescription): string {
-    if (field.values === undefined) return ` <${field.kind}>`;
-    return ` ${JSON.stringify(field.values[0] ?? "")}`;
+    return ` <${field.kind}>`;
 }
 
 /**
  * What follows the colon: the value the App resolves, a placeholder the file
  * must replace, an empty list, or nothing.
  *
- * `absent: "empty"` with no `fields` is what a LEAF that reads as no entries
- * looks like — the three mapped lists and `texts`. The two open mappings carry
- * the same absence and their entries below, so the `fields` half is what tells
- * them apart.
+ * `absent: "empty"` with no `fields` is what the one LEAF that reads as no
+ * entries looks like — `meanings`.
  */
 function written(field: FieldDescription, outer: readonly Described[]): string {
     const value = field.default ?? inherited(field, outer);
@@ -639,36 +621,24 @@ function written(field: FieldDescription, outer: readonly Described[]): string {
  * A line the file must not state as written — the key commented out, with what
  * stating it would take.
  *
- * Every field whose absence reads as `null` is one: an optional `text` or
- * `principal`, and a `closed` group. A key shown bare is the one mistake a
- * page of defaults must not teach, and this is the second half of the rule
- * `inherited` carries. `guide:` copied from here is YAML null, which the
- * reader refuses with the whole file; a placeholder value would PARSE, and the
- * App would print `<unset>` at a contributor instead.
+ * Every field whose absence reads as `null` is one: an optional `text`. A key
+ * shown bare is the one mistake a page of defaults must not teach, and this is
+ * the second half of the rule `inherited` carries. `guide:` copied from here
+ * is YAML null, which the reader refuses with the whole file; a placeholder
+ * value would PARSE, and the App would print `<unset>` at a contributor
+ * instead.
  */
 function commented(line: string): string {
     return line.replace(/^(\s*)/, "$1# ");
 }
 
-/**
- * The levels under one key. A block shows the consent that runs it; the two
- * open mappings show one entry under a placeholder name, because their keys
- * are the repository's own and no generator can guess one.
- */
+/** The levels under one key. A block shows the consent that runs it. */
 function childLines(field: FieldDescription, depth: number, outer: readonly Described[]): string[] {
     const fields = field.fields;
     if (fields === undefined) return [];
     switch (field.kind) {
         case "block":
             return [`${pad(depth)}enabled: true`, ...treeLines(fields, depth, outer)];
-        case "blocks":
-            return [
-                `${pad(depth)}<name>:`,
-                `${pad(depth + 1)}enabled: true`,
-                ...treeLines(fields, depth + 1, outer),
-            ];
-        case "sections":
-            return [`${pad(depth)}<name>:`, ...treeLines(fields, depth + 1, outer)];
         default:
             return treeLines(fields, depth, outer);
     }
@@ -755,7 +725,7 @@ interface ConstructorFacts {
     readonly forms: readonly (readonly [written: string, field: Field<unknown>])[];
 }
 
-/** The fifteen, keyed by the kind each one describes itself as. */
+/** The six, keyed by the kind each one describes itself as. */
 const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts } = {
     flag: { reads: "a boolean", forms: [["flag({ default })", flag({ default: false })]] },
     duration: {
@@ -765,10 +735,6 @@ const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts
             ["duration({ inherits })", duration({ inherits: "remindAfter" })],
         ],
     },
-    count: {
-        reads: "a whole number, zero or more",
-        forms: [["count({ default })", count({ default: 0 })]],
-    },
     text: {
         reads: "a string",
         forms: [
@@ -776,35 +742,12 @@ const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts
             ["text({ optional: false })", text({ optional: false })],
         ],
     },
-    texts: { reads: "a list of free display text", forms: [["texts()", texts()]] },
-    oneOf: { reads: "a closed choice", forms: [["oneOf(values)", oneOf(["a", "b"])]] },
     meanings: { reads: "a list of mapped label meanings", forms: [["meanings()", meanings()]] },
-    commands: { reads: "a list of mapped commands", forms: [["commands()", commands()]] },
-    skills: { reads: "a list of mapped skill tiers", forms: [["skills()", skills()]] },
-    principal: {
-        reads: "a principal the document declares, by name",
-        forms: [
-            ["principal({ optional: true })", principal({ optional: true })],
-            ["principal({ optional: false })", principal({ optional: false })],
-        ],
-    },
     section: {
         reads: "a plain group of fields with no consent of its own",
         forms: [["section(fields)", section({})]],
     },
-    sections: {
-        reads: "a mapping of same-shaped groups",
-        forms: [["sections(fields, { keys? })", sections({})]],
-    },
     block: { reads: "an enabled-block", forms: [["block(fields)", block({})]] },
-    blocks: {
-        reads: "a mapping of same-shaped enabled-blocks",
-        forms: [["blocks(fields)", blocks({})]],
-    },
-    closed: {
-        reads: "a group of OPTIONAL members drawn from a closed vocabulary",
-        forms: [["closed(fields)", closed({})]],
-    },
 };
 
 /**

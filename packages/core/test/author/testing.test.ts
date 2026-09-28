@@ -10,21 +10,14 @@
 import { describe, expect, it } from "vitest";
 import {
     block,
-    blocks,
-    closed,
-    count,
     declareCapability,
     duration,
     flag,
     meanings,
-    oneOf,
-    principal,
     readSettings,
     section,
-    sections,
     spec,
     text,
-    texts,
     type SettingsView,
 } from "../../src/index.js";
 import {
@@ -51,21 +44,13 @@ const REQUIRED = spec({
     clockWithDefault: duration({ default: "7d" }),
     guide: text({ optional: false }),
     note: text({ optional: true }),
-    notify: principal({ optional: false }),
-    cc: principal({ optional: true }),
-    noticeOn: oneOf(["latestActivity", "trackingIssue"]),
     announce: flag({ default: false }),
-    cap: count({ default: 0 }),
     exemptWhen: meanings(),
-    uncounted: texts(),
     // A section has no consent, so its fields are read whether or not it is
     // written — the one group a required key can hide inside.
     onOpen: section({ label: text({ optional: false }), after: duration() }),
-    // The three that answer for themselves when absent: parked, empty, null.
-    escalate: block({ to: principal({ optional: false }) }),
-    reapWhen: blocks({ after: duration() }),
-    subscriptions: sections({ to: principal({ optional: false }) }),
-    pillars: closed({ atLeast: count({ default: 1 }) }),
+    // The one field that answers for itself when absent: parked.
+    escalate: block({ guide: text({ optional: false }) }),
 });
 
 describe("the smallest block a spec accepts", () => {
@@ -73,8 +58,6 @@ describe("the smallest block a spec accepts", () => {
         expect(smallestValidSettings(REQUIRED, NAMES)).toEqual({
             clock: "1h",
             guide: "x",
-            notify: "reviewersTeam",
-            noticeOn: "latestActivity",
             onOpen: { label: "x", after: "1h" },
         });
     });
@@ -95,27 +78,8 @@ describe("the smallest block a spec accepts", () => {
         expect(read.ok ? [] : read.problems.map((p) => p.path)).toEqual([
             "clock",
             "guide",
-            "notify",
-            "noticeOn",
             "onOpen.label",
             "onOpen.after",
-        ]);
-    });
-
-    /**
-     * A required principal is only answerable by a name the DOCUMENT declares,
-     * so the helper's answer is the first one offered — and a document
-     * offering none is told so by the parser, at the maintainer's own path,
-     * rather than by a fixture inventing a name nobody declared.
-     */
-    it("names a principal the document declares, and cannot invent one it does not", () => {
-        const required = spec({ notify: principal({ optional: false }) });
-        expect(smallestValidSettings(required, NAMES)).toEqual({ notify: "reviewersTeam" });
-
-        const none: SettingsView = { ...NAMES, principals: [] };
-        const read = readSettings(required, none, smallestValidSettings(required, none));
-        expect(read.ok ? [] : read.problems.map((p) => p.message)).toEqual([
-            "must name a principal",
         ]);
     });
 });
@@ -180,10 +144,8 @@ describe("the block that switches a spec on", () => {
             clock: "1h",
             clockWithDefault: "7d",
             announce: true,
-            cap: 0,
-            escalate: { enabled: true, to: "reviewersTeam" },
+            escalate: { enabled: true, guide: "x" },
             onOpen: { label: "x", after: "1h" },
-            pillars: { atLeast: 1 },
         });
     });
 
@@ -217,11 +179,10 @@ describe("the records each producer makes", () => {
         });
     });
 
-    it("reads the command on a comment delivery and nothing else", () => {
+    it("reads no group on a comment delivery", () => {
         expect(commentedIssue()).toMatchObject({
             item: { kind: "issue", number: 15 },
             trigger: { kind: "event", event: "issue_comment" },
-            command: null,
             assignees: "unread",
             links: "unread",
         });

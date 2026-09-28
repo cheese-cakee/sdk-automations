@@ -102,8 +102,6 @@ const facts: IssueFacts = {
     locked: false,
     arrival: null,
     skills: [],
-    alerts: { carried: [], arrived: [] },
-    command: "unread",
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },
@@ -373,7 +371,7 @@ describe("the screen keeps the two classes apart", () => {
 
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings).toEqual([
-            expect.objectContaining({ code: "malformedIntent", severity: "problem" }),
+            expect.objectContaining({ code: "graceBelowFloor", severity: "problem" }),
         ]);
     });
 });

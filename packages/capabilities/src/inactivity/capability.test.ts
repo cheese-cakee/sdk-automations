@@ -23,6 +23,7 @@ import {
 import { inactivity } from "./capability.js";
 import type { InactivityFacts, IssueLadderFacts, PullLadderFacts } from "./declaration.js";
 import {
+    factsFor,
     answering,
     configEnabling,
     sweptIssue,
@@ -107,16 +108,20 @@ const assignee = (
     lastWorkingAt: Date | null = null,
 ): AssigneeClock => ({ login, assignedAt: ago(assignedDaysAgo), lastWorkingAt });
 
-const issueRecord = (over: Partial<IssueLadderFacts> = {}): IssueLadderFacts =>
-    sweptIssue({
-        repository: REPO,
-        item: ISSUE,
-        observedAt: AT,
-        position: position(),
-        assignees: [assignee("alice", 40)],
-        links: { openPullRequests: [] },
-        ...over,
-    });
+/** The sweep reads more than this ladder declares (`locked`, `skills`), so the record is projected (D211). */
+const issueRecord = (over: NonNullable<Parameters<typeof sweptIssue>[0]> = {}): IssueLadderFacts =>
+    factsFor(
+        inactivity.declaration,
+        sweptIssue({
+            repository: REPO,
+            item: ISSUE,
+            observedAt: AT,
+            position: position(),
+            assignees: [assignee("alice", 40)],
+            links: { openPullRequests: [] },
+            ...over,
+        }),
+    ) as IssueLadderFacts;
 
 /** A stale draft, seventy days idle — the pull-request ladder's starting point. */
 const REVIEW = {

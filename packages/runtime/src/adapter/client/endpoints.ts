@@ -1,6 +1,6 @@
 /**
  * The confirmed write endpoints, as shapes: what method and path tail each one
- * is, the grant it needs, and the keys its landing stales. The admission gate
+ * is, the grant it needs, its body and lane, and the keys its landing stales. The admission gate
  * matches every built request against these; the transports build, never match.
  */
 
@@ -38,6 +38,10 @@ export interface EndpointShape {
     readonly resource: "issues" | "pulls" | "labels";
     /** The grant a 403 on this endpoint names; a write takes nothing weaker (D123). */
     readonly grant: PermissionGrant;
+    /** Whether the request carries a JSON body, or must carry none. */
+    readonly body: "json" | "none";
+    /** The lane a send takes: content creation is spaced and ceilinged (D192). */
+    readonly lane: "default" | "contentCreation";
     /** Structural match on method and the path's tail — never derived from the builder (D129). */
     matches(method: string, rest: readonly string[]): boolean;
     /** Cache keys a landed write makes untrustworthy. */
@@ -63,6 +67,8 @@ const CREATE_LABEL: EndpointShape = {
     endpoint: "createLabel",
     resource: "labels",
     grant: "issues:write",
+    body: "json",
+    lane: "default",
     matches: (method, rest) => method === "POST" && rest.length === 0,
     invalidates: (url) => [`${GITHUB_API_ORIGIN}${url.pathname}`],
 };
@@ -72,6 +78,8 @@ const ADD_LABEL: EndpointShape = {
     endpoint: "addLabel",
     resource: "issues",
     grant: "issues:write",
+    body: "json",
+    lane: "default",
     matches: (method, rest) =>
         method === "POST" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "labels",
     invalidates: (url) => itemStaledBy(url, "labels"),
@@ -85,6 +93,8 @@ const REMOVE_LABEL: EndpointShape = {
     endpoint: "removeLabel",
     resource: "issues",
     grant: "issues:write",
+    body: "none",
+    lane: "default",
     matches: (method, rest) =>
         method === "DELETE" &&
         rest.length === 3 &&
@@ -99,6 +109,8 @@ const CREATE_COMMENT: EndpointShape = {
     endpoint: "createComment",
     resource: "issues",
     grant: "issues:write",
+    body: "json",
+    lane: "contentCreation",
     matches: (method, rest) =>
         method === "POST" &&
         rest.length === 2 &&
@@ -115,6 +127,8 @@ const UPDATE_COMMENT: EndpointShape = {
     endpoint: "updateComment",
     resource: "issues",
     grant: "issues:write",
+    body: "json",
+    lane: "default",
     matches: (method, rest) =>
         method === "PATCH" &&
         rest.length === 2 &&
@@ -131,6 +145,8 @@ const CLOSE_PULL_REQUEST: EndpointShape = {
     endpoint: "closePullRequest",
     resource: "pulls",
     grant: "pull_requests:write",
+    body: "json",
+    lane: "default",
     matches: (method, rest) => method === "PATCH" && rest.length === 1 && isNumberSegment(rest[0]),
     invalidates: itemViewsStaledBy,
 };
@@ -143,6 +159,8 @@ const RELEASE_ASSIGNMENT: EndpointShape = {
     endpoint: "releaseAssignment",
     resource: "issues",
     grant: "issues:write",
+    body: "json",
+    lane: "default",
     matches: (method, rest) =>
         method === "DELETE" &&
         rest.length === 2 &&
@@ -155,6 +173,8 @@ const LOCK_ISSUE: EndpointShape = {
     endpoint: "lockIssue",
     resource: "issues",
     grant: "issues:write",
+    body: "none",
+    lane: "default",
     matches: (method, rest) =>
         method === "PUT" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "lock",
     invalidates: itemViewsStaledBy,
@@ -164,6 +184,8 @@ const UNLOCK_ISSUE: EndpointShape = {
     endpoint: "unlockIssue",
     resource: "issues",
     grant: "issues:write",
+    body: "none",
+    lane: "default",
     matches: (method, rest) =>
         method === "DELETE" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "lock",
     invalidates: itemViewsStaledBy,
@@ -186,6 +208,8 @@ export const CONFIRMED_WRITE_ENDPOINTS: { readonly [K in WriteEndpoint]: Endpoin
 export interface MatchedEndpoint {
     readonly endpoint: WriteEndpoint;
     readonly grant: EndpointShape["grant"];
+    readonly body: EndpointShape["body"];
+    readonly lane: EndpointShape["lane"];
     readonly invalidates: readonly string[];
 }
 
@@ -204,6 +228,8 @@ export function writeEndpointOf(method: string, url: URL): MatchedEndpoint | nul
             return {
                 endpoint: shape.endpoint,
                 grant: shape.grant,
+                body: shape.body,
+                lane: shape.lane,
                 invalidates: shape.invalidates(url),
             };
         }

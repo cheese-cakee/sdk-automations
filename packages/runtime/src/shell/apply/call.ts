@@ -16,7 +16,13 @@ import type { FactKind, Ledger, StoredWarning } from "../../store/index.js";
 import type { Pass, PassResult } from "./actions.js";
 import type { Call, EffectOutcomeCode, EffectOutcomeName } from "../effects.js";
 import type { Confirmation, SendContext } from "./operations/handler.js";
-import { confirmCall, sendCall as sendByHandler, serializeCall } from "./operations/index.js";
+import {
+    confirmCall,
+    operationOf,
+    sendCall as sendByHandler,
+    serializeCall,
+    traitsOf,
+} from "./operations/index.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -148,7 +154,7 @@ export function createCalls(options: CallOptions): Calls {
      * `warnedAt` is NOW, because the promise is made when the comment appears. Keyed by the ACT's effect id, and called only after a call is proved done.
      */
     const record = (pass: Pass, call: Call): void => {
-        if (pass.records === null || call.verb !== "postComment") return;
+        if (pass.records === null || !traitsOf(operationOf(call)).recordsWarning) return;
         const warnedAt = clock();
         const { request } = pass.records;
         const snapshot: Omit<StoredWarning, "effectId"> = {

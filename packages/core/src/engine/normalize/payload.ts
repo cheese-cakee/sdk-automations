@@ -3,7 +3,7 @@
  * readers of untrusted bytes, each answering a value or `null`, never throwing.
  */
 
-import type { Actor, Alerts, RepositoryRef } from "../../catalogue.js";
+import type { Actor, RepositoryRef } from "../../catalogue.js";
 import type { MappableMeaning, RepositoryConfig, Skill } from "../../config/index.js";
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
@@ -101,8 +101,6 @@ export interface DeliveryFacts {
     readonly skills: readonly Skill[];
     readonly arrivedSkill: Skill | null;
     readonly removedSkill: Skill | null;
-    /** What this item carries, and what this delivery added — through `mappings.alerts`. */
-    readonly alerts: Alerts;
     /** The delivery's sender, or `null` — see `senderOf`. */
     readonly actor: Actor | null;
     readonly observedAt: Date;

@@ -194,10 +194,8 @@ function scriptedReader(script: Script = {}): ScriptedReader {
                 arrival: null,
                 skills: [],
                 position: POSITION,
-                alerts: { carried: [], arrived: [] },
                 assignees: CLOCK,
                 links: links === UNREAD ? UNREAD : { openPullRequests: links },
-                command: UNREAD,
             };
             return Promise.resolve(record);
         },
@@ -211,7 +209,6 @@ function scriptedReader(script: Script = {}): ScriptedReader {
                 author: listed.author,
                 actor: null,
                 position: POSITION,
-                alerts: { carried: [], arrived: [] },
                 assignees: CLOCK,
                 links:
                     closes === "unread"

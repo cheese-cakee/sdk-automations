@@ -25,7 +25,6 @@ import type { PermissionGrant } from "../github/index.js";
 import {
     EngineHandle,
     isSkipSignal,
-    readIntent,
     screenIntent,
     thrownDetail,
     type EngineCapability,
@@ -268,8 +267,8 @@ async function gateIntent(
     config: RepositoryConfig,
     externals: Externals,
 ): Promise<{ readonly findings: readonly Finding[]; readonly approved: Effect | null }> {
-    const parsed = readIntent(value);
-    if (parsed === null) {
+    // Contained, then trusted: the shape is the compiler's (D209); a non-object entry is the one defect.
+    if (typeof value !== "object" || value === null) {
         return {
             findings: [
                 screenFinding(
@@ -285,7 +284,7 @@ async function gateIntent(
         };
     }
     const intent = addressed(
-        { ...parsed, evaluatedAt: new Date(facts.observedAt.getTime()) },
+        { ...(value as AnyIntent), evaluatedAt: new Date(facts.observedAt.getTime()) },
         config,
     );
     const evaluatedAt = externals.evaluatedAt ?? facts.observedAt;
@@ -344,8 +343,6 @@ async function gateIntent(
         approved: result.approved,
     });
 
-    // `?? null` as the screen reads it: the field may be absent on an intent
-    // built from `unknown`.
     const grace = intent.grace ?? null;
     if (grace === null) {
         const verdict = evaluateWrite(writeRequestFor(intent), config, contextFor(intent));

@@ -72,7 +72,7 @@ describe("declared shape", () => {
             requiredMappings: { labels: ["awaitingTriage"] },
             labels: ["awaitingTriage"],
             facts: ["issue"],
-            needs: [],
+            needs: ["locked", "skills"],
             resolvers: ["isAutomationActor"],
             intents: ["applyMappedLabel", "postManagedComment", "lockIssue", "unlockIssue"],
         });

@@ -28,6 +28,7 @@ import { CAPABILITIES } from "../src/index.js";
 import { triageQueue } from "../src/triageQueue/capability.js";
 import { inactivity } from "../src/inactivity/capability.js";
 import {
+    factsFor,
     configEnabling,
     sweptIssue,
     webhookIssue,
@@ -81,18 +82,21 @@ function watch<D extends TypedDeclaration>(
 /** triageQueue reads a webhook record; it declares no need, so every group is unread. */
 const issue = webhookIssue({ repository: REPO, observedAt: AT });
 
-/** inactivity reads a sweep record: an unread group would be a `factsUnread` skip. */
-const swept = sweptIssue({
-    repository: REPO,
-    observedAt: AT,
-    assignees: [
-        {
-            login: "contributor",
-            assignedAt: new Date("2026-07-01T00:00:00.000Z"),
-            lastWorkingAt: null,
-        },
-    ],
-});
+/** A sweep record as inactivity sees it: every declared group read, the two it never declared projected away (D211). */
+const swept = factsFor(
+    inactivity.declaration,
+    sweptIssue({
+        repository: REPO,
+        observedAt: AT,
+        assignees: [
+            {
+                login: "contributor",
+                assignedAt: new Date("2026-07-01T00:00:00.000Z"),
+                lastWorkingAt: null,
+            },
+        ],
+    }),
+);
 
 describe("the seeds' specs", () => {
     it("read the keys their declarations admit, with the defaults they document", () => {

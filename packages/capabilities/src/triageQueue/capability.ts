@@ -16,6 +16,7 @@ import { TRIAGE_QUEUE_SETTINGS } from "./settings.js";
 export const triageQueueDeclaration = declareCapability({
     name: "triageQueue",
     triggers: [{ kind: "event", event: "issues" }],
+    needs: ["locked", "skills"],
     settings: TRIAGE_QUEUE_SETTINGS,
     requiredMappings: { labels: ["awaitingTriage"] },
     labels: ["awaitingTriage"],

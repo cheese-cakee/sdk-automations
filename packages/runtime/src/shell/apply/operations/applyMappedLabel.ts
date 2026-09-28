@@ -39,6 +39,7 @@ function displacedBy(intent: Intent<"applyMappedLabel">): MappableMeaning | unde
 
 export const applyMappedLabel: OperationHandler<"applyMappedLabel"> = {
     verbs: ["defineLabel", "addLabel", "removeLabel"],
+    traits: { recordsWarning: false, activityRead: false },
 
     /**
      * Define, add, then remove. The intermediate state carries two position labels, which projects

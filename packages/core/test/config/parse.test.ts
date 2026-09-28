@@ -1,7 +1,7 @@
 import { DEFAULT_LABEL_MAPPINGS } from "../../src/config/label-defaults.js";
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { count, duration, flag, section, spec, writeDuration } from "../../src/capability/index.js";
+import { duration, flag, section, spec, writeDuration } from "../../src/capability/index.js";
 import {
     describeSpec,
     parseConfig,
@@ -261,7 +261,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                         enabled: true,
                         checks: { dco: true, mergeConflict: true },
                     },
-                    assignment: { enabled: false, maxOpenAssignments: 2 },
+                    assignment: { enabled: false, maxOpenAssignments: true },
                 },
                 mappings: {
                     labels: {
@@ -280,7 +280,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                             mergeConflict: flag({ default: false }),
                         }),
                     }),
-                    assignment: spec({ maxOpenAssignments: count({ default: 0 }) }),
+                    assignment: spec({ maxOpenAssignments: flag({ default: false }) }),
                 }),
             },
         );

@@ -1,6 +1,6 @@
 # why — when someone asks, say what the platform did to this item and why
 
-Not built: phases 1, 2.
+Not built: phases 1, 2. The `command` fact group left the catalogue with nothing reading it; phase 1 restores it.
 
 ## What the output looks like
 
@@ -73,7 +73,7 @@ flowchart TD
 | Declaration | Value |
 |---|---|
 | `triggers` | `issue_comment` (created) |
-| `facts` / `needs` | `issue` and `pullRequest`, needing `command`. The `issue_comment` producer reads `command` on an issue; on a pull request it produces no record today — phase 1 below |
+| `facts` / `needs` | `issue` and `pullRequest`, needing `command` — a group phase 1 restores. The `issue_comment` producer would read it on an issue; on a pull request it produces no record today — phase 1 below |
 | `resolvers` | `history` — the item's decision rows and facts within the lookback, newest first, capped at 20 of each; answered by the shell from its own ledger on both the live and the credential-free path, never by GitHub |
 | `intents` | `postManagedComment`, kind `why`, topic `""`: one comment per item and purpose, rewritten in place (D145) |
 | settings | `enabled`; `lookback`, a `duration` |

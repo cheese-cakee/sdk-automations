@@ -678,7 +678,7 @@ export function createGitHubHttpClient({
             };
 
             const outcome =
-                write?.endpoint === "createComment"
+                write?.lane === "contentCreation"
                     ? await throughCreationLane(deliver)
                     : await deliver();
 

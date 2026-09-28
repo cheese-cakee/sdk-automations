@@ -23,13 +23,13 @@ type ProducerTable = {
 
 /** The registry. `satisfies`, not a `:` annotation, which would widen every row. */
 export const PRODUCERS = {
-    issues: { issue: [], pullRequest: null },
-    // The payload's assignee list carries no clocks, and no `merged` (D47).
-    issue_comment: { issue: ["command"], pullRequest: null },
+    // The lock state and the skill labels ride on the payload; the clocks do not (D47).
+    issues: { issue: ["locked", "skills"], pullRequest: null },
+    issue_comment: { issue: ["locked", "skills"], pullRequest: null },
     // `draft` arrives whole; the facts left in `review` need the timeline.
     pull_request: { issue: null, pullRequest: ["readiness"] },
     sweep: {
-        issue: ["assignees", "links"],
+        issue: ["locked", "skills", "assignees", "links"],
         pullRequest: ["assignees", "links", "review", "readiness"],
     },
 } as const satisfies ProducerTable;

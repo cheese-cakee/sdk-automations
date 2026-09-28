@@ -20,7 +20,7 @@
 | 8 | The safety ladder judges the write request: kill switch, mode, capability enabled, grant present, item open and unpaused, precondition holding, no newer human change | `packages/core/src/safety/write.ts` → `evaluateWrite`; `packages/core/src/safety/rules.ts`; `packages/core/src/intents/operations/` for the operation's class and permission | every refusal is a code an operator reads; a destructive class is refused here and judged only at the grace gate |
 | 9 | The approval: the intent becomes an `Effect` with its managed-comment identity minted (for comments) and its `WriteRequest` snapshot; a record-only mode records `wouldApply` instead | `packages/core/src/engine/decide.ts` → `gateIntent`; `packages/core/src/intents/managed.ts` | dry-run says exactly what active would do; identity is platform-owned (D125) |
 | 10 | The applier plans the effect as calls — for a label move, add the new label then remove the displaced one — journals each call as a row BEFORE sending, re-derives the world against a live read of the item, sends, and confirms the postcondition by read-back | `packages/runtime/src/shell/apply/apply.ts` → `createApplier`; `packages/runtime/src/shell/apply/operations/index.ts` → `planFor`, `serializeCall`; `packages/runtime/src/shell/apply/operations/applyMappedLabel.ts` | a crash between journal and send is resent from the row; a human change between deciding and applying refuses the write; "applied" means observed, not assumed |
-| 11 | The adapter admits the request by shape (the endpoint matrix as code), checks the grant, mints or reuses the installation token, sends, classifies the answer, and stales its cache | `packages/runtime/src/adapter/writes/operations/applyMappedLabel.ts`; `packages/runtime/src/adapter/client/admission.ts` → `admit`; `packages/runtime/src/adapter/client/http.ts` → `createGitHubHttpClient`; `packages/runtime/src/adapter/writes/readback.ts` → `createReadBack` | only the endpoints the matrix confirmed can be reached; no credential leaves this directory |
+| 11 | The adapter admits the request by shape (the endpoint matrix as code), checks the grant, mints or reuses the installation token, sends, classifies the answer, and stales its cache | `packages/runtime/src/adapter/writes/requests.ts`; `packages/runtime/src/adapter/client/admission.ts` → `admit`; `packages/runtime/src/adapter/client/http.ts` → `createGitHubHttpClient`; `packages/runtime/src/adapter/writes/readback.ts` → `createReadBack` | only the endpoints the matrix confirmed can be reached; no credential leaves this directory |
 | 12 | Every finding and every effect's outcome is a decision row, written before the delivery is completed, and the operator log names the kind it finished as | `packages/runtime/src/shell/decide/decisions.ts` → `decisionsOf`; `packages/runtime/src/store/inbox.ts` → `completeDelivery` | the record of what was decided and why outlives the process (D173) |
 
 A sweep enters at hop 3 with a different producer: the driver decides which records exist — one per open item, with the groups its row in `PRODUCERS` promises — so the producer, not the capability, chooses which item a decision is about
@@ -71,8 +71,8 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    Declaration table, each answered by a file:
    - facts and needs → the producers registry (`packages/core/src/capability/producers.ts`):
      every group you need must be read by a producer your trigger names, or boot refuses the
-     declaration. A webhook reads the projection, `readiness`, `actor`, `author` and — on
-     `issue_comment` — `command`; the sweep reads everything the endpoint matrix has confirmed.
+     declaration. A webhook reads the projection, `readiness`, `actor`, `author`; the sweep reads
+     everything the endpoint matrix has confirmed.
      Then check the group's element TYPE against what that producer can READ: `AssigneeClock`
      carries two clocks no webhook payload holds, so the `issues` webhook reads no assignee group
      and "add the row" is not the fix. A design needing a group its trigger cannot fill needs a
@@ -162,8 +162,8 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 
    | You need | Where it registers | What else it obliges |
    |---|---|---|
-   | an operation | one module in each of `core/src/intents/operations/`, `runtime/src/shell/apply/operations/`, `runtime/src/adapter/writes/operations/` + a key in `IntentCatalogue` | a payload pin in the shell's effects test; `pnpm contracts`; `design/guides/write-operations.md` |
-   | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; one arm in `answerValue` (`packages/core/src/engine/invoke.ts`), which re-reads the answer to the shape the catalogue promises; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/reads/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/compose/main.ts` |
+   | an operation | one module in each of `core/src/intents/operations/` and `runtime/src/shell/apply/operations/` + a key in `IntentCatalogue`; a verb on `WriteVerbs` with its row in `runtime/src/adapter/writes/requests.ts`; a shape in `adapter/client/endpoints.ts` | a payload pin in the shell's effects test; `pnpm contracts`; `design/guides/write-operations.md` |
+   | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/reads/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/compose/main.ts` |
    | a resolver whose read it has NOT | the same, minus the adapter arm: the gate narrows `query` to `ConfirmedRead` BEFORE the switch, so an arm for an unconfirmed name does not compile. The adapter edit is a docstring saying which endpoint it would read and what the matrix lacks | the same two value pins; the capability shows the check undetermined until a sandbox protocol cites the row |
    | a fact group | `FACT_GROUPS` + `GROUP_KEYS` in `catalogue.ts`; every producer's row in the registry; every producer | `facts.md` regenerates; fixtures |
    | a fact field (always read) | both fact interfaces; every producer; a `NORMALIZE_MALFORMED_CODES` entry if a payload may lack it | fixtures |
@@ -180,8 +180,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
 
    **Every closed vocabulary here is pinned BY VALUE in at least one test, and the new name goes
    into the pin in the same commit as the vocabulary.** Adding a resolver reds
-   `packages/core/test/engine/invoke.test.ts`, whose fixture list is asserted equal to
-   `RESOLVER_NAMES`, and `packages/runtime/test/adapter/reads/item-resolvers.test.ts`, which pins
+   `packages/runtime/test/adapter/reads/item-resolvers.test.ts`, which pins
    `CONFIRMED_RESOLVER_READS` by value. Answer a red pin rather than deriving it away.
 
 7. **Run the suite.** The checks read the working tree, so a new file is judged before it is

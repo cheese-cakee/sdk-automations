@@ -56,41 +56,20 @@ export interface DurationOptions {
 
 /** What one field is, for the generators, never for a reader; `absent` is DERIVED. */
 export interface FieldDescription {
-    readonly kind:
-        | "flag"
-        | "duration"
-        | "count"
-        | "text"
-        | "texts"
-        | "oneOf"
-        | "meanings"
-        | "commands"
-        | "skills"
-        | "principal"
-        | "section"
-        | "sections"
-        | "block"
-        | "blocks"
-        | "closed";
+    readonly kind: "flag" | "duration" | "text" | "meanings" | "section" | "block";
     readonly doc: string | null;
     readonly absent: "default" | "inherited" | "null" | "empty" | "parked" | "problem";
-    /** `flag`, `count`, and a `duration` that declares one — the written form for a duration. */
+    /** `flag`, and a `duration` that declares one — the written form for a duration. */
     readonly default?: boolean | number | string;
     /** `flag` — the family that must map something before the flag may be `true`. */
     readonly needs?: keyof SettingsView["mapped"];
-    /** `oneOf` — the choices, in the order it lists them. */
-    readonly values?: readonly string[];
-    /** `duration` — the field name it cascades from (§3.1). */
+    /** `duration` — the field it cascades from (§3.1), the `[target, by]` gap in hours, and the smallest value it may hold. */
     readonly inherits?: string;
-    /** `duration` — `[target, by]` in hours, the relation checked after the cascade. */
     readonly above?: readonly [string, number];
-    /** `duration` — the smallest value it may hold, in hours. */
     readonly atLeast?: number;
-    /** `text` and `principal`. */
+    /** `text`. */
     readonly optional?: boolean;
-    /** `sections` — the open family every key must name. */
-    readonly keys?: "alerts";
-    /** The five group kinds: `section`, `sections`, `block`, `blocks`, `closed`. */
+    /** The two group kinds: `section`, `block`. */
     readonly fields?: Readonly<Record<string, FieldDescription>>;
 }
 
@@ -98,9 +77,8 @@ export interface FieldDescription {
 export interface Field<T> {
     read(key: string, scope: Scope): SettingsResult<T>;
     describe(): FieldDescription;
-    /** On a `duration` field with a default — what the cascade resolves to, in HOURS. */
+    /** `cascades` is a `duration` default resolved to HOURS; `within` is the spec one level down, on `section` and `block`. */
     readonly cascades?: { readonly default: number };
-    /** The spec one level down — present on `section` and `block`, never on an open mapping. */
     readonly within?: Spec;
 }
 

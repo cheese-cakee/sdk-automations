@@ -4,10 +4,8 @@
  */
 
 import {
-    COMMANDS,
     MAPPABLE_MEANINGS,
     SKILL_TIERS,
-    type Command,
     type MappableMeaning,
     type RepositoryConfig,
     type Skill,
@@ -57,34 +55,4 @@ export function skillsOfLabels(
     labels: readonly string[],
 ): readonly Skill[] {
     return carriedOf(SKILL_TIERS, config.mappings.skills, labels);
-}
-
-/**
- * Every alert a set of labels carries, in the repository's own declaration
- * order — the same reverse reading, against an open-keyed family.
- */
-export function alertsOfLabels(
-    config: RepositoryConfig,
-    labels: readonly string[],
-): readonly string[] {
-    const carried = new Set(labels.map(labelKey));
-    return Object.entries(config.mappings.alerts)
-        .filter(([, label]) => carried.has(labelKey(label)))
-        .map(([alert]) => alert);
-}
-
-/**
- * The command a comment body invokes, or `null`. The mapped word must be the
- * FIRST token of some line, so a quoted `/assign` does not execute it.
- */
-export function commandInComment(config: RepositoryConfig, body: string): Command | null {
-    for (const line of body.split("\n")) {
-        const first = labelKey(line).split(/\s+/)[0];
-        if (first === undefined || first === "") continue;
-        for (const command of COMMANDS) {
-            const spelling = config.mappings.commands[command];
-            if (spelling !== undefined && labelKey(spelling) === first) return command;
-        }
-    }
-    return null;
 }

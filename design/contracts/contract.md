@@ -158,8 +158,10 @@ interface Intent<K extends IntentOperation> {
   capability that already states one keeps it: the key is the store's `effect_id` (D65).
 - **A label's transition cause comes from the map** (`moveTo`) when the request leaves it out; no edge from the
   item's position ends the evaluation as skipped.
-- `screenIntent` rechecks capability identity, declared operation, dated cause, authoritative projection,
-  entity/meaning compatibility, pause authority, position conflicts, and transition legality at runtime.
+- `screenIntent` judges what the compiler cannot: capability identity, declared operation, dated cause,
+  the re-derived key, the grace terms, entity/meaning compatibility, pause authority, position conflicts,
+  and transition legality. The intent's shape is the compiler's (D209); the engine contains a non-object
+  entry as `malformedIntent` and reads nothing else defensively.
 - The engine derives action class and required permission from `INTENT_OPERATIONS`, then derives an
   unforgeable safety world from the record's own projection and the intent's claims.
 - A passed screen can still be refused or recorded-only by the safety contract.

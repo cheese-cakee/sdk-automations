@@ -1,22 +1,19 @@
 /** Unlocking an issue's conversation: the plan, its row, and the state read that proves it. */
 
 import type { OperationHandler } from "./handler.js";
-import { text } from "./row.js";
 
 export const unlockIssue: OperationHandler<"unlockIssue"> = {
     verbs: ["unlockIssue"],
+    traits: { recordsWarning: false, activityRead: false },
 
-    plan: (effect) => ({
+    plan: () => ({
         ok: true,
-        calls: [{ verb: "unlockIssue", reason: effect.intent.desired.reason }],
+        calls: [{ verb: "unlockIssue" }],
     }),
 
-    serialize: (call) => ({ verb: call.verb, reason: call.reason }),
+    serialize: (call) => ({ verb: call.verb }),
 
-    parse(row) {
-        const reason = text(row, "reason");
-        return reason === null ? null : { verb: "unlockIssue", reason };
-    },
+    parse: () => ({ verb: "unlockIssue" }),
 
     send: async (_call, pass) => await pass.writer.unlockIssue(pass.item, pass.allowance),
 

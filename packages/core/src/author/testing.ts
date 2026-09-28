@@ -80,18 +80,12 @@ export function namesOffered(
  * Only the kinds whose `absent` can be `problem` have one: a required form not
  * named here throws rather than answering `undefined` at the maintainer's key.
  */
-function smallestValue(key: string, field: FieldDescription, names: SettingsView): unknown {
+function smallestValue(key: string, field: FieldDescription): unknown {
     switch (field.kind) {
-        case "principal":
-            return names.principals[0];
-        case "oneOf":
-            return field.values?.[0];
         case "text":
             return "x";
         case "duration":
             return "1h";
-        case "count":
-            return 0;
         default:
             throw new Error(`no smallest value for a required "${field.kind}" at "${key}"`);
     }
@@ -109,7 +103,7 @@ function smallestIn(
             if (Object.keys(inner).length > 0) written[key] = inner;
             continue;
         }
-        if (field.absent === "problem") written[key] = smallestValue(key, field, names);
+        if (field.absent === "problem") written[key] = smallestValue(key, field);
     }
     return written;
 }
@@ -135,10 +129,10 @@ function fullestIn(
     for (const [key, field] of Object.entries(described)) {
         if (field.kind === "block") {
             written[key] = { enabled: true, ...fullestIn(field.fields ?? {}, names) };
-        } else if (field.kind === "section" || field.kind === "closed") {
+        } else if (field.kind === "section") {
             written[key] = fullestIn(field.fields ?? {}, names);
         } else if (field.absent === "problem") {
-            written[key] = smallestValue(key, field, names);
+            written[key] = smallestValue(key, field);
         } else if (field.kind === "flag") {
             // A flag is a switch, and "fullest" throws every switch its family allows.
             written[key] = field.needs === undefined || names.mapped[field.needs].length > 0;
@@ -238,10 +232,10 @@ const OPEN = {
  */
 const READ: { readonly [K in FactKind]: { readonly [G in FactGroup]?: unknown } } = {
     issue: {
+        locked: false,
+        skills: [],
         assignees: [],
         links: { openPullRequests: [] },
-        // Read and empty: no command issued, which `UNREAD` is not (facts.md §2).
-        command: null,
     },
     pullRequest: {
         assignees: [],
@@ -292,15 +286,8 @@ export function recordFrom<P extends ProducerName, K extends FactKind>(
         author: "opener",
         // Nobody causes a sweep; a delivery has a sender. Neither is a group.
         actor: producer === "sweep" ? null : { login: "actor" },
-        ...(kind === "issue"
-            ? {
-                  locked: false,
-                  arrival: producer === "issues" ? { kind: "opened" } : null,
-                  skills: [],
-              }
-            : {}),
+        ...(kind === "issue" ? { arrival: producer === "issues" ? { kind: "opened" } : null } : {}),
         position: OPEN,
-        alerts: { carried: [], arrived: [] },
         ...groups,
         ...over,
     } as RecordFrom<P, K>;
@@ -320,7 +307,7 @@ export function sweptIssue(
     return recordFrom("sweep", "issue", over);
 }
 
-/** An issue as a comment delivery produces it: the command read, nothing else. */
+/** An issue as a comment delivery produces it: no group read. */
 export function commentedIssue(
     over: Partial<RecordFrom<"issue_comment", "issue">> = {},
 ): RecordFrom<"issue_comment", "issue"> {

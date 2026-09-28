@@ -1,6 +1,6 @@
 # reviews — when a pull request has waited on its reviewers, say so
 
-Not built: phase 1.
+Not built: phase 1. `principal` and `closed` left the settings toolkit unused; this design brings them back.
 
 ## What the output looks like
 

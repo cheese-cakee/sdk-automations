@@ -1,6 +1,6 @@
 /** The closed vocabularies a capability chooses from and cannot extend (D61, P3). */
 
-import type { Command, ConfigResult, MappableMeaning, Skill } from "./config/index.js";
+import type { ConfigResult, MappableMeaning, Skill } from "./config/index.js";
 import type { PermissionGrant } from "./github/index.js";
 import type { ActionClass } from "./safety/index.js";
 import type {
@@ -56,19 +56,6 @@ export interface Actor {
     readonly login: string;
 }
 
-/** What the item carries, and what arrived here — `arrived` is empty on a sweep. */
-export interface Alerts {
-    readonly carried: readonly string[];
-    readonly arrived: readonly string[];
-}
-
-/** The command typed on this item — a catalogue name, never the repository's (contract.md §2). */
-export interface CommandFacts {
-    readonly command: Command;
-    readonly by: string;
-    readonly at: Date;
-}
-
 /** One assignee of an item, with the clock that assignment started. */
 export interface AssigneeClock {
     readonly login: string;
@@ -93,8 +80,6 @@ export interface IssueFacts {
     /** Who opened the item — always read, so there is no honest `Unread` for it. */
     readonly author: string;
     readonly actor: Actor | null;
-    /** GitHub's current discussion lock state. */
-    readonly locked: boolean;
     /** The issue transition this observation carries, or `null` when it carries none. */
     readonly arrival:
         | { readonly kind: "opened" }
@@ -105,14 +90,14 @@ export interface IssueFacts {
               readonly skill: Skill | null;
           }
         | null;
-    readonly skills: readonly Skill[];
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
-    readonly alerts: Alerts;
+    /** GitHub's current discussion lock state — a group, so only a capability that declares it sees it (D211). */
+    readonly locked: boolean | Unread;
+    /** The mapped skill tiers the issue carries, easiest first. */
+    readonly skills: readonly Skill[] | Unread;
     readonly assignees: readonly AssigneeClock[] | Unread;
     readonly links: { readonly openPullRequests: readonly ItemRef[] } | Unread;
-    /** `null` is a READ group that carried no command; only `UNREAD` means nobody looked. */
-    readonly command: CommandFacts | null | Unread;
 }
 
 /** One pull request, as the platform read it; `IssueFacts`'s notes hold unchanged. */
@@ -125,7 +110,6 @@ export interface PullRequestFacts {
     readonly author: string;
     readonly actor: Actor | null;
     readonly position: Projection<PrMeaning>;
-    readonly alerts: Alerts;
     readonly assignees: readonly AssigneeClock[] | Unread;
     /** Each linked issue with its own assignees' clocks — what a close releases alongside. */
     readonly links: { readonly issues: readonly LinkedIssue[] } | Unread;
@@ -151,7 +135,14 @@ export const FACT_KINDS = ["issue", "pullRequest"] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
 /** The groups a capability may declare a need for. */
-export const FACT_GROUPS = ["assignees", "links", "review", "readiness", "command"] as const;
+export const FACT_GROUPS = [
+    "locked",
+    "skills",
+    "assignees",
+    "links",
+    "review",
+    "readiness",
+] as const;
 
 export type FactGroup = (typeof FACT_GROUPS)[number];
 
@@ -162,18 +153,20 @@ const GROUP_KEYS: {
     };
 } = {
     issue: {
+        locked: "locked",
+        skills: "skills",
         assignees: "assignees",
         links: "links",
         review: null,
         readiness: null,
-        command: "command",
     },
     pullRequest: {
+        locked: null,
+        skills: null,
         assignees: "assignees",
         links: "links",
         review: "review",
         readiness: "readiness",
-        command: null,
     },
 };
 

@@ -1,23 +1,19 @@
 /** Locking an issue's conversation: the plan, its row, and the state read that proves it. */
 
 import type { OperationHandler } from "./handler.js";
-import { text } from "./row.js";
 
 export const lockIssue: OperationHandler<"lockIssue"> = {
     verbs: ["lockIssue"],
+    traits: { recordsWarning: false, activityRead: false },
 
-    /** The reason travels on the call, because the row is what a resend reads. */
-    plan: (effect) => ({
+    plan: () => ({
         ok: true,
-        calls: [{ verb: "lockIssue", reason: effect.intent.desired.reason }],
+        calls: [{ verb: "lockIssue" }],
     }),
 
-    serialize: (call) => ({ verb: call.verb, reason: call.reason }),
+    serialize: (call) => ({ verb: call.verb }),
 
-    parse(row) {
-        const reason = text(row, "reason");
-        return reason === null ? null : { verb: "lockIssue", reason };
-    },
+    parse: () => ({ verb: "lockIssue" }),
 
     send: async (_call, pass) => await pass.writer.lockIssue(pass.item, pass.allowance),
 
