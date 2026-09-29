@@ -82,6 +82,35 @@ Measured (protocol 8.4, 2026-09-15, the sandbox's 171 open items): a cold firing
 core requests and one GraphQL point in 141 seconds; the warm firing two minutes later charged
 nothing on either pool, answered every item from the store, and took under two seconds.
 
+The credential-free [cost rehearsal](../../packages/runtime/test/shell/compose/cost.test.ts)
+adds a smaller, reproducible fixture: one assigned issue, one assigned pull request, one page per
+endpoint, and a mapped `working` command. With inactivity disabled, a scheduled pass reads only
+config (one core unit). First enabling it costs nine core units and one GraphQL point, including
+config. An unchanged warm pass sends two conditional GETs, for config and the list, costing zero
+primary units. Token minting is outside those counts.
+
+The same fixture across 100 repositories uses a deliberately small 8% sweep share of a 5,000-unit
+pool. No window spends more than 400 units of either pool; a second tick cannot reopen the spent
+window, and all repositories finish within three windows. The webhook allowance remains untouched.
+
+The rehearsal also runs captured issue and pull-request webhooks through the delivery worker with
+synthetic, successful GitHub responses. Each cold delivery below includes its config read and the
+ordering timeline read. Mode is `dry-run`; no writes are sent, and the sweep allowance is untouched.
+
+| Capability | Case | Core units | GraphQL points |
+| --- | --- | --- | --- |
+| triageQueue | New issue, welcome on, locking off | 2 | 0 |
+| prDashboard | All checks on, one signed commit and one assigned linked issue | 5 | 1 |
+| configReport | PR changes automations.yml, proposed config is valid | 5 | 0 |
+
+The two dashboard commit checks share one commits read. A mixed-lane case runs two dashboard
+deliveries alongside 20 due repositories with a 40-unit sweep cap. The sweep stops at 40 while
+both deliveries finish using the webhook allowance. Together the deliveries spend five core units
+and two GraphQL points: the repeated REST reads return 304, but the GraphQL query is charged again.
+
+These are scripted request counts, not live fleet performance. They do not prove paging, write
+costs, GraphQL exhaustion or variable query costs, large webhook bursts, or secondary-rate-limit behavior.
+
 ## 4. What is still open
 
 - Nothing on the read side. Protocol 6.9 cited `changesRequested`, `reapableSince` and
