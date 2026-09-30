@@ -136,7 +136,13 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
 
         const outcomes =
             active && applier !== undefined
-                ? await applier.applyAll(decision.approved, config, allowance)
+                ? await applier.applyAll(
+                      decision.approved,
+                      config,
+                      allowance,
+                      // Stryker disable next-line ConditionalExpression: a swept record has no payload to pass.
+                      input.kind === "delivery" ? input.payload : undefined,
+                  )
                 : [];
         const rows = decisionsOf({
             ...pass,
