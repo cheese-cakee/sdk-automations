@@ -5,10 +5,8 @@
  */
 
 import {
-    carriesFactGroup,
     FACT_GROUPS,
     UNREAD,
-    type FactGroup,
     type FactKind,
     type Facts,
     type ResolverAnswer,
@@ -26,6 +24,7 @@ import { parseConfig } from "../config/parse.js";
 import type { AdmittedCapability, RepositoryConfig } from "../config/schema.js";
 import type { TypedDeclaration } from "../capability/declaration.js";
 import type { FactsFor } from "../capability/boundary.js";
+import { carriesFactGroup, fixtureOf } from "../capability/groups/index.js";
 import {
     producerReads,
     producersReading,
@@ -226,33 +225,6 @@ const OPEN = {
     ignored: [],
 } as const;
 
-/**
- * What each group holds when its producer read it — the smallest true answer,
- * so a suite that cares about a clock or a link states it as an override.
- */
-const READ: { readonly [K in FactKind]: { readonly [G in FactGroup]?: unknown } } = {
-    issue: {
-        locked: false,
-        skills: [],
-        assignees: [],
-        links: { openPullRequests: [] },
-    },
-    pullRequest: {
-        assignees: [],
-        links: { issues: [] },
-        review: {
-            changesRequested: false,
-            reapableSince: {
-                needsRevision: new Date("2026-07-01T00:00:00.000Z"),
-                changesRequested: new Date("2026-07-01T00:00:00.000Z"),
-                draft: new Date("2026-07-01T00:00:00.000Z"),
-            },
-            lastCommitAt: null,
-        },
-        readiness: { draft: true },
-    },
-};
-
 /** One number per producer and kind, so a suite holding several can tell them apart. */
 const NUMBERS: Readonly<Record<string, number>> = {
     "issues/issue": 11,
@@ -275,7 +247,8 @@ export function recordFrom<P extends ProducerName, K extends FactKind>(
     const groups: Record<string, unknown> = {};
     for (const group of FACT_GROUPS) {
         if (!carriesFactGroup(kind, group)) continue;
-        groups[group] = producerReads(producer, kind, group) ? READ[kind][group] : UNREAD;
+        // The smallest true answer; a suite that cares about a clock or a link states it.
+        groups[group] = producerReads(producer, kind, group) ? fixtureOf(kind, group) : UNREAD;
     }
     return {
         kind,
@@ -343,7 +316,7 @@ export function factsFor<D extends TypedDeclaration>(declaration: D, record: Fac
             .filter(([, value]) => value === UNREAD)
             .map(([key]) => key),
     );
-    for (const group of declaration.needs) {
+    for (const group of declaration.needs[kind]) {
         if (!carriesFactGroup(kind, group)) continue;
         if (!unread.has(group)) continue;
         throw new Error(

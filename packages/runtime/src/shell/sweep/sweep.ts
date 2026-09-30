@@ -5,13 +5,16 @@
  */
 
 import {
+    factGroupUnread,
     groupsNeeded,
+    keptOn,
     UNREAD,
     type Allowance,
     type EngineCapability,
     type FactGroup,
     type IssueFacts,
     type ItemRef,
+    type KeptGroups,
     type NeededGroups,
     type PullRequestFacts,
     type RepositoryConfig,
@@ -42,11 +45,11 @@ import { detailOf, type Log } from "../log.js";
 export interface SweptItem {
     readonly item: ItemRef;
     readonly author: string;
-    readonly locked: boolean;
     readonly labels: readonly string[];
     readonly assignees: readonly string[];
     readonly closedBy: string | null;
     readonly updatedAt: Date;
+    readonly entry: unknown;
 }
 
 /** Every open item, or the reason the list is unusable. */
@@ -65,13 +68,13 @@ export interface SweepFacts {
     issueFacts(
         listed: SweptItem,
         links: readonly ItemRef[] | Unread,
-        stored?: Pick<IssueFacts, "assignees">,
+        stored?: KeptGroups<"issue">,
     ): Promise<IssueFacts>;
     pullRequestFacts(
         listed: SweptItem,
         openIssues: readonly SweptItem[],
         closes: SweptLinks,
-        stored?: Pick<PullRequestFacts, "assignees" | "links" | "review" | "readiness">,
+        stored?: KeptGroups<"pullRequest">,
     ): Promise<PullRequestFacts>;
 }
 
@@ -209,17 +212,14 @@ function storedOf(
     groups: readonly FactGroup[],
     closes: SweptLinks,
 ): SnapshotFacts {
-    return record.kind === "issue"
-        ? { kind: "issue", groups, assignees: record.assignees }
-        : {
-              kind: "pullRequest",
-              groups,
-              assignees: record.assignees,
-              links: record.links,
-              review: record.review,
-              readiness: record.readiness,
-              closes,
-          };
+    const held = record as unknown as Readonly<Record<string, unknown>>;
+    const kept = Object.fromEntries(keptOn(record.kind).map((group) => [group, held[group]]));
+    // THE ONE CAST: `keptOn` names exactly the keys `KeptGroups` does, from the same registry.
+    return (
+        record.kind === "issue"
+            ? { kind: "issue", groups, ...kept }
+            : { kind: "pullRequest", groups, ...kept, closes }
+    ) as SnapshotFacts;
 }
 
 /** Why a claimed row is handed straight back: no driver here, or no repository in its id. */
@@ -434,7 +434,7 @@ export function createSweep(options: SweepOptions): Sweep {
         let unread = 0;
         let heldBack = 0;
         for (const record of records) {
-            if (record.links === "unread") unread += 1;
+            if (groups[record.kind].some((group) => factGroupUnread(record, group))) unread += 1;
             const answer = await processor.decideItem(
                 { kind: "facts", scheduleId: row.scheduleId, facts: record },
                 config,

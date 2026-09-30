@@ -20,7 +20,7 @@ interface CapabilityDeclaration {
   readonly requiredMappings: DeclaredMappings;
   readonly labels: readonly string[];            // the label meanings it may set; non-empty iff intents holds applyMappedLabel (D204)
   readonly facts: readonly string[];
-  readonly needs: readonly string[];
+  readonly needs: Readonly<Record<string, readonly string[]>>; // per kind (D214)
   readonly resolvers: readonly string[];
   readonly intents: readonly string[];
 }
@@ -39,8 +39,9 @@ interface DeclaredMappings {
 - `validateCapabilityDeclarations` validates the complete directly admitted set: name syntax, at least one
   trigger, at least one fact kind, duplicates, catalogue membership, and duplicate capability names.
 - `declareCapability` takes the author's shorter form: `facts` is implied by an event trigger (each webhook
-  producer yields one kind; a schedule trigger states its kinds), and `needs` and `requiredMappings` default
-  to empty. The filled declaration is what everything below reads.
+  producer yields one kind; a schedule trigger states its kinds), `needs` may be one list — each group
+  reaches every declared kind that carries it — or a list per kind, and `requiredMappings` defaults to
+  empty. The filled declaration, `needs` per kind, is what everything below reads.
 - `labels` names the meanings a capability may set, checked against the labels family and against
   `intents`: a capability that may set a position names which, and one that names them declares the
   intent. The parser copies it onto the enabled block, so the configuration report can tell a file's
@@ -53,8 +54,8 @@ interface DeclaredMappings {
   wants neither, and a required meaning outside its family's closed catalogue is a boot error (D84). A
   family the object omits demands nothing.
 - `facts` and `needs` are the two the ENGINE reads ([`facts.md`](facts.md) §3): which item kinds this
-  capability is handed a record for, and which groups of that record it reads. A need no declared kind
-  carries — `review` on an issue-only declaration — is a boot error.
+  capability is handed a record for, and which groups of each kind's record it reads. A need on a kind
+  it does not declare, or a group that kind does not carry — `review` on an issue — is a boot error (D214).
 - `TypedDeclaration` narrows mapping, fact, group, resolver, and intent names to the closed platform
   catalogues, which is also what lets a declaration serve as an `AdmittedCapability` uncast.
 - `declareCapability<const D>` preserves those lists as literal tuples so the boundary can project exact
@@ -115,8 +116,8 @@ catches it and still returns intents has them refused as `intentsAfterSkip`. `re
 the capability that carries on without one. `skip` is the explicit stop, returned. `intent` builds one intent
 about the record in hand, so the occasion, the cause, and the claims are read off the record (§3).
 
-`FactsFor<D>` is the declared kinds with every declared group's `| Unread` removed and every undeclared
-group typed `Unread` — the type is the guarantee, not a promise the engine keeps.
+`FactsFor<D>` is the declared kinds, each with its own kind's needed groups' `| Unread` removed and every
+other group typed `Unread` — the type is the guarantee, not a promise the engine keeps.
 
 `CapabilityView.settings` keeps that name in the code; the DOCUMENT has no such key. A maintainer
 writes a capability's keys beside its `enabled`, on one flat block, and `settings` is only what the

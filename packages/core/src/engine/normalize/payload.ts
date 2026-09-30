@@ -43,11 +43,6 @@ export function actionOf(payload: Record<string, unknown>): string | null {
     return typeof action === "string" && action.length > 0 ? action : null;
 }
 
-/** An issue's current discussion lock state, never defaulted. */
-export function lockedOf(item: Record<string, unknown>): boolean | null {
-    return typeof item["locked"] === "boolean" ? item["locked"] : null;
-}
-
 /** The label this delivery ADDED, or `null` when it added none. */
 export function labelAdded(payload: Record<string, unknown>): string | null {
     if (payload["action"] !== "labeled") return null;

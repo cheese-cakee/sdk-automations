@@ -4,16 +4,10 @@
  * carries whole; every other is `UNREAD`, never invented.
  */
 
-import { UNREAD } from "../../catalogue.js";
-import type { ProducedFacts } from "../../capability/index.js";
+import { deliveredGroups, type ProducedFacts } from "../../capability/index.js";
 import { projectPullRequest, type ClosureReason } from "../../workflow/index.js";
 import type { DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";
-
-/** The one readiness fact a delivery carries — refused, never defaulted to `false`. */
-function draftState(item: Record<string, unknown>): boolean | null {
-    return typeof item["draft"] === "boolean" ? item["draft"] : null;
-}
 
 /** Pull-request closure: `merged` is authoritative (D47 keeps them distinct). */
 function prClosure(item: Record<string, unknown>): ClosureReason | null {
@@ -29,10 +23,9 @@ export const pullRequestNormalizer = {
         if (typeof facts.item["merged"] !== "boolean") {
             return malformed("mergedMissing", "pull_request: merged missing");
         }
-        const draft = draftState(facts.item);
-        if (draft === null) {
-            return malformed("draftMissing", "pull_request: draft missing");
-        }
+        // `readiness` is refused, never defaulted to `false`, when the payload lacks `draft`.
+        const delivered = deliveredGroups("pull_request", "pullRequest", facts);
+        if (!delivered.ok) return malformed(delivered.code, delivered.detail);
         return {
             kind: "facts",
             facts: {
@@ -51,10 +44,7 @@ export const pullRequestNormalizer = {
                     closedBy: prClosure(facts.item),
                     meanings: facts.meanings,
                 }),
-                assignees: UNREAD,
-                links: UNREAD,
-                review: UNREAD,
-                readiness: { draft },
+                ...delivered.groups,
             } satisfies ProducedFacts<"pull_request", "pullRequest">,
         };
     },

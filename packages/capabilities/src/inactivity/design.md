@@ -163,7 +163,7 @@ close the same way a label somebody removed does. Protocol 8.3 ran the close pat
 | Declaration | Value |
 |---|---|
 | `triggers` | `schedule` — no webhook resets a clock; the sweep reads the timeline instead |
-| `facts` / `needs` | `issue` and `pullRequest`, needing `assignees` (each with `assignedAt` and last `/working`), `links`, `review` (changes requested, `reapableSince`, last commit) and `readiness` (draft). The fifth group, `command`, is the issue's and this capability does not read it. A producer that reads less — a webhook — is a `factsUnread` skip |
+| `facts` / `needs` | `issue` needing `assignees` (each with `assignedAt` and last `/working`) and `links`; `pullRequest` needing `assignees`, `review` (changes requested, `reapableSince`, last commit) and `readiness` (draft) — the pull-request ladder never reads `links` (D214). A producer that reads less — a webhook — is a `factsUnread` skip |
 | `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-dashboard's job, arriving as `needsRevision` |
 | `intents` | `postManagedComment` · `releaseAssignment` · `closePullRequest`. Every act claims what it saw: the assignee ladder and the label reason claim meanings and closure, and each mode reason claims its own `pullRequestMode` |
 | `requiredMappings` | none — the label reason demands `needsRevision` in a guard, only where it is switched on |

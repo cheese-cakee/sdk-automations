@@ -699,7 +699,7 @@ mappings:
             requiredMappings: {},
             labels: [],
             facts: ["pullRequest"],
-            needs: [],
+            needs: { issue: [], pullRequest: [] },
             resolvers: ["configAtHead"],
             intents: ["postManagedComment"],
         });

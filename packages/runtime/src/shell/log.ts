@@ -167,7 +167,7 @@ export type ShellEvent =
           /** Open items the list held; `decided` says how many of them this firing answered. */
           readonly items: number;
           readonly decided: number;
-          /** Records whose links went unread; see `sweep.ts` on the inverse. */
+          /** Records with a group their kind needs left unread (D214). */
           readonly unread: number;
           /** Writes this firing spent of its cap (D167). */
           readonly writes: number;

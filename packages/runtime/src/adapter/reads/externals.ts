@@ -22,7 +22,7 @@ import {
     type GitHubOutcome,
 } from "../client/contract.js";
 import type { Allowance } from "../client/allowance.js";
-import { labelNamesOf, loginsOf } from "./facts.js";
+import { labelNamesOf, loginsOf } from "./items.js";
 import { createResolverSource } from "./resolvers.js";
 import type { TokenSource } from "../client/token.js";
 import { field, jsonArrayOf } from "../client/untrusted.js";

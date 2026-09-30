@@ -47,7 +47,7 @@ describe("declared shape", () => {
             requiredMappings: {},
             labels: ["needsRevision", "needsReview"],
             facts: ["pullRequest"],
-            needs: ["readiness"],
+            needs: { issue: [], pullRequest: ["readiness"] },
             resolvers: [
                 "isAutomationActor",
                 "linkedIssues",
@@ -72,7 +72,7 @@ describe("declared shape", () => {
             requiredMappings: { labels: ["awaitingTriage"] },
             labels: ["awaitingTriage"],
             facts: ["issue"],
-            needs: ["locked", "skills"],
+            needs: { issue: ["locked", "skills"], pullRequest: [] },
             resolvers: ["isAutomationActor"],
             intents: ["applyMappedLabel", "postManagedComment", "lockIssue", "unlockIssue"],
         });
@@ -86,7 +86,10 @@ describe("declared shape", () => {
             requiredMappings: {},
             labels: [],
             facts: ["issue", "pullRequest"],
-            needs: ["assignees", "links", "review", "readiness"],
+            needs: {
+                issue: ["assignees", "links"],
+                pullRequest: ["assignees", "review", "readiness"],
+            },
             resolvers: ["isAutomationActor"],
             intents: ["postManagedComment", "releaseAssignment", "closePullRequest"],
         });

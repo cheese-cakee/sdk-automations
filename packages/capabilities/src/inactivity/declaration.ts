@@ -11,8 +11,11 @@ export const inactivityDeclaration = declareCapability({
     triggers: [{ kind: "schedule", description: "hourly stale-assignment sweep" }],
     settings: INACTIVITY_SETTINGS,
     facts: ["issue", "pullRequest"],
-    /** Every group, because both ladders judge clocks. */
-    needs: ["assignees", "links", "review", "readiness"],
+    /** Each ladder's own groups: the issue ladder reads links, the pull-request ladder never does. */
+    needs: {
+        issue: ["assignees", "links"],
+        pullRequest: ["assignees", "review", "readiness"],
+    },
     resolvers: ["isAutomationActor"],
     intents: ["postManagedComment", "releaseAssignment", "closePullRequest"],
 });

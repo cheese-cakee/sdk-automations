@@ -92,8 +92,9 @@ skipped `factsUnread` on every delivery it was triggered by.
 
 ## 2. What a producer reads
 
-The producers are a registry — `PRODUCERS` in `packages/core/src/capability/producers.ts` — and
-this table is generated from it by `pnpm contracts`. One row per producer and per kind it makes a
+The producers are a registry — `PRODUCERS` in `packages/core/src/capability/producers.ts`, read off
+each group module's own row in `packages/core/src/capability/groups/` (D215) — and this table is
+generated from it by `pnpm contracts`. One row per producer and per kind it makes a
 record of; `—` is a group that kind does not carry.
 
 <!-- generated: producers -->
@@ -123,21 +124,26 @@ that falls short of what was promised, whichever of the two reasons put it there
 ```ts
 declareCapability({
     name: "inactivity",
-    facts: ["issue", "pullRequest"],          // the kinds it reads (was `observations`)
-    needs: ["assignees", "links", "review"],   // the groups it reads
+    facts: ["issue", "pullRequest"],                              // the kinds it reads
+    needs: {                                                      // the groups it reads, per kind
+        issue: ["assignees", "links"],
+        pullRequest: ["assignees", "review", "readiness"],
+    },
     // triggers, settings, requiredMappings, resolvers, intents as before
 });
 ```
 
-- `needs` may name a group only if some declared kind carries it; `review` on an issue-only
-  declaration is a declaration error at boot.
+- `needs` is per kind (D214). One list is the shorter form: each group reaches every declared kind
+  that carries it. A need on a kind the capability does not declare, or a group that kind does not
+  carry — `review` on an issue — is a declaration error at boot; written per kind it does not
+  compile.
 - A need must also be READ by the producer each declared trigger names — an event names the webhook
   producer of that event, a schedule names the sweep. `needs: ["review"]` on a `pull_request`
   trigger is refused at boot, because the webhook reads no group and the capability would be
   skipped on every delivery instead. The refusal names the trigger, the group, and the producers
   that do read it.
-- The view a capability receives is `FactsFor<D>`: the declared kinds, with every declared group's
-  `| Unread` removed. The type is the guarantee — `"unread"` cannot reach a capability that
+- The view a capability receives is `FactsFor<D>`: the declared kinds, each with its own needed
+  groups' `| Unread` removed. The type is the guarantee — `"unread"` cannot reach a capability that
   declared the group, and a capability that did not declare a group cannot read it (the group is
   typed `Unread` for it, which nothing can do anything with).
 
@@ -147,7 +153,7 @@ declareCapability({
   the engine one record per item; it does not batch, so a decision is about one item and the
   projection for every intent is the record's own.
 - For each enabled capability: skip unless `declaration.facts` includes the record's kind; then,
-  for each group in `needs` that the kind carries, if the record holds `"unread"`, record
+  for each group in the record's kind's `needs`, if the record holds `"unread"`, record
   `factsUnread` (an `info` finding naming the capability and the group) and skip. Otherwise invoke.
 - The engine's own world derivation reads `position` only. Nothing else in core reads a group.
 

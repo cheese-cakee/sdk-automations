@@ -3,10 +3,9 @@
  * has read it. A group the webhook cannot see is `UNREAD`, never invented.
  */
 
-import { UNREAD } from "../../catalogue.js";
-import type { ProducedFacts } from "../../capability/index.js";
+import { deliveredGroups, type ProducedFacts } from "../../capability/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
-import { lockedOf, type DeliveryFacts } from "./payload.js";
+import type { DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";
 
 /**
@@ -22,8 +21,8 @@ export const issuesNormalizer = {
     event: "issues",
     itemKey: "issue",
     normalize(facts: DeliveryFacts): NormalizeResult {
-        const locked = lockedOf(facts.item);
-        if (locked === null) return malformed("lockedMissing", "issues: locked missing");
+        const delivered = deliveredGroups("issues", "issue", facts);
+        if (!delivered.ok) return malformed(delivered.code, delivered.detail);
         return {
             kind: "facts",
             facts: {
@@ -38,7 +37,6 @@ export const issuesNormalizer = {
                 },
                 author: facts.author,
                 actor: facts.actor,
-                locked,
                 arrival:
                     facts.action === "opened"
                         ? { kind: "opened" }
@@ -57,13 +55,11 @@ export const issuesNormalizer = {
                                   skill: facts.removedSkill,
                               }
                             : null,
-                skills: facts.skills,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),
                     meanings: facts.meanings,
                 }),
-                assignees: UNREAD,
-                links: UNREAD,
+                ...delivered.groups,
             } satisfies ProducedFacts<"issues", "issue">,
         };
     },

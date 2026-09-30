@@ -139,21 +139,24 @@ const REVIEW = {
  * with the review facts although it lives in its own group.
  */
 const pullRecord = (
-    over: Partial<PullLadderFacts> = {},
+    over: NonNullable<Parameters<typeof sweptPullRequest>[0]> = {},
     review: Partial<PullLadderFacts["review"] & PullLadderFacts["readiness"]> = {},
 ): PullLadderFacts => {
     const { draft, ...rest } = { draft: true, ...review };
-    return sweptPullRequest({
-        repository: REPO,
-        item: PULL,
-        observedAt: AT,
-        position: position(),
-        assignees: [assignee("alice", 40)],
-        links: { issues: [] },
-        ...over,
-        review: { ...REVIEW, ...rest },
-        readiness: { draft },
-    });
+    // The sweep reads links this ladder never declared (D214), so the record is projected.
+    return factsFor(
+        inactivity.declaration,
+        sweptPullRequest({
+            repository: REPO,
+            item: PULL,
+            observedAt: AT,
+            position: position(),
+            assignees: [assignee("alice", 40)],
+            ...over,
+            review: { ...REVIEW, ...rest },
+            readiness: { draft },
+        }),
+    ) as PullLadderFacts;
 };
 
 const human = answering({ ok: true, value: false });
@@ -446,7 +449,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
     });
 
     it("Unlinked PR stale in draft mode", async () => {
-        // No assignees and no links: reminded and closed like any other, and
+        // No assignees: reminded and closed like any other, and
         // the reminder is addressed to nobody rather than to an invented name.
         expect(await decide(pullRecord({ assignees: [] }))).toMatchObject([
             {
@@ -464,17 +467,8 @@ describe("the pull-request ladder judges the contributor's wait", () => {
 
     it("Reaper closes a PR", async () => {
         // An intent names the record's own item, so the close is the only act.
-        const fresh = { kind: "issue", number: 45 } as const;
         const closing = pullRecord(
-            {
-                position: position({ meaning: "needsRevision" }),
-                links: {
-                    issues: [
-                        { item: ISSUE, assignees: [assignee("alice", 40), assignee("bob", 2)] },
-                        { item: fresh, assignees: [assignee("carol", 2)] },
-                    ],
-                },
-            },
+            { position: position({ meaning: "needsRevision" }) },
             { draft: false },
         );
 
@@ -751,25 +745,12 @@ describe("never from a bot, and never on an answer it did not get", () => {
 });
 
 describe("nothing rides along with a close", () => {
-    const other = { kind: "issue", number: 44 } as const;
     const closing = () =>
-        pullRecord(
-            {
-                position: position({ meaning: "needsRevision" }),
-                links: {
-                    issues: [
-                        { item: ISSUE, assignees: [assignee("alice", 40)] },
-                        { item: other, assignees: [assignee("alice", 40)] },
-                    ],
-                },
-            },
-            { draft: false },
-        );
+        pullRecord({ position: position({ meaning: "needsRevision" }) }, { draft: false });
 
-    it("closes and says only that, however many stale linked assignments there are", async () => {
-        // Two linked issues, one assignee long overdue on each, and the issue
-        // ladder on: still one intent. The linked issues are somebody else's
-        // record, so this ladder has no world to judge their assignments in.
+    it("closes and says only that, with the issue ladder on", async () => {
+        // The linked issues are somebody else's record: this ladder does not
+        // declare links (D214), so it has no world to judge their assignments in.
         expect(await decide(closing())).toEqual([
             expect.objectContaining({
                 item: PULL,

@@ -6,8 +6,9 @@
  * never I/O; everything derivable is derived.
  */
 
-import { factGroupUnread, type Facts, type ItemRef, type RepositoryRef } from "../catalogue.js";
+import type { Facts, ItemRef, RepositoryRef } from "../catalogue.js";
 import {
+    factGroupUnread,
     modesOf,
     projectCapabilityView,
     type CapabilityView,
@@ -473,7 +474,9 @@ export async function decide(
             const declaration = capability.declaration;
             if (config.capabilities[declaration.name]?.enabled !== true) continue;
             if (!declaration.facts.includes(facts.kind)) continue;
-            const unread = declaration.needs.filter((group) => factGroupUnread(facts, group));
+            const unread = declaration.needs[facts.kind].filter((group) =>
+                factGroupUnread(facts, group),
+            );
             if (unread.length > 0) {
                 findings.push(
                     finding(

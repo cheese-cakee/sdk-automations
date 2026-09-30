@@ -145,11 +145,11 @@ const sweeping =
 const listedItem = (item: ItemRef): SweptItem => ({
     item,
     author: "opener",
-    locked: false,
     labels: [],
     assignees: ["ada"],
     closedBy: null,
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    entry: { locked: false },
 });
 
 const CLOCK = [
@@ -190,7 +190,7 @@ function scriptedReader(script: Script = {}): ScriptedReader {
                 trigger: { kind: "sweep" },
                 author: listed.author,
                 actor: null,
-                locked: listed.locked,
+                locked: false,
                 arrival: null,
                 skills: [],
                 position: POSITION,
@@ -361,12 +361,12 @@ describe("a due sweep row", () => {
 
         await run();
 
-        // `inactivity` is the one sweep capability and needs every group the
-        // sweep's row reads, so today's set is the whole row.
+        // `inactivity` is the one sweep capability; its pull-request ladder
+        // never reads `links`, so the sweep does not read them there (D214).
         expect(groups).toEqual([
             {
                 issue: ["assignees", "links"],
-                pullRequest: ["assignees", "links", "review", "readiness"],
+                pullRequest: ["assignees", "review", "readiness"],
             },
         ]);
     });
@@ -410,8 +410,9 @@ describe("a due sweep row", () => {
         expect(next).toMatchObject([
             { scheduleId: SCHEDULE, dueAt: new Date(NOW.getTime() + DAY_MS).toISOString() },
         ]);
+        // The scripted pull request never reads `review`, a group its kind needs.
         expect(events("sweepFinished")).toMatchObject([
-            { scheduleId: SCHEDULE, items: 2, decided: 2, unread: 0 },
+            { scheduleId: SCHEDULE, items: 2, decided: 2, unread: 1 },
         ]);
     });
 
@@ -598,7 +599,7 @@ describe("the claim", () => {
                             trigger: { kind: "sweep" },
                             author: listed.author,
                             actor: null,
-                            locked: listed.locked,
+                            locked: false,
                             arrival: null,
                             skills: [],
                             position: POSITION,
@@ -1238,7 +1239,7 @@ describe("the mutation lane shared by repositories", () => {
                             trigger: { kind: "sweep" },
                             author: listed.author,
                             actor: null,
-                            locked: listed.locked,
+                            locked: false,
                             arrival: null,
                             skills: [],
                             position: POSITION,
@@ -1850,11 +1851,12 @@ describe("the reader and the driver together", () => {
             links: { openPullRequests: [PULL] },
         });
         // And the pull request's own record says `review` is the group nobody
-        // read — the three reads it is built from have no citation yet.
+        // read — the three reads it is built from have no citation yet — and
+        // carries no `links`, which nothing enabled needs on a pull request (D214).
         expect(handed[1]?.input.facts).toMatchObject({
             kind: "pullRequest",
             assignees: [{ login: "ada" }],
-            links: { issues: [{ item: ISSUE }] },
+            links: UNREAD,
             review: UNREAD,
         });
         expect(events("sweepFinished")).toMatchObject([{ items: 2, decided: 2 }]);

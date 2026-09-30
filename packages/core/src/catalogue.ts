@@ -146,44 +146,8 @@ export const FACT_GROUPS = [
 
 export type FactGroup = (typeof FACT_GROUPS)[number];
 
-/** How each kind holds each group, or `null` where the kind carries none. */
-const GROUP_KEYS: {
-    readonly [K in FactKind]: {
-        readonly [G in FactGroup]: (keyof Extract<Facts, { kind: K }> & FactGroup) | null;
-    };
-} = {
-    issue: {
-        locked: "locked",
-        skills: "skills",
-        assignees: "assignees",
-        links: "links",
-        review: null,
-        readiness: null,
-    },
-    pullRequest: {
-        locked: null,
-        skills: null,
-        assignees: "assignees",
-        links: "links",
-        review: "review",
-        readiness: "readiness",
-    },
-};
-
-/** Does this kind carry the group at all? */
-export function carriesFactGroup(kind: FactKind, group: FactGroup): boolean {
-    return GROUP_KEYS[kind][group] !== null;
-}
-
-/** Did the producer leave this group unread? `false` for a group the kind does not carry. */
-export function factGroupUnread(facts: Facts, group: FactGroup): boolean {
-    if (facts.kind === "issue") {
-        const key = GROUP_KEYS.issue[group];
-        return key !== null && facts[key] === UNREAD;
-    }
-    const key = GROUP_KEYS.pullRequest[group];
-    return key !== null && facts[key] === UNREAD;
-}
+/** The groups kind `K`'s record holds, read off its interface. */
+export type GroupOf<K extends FactKind> = Extract<keyof Extract<Facts, { kind: K }>, FactGroup>;
 
 // A catalogue's keys must be exactly its name list; this half forces the reverse.
 type AssertNever<T extends never> = T;

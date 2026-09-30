@@ -4,14 +4,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-    carriesFactGroup,
-    FACT_GROUPS,
-    factGroupUnread,
-    UNREAD,
-    type IssueFacts,
-    type PullRequestFacts,
-} from "../src/catalogue.js";
+import { FACT_GROUPS, UNREAD, type IssueFacts, type PullRequestFacts } from "../src/catalogue.js";
+import { carriesFactGroup, factGroupUnread } from "../src/capability/index.js";
 
 const AT = new Date("2026-09-09T00:00:00.000Z");
 const REPO = { owner: "o", repo: "r" } as const;

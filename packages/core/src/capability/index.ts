@@ -5,6 +5,26 @@
  * (`../catalogue.ts`), config (`../config/`), safety (`../safety/`), workflow (`../workflow/`).
  */
 export * from "./producers.js";
+export {
+    GROUPS,
+    PRODUCER_KINDS,
+    carriesFactGroup,
+    decodeKept,
+    deliveredGroups,
+    factGroupUnread,
+    fixtureOf,
+    keptOn,
+    readersOf,
+    type AnyGroupValue,
+    type Delivered,
+    type DeliveredGroups,
+    type GroupDelivery,
+    type GroupMissingCode,
+    type GroupModule,
+    type GroupValue,
+    type KeptGroups,
+    type KeptOn,
+} from "./groups/index.js";
 export * from "./facts.js";
 export * from "./declaration.js";
 export * from "./factory.js";

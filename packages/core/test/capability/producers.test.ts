@@ -10,7 +10,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-    carriesFactGroup,
     FACT_GROUPS,
     FACT_KINDS,
     type FactGroup,
@@ -19,6 +18,7 @@ import {
     type Unread,
 } from "../../src/catalogue.js";
 import {
+    carriesFactGroup,
     groupsNeeded,
     PRODUCER_NAMES,
     PRODUCERS,
@@ -98,7 +98,17 @@ function declaring(
     facts: readonly FactKind[] = FACT_KINDS,
     triggers: readonly DeclaredTrigger[] = HOURLY,
 ): DeclaringCapability {
-    return { declaration: { name, triggers, facts, needs } };
+    // As `declareCapability` fills a list: each declared kind that carries the group.
+    const perKind = (kind: FactKind) =>
+        facts.includes(kind) ? needs.filter((group) => carriesFactGroup(kind, group)) : [];
+    return {
+        declaration: {
+            name,
+            triggers,
+            facts,
+            needs: { issue: perKind("issue"), pullRequest: perKind("pullRequest") },
+        },
+    };
 }
 
 const SHIPPED = [

@@ -3,10 +3,9 @@
  * shared preamble has read it — an ordinary issue record.
  */
 
-import { UNREAD } from "../../catalogue.js";
-import type { ProducedFacts } from "../../capability/index.js";
+import { deliveredGroups, type ProducedFacts } from "../../capability/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
-import { isRecord, lockedOf, timestamp, type DeliveryFacts } from "./payload.js";
+import { isRecord, timestamp, type DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";
 
 /** Issue closure, from what this payload alone can see — `issues.ts`'s reading. */
@@ -42,8 +41,8 @@ export const issueCommentNormalizer = {
         if (comment === null) {
             return malformed("commentUnreadable", "issue_comment: comment unreadable");
         }
-        const locked = lockedOf(facts.item);
-        if (locked === null) return malformed("lockedMissing", "issue_comment: locked missing");
+        const delivered = deliveredGroups("issue_comment", "issue", facts);
+        if (!delivered.ok) return malformed(delivered.code, delivered.detail);
         return {
             kind: "facts",
             facts: {
@@ -58,15 +57,12 @@ export const issueCommentNormalizer = {
                 },
                 author: facts.author,
                 actor: facts.actor,
-                locked,
                 arrival: null,
-                skills: facts.skills,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),
                     meanings: facts.meanings,
                 }),
-                assignees: UNREAD,
-                links: UNREAD,
+                ...delivered.groups,
             } satisfies ProducedFacts<"issue_comment", "issue">,
         };
     },

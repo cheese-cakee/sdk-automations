@@ -32,6 +32,7 @@ import {
     type RepositoryConfig,
 } from "../../src/index.js";
 import { configWith, triageConfig } from "../config/builders.js";
+import { sweptIssue, sweptPullRequest } from "../../src/author/testing.js";
 
 const payload = (name: string): unknown => capture(name).json();
 
@@ -771,6 +772,41 @@ describe("paths the delivery tests never walk", () => {
         });
         expect(decision.report.findings[0]?.summary).toContain("assignees");
     });
+    /** D214: a need is per kind, so a group needed on issues cannot withhold a pull request. */
+    it("judges each kind by its own needs", async () => {
+        const kinds: string[] = [];
+        const issueLinks: EngineCapability = {
+            declaration: declareCapability({
+                ...declaration,
+                triggers: [{ kind: "schedule", description: "hourly" }],
+                facts: ["issue", "pullRequest"],
+                needs: { issue: ["links"] },
+            }) as never,
+            async evaluate(facts: never): Promise<readonly AnyIntent[]> {
+                kinds.push((facts as { kind: string }).kind);
+                return [];
+            },
+        };
+        const pull = await decide(
+            {
+                kind: "facts",
+                facts: { ...sweptPullRequest({ repository: SWEPT_REPO }), links: UNREAD },
+            },
+            configIn("active"),
+            [issueLinks],
+            externals,
+        );
+        const issue = await decide(
+            { kind: "facts", facts: { ...sweptIssue({ repository: SWEPT_REPO }), links: UNREAD } },
+            configIn("active"),
+            [issueLinks],
+            externals,
+        );
+        expect(kinds).toEqual(["pullRequest"]);
+        expect(pull.report.findings.map((finding) => finding.code)).toEqual([]);
+        expect(issue.report.findings.map((finding) => finding.code)).toEqual(["factsUnread"]);
+    });
+
     it("a capability observing a different kind is never invoked", async () => {
         const prOnly: EngineCapability = {
             declaration: declareCapability({

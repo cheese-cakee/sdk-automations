@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    declareCapability,
     flag,
     spec,
     validateCapabilityDeclarations,
@@ -16,10 +17,10 @@ const declaration: CapabilityDeclaration = {
     facts: ["pullRequest"],
     /**
      * Empty, and it is the study's finding that it has to be: the webhook
-     * producer of `pull_request` reads no group, so `needs: ["review"]` here
-     * is the declaration the boot check exists to refuse — asserted below.
+     * producer of `pull_request` reads no `review`, so needing it here is the
+     * declaration the boot check exists to refuse — asserted below.
      */
-    needs: [],
+    needs: {},
     resolvers: ["linkedIssues"],
     intents: ["postManagedComment", "applyMappedLabel"],
 };
@@ -43,7 +44,7 @@ describe("validateCapabilityDeclarations", () => {
                 triggers: [],
                 requiredMappings: { labels: ["almostReady", "almostReady"] },
                 facts: ["unknownKind", "unknownKind"],
-                needs: ["unknownGroup", "unknownGroup"],
+                needs: { pullRequest: ["unknownGroup", "unknownGroup"] },
                 resolvers: ["unknownResolver", "unknownResolver"],
                 intents: ["unknownOperation", "unknownOperation"],
             },
@@ -83,7 +84,7 @@ describe("validateCapabilityDeclarations", () => {
             'capability "PR-Quality": required meaning "almostReady" is not in the labels family',
         );
         expect(errors.join("\n")).toContain('duplicate facts entry "unknownKind"');
-        expect(errors.join("\n")).toContain('duplicate needs entry "unknownGroup"');
+        expect(errors.join("\n")).toContain('duplicate needs.pullRequest entry "unknownGroup"');
         expect(errors.join("\n")).toContain('duplicate resolvers entry "unknownResolver"');
         expect(errors.join("\n")).toContain('duplicate intents entry "unknownOperation"');
         expect(errors.join("\n")).toContain(
@@ -119,9 +120,18 @@ describe("validateCapabilityDeclarations", () => {
     it("refuses a need no declared kind carries", () => {
         expect(
             validateCapabilityDeclarations([
-                { ...declaration, facts: ["issue"], needs: ["review"] },
+                { ...declaration, facts: ["issue"], needs: { issue: ["review"] } },
             ]),
-        ).toEqual(['capability "prDashboard": no declared fact kind carries the group "review"']);
+        ).toEqual(['capability "prDashboard": the issue record carries no group "review"']);
+    });
+
+    /** D214: a need on a kind the capability never receives is refused, not ignored. */
+    it("refuses a need on a kind it does not declare", () => {
+        expect(
+            validateCapabilityDeclarations([{ ...declaration, needs: { issue: ["assignees"] } }]),
+        ).toEqual([
+            'capability "prDashboard": needs groups on issue records, a kind it does not declare',
+        ]);
     });
 
     /**
@@ -135,15 +145,19 @@ describe("validateCapabilityDeclarations", () => {
      * one of two moves: change the trigger, or drop the need.
      */
     it("refuses a need the producer its trigger names never reads", () => {
-        expect(validateCapabilityDeclarations([{ ...declaration, needs: ["review"] }])).toEqual([
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, needs: { pullRequest: ["review"] } },
+            ]),
+        ).toEqual([
             'capability "prDashboard": the "pull_request" trigger leaves "review" unread on a pullRequest record, so every delivery it wakes is skipped — read by: sweep',
         ]);
     });
 
     /**
      * The same need on the trigger that does read it is the positive half, and
-     * it is inactivity's shape: both kinds declared, so `review` is judged
-     * against the pull request and skipped for the issue that cannot hold it.
+     * it is inactivity's shape: both kinds declared, `review` needed on the
+     * pull request, which is the only kind that can hold it.
      */
     it("admits the same need on a schedule trigger, which the sweep answers", () => {
         expect(
@@ -152,7 +166,7 @@ describe("validateCapabilityDeclarations", () => {
                     ...declaration,
                     triggers: [{ kind: "schedule", description: "daily" }],
                     facts: ["issue", "pullRequest"],
-                    needs: ["review"],
+                    needs: { pullRequest: ["review"] },
                 },
             ]),
         ).toEqual([]);
@@ -198,5 +212,45 @@ describe("validateCapabilityDeclarations", () => {
             "settings",
             "triggers",
         ]);
+    });
+});
+
+/** D214: `needs` is filled per kind, whichever form the author wrote. */
+describe("declareCapability fills needs per kind", () => {
+    const both = {
+        name: "both",
+        triggers: [{ kind: "schedule", description: "hourly" }],
+        settings: spec({}),
+        facts: ["issue", "pullRequest"],
+        resolvers: [],
+        intents: [],
+    } as const;
+
+    it("reaches every declared kind that carries a listed group, and no other", () => {
+        expect(declareCapability({ ...both, needs: ["assignees", "review"] }).needs).toEqual({
+            issue: ["assignees"],
+            pullRequest: ["assignees", "review"],
+        });
+    });
+
+    it("keeps a per-kind list as written, and empties the kinds it leaves out", () => {
+        expect(declareCapability({ ...both, needs: { pullRequest: ["review"] } }).needs).toEqual({
+            issue: [],
+            pullRequest: ["review"],
+        });
+    });
+
+    it("keeps a listed group no declared kind carries, so boot names it", () => {
+        const issueOnly = declareCapability({ ...both, facts: ["issue"], needs: ["review"] });
+        expect(issueOnly.needs).toEqual({ issue: ["review"], pullRequest: [] });
+        expect(validateCapabilityDeclarations([issueOnly])).toEqual([
+            'capability "both": the issue record carries no group "review"',
+        ]);
+    });
+
+    it("refuses at compile time a per-kind group the kind cannot hold", () => {
+        // @ts-expect-error — an issue record carries no `review`.
+        const wrong = declareCapability({ ...both, needs: { issue: ["review"] } });
+        expect(validateCapabilityDeclarations([wrong])).toHaveLength(1);
     });
 });

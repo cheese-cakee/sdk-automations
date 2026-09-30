@@ -5,29 +5,28 @@
  */
 
 import {
+    decodeKept,
     ENTITY_KINDS,
     FACT_GROUPS,
+    keptOn,
     UNREAD,
-    type AssigneeClock,
     type FactGroup,
-    type IssueFacts,
+    type FactKind,
     type ItemRef,
-    type LinkedIssue,
-    type PullRequestFacts,
+    type KeptGroups,
     type RepositoryRef,
     type Unread,
 } from "@hiero-hackers/automation-core";
 
 // ─── What a read leaves behind ───────────────────────────────────────
 
-/** An issue's stored groups; its `links` are the inverse, rebuilt every firing. */
-export type StoredIssueFacts = Pick<IssueFacts, "assignees">;
+/** An issue's kept groups; its `links` are the inverse, rebuilt every firing. */
+export type StoredIssueFacts = KeptGroups<"issue">;
 
-/** A pull request's stored groups, with the batch answer its links were built from. */
-export type StoredPullRequestFacts = Pick<
-    PullRequestFacts,
-    "assignees" | "links" | "review" | "readiness"
-> & { readonly closes: readonly ItemRef[] | Unread };
+/** A pull request's kept groups, with the batch answer its links were built from. */
+export type StoredPullRequestFacts = KeptGroups<"pullRequest"> & {
+    readonly closes: readonly ItemRef[] | Unread;
+};
 
 /** One item's read: the groups it was read with, and what each of them said. */
 export type SnapshotFacts = { readonly groups: readonly FactGroup[] } & (
@@ -64,19 +63,6 @@ const recordOf = (value: unknown): Record<string, unknown> | null =>
         ? (value as Record<string, unknown>)
         : null;
 
-function instantOf(value: unknown): Date | null {
-    if (typeof value !== "string") return null;
-    const at = new Date(value);
-    return Number.isFinite(at.getTime()) ? at : null;
-}
-
-/** An instant the record allows to be absent: `null` there is an answer, not a gap. */
-function optionalInstant(value: unknown): { readonly at: Date | null } | null {
-    if (value === null) return { at: null };
-    const at = instantOf(value);
-    return at === null ? null : { at };
-}
-
 /** A group's value, or the sentinel; `null` is a shape this file did not write. */
 function groupOf<T>(value: unknown, read: (value: unknown) => T | null): T | Unread | null {
     return value === UNREAD ? UNREAD : read(value);
@@ -103,73 +89,18 @@ function each<T>(value: unknown, read: (entry: unknown) => T | null): readonly T
     return entries;
 }
 
-function clockOf(value: unknown): AssigneeClock | null {
-    const clock = recordOf(value);
-    if (clock === null || typeof clock["login"] !== "string") return null;
-    const assignedAt = instantOf(clock["assignedAt"]);
-    const worked = optionalInstant(clock["lastWorkingAt"]);
-    return assignedAt === null || worked === null
-        ? null
-        : { login: clock["login"], assignedAt, lastWorkingAt: worked.at };
-}
-
-const clocksOf = (value: unknown): readonly AssigneeClock[] | null => each(value, clockOf);
-
-function linkedOf(value: unknown): LinkedIssue | null {
-    const linked = recordOf(value);
-    const item = itemOf(linked?.["item"]);
-    const assignees = clocksOf(linked?.["assignees"]);
-    return item === null || assignees === null ? null : { item, assignees };
-}
-
-function linksOf(value: unknown): PullRequestFacts["links"] | null {
-    const issues = each(recordOf(value)?.["issues"], linkedOf);
-    return issues === null ? null : { issues };
-}
-
-/** The three instants a reapable mode was entered, every one of them required. */
-function reapableSinceOf(
-    value: unknown,
-): Exclude<PullRequestFacts["review"], Unread>["reapableSince"] | null {
-    const since = recordOf(value);
-    const needsRevision = instantOf(since?.["needsRevision"]);
-    const changesRequested = instantOf(since?.["changesRequested"]);
-    const draft = instantOf(since?.["draft"]);
-    return needsRevision === null || changesRequested === null || draft === null
-        ? null
-        : { needsRevision, changesRequested, draft };
-}
-
-function reviewOf(value: unknown): PullRequestFacts["review"] | null {
-    const review = recordOf(value);
-    if (review === null || typeof review["changesRequested"] !== "boolean") return null;
-    const reapableSince = reapableSinceOf(review["reapableSince"]);
-    const commit = optionalInstant(review["lastCommitAt"]);
-    return reapableSince === null || commit === null
-        ? null
-        : { changesRequested: review["changesRequested"], reapableSince, lastCommitAt: commit.at };
-}
-
-function readinessOf(value: unknown): PullRequestFacts["readiness"] | null {
-    const readiness = recordOf(value);
-    return readiness === null || typeof readiness["draft"] !== "boolean"
-        ? null
-        : { draft: readiness["draft"] };
-}
-
 const groupNameOf = (value: unknown): FactGroup | null =>
     FACT_GROUPS.find((group) => group === value) ?? null;
 
-/** A pull request's four groups and its batch answer, or `null` on any one of them. */
-function pullRequestFactsOf(stored: Record<string, unknown>): StoredPullRequestFacts | null {
-    const assignees = groupOf(stored["assignees"], clocksOf);
-    const links = groupOf(stored["links"], linksOf);
-    const review = groupOf(stored["review"], reviewOf);
-    const readiness = groupOf(stored["readiness"], readinessOf);
-    const closes = groupOf(stored["closes"], (value) => each(value, itemOf));
-    if (assignees === null || links === null || review === null) return null;
-    if (readiness === null || closes === null) return null;
-    return { assignees, links, review, readiness, closes };
+/** Every kept group of one kind, decoded through its module, or `null` on any one of them. */
+function keptOf(kind: FactKind, stored: Record<string, unknown>): Record<string, unknown> | null {
+    const groups: Record<string, unknown> = {};
+    for (const group of keptOn(kind)) {
+        const value = decodeKept(kind, group, stored[group]);
+        if (value === null) return null;
+        groups[group] = value;
+    }
+    return groups;
 }
 
 /** One row's groups as the reader takes them back, or `null` for a row nobody can read. */
@@ -183,30 +114,23 @@ export function decodeSnapshot(stored: string): SnapshotFacts | null {
     const facts = recordOf(parsed);
     const groups = each(facts?.["groups"], groupNameOf);
     if (facts === null || groups === null) return null;
-    if (facts["kind"] === "issue") {
-        const assignees = groupOf(facts["assignees"], clocksOf);
-        return assignees === null ? null : { kind: "issue", groups, assignees };
-    }
-    if (facts["kind"] !== "pullRequest") return null;
-    const read = pullRequestFactsOf(facts);
-    return read === null ? null : { kind: "pullRequest", groups, ...read };
+    const kind = ENTITY_KINDS.find((named) => named === facts["kind"]);
+    if (kind === undefined) return null;
+    const kept = keptOf(kind, facts);
+    if (kept === null) return null;
+    if (kind === "issue") return { kind, groups, ...kept } as SnapshotFacts;
+    const closes = groupOf(facts["closes"], (value) => each(value, itemOf));
+    return closes === null ? null : ({ kind, groups, ...kept, closes } as SnapshotFacts);
 }
 
 // ─── Whether a stored read still stands ──────────────────────────────
 
-/** The groups a pull request stores; an issue stores `assignees` alone. */
-const PULL_REQUEST_GROUPS = ["assignees", "links", "review", "readiness"] as const;
-
 /**
- * Does this read answer what the repository needs now — the same groups, each of them read?
+ * Does this read answer what the repository needs now — the same groups, each kept one read?
  * A set that moved since the read, or a group that read failed on, is a miss rather than a stale answer (D193).
  */
 export function snapshotAnswers(stored: SnapshotFacts, needed: readonly FactGroup[]): boolean {
     if (stored.groups.join(",") !== needed.join(",")) return false;
-    if (stored.kind === "issue") {
-        return !needed.includes("assignees") || stored.assignees !== UNREAD;
-    }
-    return PULL_REQUEST_GROUPS.every(
-        (group) => !needed.includes(group) || stored[group] !== UNREAD,
-    );
+    const held = stored as unknown as Readonly<Record<string, unknown>>;
+    return keptOn(stored.kind).every((group) => !needed.includes(group) || held[group] !== UNREAD);
 }

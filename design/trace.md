@@ -72,7 +72,9 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    - facts and needs → the producers registry (`packages/core/src/capability/producers.ts`):
      every group you need must be read by a producer your trigger names, or boot refuses the
      declaration. A webhook reads the projection, `readiness`, `actor`, `author`; the sweep reads
-     everything the endpoint matrix has confirmed.
+     everything the endpoint matrix has confirmed. Needs are per kind: one list reaches every
+     declared kind that carries each group, and a design whose issue branch reads a group its
+     pull-request branch does not writes them per kind, so the sweep pays for neither (D214).
      Then check the group's element TYPE against what that producer can READ: `AssigneeClock`
      carries two clocks no webhook payload holds, so the `issues` webhook reads no assignee group
      and "add the row" is not the fix. A design needing a group its trigger cannot fill needs a
@@ -165,9 +167,9 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    | an operation | one module in each of `core/src/intents/operations/` and `runtime/src/shell/apply/operations/` + a key in `IntentCatalogue`; a verb on `WriteVerbs` with its row in `runtime/src/adapter/writes/requests.ts`; a shape in `adapter/client/endpoints.ts` | a payload pin in the shell's effects test; `pnpm contracts`; `design/guides/write-operations.md` |
    | a resolver whose read the matrix HAS confirmed | `RESOLVER_NAMES` + `ResolverCatalogue` in `catalogue.ts`; the name in `CONFIRMED_RESOLVER_READS` and one arm in the dispatch of `runtime/src/adapter/reads/resolvers.ts` | a sentence in the generator's map; the two value pins below; the credential-free path if it needs no credential. An input the adapter cannot import arrives on `ResolverSourceOptions`, threaded from `packages/runtime/src/shell/compose/main.ts` |
    | a resolver whose read it has NOT | the same, minus the adapter arm: the gate narrows `query` to `ConfirmedRead` BEFORE the switch, so an arm for an unconfirmed name does not compile. The adapter edit is a docstring saying which endpoint it would read and what the matrix lacks | the same two value pins; the capability shows the check undetermined until a sandbox protocol cites the row |
-   | a fact group | `FACT_GROUPS` + `GROUP_KEYS` in `catalogue.ts`; every producer's row in the registry; every producer | `facts.md` regenerates; fixtures |
+   | a fact group | the field on its kind's interface and a name in `FACT_GROUPS` (`catalogue.ts`); one module in `core/src/capability/groups/` — the producers that read it per kind, its webhook read if a webhook reads it, its stored decoder if the sweep keeps it, its fixture — and a registry line; its sweep read, one module in `runtime/src/adapter/reads/groups/`, and a registry line | `facts.md` regenerates |
    | a fact field (always read) | both fact interfaces; every producer; a `NORMALIZE_MALFORMED_CODES` entry if a payload may lack it | fixtures |
-   | a producer (a new event) | one module in `core/src/engine/normalize/`, a union member and registry line in `engine/events.ts`, a row in the producers registry | a captured payload in the testkit, or a test that says there is none |
+   | a producer (a new event) | one module in `core/src/engine/normalize/`, a union member and registry line in `engine/events.ts`, its kinds in `PRODUCER_KINDS` and its name in the rows of the groups it reads | a captured payload in the testkit, or a test that says there is none |
    | a mapping family | `config/schema.ts` + one `MeaningFamily` spec, whose `meanings` is the closed list or `null` for an open-keyed family, read by the one family reader | two error codes → `docs/configuration.md`, `config-schema.md` §6, and a reachable document per code |
    | a meaning | one row in `MEANING_FACTS` (`config/schema.ts`), which the union and the array derive from + one row in `design/contracts/taxonomy.md` §2 | the meanings table in `docs/configuration.md` (locked by `docs.test.ts`), `docs/examples/full.yml`, and the workflow map (`packages/core/src/workflow/transitions.ts`, `causes.ts`) if the meaning is a position |
    | a settings constructor | `capability/settings.ts`, with its rule stated | the kits guide's table |

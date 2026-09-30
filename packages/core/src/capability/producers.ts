@@ -1,41 +1,65 @@
 /**
  * Who reads what: every producer of fact records, and the groups each fills.
- * THE TABLE IS THE PROMISE — a failed read still leaves its group `"unread"`.
+ * THE TABLE IS THE PROMISE — a failed read still leaves its group `"unread"`. It is
+ * read off the group modules' own rows (D215), never written twice.
  */
 
-import type { FactGroup, FactKind, Facts, Unread } from "../catalogue.js";
+import {
+    FACT_GROUPS,
+    FACT_KINDS,
+    type FactGroup,
+    type FactKind,
+    type Facts,
+    type Unread,
+} from "../catalogue.js";
 import type { RepositoryConfig } from "../config/schema.js";
+import {
+    PRODUCER_KINDS,
+    PRODUCER_NAMES,
+    WEBHOOK_PRODUCERS,
+    readersOf,
+    type GroupsReadBy,
+    type ProducerName,
+    type WebhookProducer,
+} from "./groups/index.js";
 
-/** The producers that wake on a webhook delivery — and so the events core consumes. */
-export const WEBHOOK_PRODUCERS = ["issues", "issue_comment", "pull_request"] as const;
+export {
+    PRODUCER_NAMES,
+    WEBHOOK_PRODUCERS,
+    type GroupsReadBy,
+    type ProducerName,
+    type WebhookProducer,
+} from "./groups/index.js";
 
-export type WebhookProducer = (typeof WEBHOOK_PRODUCERS)[number];
-
-/** Every producer. The sweep is the one that is not an event. */
-export const PRODUCER_NAMES = [...WEBHOOK_PRODUCERS, "sweep"] as const;
-
-export type ProducerName = (typeof PRODUCER_NAMES)[number];
+/** The kinds producer `P` makes a record of, as a union. */
+export type KindsMadeBy<P extends ProducerName> = (typeof PRODUCER_KINDS)[P][number];
 
 /** Per producer and kind, the groups it reads — `null` for no record at all (D76). */
 type ProducerTable = {
-    readonly [P in ProducerName]: { readonly [K in FactKind]: readonly FactGroup[] | null };
+    readonly [P in ProducerName]: {
+        readonly [K in FactKind]: K extends KindsMadeBy<P> ? readonly GroupsReadBy<P, K>[] : null;
+    };
 };
 
-/** The registry. `satisfies`, not a `:` annotation, which would widen every row. */
-export const PRODUCERS = {
-    // The lock state and the skill labels ride on the payload; the clocks do not (D47).
-    issues: { issue: ["locked", "skills"], pullRequest: null },
-    issue_comment: { issue: ["locked", "skills"], pullRequest: null },
-    // `draft` arrives whole; the facts left in `review` need the timeline.
-    pull_request: { issue: null, pullRequest: ["readiness"] },
-    sweep: {
-        issue: ["locked", "skills", "assignees", "links"],
-        pullRequest: ["assignees", "links", "review", "readiness"],
-    },
-} as const satisfies ProducerTable;
+/** One row, in `FACT_GROUPS` order; `null` where the producer makes no record of the kind. */
+function rowOf(producer: ProducerName, kind: FactKind): readonly FactGroup[] | null {
+    const makes: readonly FactKind[] = PRODUCER_KINDS[producer];
+    if (!makes.includes(kind)) return null;
+    return FACT_GROUPS.filter((group) => readersOf(kind, group).includes(producer));
+}
+
+/** The registry, derived. THE ONE CAST: `rowOf` computes exactly what `ProducerTable` names. */
+export const PRODUCERS = Object.fromEntries(
+    PRODUCER_NAMES.map((producer) => [
+        producer,
+        Object.fromEntries(FACT_KINDS.map((kind) => [kind, rowOf(producer, kind)])),
+    ]),
+) as unknown as ProducerTable;
 
 /** The same table widened, so the questions below can index it with a variable. */
-const ROWS: ProducerTable = PRODUCERS;
+const ROWS: {
+    readonly [P in ProducerName]: { readonly [K in FactKind]: readonly FactGroup[] | null };
+} = PRODUCERS;
 
 function isName<T extends string>(names: readonly T[], name: string): name is T {
     return names.some((known) => known === name);
@@ -64,7 +88,7 @@ export interface DeclaringCapability {
         readonly name: string;
         readonly triggers: readonly { readonly kind: string }[];
         readonly facts: readonly FactKind[];
-        readonly needs: readonly FactGroup[];
+        readonly needs: { readonly [K in FactKind]: readonly FactGroup[] };
     };
 }
 
@@ -85,18 +109,12 @@ export function groupsNeeded(
         if (config.capabilities[declaration.name]?.enabled !== true) continue;
         if (!declaration.triggers.some((trigger) => trigger.kind === "schedule")) continue;
         if (!declaration.facts.includes(kind)) continue;
-        for (const need of declaration.needs) needed.add(need);
+        for (const need of declaration.needs[kind]) needed.add(need);
     }
     // `PRODUCERS`, not `ROWS`: the sweep's row makes both kinds, so there is no null arm.
 
     return PRODUCERS.sweep[kind].filter((group) => needed.has(group));
 }
-
-/** The groups producer `P` reads on kind `K`, as a union of their names. */
-export type GroupsReadBy<
-    P extends ProducerName,
-    K extends FactKind,
-> = (typeof PRODUCERS)[P][K] extends readonly (infer G extends FactGroup)[] ? G : never;
 
 /** One record with the named groups read, every other group `Unread` — facts.md §3. */
 export type ReadGroups<F extends Facts, N extends FactGroup> = {
@@ -108,9 +126,5 @@ export type ReadGroups<F extends Facts, N extends FactGroup> = {
 };
 
 /** The record shape producer `P` may build for kind `K`; the row it omits is `Unread`. */
-export type ProducedFacts<
-    P extends ProducerName,
-    K extends FactKind,
-> = (typeof PRODUCERS)[P][K] extends readonly FactGroup[]
-    ? ReadGroups<Extract<Facts, { kind: K }>, GroupsReadBy<P, K>>
-    : never;
+export type ProducedFacts<P extends ProducerName, K extends FactKind> =
+    K extends KindsMadeBy<P> ? ReadGroups<Extract<Facts, { kind: K }>, GroupsReadBy<P, K>> : never;

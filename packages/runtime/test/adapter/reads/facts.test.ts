@@ -292,8 +292,8 @@ describe("the open-item list", () => {
                 labels: [TRIAGE_LABEL, "skill: beginner"],
                 assignees: ["ada"],
                 closedBy: null,
-                locked: false,
                 updatedAt: new Date(ISSUE_ROW.updated_at),
+                entry: ISSUE_ROW,
             },
             {
                 item: { kind: "pullRequest", number: 34 },
@@ -301,8 +301,8 @@ describe("the open-item list", () => {
                 labels: [],
                 assignees: ["grace"],
                 closedBy: null,
-                locked: false,
                 updatedAt: new Date(PULL_ROW.updated_at),
+                entry: PULL_ROW,
             },
         ]);
         expect(urls()[0]).toContain("state=open");
@@ -366,6 +366,21 @@ describe("the open-item list", () => {
         const outcome = await reader.openItems();
 
         expect(outcome.ok).toBe(false);
+    });
+
+    /** D216: a group read off the row leaves only itself unread when the row lacks it. */
+    it("keeps a row without `locked`, whose issue record reads it unread", async () => {
+        const { reader } = readerOver({
+            ...wholeRepository(),
+            "/issues?": json([{ ...ISSUE_ROW, locked: undefined }, PULL_ROW]),
+        });
+        const items = await listed(reader);
+
+        const record = await reader.issueFacts(items[0]!, []);
+
+        expect(items).toHaveLength(2);
+        expect(record.locked).toBe(UNREAD);
+        expect(record.skills).toEqual(["beginner"]);
     });
 
     it("is unusable when one row cannot be read, rather than shorter", async () => {
@@ -528,6 +543,18 @@ describe("the links group", () => {
         expect(urls().some((url) => url.includes("/issues/12/"))).toBe(false);
     });
 
+    it("goes unread when a linked issue's clocks cannot be read", async () => {
+        const { reader } = readerOver({
+            ...wholeRepository(),
+            "/issues/12/timeline": refuses(502),
+        });
+        const items = await listed(reader);
+
+        const record = await pullFacts(reader, items[1]!, [items[0]!]);
+
+        expect(record.links).toBe(UNREAD);
+    });
+
     it("goes unread when the query cannot be answered", async () => {
         const { reader } = readerOver({ ...wholeRepository(), "/graphql": refuses(502) });
         const items = await listed(reader);
@@ -575,6 +602,28 @@ describe("the links group", () => {
             openPullRequests: [{ kind: "pullRequest", number: 34 }],
         });
         expect(withoutLinks.links).toBe(UNREAD);
+    });
+
+    /**
+     * D214, inactivity's shape: issues need links, pull requests do not. The batch is still
+     * sent, because an issue's links are its inverse; the issue a pull request closes is not
+     * read on that pull request's behalf, and a failure there cannot touch its record.
+     */
+    it("reads no linked issue's clocks for a pull request that does not need links", async () => {
+        const { reader, urls, operations } = readerOver(
+            { ...wholeRepository(), ...REVIEW_ROUTES, "/issues/12/timeline": refuses(502) },
+            configWith(),
+            { issue: ["assignees", "links"], pullRequest: ["assignees", "review", "readiness"] },
+        );
+        const items = await listed(reader);
+
+        const record = await pullFacts(reader, items[1]!, [items[0]!]);
+
+        expect(operations()).toEqual(["LinkedIssuesBatch"]);
+        expect(record.links).toBe(UNREAD);
+        expect(record.assignees).not.toBe(UNREAD);
+        expect(record.review).not.toBe(UNREAD);
+        expect(urls().some((url) => url.includes("/issues/12/"))).toBe(false);
     });
 
     it("reads one item's clocks once, however many records name it", async () => {

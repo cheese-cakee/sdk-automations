@@ -17,11 +17,10 @@ import { readSettings, type SettingsOf, type SettingsView } from "../config/spec
 
 // ─── Typed projections ───────────────────────────────────────────────
 
-/** The fact union a declaration receives — one member per declared kind. */
-export type FactsFor<D extends TypedDeclaration> = ReadGroups<
-    Extract<Facts, { kind: D["facts"][number] }>,
-    D["needs"][number]
->;
+/** The fact union a declaration receives — one member per declared kind, read with that kind's needs (D214). */
+export type FactsFor<D extends TypedDeclaration> = {
+    [K in D["facts"][number]]: ReadGroups<Extract<Facts, { kind: K }>, D["needs"][K][number]>;
+}[D["facts"][number]];
 
 /** The intent union a declaration may return — one member per declared operation. */
 export type IntentFor<D extends TypedDeclaration> = Extract<

@@ -12,10 +12,11 @@ import {
     SKILL_TIERS,
 } from "../config/schema.js";
 import type { MappingFamily, RequiredMappings } from "../config/schema.js";
-import type { FactGroup, FactKind, IntentOperation, ResolverName } from "../catalogue.js";
-import { carriesFactGroup, FACT_GROUPS, FACT_KINDS, RESOLVER_NAMES } from "../catalogue.js";
+import type { FactGroup, FactKind, GroupOf, IntentOperation, ResolverName } from "../catalogue.js";
+import { FACT_GROUPS, FACT_KINDS, RESOLVER_NAMES } from "../catalogue.js";
+import { carriesFactGroup, PRODUCER_KINDS } from "./groups/index.js";
 import { INTENT_OPERATIONS } from "../intents/index.js";
-import type { PRODUCERS, ProducerName, WebhookProducer } from "./producers.js";
+import type { ProducerName, WebhookProducer } from "./producers.js";
 import type { Spec } from "../config/spec.js";
 import { producerReads, producersReading, producesKind } from "./producers.js";
 
@@ -49,18 +50,25 @@ export interface CapabilityDeclaration {
     /** The label meanings it may set — non-empty exactly when `intents` holds `applyMappedLabel` (D204). */
     readonly labels: readonly string[];
     readonly facts: readonly string[];
-    /** A need declared is a read paid for: the sweep reads these and no more (D195). */
-    readonly needs: readonly string[];
+    /** Per kind — a need declared is a read paid for: the sweep reads these and no more (D195, D214). */
+    readonly needs: Readonly<Record<string, readonly string[]>>;
     readonly resolvers: readonly string[];
     readonly intents: readonly string[];
 }
+
+/** The groups each kind's record is read with, filled for every kind. */
+export type NeedsPerKind = { readonly [K in FactKind]: readonly FactGroup[] };
+
+/** What an author may write: one list for every declared kind, or a list per kind. */
+export type NeedsInput =
+    readonly FactGroup[] | { readonly [K in FactKind]?: readonly GroupOf<K>[] };
 
 /** A declaration whose names are catalogue keys — the shape `parseConfig` admits. */
 export interface TypedDeclaration extends CapabilityDeclaration {
     readonly requiredMappings: RequiredMappings;
     readonly labels: readonly MappableMeaning[];
     readonly facts: readonly FactKind[];
-    readonly needs: readonly FactGroup[];
+    readonly needs: NeedsPerKind;
     readonly resolvers: readonly ResolverName[];
     readonly intents: readonly IntentOperation[];
 }
@@ -74,15 +82,13 @@ export interface DeclarationInput {
     readonly requiredMappings?: RequiredMappings;
     readonly labels?: readonly MappableMeaning[];
     readonly facts?: readonly FactKind[];
-    readonly needs?: readonly FactGroup[];
+    readonly needs?: NeedsInput;
     readonly resolvers: readonly ResolverName[];
     readonly intents: readonly IntentOperation[];
 }
 
 /** The kinds one webhook producer yields, read off its registry row. */
-type KindsOfEvent<E> = E extends WebhookProducer
-    ? { [K in FactKind]: (typeof PRODUCERS)[E][K] extends null ? never : K }[FactKind]
-    : never;
+type KindsOfEvent<E> = E extends WebhookProducer ? (typeof PRODUCER_KINDS)[E][number] : never;
 
 /** The kinds every event trigger in a tuple implies; a schedule trigger implies none. */
 type KindsOfTriggers<T extends readonly DeclaredTrigger[]> = {
@@ -91,16 +97,32 @@ type KindsOfTriggers<T extends readonly DeclaredTrigger[]> = {
         : never;
 }[number];
 
+/** The kinds a declaration receives: stated, or implied by its event triggers. */
+type KindsOf<D extends DeclarationInput> = D["facts"] extends readonly FactKind[]
+    ? D["facts"]
+    : readonly KindsOfTriggers<D["triggers"]>[];
+
+/** `needs` as written, per kind: a list reaches each declared kind that carries the group. */
+type NeedsOf<N, Kinds extends FactKind> = {
+    readonly [K in FactKind]: K extends Kinds
+        ? N extends readonly FactGroup[]
+            ? readonly Extract<N[number], GroupOf<K>>[]
+            : K extends keyof N
+              ? N[K] extends readonly FactGroup[]
+                  ? N[K]
+                  : readonly []
+              : readonly []
+        : readonly [];
+};
+
 /** The input with its defaults filled, each list kept as the literal tuple written. */
 export type Declared<D extends DeclarationInput> = Omit<
     D,
     "facts" | "needs" | "requiredMappings" | "labels"
 > & {
     readonly labels: D["labels"] extends readonly MappableMeaning[] ? D["labels"] : readonly [];
-    readonly facts: D["facts"] extends readonly FactKind[]
-        ? D["facts"]
-        : readonly KindsOfTriggers<D["triggers"]>[];
-    readonly needs: D["needs"] extends readonly FactGroup[] ? D["needs"] : readonly [];
+    readonly facts: KindsOf<D>;
+    readonly needs: NeedsOf<D["needs"], KindsOf<D>[number]>;
     readonly requiredMappings: D["requiredMappings"] extends RequiredMappings
         ? D["requiredMappings"]
         : Record<never, never>;
@@ -115,15 +137,36 @@ function kindsImpliedBy(triggers: readonly DeclaredTrigger[]): readonly FactKind
     return FACT_KINDS.filter((kind) => kinds.has(kind));
 }
 
+const isNeedsList = (needs: NeedsInput): needs is readonly FactGroup[] => Array.isArray(needs);
+
+/**
+ * `needs` per kind. A listed group reaches every declared kind that carries it; one that
+ * no declared kind carries is kept on each, so the boot check names it rather than losing it.
+ */
+function needsPerKind(needs: NeedsInput | undefined, kinds: readonly FactKind[]): NeedsPerKind {
+    const filled: Record<FactKind, FactGroup[]> = { issue: [], pullRequest: [] };
+    if (needs === undefined) return filled;
+    if (!isNeedsList(needs)) {
+        for (const kind of FACT_KINDS) filled[kind] = [...(needs[kind] ?? [])];
+        return filled;
+    }
+    for (const group of needs) {
+        const carriers = kinds.filter((kind) => carriesFactGroup(kind, group));
+        for (const kind of carriers.length > 0 ? carriers : kinds) filled[kind].push(group);
+    }
+    return filled;
+}
+
 /**
  * Fill the defaults and pin every list as a literal tuple. Declare capabilities
  * through this, never by annotating them `: TypedDeclaration`.
  */
 export function declareCapability<const D extends DeclarationInput>(d: D): Declared<D> {
+    const facts = d.facts ?? kindsImpliedBy(d.triggers);
     const filled = {
         ...d,
-        facts: d.facts ?? kindsImpliedBy(d.triggers),
-        needs: d.needs ?? [],
+        facts,
+        needs: needsPerKind(d.needs, facts),
         requiredMappings: d.requiredMappings ?? {},
         labels: d.labels ?? [],
     };
@@ -180,7 +223,7 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
     const lists: (readonly [string, readonly string[]])[] = [
         ["labels", d.labels],
         ["facts", d.facts],
-        ["needs", d.needs],
+        ...Object.entries(d.needs).map(([kind, groups]) => [`needs.${kind}`, groups] as const),
         ["resolvers", d.resolvers],
         ["intents", d.intents],
         ...MAPPING_FAMILIES.map(
@@ -236,13 +279,21 @@ function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly str
             errors.push(`${at}: fact kind "${fact}" is not in the fact catalogue`);
         }
     }
-    // facts.md §3: a need is satisfiable only if some declared kind carries the group.
-    const kinds = declaration.facts.filter(isFactKind);
-    for (const need of declaration.needs) {
-        if (!isFactGroup(need)) {
-            errors.push(`${at}: fact group "${need}" is not in the fact catalogue`);
-        } else if (!kinds.some((kind) => carriesFactGroup(kind, need))) {
-            errors.push(`${at}: no declared fact kind carries the group "${need}"`);
+    // facts.md §3: a need is satisfiable only on a declared kind that carries the group.
+    for (const [kind, groups] of Object.entries(declaration.needs)) {
+        if (groups.length === 0) continue;
+        const known = isFactKind(kind);
+        if (!known) errors.push(`${at}: needs name "${kind}", which is not a fact kind`);
+        const declared = known && declaration.facts.includes(kind);
+        if (known && !declared) {
+            errors.push(`${at}: needs groups on ${kind} records, a kind it does not declare`);
+        }
+        for (const need of groups) {
+            if (!isFactGroup(need)) {
+                errors.push(`${at}: fact group "${need}" is not in the fact catalogue`);
+            } else if (declared && !carriesFactGroup(kind, need)) {
+                errors.push(`${at}: the ${kind} record carries no group "${need}"`);
+            }
         }
     }
     for (const resolver of declaration.resolvers) {
@@ -270,7 +321,7 @@ function needsUnreadBy(
     const errors: string[] = [];
     for (const kind of declaration.facts.filter(isFactKind)) {
         if (!producesKind(producer, kind)) continue;
-        for (const need of declaration.needs.filter(isFactGroup)) {
+        for (const need of (declaration.needs[kind] ?? []).filter(isFactGroup)) {
             if (!carriesFactGroup(kind, need)) continue;
             if (producerReads(producer, kind, need)) continue;
             errors.push(

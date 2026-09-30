@@ -111,7 +111,8 @@ refuted by `packages/capabilities/test/boundary.test.ts`, P3 by `engine-matrix.t
 | webhook (`issues`, `issue_comment`, `pull_request`) | GitHub telling us something | the projection, `readiness`, `actor`, `author` |
 | sweep | a due schedule row — nobody told us anything | every group the endpoint-permission matrix has confirmed, one record per open item |
 
-The registry in `packages/core/src/capability/producers.ts` is the promise: a capability declaring a
+The registry in `packages/core/src/capability/producers.ts`, read off the group modules in
+`capability/groups/`, is the promise: a capability declaring a
 need no producer of its trigger reads does not boot. The record is judged again on the day — a group
 that failed to read, or that the matrix has not confirmed, arrives `"unread"` and `decide()` skips
 the capability with `factsUnread`, so it never branches on what woke the platform.
