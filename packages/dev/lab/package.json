@@ -11,7 +11,8 @@
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",
         "capture": "tsx src/capture.ts",
-        "lab:probe": "tsx src/probes/run.ts"
+        "lab:probe": "tsx src/probes/run.ts",
+        "lab:rehearse": "tsx src/rehearsal/run.ts"
     },
     "devDependencies": {
         "@types/node": "^24.13.6",

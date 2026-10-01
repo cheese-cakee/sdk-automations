@@ -3,8 +3,9 @@
 One job: **facts about GitHub's behaviour that only contact with GitHub can verify.** Tests verify
 our code; the lab verifies our beliefs about someone else's system. Conclusions never live here —
 they migrate to `design/` as register rows (D32) — and the protocols stay with the instrument that
-executes them: `src/scrub.ts` is the capture rules, `src/capture.ts` the receiver, and `src/probes/`
-the conformance instrument whose stamped results
+executes them: `src/scrub.ts` is the capture rules, `src/capture.ts` the receiver,
+[`src/rehearsal/`](src/rehearsal/README.md) protocol 8.6 as one command, and `src/probes/` the
+conformance instrument whose stamped results
 [`conformance.test.ts`](../checks/test/conformance.test.ts) holds to every confirmed read.
 
 Ground rules: a personal sandbox repository only, never a Hiero one (P8, D22); bounded hostility —
