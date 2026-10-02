@@ -136,13 +136,16 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
 
 - The 8.6 run found that the apply gate compared against the observation time, so the person's own
   label event refused its release (D207). The shell now dates approved effects at evaluation and
-  carries that instant into the apply gate (D208). A fresh live run still needs to confirm the fix.
+  carries that instant into the apply gate (D208), and the 2026-10-01 run confirmed the release.
+- Two label changes by one person in the same second refuse each other's release (D217): each
+  counts the other as a newer human change, and nothing retries. Adding `ready` and removing the
+  triage label in one label-picker gesture can leave the issue locked on a clean `ready`.
 - `ready` is the only release asked for. A triage that ends in `blocked`, in a request for more
   information, or in an area label asks for nothing — and for the author who was asked for more
   information, the lock is exactly what stops them answering.
 - An issue opened already carrying the triage label — a template applied it — is welcomed and
   locked without writing the label again. Its own creation-time label no longer refuses the
-  welcome and lock (D213). This path also needs confirmation in the fresh live run.
+  welcome and lock (D213), confirmed live through the API and a real issue form.
 - Closure needs nothing: a closed issue never reaches the capability, and a closed thread that
   stays locked is the ordinary GitHub outcome.
 - A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses
@@ -191,10 +194,10 @@ flowchart LR
 |---|---|
 | Issue opened, `lockUntilTriaged` | label, welcome, then lock — in that order (8.6: 18:41:20, :24, :25) |
 | Issue opened, `lockUntilTriaged` and `welcome: false` | the welcome still posts |
-| Issue opened already carrying the triage label (a template applied it) | welcome and lock asked for, no second label; fresh live confirmation pending after D208 |
+| Issue opened already carrying the triage label (a template applied it) | welcome and lock asked for, no second label (8.6, 2026-10-01: API and issue form) |
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
-| `ready` added while the triage label is still on | the conflict is not repaired; removing the stale triage label retries the release from `ready` |
-| `ready` added on a clean position | unlock and optional confirmation; fresh live confirmation pending after D208 |
+| `ready` added while the triage label is still on | the conflict is not repaired; removing the stale triage label retries the release from `ready` (8.6, 2026-10-01) |
+| `ready` added on a clean position | unlock and optional confirmation (8.6, 2026-10-01) |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
 | a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state; unit only, no live run yet |
 | a skill label on a bot-opened issue, or off the gate, or without the requirement | nothing, and no question asked off the gate |
