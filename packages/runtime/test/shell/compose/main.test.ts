@@ -136,28 +136,31 @@ capabilities:
   triageQueue:
     enabled: true
     lockUntilTriaged: true
+    confirmUnlock: true
 `;
 
-function releaseFixture() {
+function releaseFixture(action: "labeled" | "unlabeled", siblings: boolean) {
     const payload = capture("issues.labeled.json").json() as {
+        action: string;
         issue: { locked: boolean; labels: { name: string }[]; updated_at: string };
         label: { name: string };
         sender: { login: string; type: string };
     };
+    payload.action = action;
     payload.issue.locked = true;
+    payload.issue.updated_at = "2026-10-01T20:26:48Z";
     payload.issue.labels = [{ name: READY_LABEL }];
-    payload.label.name = READY_LABEL;
+    payload.label.name = action === "labeled" ? READY_LABEL : TRIAGE_LABEL;
+    const changes = siblings ? ["labeled", "unlabeled"] : [action];
     const body: Buffer<ArrayBuffer> = Buffer.from(JSON.stringify(payload));
     return {
         body,
-        timeline: [
-            {
-                event: "labeled",
-                actor: payload.sender,
-                created_at: payload.issue.updated_at,
-                label: { name: READY_LABEL },
-            },
-        ],
+        timeline: changes.map((event) => ({
+            event,
+            actor: payload.sender,
+            created_at: payload.issue.updated_at,
+            label: { name: event === "labeled" ? READY_LABEL : TRIAGE_LABEL },
+        })),
     };
 }
 
@@ -1067,17 +1070,23 @@ describe("the sandbox entry point, as a process", () => {
         TEST_TIMEOUT_MS,
     );
 
-    it(
-        "releases a locked issue after human triage",
-        async () => {
-            const fixture = releaseFixture();
+    it.each([
+        ["labeled", false, false],
+        ["labeled", true, false],
+        ["unlabeled", true, false],
+        ["labeled", true, true],
+        ["unlabeled", true, true],
+    ] as const)(
+        "releases and confirms from %s (same-second sibling: %s, reversed timeline: %s)",
+        async (action, siblings, reverse) => {
+            const fixture = releaseFixture(action, siblings);
             await withLiveGitHub(
                 {
                     config: RELEASE_CONFIG,
                     labels: [READY_LABEL],
                     locked: true,
                     slug: APP_SLUG,
-                    timeline: fixture.timeline,
+                    timeline: reverse ? fixture.timeline.reverse() : fixture.timeline,
                 },
                 async ({ fetchLog, port, shell, storeFile }) => {
                     expect(await listening(shell)).toMatchObject({ writes: "armed" });
@@ -1093,6 +1102,9 @@ describe("the sandbox entry point, as a process", () => {
                         }),
                     );
                     expect(
+                        (await decisionRows(storeFile)).filter((row) => row.verdict === "applied"),
+                    ).toHaveLength(2);
+                    expect(
                         requestsIn(fetchLog).filter(
                             (request) =>
                                 request.method === "DELETE" &&
@@ -1103,6 +1115,48 @@ describe("the sandbox entry point, as a process", () => {
                             authorization: "Bearer shell-test-installation-token",
                         }),
                     ]);
+                    expect(
+                        requestsIn(fetchLog).filter(
+                            (request) =>
+                                request.method === "POST" &&
+                                request.url.endsWith(`/issues/${String(ISSUE_NUMBER)}/comments`),
+                        ),
+                    ).toHaveLength(1);
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    it(
+        "refuses release when the live item no longer has ready",
+        async () => {
+            const fixture = releaseFixture("labeled", true);
+            await withLiveGitHub(
+                {
+                    config: RELEASE_CONFIG,
+                    labels: [],
+                    locked: true,
+                    slug: APP_SLUG,
+                    timeline: fixture.timeline,
+                },
+                async ({ fetchLog, port, shell, storeFile }) => {
+                    await listening(shell);
+                    expect(await post(port, ACTIVE_GUID, fixture.body)).toBe(202);
+                    await completed(shell, ACTIVE_GUID);
+                    expect(
+                        (await decisionRows(storeFile)).filter((row) => row.verdict === "refused"),
+                    ).toEqual([
+                        expect.objectContaining({ code: "preconditionStale" }),
+                        expect.objectContaining({ code: "preconditionStale" }),
+                    ]);
+                    expect(
+                        requestsIn(fetchLog).filter(
+                            (request) =>
+                                request.method !== "GET" &&
+                                request.url.includes(`/issues/${String(ISSUE_NUMBER)}`),
+                        ),
+                    ).toEqual([]);
                 },
             );
         },

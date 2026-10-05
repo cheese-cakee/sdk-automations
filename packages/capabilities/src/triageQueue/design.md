@@ -137,9 +137,10 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
 - The 8.6 run found that the apply gate compared against the observation time, so the person's own
   label event refused its release (D207). The shell now dates approved effects at evaluation and
   carries that instant into the apply gate (D208), and the 2026-10-01 run confirmed the release.
-- Two label changes by one person in the same second refuse each other's release (D217): each
-  counts the other as a newer human change, and nothing retries. Adding `ready` and removing the
-  triage label in one label-picker gesture can leave the issue locked on a clean `ready`.
+- Two label changes by one person in the same second refused each other's release (D217): each
+  counted the other as a newer human change, and nothing retries. When the payload shows its own
+  cause's result, one same-second entry per label whose result it shows no longer counts (D219).
+  The delivery that sees the clean `ready` releases; it awaits a live rerun.
 - `ready` is the only release asked for. A triage that ends in `blocked`, in a request for more
   information, or in an area label asks for nothing — and for the author who was asked for more
   information, the lock is exactly what stops them answering.
