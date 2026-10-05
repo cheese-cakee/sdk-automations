@@ -138,9 +138,19 @@ operator who points `STORE_PATH` back at it is still writing raw payloads and re
 pnpm shell:backup /backups/shell-$(date -u +%Y%m%dT%H%M%SZ).sqlite
 ```
 
-A consistent copy of the store the environment names, taken while the process runs. To restore:
-stop the process, put the copy at `STORE_PATH`, start it; work the copy holds as pending is claimed
-by the next start, and effects sent after the copy was taken are read back from GitHub, not resent.
+A consistent copy of the store the environment names, taken while the process runs. To restore,
+stop the original process before starting the copy at a different `STORE_PATH`. Start recovery
+in `observe`, without `APP_SLUG`, on an unrouted loopback port. Compare the stored decisions,
+pending deliveries and open sends before routing traffic to it. Never run the source and restored
+copy as writers for the same installation.
+
+Completed deliveries in the copy remain duplicates; pending deliveries can drain, and an expired
+claim can be taken over. An open send held by the copy is read back before recovery considers a
+resend: a confirmed landed change is not sent again, a confirmed absence may be retried, and an
+unavailable read leaves the send open. History after the backup is not held by it. It cannot
+establish whether an omitted effect landed, or guarantee exactly-once recovery from an old backup.
+Keep writes disarmed until that gap is reconciled. See
+[the recovery rehearsal](../packages/dev/lab/protocols/8.7-backup-recovery.md).
 
 ## Ask it what happened
 
