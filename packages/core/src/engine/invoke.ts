@@ -324,6 +324,13 @@ export function screenIntent(
     const grace = screenGrace(intent);
     if (!grace.ok) return grace;
     if (intent.operation === "applyMappedLabel") {
+        if (!declaration.labels.includes(intent.desired.meaning)) {
+            return {
+                ok: false,
+                code: "undeclaredMeaning",
+                reason: `"${declaration.name}" did not declare label meaning "${intent.desired.meaning}"`,
+            };
+        }
         if (projection === null) {
             return {
                 ok: false,

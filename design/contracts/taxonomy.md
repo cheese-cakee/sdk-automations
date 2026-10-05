@@ -52,7 +52,7 @@ Positions are shared workflow facts, not private capability state. This is the c
 | `inProgress` | None | None |
 | `needsReview` | `prDashboard` | `prDashboard`, `inactivity` |
 | `needsRevision` | `prDashboard` | `prDashboard`, `inactivity` |
-| `readyToMerge` | `prDashboard` | `prDashboard` |
+| `readyToMerge` | A person | `prDashboard` |
 | `blocked` | A person | Core safety, `inactivity` |
 
 `prDashboard` writes positions only when `applyLabels` includes them. Phase 3 may give `triageQueue`
@@ -76,6 +76,12 @@ One automatic edge has one owner. A second capability may consume the result, bu
 produce the same transition. Cross-capability handoffs use positions already present in the observation;
 capabilities do not call one another. More than one mapped position remains a conflict that no capability
 repairs automatically.
+
+The rule is enforced for moves INTO a position, which covers every edge ending there: a capability sets only
+the meanings its declaration's `labels` names (`undeclaredMeaning` otherwise), no meaning may be declared by
+two capabilities, and the Writer column must name exactly those writers (D220). Moving an item OUT of a
+position needs no ownership: `prDashboard` may move a person's `readyToMerge` to `needsRevision`. The
+`inProgress` rule above is documentation until an assignment capability exists.
 
 ## 3. Example Hiero mappings
 
