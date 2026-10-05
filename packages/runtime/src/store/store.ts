@@ -4,7 +4,7 @@
  * modules that write to it (D164); no state transition is its own.
  */
 
-import { DatabaseSync } from "node:sqlite";
+import { backup, DatabaseSync } from "node:sqlite";
 import { Inbox, type DeliveryFaultPoint } from "./inbox.js";
 import { Ledger } from "./ledger.js";
 import {
@@ -59,5 +59,18 @@ export class Store {
 
     close(): void {
         this.db.close();
+    }
+}
+
+/**
+ * Copy the store at `source` to `target`, consistent as of the call; the copy opens as a Store.
+ * Read-only, so a running process's file is never migrated or re-pragma'd by its backup.
+ */
+export async function backupStoreFile(source: string, target: string): Promise<void> {
+    const db = new DatabaseSync(source, { readOnly: true });
+    try {
+        await backup(db, target);
+    } finally {
+        db.close();
     }
 }
