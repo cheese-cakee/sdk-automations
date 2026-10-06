@@ -46,3 +46,4 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [8.4](protocols/8.4-read-side-pilot.md) | the read-side pilot: what a cold and a warm firing charge |
 | [8.5](protocols/8.5-pr-dashboard-pilot.md) | the prDashboard dashboard on a real pull request |
 | [8.6](protocols/8.6-triage-queue-live.md) | the triage queue on real issues: open, lock, label, unlock, with real webhooks |
+| [8.7](protocols/8.7-backup-recovery.md) | restoring a backed-up store and resuming only the work it remembers |
