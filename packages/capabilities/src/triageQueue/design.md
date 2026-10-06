@@ -137,9 +137,11 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
 - The 8.6 run found that the apply gate compared against the observation time, so the person's own
   label event refused its release (D207). The shell now dates approved effects at evaluation and
   carries that instant into the apply gate (D208), and the 2026-10-01 run confirmed the release.
-- Two label changes by one person in the same second refuse each other's release (D217): each
-  counts the other as a newer human change, and nothing retries. Adding `ready` and removing the
-  triage label in one label-picker gesture can leave the issue locked on a clean `ready`.
+- Two label changes by one person in the same second refused each other's release (D217): each
+  counted the other as a newer human change, and nothing retries. When the payload shows its own
+  cause's result, one same-second entry per label whose result it shows no longer counts (D219).
+  The delivery that sees the clean `ready` releases; one bounded live rehearsal on 2026-10-05
+  confirmed this on candidate `282255b` (8.6). Default locking remains off.
 - `ready` is the only release asked for. A triage that ends in `blocked`, in a request for more
   information, or in an area label asks for nothing — and for the author who was asked for more
   information, the lock is exactly what stops them answering.
@@ -198,6 +200,7 @@ flowchart LR
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
 | `ready` added while the triage label is still on | the conflict is not repaired; removing the stale triage label retries the release from `ready` (8.6, 2026-10-01) |
 | `ready` added on a clean position | unlock and optional confirmation (8.6, 2026-10-01) |
+| `ready` added and triage removed by one person in the same second | unlocked ready, one confirmation; two idempotent unlock calls (8.6, 2026-10-05, candidate `282255b`) |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
 | a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state; unit only, no live run yet |
 | a skill label on a bot-opened issue, or off the gate, or without the requirement | nothing, and no question asked off the gate |

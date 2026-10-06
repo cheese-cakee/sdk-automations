@@ -849,6 +849,115 @@ describe("the creation-time entries of an opened item", () => {
     });
 });
 
+describe("a same-second label change the cause already shows", () => {
+    const READY = {
+        ...PAYLOAD,
+        label: { name: "ready" },
+        issue: { ...PAYLOAD.issue, labels: [{ name: "ready" }] },
+    };
+    const TRIAGE_REMOVED = { ...PAYLOAD, action: "unlabeled", issue: READY.issue };
+    const removeTriage = entry("unlabeled", "maintainer", AT);
+    const addReady = entry("labeled", "maintainer", AT, "User", "ready");
+    const newest = (payload: unknown, events: readonly unknown[]) =>
+        source([page(events)], causeFingerprintOf(payload)).lookup(ITEM);
+
+    it("reads the labels the payload showed", () => {
+        expect(causeFingerprintOf(READY)).toEqual({ ...CAUSE, target: "ready", labels: ["ready"] });
+    });
+
+    it.each([
+        ["an undone addition", { ...READY, issue: PAYLOAD.issue }],
+        [
+            "an undone removal",
+            {
+                ...PAYLOAD,
+                action: "unlabeled",
+                issue: { ...PAYLOAD.issue, labels: [{ name: "triage" }] },
+            },
+        ],
+        ["an assignment", { ...READY, action: "assigned", assignee: { login: "contributor" } }],
+        ["a label naming null", { ...TRIAGE_REMOVED, label: { name: null } }],
+    ])("keeps no labels for %s", (_name, payload) => {
+        expect(causeFingerprintOf(payload)).not.toHaveProperty("labels");
+    });
+
+    it("excludes a removal the payload shows", async () => {
+        expect(await newest(READY, [removeTriage, addReady])).toBeNull();
+    });
+
+    it("excludes an addition the payload shows", async () => {
+        expect(await newest(TRIAGE_REMOVED, [removeTriage, addReady])).toBeNull();
+    });
+
+    it.each([
+        ["cause", addReady],
+        ["sibling", removeTriage],
+    ])("counts a duplicate %s entry", async (_name, duplicate) => {
+        expect(await newest(READY, [removeTriage, addReady, duplicate])).toEqual(new Date(AT));
+    });
+
+    it.each([
+        ["cause", addReady],
+        ["sibling", removeTriage],
+    ])("counts a duplicate %s entry across pages", async (_name, duplicate) => {
+        const { lookup } = source(
+            [page([duplicate], linkTo(3)), page([removeTriage, addReady]), page([])],
+            causeFingerprintOf(READY),
+        );
+        expect(await lookup(ITEM)).toEqual(new Date(AT));
+    });
+
+    it.each([
+        [
+            "addition",
+            { ...READY, issue: { ...READY.issue, labels: [] } },
+            [addReady, entry("unlabeled", "maintainer", AT, "User", "ready")],
+        ],
+        [
+            "removal",
+            { ...TRIAGE_REMOVED, issue: { ...READY.issue, labels: [{ name: "triage" }] } },
+            [removeTriage, entry("labeled", "maintainer", AT)],
+        ],
+    ])(
+        "counts the person undoing the cause's %s in the same second",
+        async (_name, payload, events) => {
+            expect(await newest(payload, events)).toEqual(new Date(AT));
+        },
+    );
+
+    it.each([
+        [
+            "a removal the payload does not show",
+            {
+                ...READY,
+                issue: { ...READY.issue, labels: [{ name: "ready" }, { name: "triage" }] },
+            },
+            removeTriage,
+        ],
+        [
+            "a removal beside a payload without labels",
+            { ...READY, issue: PAYLOAD.issue },
+            removeTriage,
+        ],
+        ["another person's removal", READY, entry("unlabeled", "other-human", AT)],
+        [
+            "the person's removal a second later",
+            READY,
+            entry("unlabeled", "maintainer", "2026-08-20T10:00:01Z"),
+        ],
+        [
+            "an assignment change",
+            READY,
+            entry("unassigned", "maintainer", AT, "User", "contributor"),
+        ],
+        ["a label change naming no label", READY, { ...removeTriage, created_at: AT, label: {} }],
+    ])("counts %s", async (_name, payload, other) => {
+        expect(await newest(payload, [addReady, other])).toEqual(
+            new Date(other["created_at"] as string),
+        );
+    });
+});
+
 describe("live externals for one delivery", () => {
     it("propagates a grants failure instead of deciding without them", async () => {
         const tokens = tokenSource([{ ok: false, failure: { kind: "transient" } }]);
