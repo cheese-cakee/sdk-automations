@@ -22,6 +22,8 @@ const KILL_SWITCH: SafetyVerdict = {
     reason: "a kill switch is active",
 };
 
+const secondOf = (date: Date): number => Math.floor(date.getTime() / 1000);
+
 /** Kill switch and authoritative precondition run before either write gate. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
     // Ahead of the observation short-circuit: the gate refuses those too (D117).
@@ -136,12 +138,12 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
               )
             : null,
     ),
-    // Ties go to the human — `>=`, not `>` (D33).
+    // Ties go to the human — `>=`, not `>` (D33); GitHub dates changes in whole seconds (D221).
     itemState("newerHumanChange", (f) =>
         f.context.latestHumanChangeAt !== null &&
         f.context.latestHumanChangeAt !== "unknown" &&
-        f.context.latestHumanChangeAt.getTime() >=
-            (f.request.evaluatedAt ?? f.request.causeObservedAt).getTime()
+        secondOf(f.context.latestHumanChangeAt) >=
+            secondOf(f.request.evaluatedAt ?? f.request.causeObservedAt)
             ? refuse(
                   "newerHumanChange",
                   "a human change at or after the cause conflicts; human edits are authoritative (rule 5)",

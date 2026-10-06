@@ -333,6 +333,23 @@ describe("evaluateWrite (contracts/safety.md)", () => {
         expect(verdict).toMatchObject({ outcome: "refuse", code: "newerHumanChange" });
     });
 
+    it("gives a human change in the evaluation's own second priority", () => {
+        // GitHub dates the change to the second, so it may have followed the evaluation.
+        const verdict = evalWrite(
+            request({ evaluatedAt: new Date("2026-07-10T00:00:00.700Z") }),
+            context({ latestHumanChangeAt: new Date("2026-07-10T00:00:00Z") }),
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "newerHumanChange" });
+    });
+
+    it("applies when the newest human change is in the second before evaluation", () => {
+        const verdict = evalWrite(
+            request({ evaluatedAt: new Date("2026-07-10T00:00:01Z") }),
+            context({ latestHumanChangeAt: new Date("2026-07-10T00:00:00Z") }),
+        );
+        expect(verdict.outcome).toBe("apply");
+    });
+
     it.each([
         [
             "an invalid cause timestamp",

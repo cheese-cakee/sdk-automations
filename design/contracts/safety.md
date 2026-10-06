@@ -71,7 +71,8 @@ Three of those rows are one rule wearing three names, and it is the rule the App
 **a person with repository permission may put an item wherever they like, and automation yields to
 them.** `newerHumanChange` is the rule itself — a human change at or after the intent's cause wins,
 and a tie goes to the human, because the alternative is a stale scheduled evaluation quietly undoing
-a maintainer's deliberate move. `humanOrderingUnknown` is the same rule where the evidence ran out:
+a maintainer's deliberate move. Ties are judged in whole seconds, the granularity GitHub dates a human
+change to (D221). `humanOrderingUnknown` is the same rule where the evidence ran out:
 unavailable ordering is a CONFLICT and never an absence, which is why the value is three-valued and
 why a webhook's delivery time is not evidence — deliveries are delayed and reordered (D51).
 `invalidTimestamp` is the third: a cause the platform cannot date cannot be compared with a human's.
