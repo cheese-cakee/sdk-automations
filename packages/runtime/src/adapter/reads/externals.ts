@@ -82,6 +82,8 @@ export interface CauseFingerprint {
     readonly action: string;
     readonly target: string | null;
     readonly createdWith?: readonly CreatedWith[];
+    /** Payload labels showing the cause's own change; absent when unproven. */
+    readonly labels?: readonly string[];
 }
 
 /**
@@ -189,7 +191,32 @@ function takeCreationEntry(
     return true;
 }
 
-/** Exclude at most one matching cause, or an opening's own entries. Every other change still counts, including ties. */
+const shows = (labels: readonly string[], action: string, name: string): boolean =>
+    labels.includes(name) === (action === "labeled");
+
+/** Consume one same-second label change the cause's payload shows (D219). */
+function takeShownLabel(
+    entry: unknown,
+    at: Date,
+    cause: CauseFingerprint,
+    taken: Set<string>,
+): boolean {
+    if (cause.labels === undefined) return false;
+    const action = field(entry, "event");
+    if (action !== "labeled" && action !== "unlabeled") return false;
+    if (field(field(entry, "actor"), "login") !== cause.actorLogin) return false;
+    if (!sameSecond(at, cause.observedAt)) return false;
+    const name = changeTarget(entry, action);
+    if (typeof name !== "string" || taken.has(name) || !shows(cause.labels, action, name))
+        return false;
+    taken.add(name);
+    return true;
+}
+
+/**
+ * Exclude one cause, creation entry per target, or shown label entry per name.
+ * Every other change still counts, including ties.
+ */
 function newestIn(
     events: readonly unknown[],
     landed: readonly LandedWrite[],
@@ -197,14 +224,17 @@ function newestIn(
 ): HumanChangeOrdering {
     // Stryker disable next-line ArrayDeclaration: a seeded junk entry matches no timeline entry.
     const pending = [...(cause?.createdWith ?? [])];
+    const takenLabels = new Set<string>();
     let newest: Date | null = null;
     for (const entry of events) {
         const at = humanChangeAt(entry, landed);
         if (at === "unparsable") return "unknown";
         if (at === null) continue;
         if (cause !== undefined && takeCreationEntry(entry, at, cause, pending)) continue;
+        if (cause !== undefined && takeShownLabel(entry, at, cause, takenLabels)) continue;
         if (
             cause !== undefined &&
+            cause.labels === undefined &&
             field(entry, "event") === cause.action &&
             field(field(entry, "actor"), "login") === cause.actorLogin &&
             sameSecond(at, cause.observedAt) &&
@@ -333,6 +363,17 @@ function openingOf(item: unknown, login: string, itemNumber: number): CauseFinge
           };
 }
 
+/** A payload contradicting its own cause cannot prove that sibling changes were seen. */
+function labelsAfter(
+    item: unknown,
+    action: string,
+    target: string | null,
+): readonly string[] | null {
+    if ((action !== "labeled" && action !== "unlabeled") || target === null) return null;
+    const labels = labelNamesOf(field(item, "labels"));
+    return labels !== null && shows(labels, action, target) ? labels : null;
+}
+
 /** The webhook matched to its timeline action; a missing field excludes nothing. */
 export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefined {
     const login = field(field(payload, "sender"), "login");
@@ -351,7 +392,15 @@ export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefin
     if (target !== null && typeof target !== "string") return undefined;
     const observedAt = new Date(updatedAt);
     if (!Number.isFinite(observedAt.getTime())) return undefined;
-    return { actorLogin: login, observedAt, itemNumber, action, target };
+    const labels = labelsAfter(item, action, target);
+    return {
+        actorLogin: login,
+        observedAt,
+        itemNumber,
+        action,
+        target,
+        ...(labels === null ? {} : { labels }),
+    };
 }
 
 /**
