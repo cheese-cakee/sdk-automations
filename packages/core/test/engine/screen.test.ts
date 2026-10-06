@@ -9,12 +9,13 @@ import {
     deriveIdempotencyKey,
     flag,
     intentFactoryFor,
+    MAPPABLE_MEANINGS,
     spec,
     type AnyIntent,
 } from "../../src/index.js";
 import { screenIntent } from "../../src/engine/invoke.js";
 
-const declaration = declareCapability({
+const FIXTURE = {
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
     settings: spec({ announce: flag({ default: false }) }),
@@ -23,7 +24,10 @@ const declaration = declareCapability({
     needs: [],
     resolvers: ["linkedIssues"],
     intents: ["applyMappedLabel", "unassign"],
-});
+} as const;
+
+/** Declares every meaning, so the screens below reach the transition map. */
+const declaration = declareCapability({ ...FIXTURE, labels: MAPPABLE_MEANINGS });
 
 const AT = new Date("2026-08-05T09:00:00.000Z");
 
@@ -103,6 +107,16 @@ describe("screenIntent", () => {
             expect(candidate.ok).toBe(false);
             if (!candidate.ok) expect(candidate.reason.length).toBeGreaterThan(0);
         }
+    });
+
+    /** `labels` bounds what a capability may set, so a position has only its declared writers. */
+    it("refuses a position the capability did not declare", () => {
+        const readyOnly = declareCapability({ ...FIXTURE, labels: ["ready"] });
+        expect(screenIntent(intent(), readyOnly, position())).toMatchObject({
+            ok: false,
+            code: "undeclaredMeaning",
+            reason: expect.stringContaining('"awaitingTriage"'),
+        });
     });
 
     /**

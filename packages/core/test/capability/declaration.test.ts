@@ -36,6 +36,19 @@ describe("validateCapabilityDeclarations", () => {
         );
     });
 
+    it("rejects a position two capabilities may set", () => {
+        expect(
+            validateCapabilityDeclarations([declaration, { ...declaration, name: "other" }]),
+        ).toContain('label meaning "needsReview" is set by more than one capability');
+    });
+
+    it("does not count one capability naming a position twice as two writers", () => {
+        const twice = { ...declaration, labels: ["needsReview", "needsReview"] };
+        expect(validateCapabilityDeclarations([twice]).join("\n")).not.toContain(
+            "more than one capability",
+        );
+    });
+
     it("returns every structural, duplicate-entry, and catalogue-name error", () => {
         const errors = validateCapabilityDeclarations([
             {

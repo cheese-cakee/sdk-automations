@@ -357,5 +357,9 @@ export function validateCapabilityDeclarations(
     for (const name of duplicates(declarations.map((declaration) => declaration.name))) {
         errors.push(`duplicate capability name "${name}"`);
     }
+    // One automatic writer per position (taxonomy.md §2.2).
+    for (const meaning of duplicates(declarations.flatMap(({ labels }) => [...new Set(labels)]))) {
+        errors.push(`label meaning "${meaning}" is set by more than one capability`);
+    }
     return errors;
 }
