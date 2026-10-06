@@ -5,6 +5,9 @@
 For whoever runs the endpoint: what it reads from the environment, what arms each lane, the two
 switches, and the commands that ask it what happened.
 
+For the first hosted observe run, use the [pilot operations checklist](pilot-operations.md) to
+record its boundary, measure cost/storage/noise, and prove recovery before relying on the host.
+
 ## Start it
 
 ```bash
