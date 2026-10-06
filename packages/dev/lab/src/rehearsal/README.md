@@ -12,7 +12,7 @@ no repository the token's own account does not own, and no public repository.
 
 ```mermaid
 flowchart LR
-    G["guard: own, private sandbox"] --> P["prepare: ready label, template, active config"]
+    G["guard: own, private sandbox"] --> P["prepare: labels, template, active config"]
     P --> S["shell on a fresh store"] --> H["repository-only Issues webhook"] --> I["ping accepted and stored"]
     I --> R["each scenario: act → settle → judge"] --> X["stop the shell"] --> U["restore, each read back"]
 ```

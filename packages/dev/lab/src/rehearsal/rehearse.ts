@@ -10,6 +10,7 @@ import {
     decisionDifferences,
     issueDifferences,
     settlementOf,
+    tickedRows,
     type HookDelivery,
     type IssueState,
 } from "./judge.js";
@@ -124,10 +125,14 @@ export function createRehearsal(options: RehearsalOptions): Rehearsal {
         );
         const byApp = (entry: unknown, key: string): boolean =>
             field(field(entry, key), "login") === appLogin;
+        const appComments = comments.filter((comment) => byApp(comment, "user"));
         return {
             labels: labels.map((label) => String(field(label, "name"))),
             locked: field(read.body, "locked") === true,
-            appComments: comments.filter((comment) => byApp(comment, "user")).length,
+            appComments: appComments.length,
+            ticked: appComments
+                .map((comment) => tickedRows(String(field(comment, "body") ?? "")))
+                .reduce((total, rows) => total + rows, 0),
             appLabelWrites: events.filter(
                 (event) => field(event, "event") === "labeled" && byApp(event, "actor"),
             ).length,

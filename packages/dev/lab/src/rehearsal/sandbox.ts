@@ -1,6 +1,6 @@
 /**
  * What a run changes on the sandbox, and how it is put back: the configuration file, an issue
- * template, the two position labels, a repository-only webhook, and the fixture issues. Each
+ * template, the labels a person sets, a repository-only webhook, and the fixture issues. Each
  * change is recorded as it lands, so restoring undoes exactly what happened, and each
  * restoration is read back.
  */
@@ -16,6 +16,9 @@ const TEMPLATE_PATH = `.github/ISSUE_TEMPLATE/${TEMPLATE_FILE}`;
 
 const LABELS_PAGE = 100;
 
+/** The labels a person sets; the App defines the triage label itself. */
+const PERSON_LABELS = [LABELS.ready, LABELS.blocked, LABELS.skill];
+
 /** The active triage queue the rehearsal arms; `welcome` is implied by the lock. */
 export const ACTIVE_CONFIG = `schemaVersion: 2
 mode: active
@@ -24,10 +27,15 @@ capabilities:
     enabled: true
     lockUntilTriaged: true
     confirmUnlock: true
+    requirements:
+      skill: true
 mappings:
   labels:
     awaitingTriage: "${LABELS.triage}"
     ready: "${LABELS.ready}"
+    blocked: "${LABELS.blocked}"
+  skills:
+    beginner: "${LABELS.skill}"
 `;
 
 /** An issue form whose only effect is the triage label at creation. */
@@ -146,9 +154,10 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
             originalConfig = await fileAt(CONFIG_PATH);
             const labels = await labelNames();
             originalLabels = labels;
-            if (!labels.has(LABELS.ready)) {
+            for (const name of PERSON_LABELS) {
+                if (labels.has(name)) continue;
                 await call("POST", `${repository}/labels`, {
-                    body: { name: LABELS.ready, color: "0e8a16" },
+                    body: { name, color: "0e8a16" },
                     accept: [201],
                 });
             }

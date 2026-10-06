@@ -32,6 +32,8 @@ export interface IssueState {
     readonly locked: boolean;
     readonly appComments: number;
     readonly appLabelWrites: number;
+    /** Ticked checklist rows in the App's comments; compared only when expected names it. */
+    readonly ticked?: number;
 }
 
 export type Settlement =
@@ -75,13 +77,18 @@ export function settlementOf(
 }
 
 /** Each way the observed issue differs from the expected one; empty when they agree. */
+/** The ticked rows of a triage checklist in one comment's body. */
+export function tickedRows(body: string): number {
+    return body.match(/^- \[x\] /gm)?.length ?? 0;
+}
+
 export function issueDifferences(expected: IssueState, observed: IssueState): string[] {
     const differences: string[] = [];
     const want = [...expected.labels].sort().join(", ");
     const found = [...observed.labels].sort().join(", ");
     if (want !== found) differences.push(`labels: expected [${want}], found [${found}]`);
-    for (const key of ["locked", "appComments", "appLabelWrites"] as const) {
-        if (expected[key] !== observed[key]) {
+    for (const key of ["locked", "appComments", "appLabelWrites", "ticked"] as const) {
+        if (expected[key] !== undefined && expected[key] !== observed[key]) {
             differences.push(
                 `${key}: expected ${String(expected[key])}, found ${String(observed[key])}`,
             );
