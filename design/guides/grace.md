@@ -55,7 +55,8 @@ For each destructive-class intent that passes the screens:
    and what the applier must record the moment the comment lands — the act's effect id, its
    request snapshot, the grace hours, `cancelledBy` and `reversesWith`. The act itself is not approved. In a record-only mode, the report says what
    would be warned.
-3. **A warning — the deadline gate:** `evaluateDestructive({ request, warning, qualifyingActivitySinceWarning: activityAt > warnedAt }, config, context, now)`.
+3. **A warning — the deadline gate:** `evaluateDestructive({ request, warning, qualifyingActivitySinceWarning: activitySinceWarning(activityAt, warning) }, config, context, now)`;
+   activity in the warning's own second counts, because GitHub dates it to the second (D223).
    `graceRunning` is an `info` finding, not a problem — waiting is the design working. Any other
    refusal is reported as today. `apply` approves the act.
 

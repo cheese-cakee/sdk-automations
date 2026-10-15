@@ -306,6 +306,19 @@ describe("with a warning standing", () => {
         ]);
     });
 
+    it("refuses the act when the person acted in the warning's own second", async () => {
+        const intent = act({ ...GRACE, activityAt: ago(8) });
+
+        const decision = await decided(intent, () =>
+            warnedAt(intent, new Date(ago(8).getTime() + 400)),
+        );
+
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings).toEqual([
+            expect.objectContaining({ code: "activityCancelled" }),
+        ]);
+    });
+
     /**
      * A promise made about some OTHER plan authorizes nothing here (D60), and
      * the snapshot is what says so — the gate is reached, and refuses.

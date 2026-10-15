@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+    activitySinceWarning,
     evaluateDestructive,
     createDestructiveWarning,
     MIN_GRACE_HOURS,
@@ -377,5 +378,23 @@ describe("evaluateDestructive (guides/grace.md)", () => {
         expect(
             evalDestructive({ ...plan, request: request() }, context(), afterGrace),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });
+    });
+});
+
+describe("activitySinceWarning (D223)", () => {
+    const warning = warningFor(request({ actionClass: "clockTriggeredDestructive" }), {
+        warnedAt: new Date("2026-07-01T12:00:05.400Z"),
+    });
+
+    it("counts activity GitHub dates to the warning's own second", () => {
+        expect(activitySinceWarning(new Date("2026-07-01T12:00:05Z"), warning)).toBe(true);
+    });
+
+    it("ignores activity in the second before", () => {
+        expect(activitySinceWarning(new Date("2026-07-01T12:00:04.999Z"), warning)).toBe(false);
+    });
+
+    it("ignores no activity", () => {
+        expect(activitySinceWarning(null, warning)).toBe(false);
     });
 });

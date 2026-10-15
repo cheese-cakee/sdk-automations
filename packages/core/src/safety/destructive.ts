@@ -4,7 +4,7 @@
  */
 
 import type { RepositoryConfig } from "../config/index.js";
-import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
+import { evaluateGeneralRulesAfterPreflight, evaluatePreflight, secondOf } from "./rules.js";
 import type { ActionClass, SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
 const DESTRUCTIVE_WARNING_BRAND: unique symbol = Symbol("DestructiveWarning");
@@ -80,6 +80,14 @@ export interface DestructivePlan {
     readonly warning: DestructiveWarning | null;
     /** Qualifying activity from the affected person since the warning. */
     readonly qualifyingActivitySinceWarning: boolean;
+}
+
+/** Did the affected person act at or after the warning, in whole seconds? Ties go to them (D223). */
+export function activitySinceWarning(
+    activityAt: Date | null,
+    warning: DestructiveWarning,
+): boolean {
+    return activityAt !== null && secondOf(activityAt) >= secondOf(new Date(warning.warnedAtMs));
 }
 
 /**
