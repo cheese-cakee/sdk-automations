@@ -88,6 +88,12 @@ const BACKOFF_JITTER_FRACTION = 0.25;
 export const PRIMARY_BUDGET_RESERVE = 50;
 
 /**
+ * The shortest a secondary limit holds every request this client would send (D224).
+ * GitHub asks for at least a minute when it names no retry-after; core's advice keeps it too.
+ */
+export const SECONDARY_LIMIT_HOLD_MS = 60_000;
+
+/**
  * Experiment 6.4 tripped an unsignalled secondary limit near eighty writes a minute.
  * Per client instance, and it spaces CREATION only: a label call is not content.
  */
@@ -360,6 +366,39 @@ export function createGitHubHttpClient({
             : null;
     };
 
+    /** Epoch milliseconds until which a secondary limit holds every request, on both pools. */
+    let secondaryHeldUntil: number | null = null;
+
+    /** Hold every request until GitHub's retry-after, or its minute, has passed. */
+    const holdForSecondaryLimit = (retryAfterSeconds: number | undefined): void => {
+        let now: number;
+        try {
+            now = clock().getTime();
+        } catch {
+            // Without a clock the hold cannot be timed; GitHub's answer still stands.
+            return;
+        }
+        const until = now + Math.max(SECONDARY_LIMIT_HOLD_MS, (retryAfterSeconds ?? 0) * 1_000);
+        secondaryHeldUntil = Math.max(secondaryHeldUntil ?? until, until);
+    };
+
+    /** The secondary limit still holding, answered without sending, or `null`. */
+    const heldBySecondaryLimit = (): GitHubFailure | null => {
+        if (secondaryHeldUntil === null) return null;
+        let now: number;
+        try {
+            now = clock().getTime();
+        } catch {
+            return brokenSeamFailure("clock");
+        }
+        if (now >= secondaryHeldUntil) {
+            secondaryHeldUntil = null;
+            return null;
+        }
+        const retryAfterSeconds = Math.ceil((secondaryHeldUntil - now) / 1_000);
+        return { ok: false, failure: { kind: "secondaryLimit", retryAfterSeconds } };
+    };
+
     const sendOnce = async (
         request: GitHubRequest,
         token: InstallationToken,
@@ -545,8 +584,10 @@ export function createGitHubHttpClient({
 
     const throughCreationLane = (work: () => Promise<GitHubOutcome>): Promise<GitHubOutcome> => {
         const run = creationLane.then(async (): Promise<GitHubOutcome> => {
-            const broken = await spaceCreation();
-            return broken ?? work();
+            // A held creation takes no slot of the hour and waits no spacing.
+
+            const stopped = heldBySecondaryLimit() ?? (await spaceCreation());
+            return stopped ?? work();
         });
         // The lane tracks completion, not success.
 
@@ -616,6 +657,12 @@ export function createGitHubHttpClient({
 
                 let previous: GitHubOutcome | null = null;
                 for (let attempt = 0; ; attempt += 1) {
+                    // GitHub may ban an integration that keeps sending while a secondary limit
+                    // holds, and another request may have met one while this one waited.
+
+                    const held = heldBySecondaryLimit();
+                    if (held !== null) return previous ?? held;
+
                     let tokenOutcome: TokenOutcome;
                     try {
                         tokenOutcome = await tokenSource.current();
@@ -655,6 +702,17 @@ export function createGitHubHttpClient({
                     charge(outcome);
                     previous = outcome;
                     if (outcome.ok) return outcome;
+                    if (outcome.failure.kind === "secondaryLimit") {
+                        holdForSecondaryLimit(outcome.failure.retryAfterSeconds);
+                        return outcome;
+                    }
+                    // Core calls a secondary limit's retry-after unusable when it is invalid or
+                    // over an hour; such a limit still holds for the minute.
+
+                    if (outcome.failure.kind === "rateLimitResponseUnusable") {
+                        holdForSecondaryLimit(undefined);
+                        return outcome;
+                    }
                     const responseClass = responseClassOf(outcome.failure);
                     if (responseClass === null) return outcome;
                     // A rejected token is dropped even on the final attempt.

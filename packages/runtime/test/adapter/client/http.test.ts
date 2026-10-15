@@ -33,6 +33,7 @@ import {
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_WAIT_MS,
     PRIMARY_BUDGET_RESERVE,
+    SECONDARY_LIMIT_HOLD_MS,
 } from "../../../src/adapter/client/http.js";
 import {
     failure,
@@ -1502,6 +1503,170 @@ describe("proactive pacing", () => {
         expect(await client.request(request())).toEqual({
             ok: false,
             failure: { kind: "notSent", reason: "brokenSeam", seam: "sleep" },
+        });
+        expect(scripted.calls).toHaveLength(1);
+    });
+});
+
+describe("the secondary-limit hold (D224)", () => {
+    const limited = (headers: Record<string, string> = {}): Response =>
+        failure(403, BODY_PATTERNS.secondaryRateLimit.observed, headers);
+
+    /** A harness whose clock the test moves. */
+    function clocked(
+        steps: readonly ResponseStep[],
+        options: { contentCreationHourly?: number } = {},
+    ) {
+        const clock = { now: NOW };
+        return { clock, ...harness(steps, { ...options, clock: () => clock.now }) };
+    }
+
+    const later = (ms: number): Date => new Date(NOW.getTime() + ms);
+
+    it("sends nothing for a minute after a limit that names no retry-after", async () => {
+        const { client, scripted, clock } = clocked([limited(), success("after")]);
+        await client.request(request());
+
+        clock.now = later(SECONDARY_LIMIT_HOLD_MS - 1);
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "secondaryLimit", retryAfterSeconds: 1 },
+        });
+        expect(scripted.calls).toHaveLength(1);
+
+        clock.now = later(SECONDARY_LIMIT_HOLD_MS);
+        expect(await client.request(request())).toMatchObject({ ok: true, body: "after" });
+    });
+
+    it("holds for a retry-after longer than the minute", async () => {
+        const { client, scripted, clock } = clocked([
+            limited({ "retry-after": "120" }),
+            success("after"),
+        ]);
+        await client.request(request());
+
+        clock.now = later(61_000);
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "secondaryLimit", retryAfterSeconds: 59 },
+        });
+        clock.now = later(120_000);
+        expect(await client.request(request())).toMatchObject({ ok: true, body: "after" });
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("keeps the longer hold when two requests in flight meet the limit", async () => {
+        const { client, clock } = clocked([limited({ "retry-after": "120" }), limited()]);
+        await Promise.all([client.request(request()), client.request(request())]);
+
+        clock.now = later(61_000);
+        expect(await client.request(request())).toMatchObject({
+            ok: false,
+            failure: { kind: "secondaryLimit", retryAfterSeconds: 59 },
+        });
+    });
+
+    it("holds the GraphQL pool after a REST limit", async () => {
+        const { client, scripted } = harness([limited(), success('{"data":{}}')], {
+            outcomes: [{ ok: true, token: GRAPHQL_TOKEN }],
+        });
+        await client.request(request());
+
+        expect(
+            await client.request({ url: GITHUB_GRAPHQL_URL, method: "POST", body: GRAPHQL_BODY }),
+        ).toMatchObject({ ok: false, failure: { kind: "secondaryLimit" } });
+        expect(scripted.calls).toHaveLength(1);
+    });
+
+    it("charges the limit's answer once and a held request nothing", async () => {
+        const { client } = harness([limited()]);
+        const allowance = createAllowance({ share: 1 });
+
+        await client.request(request(), allowance);
+        await client.request(request(), allowance);
+
+        expect(allowance.spent()).toEqual({ ...NO_SPEND, core: 1 });
+    });
+
+    it("holds for the minute after a limit whose retry-after is unusable", async () => {
+        const { client, scripted, clock } = clocked([
+            limited({ "retry-after": "7200" }),
+            success("after"),
+        ]);
+        await client.request(request());
+
+        clock.now = later(SECONDARY_LIMIT_HOLD_MS - 1);
+        expect(await client.request(request())).toMatchObject({
+            ok: false,
+            failure: { kind: "secondaryLimit" },
+        });
+        expect(scripted.calls).toHaveLength(1);
+
+        clock.now = later(SECONDARY_LIMIT_HOLD_MS);
+        expect(await client.request(request())).toMatchObject({ ok: true, body: "after" });
+    });
+
+    it("holds a retry when another request met a limit during its wait", async () => {
+        const { client, scripted } = harness(
+            [failure(503, "down"), limited(), success("must not happen")],
+            {
+                sleep: async () => {
+                    await client.request(request());
+                },
+            },
+        );
+
+        expect(await client.request(request())).toMatchObject({ ok: false, status: 503 });
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("answers a held creation without taking the hour's slot", async () => {
+        const { client, scripted, clock } = clocked([limited(), success("{}")], {
+            contentCreationHourly: 1,
+        });
+        await client.request(request());
+
+        expect(await client.request(createComment)).toMatchObject({
+            ok: false,
+            failure: { kind: "secondaryLimit" },
+        });
+        clock.now = later(SECONDARY_LIMIT_HOLD_MS);
+        expect(await client.request(createComment)).toMatchObject({ ok: true });
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("keeps GitHub's answer, and holds nothing, when the clock breaks as the limit is recorded", async () => {
+        let reads = 0;
+        const { client, scripted } = harness([limited(), success("sent")], {
+            clock: () => {
+                reads += 1;
+                if (reads === 2) throw new Error("the clock is gone");
+                return NOW;
+            },
+        });
+
+        expect(await client.request(request())).toMatchObject({
+            ok: false,
+            failure: { kind: "secondaryLimit" },
+        });
+        await client.request(request());
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("names the clock seam when it breaks while a limit holds", async () => {
+        let reads = 0;
+        const { client, scripted } = harness([limited(), success("must not happen")], {
+            clock: () => {
+                reads += 1;
+                if (reads > 2) throw new Error("the clock is gone");
+                return NOW;
+            },
+        });
+        await client.request(request());
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "brokenSeam", seam: "clock" },
         });
         expect(scripted.calls).toHaveLength(1);
     });
