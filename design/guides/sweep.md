@@ -93,23 +93,39 @@ The same fixture across 100 repositories uses a deliberately small 8% sweep shar
 pool. No window spends more than 400 units of either pool; a second tick cannot reopen the spent
 window, and all repositories finish within three windows. The webhook allowance remains untouched.
 
-The rehearsal also runs captured issue and pull-request webhooks through the delivery worker with
-synthetic, successful GitHub responses. Each cold delivery below includes its config read and the
-ordering timeline read. Mode is `dry-run`; no writes are sent, and the sweep allowance is untouched.
+The rehearsal also runs captured issue, pull-request and comment webhooks through the delivery
+worker with synthetic, successful GitHub responses. Each cold delivery below includes its config
+read and the ordering timeline read. Mode is `dry-run`; no writes are sent, and the sweep allowance
+is untouched.
 
 | Capability | Case | Core units | GraphQL points |
 | --- | --- | --- | --- |
 | triageQueue | New issue, welcome on, locking off | 2 | 0 |
 | prDashboard | All checks on, one signed commit and one assigned linked issue | 5 | 1 |
 | configReport | PR changes sdk-automations.yml, proposed config is valid | 5 | 0 |
+| assignment | `/assign` on an unclaimed issue, under `maxOpen` | 4 | 0 |
 
-The two dashboard commit checks share one commits read. A mixed-lane case runs two dashboard
-deliveries alongside 20 due repositories with a 40-unit sweep cap. The sweep stops at 40 while
-both deliveries finish using the webhook allowance. Together the deliveries spend five core units
-and two GraphQL points: the repeated REST reads return 304, but the GraphQL query is charged again.
+The two dashboard commit checks share one commits read. A claim reads the issue's assignees and
+the commenter's open assignments, one page of the assignee-filtered issue list. A mixed-lane case
+runs two dashboard deliveries alongside 20 due repositories with a 40-unit sweep cap. The sweep
+stops at 40 while both deliveries finish using the webhook allowance. Together the deliveries spend
+five core units and two GraphQL points: the repeated REST reads return 304, but the GraphQL query
+is charged again.
+
+A burst past the webhook lane's allowance carries over rather than being lost. A hundred new issues
+against a one-percent lane, fifty core units a window, finish in three windows: the first two spend
+exactly the cap and the third the one read left, and a refused delivery waits for the pool's reset
+rather than spending its five attempts before it (D225). None is dead-lettered or decided twice, and
+the sweep's allowance is untouched.
+
+A secondary limit stops the process at its first answer. The client holds every request, on both
+pools, until GitHub's `retry-after` or its minute has passed, checking before every send, and
+answers the held ones without sending or charging them (D224). Over twenty repositories, one cold
+firing sends one request into the limit, where it used to send a hundred; the next window reads
+every repository.
 
 These are scripted request counts, not live fleet performance. They do not prove paging, write
-costs, GraphQL exhaustion or variable query costs, large webhook bursts, or secondary-rate-limit behavior.
+costs, GraphQL exhaustion or variable query costs, or how GitHub itself sizes a secondary limit.
 
 ## 4. What is still open
 
