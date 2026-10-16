@@ -15,6 +15,8 @@ import { Store } from "../../../src/store/index.js";
 import { HOUR, scriptedGitHub } from "./scripted-github.js";
 
 const START = new Date("2026-09-15T10:00:00.000Z");
+/** Where the issue and pull-request captures were taken. */
+const FIXTURE_REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" };
 const DASHBOARD_CHECKS = `    checks:
       dcoSignoff:
         enabled: true
@@ -50,11 +52,34 @@ mappings:
     awaitingTriage: "status: triage"
   commands:
     working: /working
+    assign: /assign
 `;
 
+/** The captured comment, rewritten as a person claiming the issue it was left on. */
+function assignComment(): Buffer {
+    const payload = capture("issue_comment.created.json").json() as {
+        comment: Record<string, unknown>;
+        sender: unknown;
+    };
+    const person = { login: "ada", id: 7, type: "User" };
+    const { performed_via_github_app: _app, ...comment } = payload.comment;
+    return Buffer.from(
+        JSON.stringify({
+            ...payload,
+            comment: { ...comment, body: "/assign", user: person },
+            sender: person,
+        }),
+    );
+}
+
 function rehearsal(repositoryCount: number, share = 0.4) {
-    const state = { now: START, enabled: false, deliveryCapabilities: "" };
-    const github = scriptedGitHub({ now: () => state.now, config: () => configText(state) });
+    const state = { now: START, enabled: false, deliveryCapabilities: "", limited: false };
+    const github = scriptedGitHub({
+        now: () => state.now,
+        config: () => configText(state),
+        secondaryLimited: (route) =>
+            state.limited && route !== "/contents/sdk-automations.yml" && route !== "/issues",
+    });
     const events: ShellEvent[] = [];
     const repositories = Array.from({ length: repositoryCount }, (_, index) => ({
         owner: "fixture",
@@ -140,14 +165,18 @@ describe("installation cost through the composed client and reader", () => {
         {
             name: "triageQueue",
             event: "issues",
-            fixture: "issues.opened.json",
+            payload: () => capture("issues.opened.json").bytes(),
+            item: { kind: "issue", number: 164 } as const,
+            repository: FIXTURE_REPOSITORY,
             settings: "",
             paths: ["/contents/sdk-automations.yml", "/issues/164/timeline"],
         },
         {
             name: "prDashboard",
             event: "pull_request",
-            fixture: "pull_request.opened.json",
+            payload: () => capture("pull_request.opened.json").bytes(),
+            item: { kind: "pullRequest", number: 165 } as const,
+            repository: FIXTURE_REPOSITORY,
             settings: DASHBOARD_CHECKS,
             paths: [
                 "/contents/sdk-automations.yml",
@@ -161,7 +190,9 @@ describe("installation cost through the composed client and reader", () => {
         {
             name: "configReport",
             event: "pull_request",
-            fixture: "pull_request.opened.json",
+            payload: () => capture("pull_request.opened.json").bytes(),
+            item: { kind: "pullRequest", number: 165 } as const,
+            repository: FIXTURE_REPOSITORY,
             settings: "",
             paths: [
                 "/contents/sdk-automations.yml",
@@ -171,9 +202,23 @@ describe("installation cost through the composed client and reader", () => {
                 "/issues/165/timeline",
             ],
         },
+        {
+            name: "assignment",
+            event: "issue_comment",
+            payload: assignComment,
+            item: { kind: "issue", number: 197 } as const,
+            repository: { owner: "scrubbed-3", repo: "scrubbed-4" },
+            settings: "    autoAssign:\n      enabled: true\n",
+            paths: [
+                "/contents/sdk-automations.yml",
+                "/issues/197",
+                "/issues",
+                "/issues/197/timeline",
+            ],
+        },
     ])(
         "measures $name on a captured webhook without charging the sweep",
-        async ({ name, event, fixture, settings, paths }) => {
+        async ({ name, event, payload, item, repository, settings, paths }) => {
             const run = rehearsal(0);
             run.state.deliveryCapabilities = `  ${name}:\n    enabled: true\n${settings}`;
             const deliveryId = asDeliveryGuid("00000000-0000-4000-8000-000000000001")!;
@@ -181,7 +226,7 @@ describe("installation cost through the composed client and reader", () => {
                 run.store.inbox.acceptDelivery({
                     deliveryId,
                     eventName: event,
-                    payload: capture(fixture).bytes(),
+                    payload: payload(),
                     receivedAt: START.toISOString(),
                 });
                 await run.deliveries.drain();
@@ -206,13 +251,7 @@ describe("installation cost through the composed client and reader", () => {
                 });
                 expect(
                     run.store.ledger
-                        .decisionsOn(
-                            { owner: "scrubbed-1", repo: "scrubbed-2" },
-                            {
-                                kind: event === "issues" ? "issue" : "pullRequest",
-                                number: event === "issues" ? 164 : 165,
-                            },
-                        )
+                        .decisionsOn(repository, item)
                         .some(({ code }) => code === "wouldApply"),
                 ).toBe(true);
             } finally {
@@ -287,6 +326,73 @@ describe("installation cost through the composed client and reader", () => {
             run.store.close();
         }
     });
+
+    it("carries a webhook burst past its lane's allowance into the next windows", async () => {
+        // A 1% lane: fifty core units a window, so a hundred new issues need three windows.
+        const run = rehearsal(0, 0.99);
+        run.state.deliveryCapabilities = "  triageQueue:\n    enabled: true\n";
+        const opened = capture("issues.opened.json").json() as { issue: { number: number } };
+        const named = (event: string) => run.events.filter((logged) => logged.event === event);
+        try {
+            for (let index = 0; index < 100; index += 1) {
+                opened.issue.number = 1_000 + index;
+                run.store.inbox.acceptDelivery({
+                    deliveryId: asDeliveryGuid(
+                        `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+                    )!,
+                    eventName: "issues",
+                    payload: Buffer.from(JSON.stringify(opened)),
+                    receivedAt: START.toISOString(),
+                });
+            }
+            for (let window = 0; window < 3; window += 1) {
+                // A running shell drains every minute; none of those passes may spend an attempt.
+                for (let minute = 0; minute < 60; minute += 1) {
+                    run.state.now = new Date(START.getTime() + window * HOUR + minute * 60_000);
+                    await run.deliveries.drain();
+                }
+                expect(named("deliveryAttemptFailed")).toHaveLength(window === 0 ? 51 : 52);
+                expect(run.built.deliveryAllowance.spent().core).toBe(window === 2 ? 1 : 50);
+            }
+            const completed = run.events.flatMap((logged) =>
+                logged.event === "deliveryCompleted" ? [logged.deliveryId] : [],
+            );
+            expect(new Set(completed).size).toBe(100);
+            expect(completed).toHaveLength(100);
+            expect(named("deliveryDeadLettered")).toEqual([]);
+            expect(run.built.sweepAllowance.spent()).toEqual({ core: 0, graphql: 0, mutations: 0 });
+        } finally {
+            run.store.close();
+        }
+    }, 60_000);
+
+    it("stops a fleet's sweep at the first secondary limit and reads again after it", async () => {
+        // The HTTP client keeps the wall clock, so the hold's end is moved on that clock too.
+        vi.useFakeTimers({ toFake: ["Date"], now: START });
+        const run = rehearsal(20);
+        run.state.enabled = true;
+        run.state.limited = true;
+        try {
+            await run.sweep.runDue();
+            const refused = run.calls.filter(({ status }) => status === 403);
+            expect(refused).toHaveLength(1);
+            expect(run.calls.at(-1)).toBe(refused[0]);
+
+            run.state.limited = false;
+            run.state.now = new Date(START.getTime() + HOUR);
+            vi.setSystemTime(run.state.now);
+            await run.sweep.runDue();
+            const decided = run.events
+                .filter((event) => event.event === "sweepFinished")
+                .slice(-20)
+                .filter(({ decided }) => decided === 2);
+            expect(decided).toHaveLength(20);
+            expect(run.events.some(({ event }) => event === "sweepFailed")).toBe(false);
+        } finally {
+            run.store.close();
+            vi.useRealTimers();
+        }
+    }, 30_000);
 
     it("bounds a hundred-repository onboarding burst and resumes across windows", async () => {
         const run = rehearsal(100, 0.08);

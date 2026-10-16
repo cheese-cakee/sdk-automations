@@ -61,7 +61,8 @@ instants — and is rebuilt by the next read of that item.
   in GitHub's units and over GitHub's window, 0.4 by default (D192, D193).
 - `SWEEP_WRITE_CALLS` is a per-tick lane on that allowance, 20 by default (D167), and
   `CONTENT_CREATION_HOURLY` bounds comment creation across both lanes, 400 by default.
-- It stops retrying when GitHub's response says waiting is required.
+- It stops retrying when GitHub's response says waiting is required, and after a secondary limit
+  it sends nothing at all until the wait has passed (D224).
 - Measured budgets (Q10):
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).
 

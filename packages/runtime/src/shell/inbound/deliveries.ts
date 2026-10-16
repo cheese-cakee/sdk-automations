@@ -50,11 +50,6 @@ function retryDelayMs(attempts: number): number {
     return Math.min(RETRY_BASE_MS * 2 ** attempts, RETRY_CEILING_MS);
 }
 
-/** The earlier of the ladder's step and a spent pool's window; both are `toISOString()`. */
-function soonerOf(ladder: string, resetAt: string | null): string {
-    return resetAt !== null && resetAt < ladder ? resetAt : ladder;
-}
-
 /** What one repository's deliveries are read and decided through. */
 export interface DeliveryLane {
     readonly configSource: ConfigSource;
@@ -370,7 +365,8 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
 
     /**
      * Count one failed attempt, which either spaces the next or ends the delivery.
-     * The wait is the ladder's, shortened to a refused pool's window where that is sooner.
+     * The wait is the ladder's, or a refused pool's window: a lane at its cap refuses
+     * every read until the window rolls (D196), so an earlier attempt is spent for nothing (D225).
      */
     const recordFailure = (
         claimed: ClaimedDelivery,
@@ -382,7 +378,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
             deliveryId: claimed.deliveryId,
             claimToken: claimed.claimToken,
             failedAt: failedAt.toISOString(),
-            retryNotBefore: soonerOf(ladder, refusal?.resetAt ?? null),
+            retryNotBefore: refusal?.resetAt ?? ladder,
             maxAttempts: MAX_DELIVERY_ATTEMPTS,
         });
     };

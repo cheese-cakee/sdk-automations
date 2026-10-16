@@ -1,8 +1,8 @@
 /**
  * GitHub as a script behind `fetch`: the two open items, their timelines and reviews, the
- * dashboard's pull request 165 linked to issue 164, and the configuration file, each answered
- * with rate-limit headers and an ETag, so the composed client, reader and engine run without
- * a credential. `calls` is what was charged.
+ * dashboard's pull request 165 linked to issue 164, an empty timeline for any other issue, and
+ * the configuration file, each answered with rate-limit headers and an ETag, so the composed
+ * client, reader and engine run without a credential. `calls` is what was charged.
  */
 
 import { createHash } from "node:crypto";
@@ -15,6 +15,8 @@ export const UPDATED = "2026-09-14T10:00:00.000Z";
 export function scriptedGitHub(script: {
     readonly now: () => Date;
     readonly config: () => string;
+    /** While true, every read is refused as GitHub refuses one past a secondary limit. */
+    readonly secondaryLimited?: (route: string) => boolean;
 }) {
     const calls: Array<{ path: string; status: number; pool: "core" | "graphql"; window: number }> =
         [];
@@ -42,6 +44,7 @@ export function scriptedGitHub(script: {
         "/pulls/34/reviews": [],
         "/pulls/34/commits": [{ commit: { committer: { date: UPDATED } } }],
         "/issues/164": { assignees: [{ login: "scrubbed-1" }] },
+        "/issues/197": { number: 197, assignees: [] },
         "/issues/164/timeline": [],
         "/issues/165/timeline": [],
         "/pulls/165": { number: 165, mergeable: true, head: { sha: "a".repeat(40) } },
@@ -99,6 +102,15 @@ export function scriptedGitHub(script: {
             );
         }
         const route = path.replace(/^\/repos\/[^/]+\/[^/]+/, "");
+        if (script.secondaryLimited?.(route) === true) {
+            calls.push({ path, status: 403, pool: "core", window: script.now().getTime() });
+            return Promise.resolve(
+                new Response(
+                    JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
+                    { status: 403, headers: { "retry-after": "60" } },
+                ),
+            );
+        }
         const text = script.config();
         const config = route === "/contents/sdk-automations.yml";
         const body = config
@@ -108,7 +120,7 @@ export function scriptedGitHub(script: {
                   sha: "a".repeat(40),
                   content: Buffer.from(text).toString("base64"),
               }
-            : routes[route];
+            : (routes[route] ?? (/^\/issues\/\d+\/timeline$/.test(route) ? [] : undefined));
         const pool = route === "/graphql" ? "graphql" : "core";
         const etag = `"${config ? createHash("sha1").update(text).digest("hex") : "unchanged"}"`;
         const status = new Headers(init.headers).get("if-none-match") === etag ? 304 : 200;

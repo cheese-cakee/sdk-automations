@@ -566,8 +566,8 @@ describe("a crash counts an attempt", () => {
 /**
  * The lane's own share of GitHub's limits (D192). A delivery decided around a
  * read the allowance refused is NOT the answer to that delivery, so it is not
- * completed: the attempt is counted and the delivery waits, on the same ladder
- * a crash puts it on, but no longer than the pool's own window.
+ * completed: the attempt is counted and the delivery waits for the pool's own
+ * window (D225), or on the ladder a crash puts it on when no window is known.
  */
 describe("a read this lane's allowance refused", () => {
     /** When GitHub's window rolls — sooner than the ladder's first step, which is thirty seconds. */
@@ -623,17 +623,15 @@ describe("a read this lane's allowance refused", () => {
         expect(completions()).toEqual([{ deliveryId: GUID as string, kind: "decision" }]);
     });
 
-    it("waits out the ladder's step where the pool resets later than it", async () => {
+    /** An attempt before the window rolls is refused again, and spends one of five (D225). */
+    it("waits for the pool's reset where it is later than the ladder's step", async () => {
         const allowance = spending({ core: 0 });
         allowance.resetAt = new Date(BASE.getTime() + 10 * 60_000).toISOString();
         const at = new Date(BASE.getTime() + 1_000);
 
         await expect(charged(allowance, () => at).processOnce()).rejects.toThrow();
 
-        expect(failures()[0]).toMatchObject({
-            retryNotBefore: new Date(at.getTime() + 30_000).toISOString(),
-            pool: "core",
-        });
+        expect(failures()[0]).toMatchObject({ retryNotBefore: allowance.resetAt, pool: "core" });
     });
 
     /** Five refusals are five attempts: the delivery ends as any other failure does. */
