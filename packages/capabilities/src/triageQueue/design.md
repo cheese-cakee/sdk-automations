@@ -140,8 +140,8 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
 - Two label changes by one person in the same second refused each other's release (D217): each
   counted the other as a newer human change, and nothing retries. When the payload shows its own
   cause's result, one same-second entry per label whose result it shows no longer counts (D219).
-  The delivery that sees the clean `ready` releases; one bounded live rehearsal on 2026-10-05
-  confirmed this on candidate `282255b` (8.6). Default locking remains off.
+  The delivery that sees the clean `ready` releases; live rehearsals confirmed this on candidate
+  `282255b` and twice on main, in both delivery orders (8.6). Default locking remains off.
 - `ready` is the only release asked for. A triage that ends in `blocked`, in a request for more
   information, or in an area label asks for nothing — and for the author who was asked for more
   information, the lock is exactly what stops them answering.
@@ -186,7 +186,7 @@ flowchart LR
 |---|---|---|
 | 1 | the label and the optional welcome | shipped |
 | 2 | lock on open, unlock on `ready`, optional confirmation | shipped — protocol 6.15 confirmed both endpoints; `locked` and `arrival` ride on the issue record |
-| 3a | the checklist in the welcome, rewritten as labels move; `requirements.skill` | shipped — unit-verified only; a live run of a label move is pending |
+| 3a | the checklist in the welcome, rewritten as labels move; `requirements.skill` | shipped — live-verified both ways (8.6, 2026-10-15) |
 | 3b | the flip: `ready` on the map's own edge when every row is done, then the unlock and a word on what completed; more rows — type, area — each a flag and a row; `blocked` and needs-more-information outcomes | a `types` mapping family · a `needsInfo` meaning · the unlock exempted from the blocked pause, a safety-rule change with its own row |
 | 4 | native items on the checklist: GitHub's issue type, and project fields such as priority | issue type and field values on the observation, a fact-shape change · the reads they need confirmed in the lab · the org-wide ceiling question the register parks (D57) |
 
@@ -200,9 +200,10 @@ flowchart LR
 | `ready` added by a person to a locked issue | unlock, then the confirmation where asked |
 | `ready` added while the triage label is still on | the conflict is not repaired; removing the stale triage label retries the release from `ready` (8.6, 2026-10-01) |
 | `ready` added on a clean position | unlock and optional confirmation (8.6, 2026-10-01) |
-| `ready` added and triage removed by one person in the same second | unlocked ready, one confirmation; two idempotent unlock calls (8.6, 2026-10-05, candidate `282255b`) |
+| `ready` added and triage removed by one person in the same second | unlocked ready, one confirmation, in either delivery order (8.6, 2026-10-05 on candidate `282255b`; 2026-10-15 twice on main) |
+| `ready` added to a locked issue that carries `blocked`, then `blocked` removed | refused `itemBlocked`, and nothing on the removal: a person unlocks (8.6, 2026-10-15) |
 | `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
-| a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state; unit only, no live run yet |
+| a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state, in place (8.6, 2026-10-15) |
 | a skill label on a bot-opened issue, or off the gate, or without the requirement | nothing, and no question asked off the gate |
 | `ready` added to a locked issue where `lockUntilTriaged` is off | nothing — the lock is a human's |
 | `ready` added by an automation | nothing |

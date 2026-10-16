@@ -3,6 +3,7 @@ import {
     decisionDifferences,
     issueDifferences,
     settlementOf,
+    tickedRows,
     type HookDelivery,
     type IssueState,
 } from "../src/rehearsal/judge.js";
@@ -80,6 +81,21 @@ describe("how an issue differs from its step", () => {
             "appComments: expected 1, found 2",
             "appLabelWrites: expected 1, found 0",
         ]);
+    });
+});
+
+describe("a ticked checklist", () => {
+    it("is judged only where the step names it", () => {
+        expect(issueDifferences(queued, { ...queued, ticked: 1 })).toEqual([]);
+        expect(issueDifferences({ ...queued, ticked: 1 }, { ...queued, ticked: 0 })).toEqual([
+            "ticked: expected 1, found 0",
+        ]);
+    });
+
+    it("counts only rows that start ticked", () => {
+        const body =
+            "Welcome.\n\nTriage checklist:\n- [x] Skill level\n- [ ] Type\nnot - [x] a row";
+        expect(tickedRows(body)).toBe(1);
     });
 });
 

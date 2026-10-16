@@ -3,10 +3,12 @@
  * state GitHub must read back after every one. The run is in `run.ts`; this file is data.
  */
 
-/** The two positions an issue moves between, spelled as the rehearsal's config maps them. */
+/** The labels the rehearsal's config maps: two positions, the pause flag and one skill tier. */
 export const LABELS = {
     triage: "status: triage",
     ready: "status: ready for dev",
+    blocked: "status: blocked",
+    skill: "skill: beginner",
 } as const;
 
 export type Meaning = keyof typeof LABELS;
@@ -29,6 +31,8 @@ export interface Expected {
     readonly locked: boolean;
     readonly appComments: number;
     readonly appLabelWrites: number;
+    /** Ticked rows in the welcome's checklist; judged only where a step names it. */
+    readonly ticked?: number;
     readonly refusals?: readonly string[];
 }
 
@@ -96,6 +100,42 @@ export const SCENARIOS: readonly Scenario[] = [
             "An issue opened from a template that applies the triage label is welcomed and locked.",
         steps: [
             { action: { kind: "openFromTemplate" }, expected: { ...queued, appLabelWrites: 0 } },
+        ],
+    },
+    {
+        name: "blocked-ready",
+        question:
+            "Ready on a blocked issue is refused, and removing blocked does not release it either: " +
+            "a person unlocks it.",
+        steps: [
+            { action: { kind: "open", labels: [] }, expected: queued },
+            { action: { kind: "remove", meaning: "triage" }, expected: { ...queued, labels: [] } },
+            {
+                action: { kind: "add", meaning: "blocked" },
+                expected: { ...queued, labels: ["blocked"] },
+            },
+            {
+                action: { kind: "add", meaning: "ready" },
+                expected: { ...queued, labels: ["blocked", "ready"], refusals: ["itemBlocked"] },
+            },
+            {
+                action: { kind: "remove", meaning: "blocked" },
+                expected: { ...queued, labels: ["ready"] },
+            },
+        ],
+    },
+    {
+        name: "skill-relabel",
+        question:
+            "A skill label added, then removed, while the issue waits ticks and clears the " +
+            "welcome's checklist row in place.",
+        steps: [
+            { action: { kind: "open", labels: [] }, expected: { ...queued, ticked: 0 } },
+            {
+                action: { kind: "add", meaning: "skill" },
+                expected: { ...queued, labels: ["triage", "skill"], ticked: 1 },
+            },
+            { action: { kind: "remove", meaning: "skill" }, expected: { ...queued, ticked: 0 } },
         ],
     },
     {
