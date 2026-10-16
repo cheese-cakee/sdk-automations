@@ -12,6 +12,7 @@ import {
     type Allowance,
     type EngineCapability,
     type ReadBack,
+    type RepositoryConfig,
     type RepositoryRef,
     type WriteVerbs,
 } from "@hiero-hackers/automation-core";
@@ -23,6 +24,7 @@ import type { ExternalsForDelivery } from "../decide/externals.js";
 import { createDeliveries } from "../inbound/deliveries.js";
 import { createReceiver } from "../inbound/receiver.js";
 import { createJobs } from "../jobs/jobs.js";
+import { idleWithoutSweep } from "../decide/schedule.js";
 import { contained, createLogger, detailOf, type Log } from "../log.js";
 import {
     DEFAULT_SWEEP_CADENCE_MS,
@@ -151,6 +153,26 @@ export function createShell(options: ShellOptions): Shell {
         return serving;
     };
 
+    /** Each (repository, capability) is told once per process that no sweep will wake it. */
+    const toldIdle = new Set<string>();
+    const noteIdleSchedules = (repository: RepositoryRef, config: RepositoryConfig): void => {
+        if (options.sweep !== undefined) return;
+        const spelled = `${repository.owner}/${repository.repo}`;
+        for (const { name, only } of idleWithoutSweep(config, options.capabilities)) {
+            const key = `${spelled.toLowerCase()}:${name}`;
+            if (toldIdle.has(key)) continue;
+            toldIdle.add(key);
+            log({
+                event: "scheduledCapabilityIdle",
+                repository: spelled,
+                capability: name,
+                detail: only
+                    ? `${name} runs only on the sweep, and SWEEP_CADENCE_HOURS is unset, so it will not run`
+                    : `${name} answers events, but SWEEP_CADENCE_HOURS is unset, so its scheduled recheck will not run`,
+            });
+        }
+    };
+
     const deliveries = createDeliveries({
         store: options.store,
         capabilities: options.capabilities,
@@ -163,6 +185,7 @@ export function createShell(options: ShellOptions): Shell {
         clock,
         log,
         suspended,
+        configured: noteIdleSchedules,
     });
     /**
      * It rides the reconciliation tick rather than owning a timer: the schedule row's DUE

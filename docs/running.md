@@ -90,6 +90,13 @@ instruction to read GitHub.
 The `startup` line carries `writes: "armed" | "absent"` and `sweep: "armed" | "absent"`, so which
 composition is running is readable before any delivery arrives.
 
+With the sweep absent, a repository whose configuration enables a capability that runs on a clock
+logs `scheduledCapabilityIdle` to stderr once per process for each such capability. The detail says
+which kind of loss it is: `inactivity` runs only on the sweep, so it will not run at all until
+`SWEEP_CADENCE_HOURS` is set; `prDashboard` still answers pull request events, but its hourly
+recheck — the merge row after the base moves, the assignment row after the author is assigned — will
+not.
+
 The sweep spends a share of the installation's own rate limit rather than a count of its own.
 `SWEEP_SHARE` is that share of each pool — REST and GraphQL — of whatever `x-ratelimit-limit` the
 installation reports, 5,000 assumed until a response says otherwise, and it is spent over GitHub's
