@@ -22,7 +22,7 @@ const KILL_SWITCH: SafetyVerdict = {
     reason: "a kill switch is active",
 };
 
-const secondOf = (date: Date): number => Math.floor(date.getTime() / 1000);
+export const secondOf = (date: Date): number => Math.floor(date.getTime() / 1000);
 
 /** Kill switch and authoritative precondition run before either write gate. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {

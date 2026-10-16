@@ -5,6 +5,7 @@
  */
 
 import {
+    activitySinceWarning,
     createDestructiveWarning,
     deriveWorld,
     evaluateDestructive,
@@ -135,7 +136,7 @@ export function createGates(options: GateOptions): Gates {
                 ? live
                 : decided;
         const warning = warningFor(intent.idempotencyKey);
-        return at !== null && warning !== null && at.getTime() > warning.warnedAtMs;
+        return warning !== null && activitySinceWarning(at, warning);
     };
 
     /** The externals for this pass, with the seam CONTAINED. */

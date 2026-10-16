@@ -35,6 +35,7 @@ import { normalizeDelivery } from "./events.js";
 import type { RepositoryConfig } from "../config/index.js";
 import { closureOf } from "../workflow/index.js";
 import {
+    activitySinceWarning,
     deriveWorld,
     evaluateDestructive,
     evaluateWrite,
@@ -394,8 +395,7 @@ async function gateIntent(
             request: writeRequestFor(intent),
             warning: recorded.value,
             // The platform decides what the capability's reported activity means.
-            qualifyingActivitySinceWarning:
-                grace.activityAt !== null && grace.activityAt.getTime() > recorded.value.warnedAtMs,
+            qualifyingActivitySinceWarning: activitySinceWarning(grace.activityAt, recorded.value),
         },
         config,
         contextFor(intent),
