@@ -100,7 +100,11 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
     const externalsFor = async (
         delivery: Parameters<ExternalsForDelivery>[0],
         evaluatedAt: Date,
-    ): Promise<Externals> => ({ ...(await externals(delivery)), warningFor, evaluatedAt });
+    ): Promise<Externals> => {
+        const given = await externals(delivery);
+        // A composition holding the record elsewhere answers first; the store's row stands otherwise.
+        return { ...given, warningFor: given.warningFor ?? warningFor, evaluatedAt };
+    };
 
     /** Stations 5–10 live behind one call: normalize, evaluate, screen, derive, gate. */
     const decideOn = async (

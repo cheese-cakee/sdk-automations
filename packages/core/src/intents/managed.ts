@@ -19,7 +19,7 @@ export const MANAGED_MARKER_SUFFIX = " -->";
 export const MANAGED_MARKER_SCHEMA_VERSION = 2;
 
 /** Bounds: the UTF-8 bytes `JSON.parse` is handed, and the subject digest's hex length. */
-export const MANAGED_PAYLOAD_BYTE_LIMIT = 512;
+export const MANAGED_PAYLOAD_BYTE_LIMIT = 2048;
 export const MANAGED_SUBJECT_DIGEST_LENGTH = 16;
 
 /**
@@ -34,6 +34,23 @@ export interface ManagedIdentity {
 }
 
 /**
+ * The act a warning comment authorises, as its marker carries it: a composition with no
+ * store between runs reads the warning back from the comment GitHub holds (grace.md §3).
+ */
+export interface WarningRecord {
+    readonly effectId: string;
+    readonly actionClass: string;
+    readonly capability: string;
+    readonly causeObservedAt: string;
+    readonly cause: string;
+    readonly item: string;
+    readonly change: string;
+    readonly gracePeriodHours: number;
+    readonly cancelledBy: string;
+    readonly reversesWith: string;
+}
+
+/**
  * The identity as published — the JSON object inside the marker. `subject` is
  * the digest of the whole identity, topic included; nothing reads a topic back.
  */
@@ -42,6 +59,8 @@ export interface ManagedMarkerPayload {
     readonly capability: string;
     readonly kind: ManagedCommentKind;
     readonly subject: string;
+    /** On a `warning` alone: what the comment authorises. */
+    readonly record?: WarningRecord;
 }
 
 /** An identity together with the marker that publishes it. */
@@ -69,30 +88,54 @@ const subjectDigest = (identity: ManagedIdentity): string =>
         .slice(0, MANAGED_SUBJECT_DIGEST_LENGTH);
 
 /** The payload one identity publishes — the comparison both sides of a match use. */
-export function managedMarkerPayload(identity: ManagedIdentity): ManagedMarkerPayload {
+export function managedMarkerPayload(
+    identity: ManagedIdentity,
+    record?: WarningRecord,
+): ManagedMarkerPayload {
     return {
         schemaVersion: MANAGED_MARKER_SCHEMA_VERSION,
         capability: identity.capability,
         kind: identity.kind,
         subject: subjectDigest(identity),
+        ...(record === undefined ? {} : { record }),
     };
 }
 
 /** The marker for one identity; fields written out so its bytes never depend on build order. */
-export function deriveManagedMarker(identity: ManagedIdentity): string {
-    const payload = managedMarkerPayload(identity);
+export function deriveManagedMarker(identity: ManagedIdentity, record?: WarningRecord): string {
+    const payload = managedMarkerPayload(identity, record);
     const encoded = JSON.stringify({
         schemaVersion: payload.schemaVersion,
         capability: payload.capability,
         kind: payload.kind,
         subject: payload.subject,
+        ...(payload.record === undefined ? {} : { record: orderedRecord(payload.record) }),
     });
     return `${MANAGED_MARKER_PREFIX}${encoded}${MANAGED_MARKER_SUFFIX}`;
 }
 
+/** The record's fields in one fixed order, so its bytes never depend on how it was built. */
+function orderedRecord(record: WarningRecord): WarningRecord {
+    return {
+        effectId: record.effectId,
+        actionClass: record.actionClass,
+        capability: record.capability,
+        causeObservedAt: record.causeObservedAt,
+        cause: record.cause,
+        item: record.item,
+        change: record.change,
+        gracePeriodHours: record.gracePeriodHours,
+        cancelledBy: record.cancelledBy,
+        reversesWith: record.reversesWith,
+    };
+}
+
 /** Both halves at once — what an approved effect carries downstream. */
-export function managedCommentOf(identity: ManagedIdentity): ManagedComment {
-    return { identity, marker: deriveManagedMarker(identity) };
+export function managedCommentOf(
+    identity: ManagedIdentity,
+    record?: WarningRecord,
+): ManagedComment {
+    return { identity, marker: deriveManagedMarker(identity, record) };
 }
 
 // ─── Reading untrusted bytes ─────────────────────────────────────────
@@ -132,6 +175,31 @@ const UTF8 = new TextEncoder();
 const isManagedCommentKind = (value: unknown): value is ManagedCommentKind =>
     (MANAGED_COMMENT_KINDS as readonly unknown[]).includes(value);
 
+const RECORD_STRINGS = [
+    "effectId",
+    "actionClass",
+    "capability",
+    "causeObservedAt",
+    "cause",
+    "item",
+    "change",
+    "cancelledBy",
+    "reversesWith",
+] as const;
+
+/** The record a warning marker carries, or `null` for any other shape. */
+function warningRecordOf(value: unknown): WarningRecord | null {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const fields = value as Record<string, unknown>;
+    if (RECORD_STRINGS.some((name) => typeof fields[name] !== "string" || fields[name] === "")) {
+        return null;
+    }
+    const hours = fields["gracePeriodHours"];
+    if (typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0) return null;
+    const record = Object.fromEntries(RECORD_STRINGS.map((name) => [name, fields[name]]));
+    return orderedRecord({ ...record, gracePeriodHours: hours } as WarningRecord);
+}
+
 /**
  * The identity a comment body publishes, or why it publishes none. The marker
  * must be the body's FIRST bytes; each wrong version gets its own answer (D145).
@@ -170,12 +238,20 @@ export function parseManagedMarker(body: string): ManagedMarkerReading {
         return { unrecognized: "malformed" };
     }
 
+    if (fields["record"] === undefined) {
+        return {
+            recognized: { schemaVersion: MANAGED_MARKER_SCHEMA_VERSION, capability, kind, subject },
+        };
+    }
+    const record = kind === "warning" ? warningRecordOf(fields["record"]) : null;
+    if (record === null) return { unrecognized: "malformed" };
     return {
         recognized: {
             schemaVersion: MANAGED_MARKER_SCHEMA_VERSION,
             capability,
             kind,
             subject,
+            record,
         },
     };
 }

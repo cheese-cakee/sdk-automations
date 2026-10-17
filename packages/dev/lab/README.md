@@ -48,3 +48,11 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [8.5](protocols/8.5-pr-dashboard-pilot.md) | the prDashboard dashboard on a real pull request |
 | [8.6](protocols/8.6-triage-queue-live.md) | the triage queue on real issues: open, lock, label, unlock, with real webhooks |
 | [8.7](protocols/8.7-backup-recovery.md) | restoring a backed-up store and resuming only the work it remembers |
+| [9.1](protocols/9.1-action-conformance.md) | each captured event, provoked for real, reaching the run the journeys table says |
+| [9.2](protocols/9.2-first-effects-as-an-action.md) | 8.2's writes, idempotence and kill switch from an action run |
+| [9.3](protocols/9.3-grace-across-runs.md) | a warning honoured across three runs: refused inside the grace, acted on after it, cancelled by `/working` |
+| [9.4](protocols/9.4-same-second-events.md) | 8.6's same-second changes as two runs under the concurrency group |
+| [9.5](protocols/9.5-fork-pull-request.md) | a fork's pull request under `pull_request_target`: no head code runs |
+| [9.6](protocols/9.6-re-run-of-an-old-run.md) | a day-old run re-run: live facts, stale cause refused, nothing written |
+| [9.7](protocols/9.7-budget.md) | the hourly sweep on 300 open items against the token's request budget |
+| [9.8](protocols/9.8-the-60-day-rule.md) | GitHub's 60-day rule for scheduled workflows, and the re-enable path |

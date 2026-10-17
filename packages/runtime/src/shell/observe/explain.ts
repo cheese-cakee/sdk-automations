@@ -86,6 +86,13 @@ function decisionLine(decision: Decision): string {
     ].join("  ");
 }
 
+/** Where one effect stands, as `explain` words it, without the `state:` prefix. */
+export function standing(store: Store, effectId: string): string {
+    const facts = store.ledger.factsOf(effectId);
+    const plan = planOf(facts);
+    return stateLine(fold(facts, plan), plan).replace(/^state: /, "");
+}
+
 /** One effect's history in ledger order, then the fold over it. */
 export function explainEffect(store: Store, effectId: string): Explanation {
     const facts = store.ledger.factsOf(effectId);
@@ -112,9 +119,7 @@ export function explainItem(store: Store, repository: RepositoryRef, item: ItemR
         lines: [
             spelled(item),
             ...effects.map((effectId) => {
-                const facts = store.ledger.factsOf(effectId);
-                const plan = planOf(facts);
-                const state = stateLine(fold(facts, plan), plan);
+                const state = `state: ${standing(store, effectId)}`;
                 return `effect ${effectId}  ${spelledRepository(repository)}  ${state}`;
             }),
             ...decisions.map(decisionLine),

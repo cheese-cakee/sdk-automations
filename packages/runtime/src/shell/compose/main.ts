@@ -53,7 +53,7 @@ const live =
     credentials === null
         ? null
         : liveGitHub({
-              credentials,
+              auth: { kind: "app", credentials },
               writes,
               killSwitchActive: switches.killSwitch,
               clock,

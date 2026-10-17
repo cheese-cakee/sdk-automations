@@ -88,7 +88,15 @@ function commentFactOf(entry: unknown, identity: AppIdentity): CommentFact | nul
     if (typeof id !== "number" || !Number.isSafeInteger(id) || typeof body !== "string") {
         return null;
     }
-    return { id, body, authoredByApp: authoredByApp(entry, identity) };
+    const createdAt = field(entry, "created_at");
+    const updatedAt = field(entry, "updated_at");
+    return {
+        id,
+        body,
+        authoredByApp: authoredByApp(entry, identity),
+        ...(typeof createdAt === "string" ? { createdAt } : {}),
+        ...(typeof updatedAt === "string" ? { updatedAt } : {}),
+    };
 }
 
 /** One label's name, or `null` when the entry does not carry one. */

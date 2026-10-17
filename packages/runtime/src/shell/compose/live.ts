@@ -9,6 +9,8 @@ import type {
     AdmittedCapability,
     Allowance,
     Externals,
+    PermissionGrant,
+    ReadBack,
     RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import {
@@ -24,10 +26,13 @@ import {
     installationGrants,
     liveExternalsForDelivery,
     orderingEvidenceSource,
+    staticTokenSource,
     wait,
     type Allowance as ClientAllowance,
+    type AppIdentity,
     type FactsReader,
     type OrderingEvidenceOptions,
+    type TokenSource,
 } from "../../adapter/index.js";
 import type { Log } from "../log.js";
 import type { SweepFacts } from "../sweep/sweep.js";
@@ -50,9 +55,22 @@ export interface LiveGitHub {
     readonly deliveryAllowance: Allowance;
 }
 
+/** An App's credentials, or a token minted elsewhere with the identity it acts as. */
+export type LiveAuth =
+    | { readonly kind: "app"; readonly credentials: Credentials }
+    | {
+          readonly kind: "token";
+          readonly token: {
+              readonly value: string;
+              readonly expiresAt: Date;
+              readonly grants: readonly PermissionGrant[];
+          };
+          readonly identity: AppIdentity;
+      };
+
 /** The record's own fields, plus the seams a record cannot carry. */
 export interface LiveOptions {
-    readonly credentials: Credentials;
+    readonly auth: LiveAuth;
     readonly writes: { readonly appSlug: string } | null;
     readonly killSwitchActive: boolean;
     readonly clock: () => Date;
@@ -67,8 +85,45 @@ export interface LiveOptions {
     readonly log: Log;
 }
 
+/** The token source, and the identity the read-back recognises as this process's own. */
+function authenticate(
+    auth: LiveAuth,
+    clock: () => Date,
+): {
+    readonly tokenSource: TokenSource;
+    readonly identityFor: (appSlug: string) => AppIdentity;
+    /** The identity known before any write is armed: a token arm names its own. */
+    readonly identity: AppIdentity | null;
+} {
+    if (auth.kind === "token") {
+        return {
+            tokenSource: staticTokenSource(auth.token),
+            identityFor: () => auth.identity,
+            identity: auth.identity,
+        };
+    }
+    const { appId, installationId, privateKeyPath } = auth.credentials;
+    let privateKeyPem: string;
+    try {
+        // Stryker disable next-line StringLiteral: an emptied encoding yields the same PEM as a Buffer, which node's signer accepts identically — the mutant is equivalent.
+        privateKeyPem = readFileSync(privateKeyPath, "utf8");
+    } catch {
+        console.error(`PRIVATE_KEY_PATH could not be read: ${privateKeyPath}`);
+        process.exit(1);
+    }
+    return {
+        tokenSource: createTokenSource({
+            credentials: { appId, installationId, privateKeyPem },
+            mint: githubMintInstallationToken(),
+            clock,
+        }),
+        identityFor: (appSlug) => ({ appId, botLogin: `${appSlug}[bot]` }),
+        identity: null,
+    };
+}
+
 export function liveGitHub({
-    credentials: { appId, installationId, privateKeyPath },
+    auth,
     writes,
     killSwitchActive,
     clock,
@@ -78,19 +133,7 @@ export function liveGitHub({
     ownWrites,
     log,
 }: LiveOptions): LiveGitHub {
-    let privateKeyPem: string;
-    try {
-        // Stryker disable next-line StringLiteral: an emptied encoding yields the same PEM as a Buffer, which node's signer accepts identically — the mutant is equivalent.
-        privateKeyPem = readFileSync(privateKeyPath, "utf8");
-    } catch {
-        console.error(`PRIVATE_KEY_PATH could not be read: ${privateKeyPath}`);
-        process.exit(1);
-    }
-    const tokenSource = createTokenSource({
-        credentials: { appId, installationId, privateKeyPem },
-        mint: githubMintInstallationToken(),
-        clock,
-    });
+    const { tokenSource, identityFor, identity } = authenticate(auth, clock);
     const http = createGitHubHttpClient({
         tokenSource,
         ...(contentCreationHourly === null ? {} : { contentCreationHourly }),
@@ -117,6 +160,10 @@ export function liveGitHub({
         /** What every read of this seam set is charged to; one lane holds one set. */
         const charged = { allowance };
         const landed = ownWrites(repository);
+
+        /** The item as GitHub holds it, read as the given identity; the absence rule waits a real second. */
+        const readerAs = (as: AppIdentity): ReadBack =>
+            createReadBack({ http, repository, ...charged, identity: as, clock, sleep: wait });
 
         /** The applier's externals, built FRESH on every call, excluding the delivery's own cause. */
         const effectExternals = async (payload?: unknown): Promise<Externals> => {
@@ -177,20 +224,10 @@ export function liveGitHub({
                     ? null
                     : {
                           writer: createWriteVerbs({ http, repository }),
-                          reader: createReadBack({
-                              http,
-                              repository,
-                              ...charged,
-                              // Both halves of the one App registration this process already holds.
-
-                              identity: { appId, botLogin: `${writes.appSlug}[bot]` },
-                              clock,
-                              // The read-back's absence rule is a real second apart, so production waits it.
-
-                              sleep: wait,
-                          }),
+                          reader: readerAs(identityFor(writes.appSlug)),
                           externals: effectExternals,
                       },
+            ...(identity === null ? {} : { reader: readerAs(identity) }),
         };
     };
 

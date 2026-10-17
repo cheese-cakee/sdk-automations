@@ -16,6 +16,8 @@ describe("an automation's login", () => {
     it.each([
         ["dependabot[bot]", true],
         ["Renovate[Bot]", true],
+        // The runner's own actor, so a run's earlier writes never read as a person's.
+        ["github-actions[bot]", true],
         ["alice", false],
         ["", false],
         // Not a suffix, so not a bot: reading this as one would exempt a

@@ -71,6 +71,19 @@ const effects = (capability: string, count: number): Row[] =>
         .flat()
         .sort((a, b) => `${a.verdict}${a.code}`.localeCompare(`${b.verdict}${b.code}`));
 
+/** The whole config file for one capability enabled alone, in dry-run. */
+export const configFor = (capability: string): string => `schemaVersion: 2
+mode: dry-run
+capabilities:
+${CONFIGS[capability] ?? ""}mappings:
+  labels:
+    awaitingTriage: "status: triage"
+  commands:
+    assign: /assign
+    unassign: /unassign
+    working: /working
+`;
+
 export const JOURNEYS: Readonly<Record<string, Readonly<Record<string, readonly Row[]>>>> = {
     /** On open: the awaitingTriage label and the welcome, nothing on any later event. */
     triageQueue: { "issues.opened.json": effects("triageQueue", 2) },

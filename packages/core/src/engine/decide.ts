@@ -21,6 +21,7 @@ import {
     type DestructiveGrace,
     type Intent,
     type ManagedComment,
+    type WarningRecord,
 } from "../intents/index.js";
 import type { PermissionGrant } from "../github/index.js";
 import {
@@ -165,14 +166,37 @@ function addressed(intent: AnyIntent, config: RepositoryConfig): AnyIntent {
         : { ...intent, desired: { ...intent.desired, body } };
 }
 
-function managedCommentFor(intent: AnyIntent): ManagedComment | null {
+/** The act a warning authorises, as its marker carries it: the applier's snapshot, minus the instants. */
+function recordOf(records: WarningToRecord): WarningRecord {
+    const { request } = records;
+    return {
+        effectId: records.effectId,
+        actionClass: request.actionClass,
+        capability: request.capability,
+        causeObservedAt: request.causeObservedAt.toISOString(),
+        cause: request.cause,
+        item: request.target.item,
+        change: request.target.change,
+        gracePeriodHours: records.gracePeriodHours,
+        cancelledBy: records.cancelledBy,
+        reversesWith: records.reversesWith,
+    };
+}
+
+function managedCommentFor(
+    intent: AnyIntent,
+    records: WarningToRecord | null,
+): ManagedComment | null {
     if (intent.operation === "postManagedComment") {
-        return managedCommentOf({
-            capability: intent.capability,
-            item: intent.item,
-            kind: intent.desired.kind,
-            topic: intent.desired.topic ?? "",
-        });
+        return managedCommentOf(
+            {
+                capability: intent.capability,
+                item: intent.item,
+                kind: intent.desired.kind,
+                topic: intent.desired.topic ?? "",
+            },
+            records === null ? undefined : recordOf(records),
+        );
     }
     if (
         (intent.operation === "assign" || intent.operation === "unassign") &&
@@ -264,7 +288,7 @@ function outcomeOf(
         findings,
         approved:
             verdict.outcome === "apply"
-                ? { intent, managedComment: managedCommentFor(intent), records }
+                ? { intent, managedComment: managedCommentFor(intent, records), records }
                 : null,
     };
 }

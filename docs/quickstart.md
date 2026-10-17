@@ -28,7 +28,8 @@ list here are ever touched; the [common setups](#common-setups) below map more a
 credentials the shell reads that branch. Credential-free development and CI may point `CONFIG_FILE`
 at a local copy.
 
-That is the repository configuration. Installing and running the App is a separate operator step.
+That is the repository configuration. To run it as a GitHub Action in your own repository, see
+[Installing](installing.md).
 
 **For autocomplete**, put
 `# yaml-language-server: $schema=https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json`

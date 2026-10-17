@@ -16,6 +16,7 @@ import {
     MINT_FLOOR_SECONDS,
     MINT_RETRY_COOLDOWN_SECONDS,
     REFRESH_SKEW_SECONDS,
+    staticTokenSource,
     type TokenOutcome,
 } from "../../../src/adapter/client/token.js";
 import {
@@ -425,5 +426,34 @@ describe("the token-outcome contract, held directly", () => {
         ["a non-string failure kind", { ok: false, failure: { kind: 1 } }],
     ])("refuses %s without throwing", (_label, outcome) => {
         expect(isWellFormedTokenOutcome(outcome as never)).toBe(false);
+    });
+});
+
+describe("a static token source", () => {
+    const expiresAt = new Date(START.getTime() + HOUR_MS);
+    const grants = ["contents:read", "issues:write"] as const;
+    const given = token("minted-elsewhere", expiresAt);
+    const make = () => staticTokenSource({ value: "minted-elsewhere", grants, expiresAt });
+
+    it("serves the token unchanged with its grants", async () => {
+        const outcome = await make().current();
+        expect(isWellFormedTokenOutcome(outcome)).toBe(true);
+        expect(outcome).toEqual({
+            ok: true,
+            token: { value: "minted-elsewhere", expiresAt, grants },
+        });
+    });
+
+    it("refuses with badCredentials once that token is invalidated", async () => {
+        const source = make();
+        source.invalidate(given);
+        expect(await source.current()).toEqual({ ok: false, failure: { kind: "badCredentials" } });
+        expect(await source.current()).toEqual({ ok: false, failure: { kind: "badCredentials" } });
+    });
+
+    it("ignores the invalidation of another token", async () => {
+        const source = make();
+        source.invalidate(token("someone-elses", expiresAt));
+        expect(await source.current()).toMatchObject({ ok: true });
     });
 });

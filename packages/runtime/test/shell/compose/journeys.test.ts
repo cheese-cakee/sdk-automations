@@ -17,7 +17,7 @@ import { capture, useTempDir, WEBHOOK_CAPTURES } from "@hiero-hackers/automation
 import { Store } from "../../../src/store/index.js";
 import { createShell, type Log, type Shell, type ShellEvent } from "../../../src/shell/index.js";
 import { liveGitHub } from "../../../src/shell/compose/live.js";
-import { CONFIGS, JOURNEYS, type Row } from "./journeys.js";
+import { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
 import { scriptedGitHub } from "./scripted-github.js";
 
 const SECRET = "journeys-secret";
@@ -41,18 +41,6 @@ afterEach(() => {
     store.close();
 });
 
-const configFor = (capability: string): string => `schemaVersion: 2
-mode: dry-run
-capabilities:
-${CONFIGS[capability] ?? ""}mappings:
-  labels:
-    awaitingTriage: "status: triage"
-  commands:
-    assign: /assign
-    unassign: /unassign
-    working: /working
-`;
-
 function buildShell(capability: EngineCapability): Shell {
     const name = capability.declaration.name;
     scriptedGitHub({ now: () => START, config: () => configFor(name) });
@@ -66,7 +54,10 @@ function buildShell(capability: EngineCapability): Shell {
         }).privateKey,
     );
     const built = liveGitHub({
-        credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        auth: {
+            kind: "app",
+            credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        },
         writes: null,
         killSwitchActive: false,
         clock: () => START,

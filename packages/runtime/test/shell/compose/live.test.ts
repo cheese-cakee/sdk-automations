@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { useTempDir } from "@hiero-hackers/automation-testkit";
-import { liveGitHub, type LiveOptions } from "../../../src/shell/compose/live.js";
+import { liveGitHub, type LiveAuth, type LiveOptions } from "../../../src/shell/compose/live.js";
 import type { ShellOptions } from "../../../src/shell/compose/shell.js";
 
 const REPOSITORY = { owner: "hiero-hackers", repo: "sdk-automations" } as const;
@@ -35,10 +35,15 @@ afterEach(() => {
 });
 
 /** A GitHub that mints one token and answers every read, counting what reached it. */
-function scriptedGitHub(): { readonly reads: () => number } {
+function scriptedGitHub(): {
+    readonly reads: () => number;
+    readonly seen: readonly { readonly url: string; readonly authorization: string | null }[];
+} {
     let reads = 0;
-    vi.stubGlobal("fetch", (input: string | URL) => {
+    const seen: { url: string; authorization: string | null }[] = [];
+    vi.stubGlobal("fetch", (input: string | URL, init?: RequestInit) => {
         const url = String(input);
+        seen.push({ url, authorization: new Headers(init?.headers).get("authorization") });
         if (url.includes("/access_tokens")) {
             return Promise.resolve(
                 new Response(
@@ -64,11 +69,11 @@ function scriptedGitHub(): { readonly reads: () => number } {
             }),
         );
     });
-    return { reads: () => reads };
+    return { reads: () => reads, seen };
 }
 
 /** The live fill over a real private key, with the sweep holding `share` of each pool. */
-function live(share: number, writes: LiveOptions["writes"] = null) {
+function live(share: number, writes: LiveOptions["writes"] = null, given?: LiveAuth) {
     const privateKeyPath = temp.file("app.pem");
     writeFileSync(
         privateKeyPath,
@@ -79,7 +84,10 @@ function live(share: number, writes: LiveOptions["writes"] = null) {
         }).privateKey,
     );
     const options: LiveOptions = {
-        credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        auth: given ?? {
+            kind: "app",
+            credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        },
         writes,
         killSwitchActive: false,
         clock: () => new Date("2026-09-15T10:00:00.000Z"),
@@ -144,6 +152,27 @@ describe("the two allowances one process holds", () => {
         expect(built.sweepAllowance.spent()).toMatchObject({ core: 4 });
         expect(built.deliveryAllowance.spent()).toMatchObject({ core: 0 });
         expect(built.deliveryAllowance.exhausted()).toBeNull();
+    });
+});
+
+describe("a composition on a token minted elsewhere", () => {
+    it("reads with that token and never asks GitHub to mint one", async () => {
+        const github = scriptedGitHub();
+        const built = live(0.4, null, {
+            kind: "token",
+            token: {
+                value: "runner-token",
+                grants: ["contents:read"],
+                expiresAt: new Date("2099-01-01T00:00:00Z"),
+            },
+            identity: { appId: "15368", botLogin: "github-actions[bot]" },
+        });
+
+        await built.seamsFor(REPOSITORY).configSource.load();
+
+        expect(github.seen).toHaveLength(1);
+        expect(github.seen[0]).toMatchObject({ authorization: "Bearer runner-token" });
+        expect(github.seen.some(({ url }) => url.includes("/app/installations/"))).toBe(false);
     });
 });
 

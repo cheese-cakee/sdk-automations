@@ -28,6 +28,7 @@ import {
     type Externals,
     type IssueFacts,
     type RepositoryMode,
+    parseManagedMarker,
 } from "../../src/index.js";
 import { configWith } from "../config/builders.js";
 
@@ -189,6 +190,29 @@ describe("with no warning recorded", () => {
             "capabilityExplained",
             "applied",
         ]);
+    });
+
+    /** The marker carries the act's authority, so a run with no store reads it back (grace.md §3). */
+    it("writes the act's record into the warning's own marker", async () => {
+        const intent = act();
+
+        const decision = await decided(intent);
+
+        const [approved] = decision.approved;
+        const reading = parseManagedMarker(approved?.managedComment?.marker ?? "");
+        const request = writeRequestFor({ ...intent, evaluatedAt: AT });
+        expect("recognized" in reading && reading.recognized.record).toEqual({
+            effectId: intent.idempotencyKey,
+            actionClass: request.actionClass,
+            capability: request.capability,
+            causeObservedAt: request.causeObservedAt.toISOString(),
+            cause: request.cause,
+            item: request.target.item,
+            change: request.target.change,
+            gracePeriodHours: 7 * 24,
+            cancelledBy: GRACE.cancelledBy,
+            reversesWith: GRACE.reversesWith,
+        });
     });
 
     /**

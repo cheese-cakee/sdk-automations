@@ -213,3 +213,23 @@ export function createTokenSource({ credentials, mint, clock }: TokenSourceOptio
         },
     };
 }
+
+export interface StaticTokenOptions {
+    readonly value: string;
+    readonly grants: readonly PermissionGrant[];
+    readonly expiresAt: Date;
+}
+
+/** A token someone else minted; once GitHub rejects it nothing can replace it. */
+export function staticTokenSource({ value, grants, expiresAt }: StaticTokenOptions): TokenSource {
+    let closed = false;
+    return {
+        current(): Promise<TokenOutcome> {
+            if (closed) return Promise.resolve({ ok: false, failure: { kind: "badCredentials" } });
+            return Promise.resolve({ ok: true, token: { value, expiresAt, grants } });
+        },
+        invalidate(token: InstallationToken): void {
+            if (token.value === value) closed = true;
+        },
+    };
+}

@@ -50,6 +50,24 @@ describe("reading an item's comments", () => {
         expect(scripted.calls[0]!.url).toBe(`${ISSUE}/comments?per_page=100&page=1`);
     });
 
+    it("carries the creation time GitHub records on the comment", async () => {
+        const comment = { ...appComment(9, "x"), created_at: "2026-10-01T10:00:00Z" };
+        const { readBack } = harness([listed(JSON.stringify([comment]))]);
+
+        const outcome = await readBack.comments(ITEM);
+
+        expect(outcome.ok && outcome.value[0]!.createdAt).toBe("2026-10-01T10:00:00Z");
+    });
+
+    it("carries the time GitHub last saw the comment edited", async () => {
+        const comment = { ...appComment(9, "x"), updated_at: "2026-10-02T10:00:00Z" };
+        const { readBack } = harness([listed(JSON.stringify([comment]))]);
+
+        const outcome = await readBack.comments(ITEM);
+
+        expect(outcome.ok && outcome.value[0]!.updatedAt).toBe("2026-10-02T10:00:00Z");
+    });
+
     it("recognises the App by the app id GitHub records on the comment", async () => {
         const comment = { ...appComment(2, "marker"), user: { login: "someone", type: "User" } };
         const { readBack } = harness([listed(JSON.stringify([comment]))]);

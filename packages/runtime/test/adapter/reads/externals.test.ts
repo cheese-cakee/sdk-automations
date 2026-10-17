@@ -167,6 +167,18 @@ describe("ordering evidence", () => {
         expect(scripted.calls[0]!.url).toBe(`${TIMELINE_URL}?per_page=100&page=1`);
     });
 
+    /** An earlier run's writes are the runner's, and the run's own list is empty: still no person. */
+    it("answers null for the runner's own earlier writes, with no own-writes list to exclude", async () => {
+        const { lookup } = source([
+            page([
+                entry("labeled", "github-actions[bot]", "2026-08-20T10:00:00Z", "Bot"),
+                entry("commented", "github-actions[bot]", "2026-08-20T11:00:00Z", "Bot"),
+            ]),
+        ]);
+
+        expect(await lookup(ITEM)).toBeNull();
+    });
+
     it("answers null when only bots and uncounted kinds acted", async () => {
         const { lookup } = source([
             page([

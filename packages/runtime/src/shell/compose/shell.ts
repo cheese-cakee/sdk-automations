@@ -57,6 +57,8 @@ export interface RepositorySeams {
     /** `null` without `APP_SLUG`: the shipped composition writes nothing. */
     readonly writePath: WritePath | null;
     readonly facts: SweepFactsSource;
+    /** The item as GitHub holds it now, where the composition knows its own identity. */
+    readonly reader?: ReadBack;
 }
 
 /** One repository's seams, built out: the box both lanes call, and what it applies with. */

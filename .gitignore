@@ -20,3 +20,6 @@ packages/runtime/data/
 
 # working notes: never documentation, never tracked
 notes/
+
+# the Action bundle is built on a release, never committed from a checkout
+packages/runtime/dist/

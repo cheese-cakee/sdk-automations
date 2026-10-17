@@ -1,0 +1,18 @@
+name: sdk-automations
+description: Runs the sdk-automations engine on one GitHub event, or on the hourly sweep, for the repository that uses it.
+inputs:
+  token:
+    description: The token the run reads and writes GitHub with.
+    default: ${{ github.token }}
+  arm-writes:
+    description: The second gate on writes, beside the config's mode; "true" lets a live config act.
+    default: "false"
+  bot-login:
+    description: The login the token writes as, ending in [bot]; set it with app-id when token is another App's installation token.
+    default: github-actions[bot]
+  app-id:
+    description: The App id behind the token, so a run recognises its own comments.
+    default: "15368"
+runs:
+  using: node24
+  main: packages/runtime/dist/action.js

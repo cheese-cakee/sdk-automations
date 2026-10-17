@@ -32,7 +32,7 @@ function repositoryRoot(): string {
 
 const examplesDir = join(repositoryRoot(), "docs", "examples");
 const files = readdirSync(examplesDir)
-    .filter((name) => name.endsWith(".yml"))
+    .filter((name) => name.endsWith(".yml") && !name.endsWith(".workflow.yml"))
     .sort();
 
 /** Every problem the platform finds in one document, as `code @ path`. */

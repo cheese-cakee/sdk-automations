@@ -49,6 +49,9 @@ export interface CommentFact {
     readonly id: number;
     readonly body: string;
     readonly authoredByApp: boolean;
+    /** When GitHub says it was created, and last edited; absent where the reader was not told. */
+    readonly createdAt?: string;
+    readonly updatedAt?: string;
 }
 
 /** The item as an apply-time re-gate reads it; `merged` is not inferred from `closed` (D47). */

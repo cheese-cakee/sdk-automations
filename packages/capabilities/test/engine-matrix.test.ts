@@ -349,13 +349,18 @@ describe("managed-comment identity is minted by the platform", () => {
     it("publishes each identity as the marker that identity derives", async () => {
         for (const effect of await approvedComments()) {
             const managed = effect.managedComment!;
-            expect(managed.marker).toBe(deriveManagedMarker(managed.identity));
-            expect(parseManagedMarker(managed.marker)).toEqual({
+            const reading = parseManagedMarker(managed.marker);
+            // A warning's marker also carries the act it authorises (D226); the identity is the same.
+            const record = "recognized" in reading ? reading.recognized.record : undefined;
+            expect(managed.marker).toBe(deriveManagedMarker(managed.identity, record));
+            expect(record === undefined).toBe(managed.identity.kind !== "warning");
+            expect(reading).toEqual({
                 recognized: {
                     schemaVersion: 2,
                     capability: managed.identity.capability,
                     kind: managed.identity.kind,
                     subject: expect.stringMatching(/^[0-9a-f]{16}$/),
+                    ...(record === undefined ? {} : { record }),
                 },
             });
         }

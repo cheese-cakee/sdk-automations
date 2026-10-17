@@ -97,7 +97,10 @@ function rehearsal(repositoryCount: number, share = 0.4) {
     );
     const clock = () => state.now;
     const built = liveGitHub({
-        credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        auth: {
+            kind: "app",
+            credentials: { appId: "123456", installationId: "789", privateKeyPath },
+        },
         writes: null,
         killSwitchActive: false,
         clock,

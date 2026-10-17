@@ -143,7 +143,9 @@ describe("what the parser refuses, and why", () => {
     it("reaches every rejection reason exactly once", () => {
         const reached = [
             rejection("Thanks for opening this."),
-            rejection(markerOf({ schemaVersion: 2, capability: "x".repeat(600) })),
+            rejection(
+                markerOf({ schemaVersion: 2, capability: "x".repeat(MANAGED_PAYLOAD_BYTE_LIMIT) }),
+            ),
             rejection(markerOf({ schemaVersion: 2, capability: "prDashboard" })),
             rejection(markerOf({ ...published, schemaVersion: 1, effect: published.subject })),
             rejection(markerOf({ ...published, schemaVersion: 3 })),
@@ -240,6 +242,57 @@ describe("what the parser refuses, and why", () => {
     it("calls a wrong version wrong even when the rest of it makes no sense", () => {
         expect(rejection(markerOf({ schemaVersion: 3, whatever: true }))).toBe("futureVersion");
         expect(rejection(markerOf({ schemaVersion: 1, whatever: true }))).toBe("priorVersion");
+    });
+});
+
+describe("what a warning's marker carries", () => {
+    const warning: ManagedIdentity = { ...identity, kind: "warning", topic: "alice" };
+    const record = {
+        effectId: "reaper:issue#12:release:alice",
+        actionClass: "clockTriggeredDestructive",
+        capability: "reaper",
+        causeObservedAt: "2026-09-01T00:00:00.000Z",
+        cause: "assignmentWentStale",
+        item: "issue#12",
+        change: "unassign alice",
+        gracePeriodHours: 168,
+        cancelledBy: "a comment or a commit by alice",
+        reversesWith: "assigning alice again",
+    };
+
+    it("round-trips the record, and a body after the marker leaves it whole", () => {
+        const marker = deriveManagedMarker(warning, record);
+        expect(parseManagedMarker(marker)).toEqual({
+            recognized: managedMarkerPayload(warning, record),
+        });
+        expect(parseManagedMarker(`${marker}\n\nalice, this issue has been idle.`)).toEqual({
+            recognized: { ...managedMarkerPayload(warning), record },
+        });
+        expect(managedCommentOf(warning, record).marker).toBe(marker);
+    });
+
+    it("still stands under its identity: the record is carried, never compared", () => {
+        const body = deriveManagedMarker(warning, record);
+        expect(
+            matchesManagedComment({ body, authoredByApp: true }, managedMarkerPayload(warning)),
+        ).toEqual({ matches: true });
+    });
+
+    it("refuses a record on any kind but a warning, and a record missing a field", () => {
+        const payloadOf = (kind: string, fields: Record<string, unknown>) =>
+            `${MANAGED_MARKER_PREFIX}${JSON.stringify({ ...managedMarkerPayload(warning), kind, record: fields })}${MANAGED_MARKER_SUFFIX}`;
+        const unrecognized = (body: string) => {
+            const reading = parseManagedMarker(body);
+            return "unrecognized" in reading ? reading.unrecognized : null;
+        };
+        expect(unrecognized(payloadOf("summary", record))).toBe("malformed");
+        const { cause: _cause, ...missing } = record;
+        expect(unrecognized(payloadOf("warning", missing))).toBe("malformed");
+        expect(unrecognized(payloadOf("warning", { ...record, gracePeriodHours: 0 }))).toBe(
+            "malformed",
+        );
+        expect(unrecognized(payloadOf("warning", { ...record, effectId: "" }))).toBe("malformed");
+        expect(unrecognized(payloadOf("warning", record))).toBeNull();
     });
 });
 
