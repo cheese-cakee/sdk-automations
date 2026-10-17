@@ -112,6 +112,21 @@ describe("the identity the token writes as", () => {
     });
 });
 
+describe("the event a run is told", () => {
+    it("reads a pull_request_target run as the pull_request webhook it carries", () => {
+        const parsed = parseActionEnvironment({
+            ...ENVIRONMENT,
+            GITHUB_EVENT_NAME: "pull_request_target",
+        });
+        expect(parsed.ok && parsed.run.eventName).toBe("pull_request");
+        const review = parseActionEnvironment({
+            ...ENVIRONMENT,
+            GITHUB_EVENT_NAME: "pull_request_review",
+        });
+        expect(review.ok && review.run.eventName).toBe("pull_request_review");
+    });
+});
+
 describe("the runner's environment, at its edges", () => {
     it("takes the token from GITHUB_TOKEN when no input names one, and no run link without a server", () => {
         const {

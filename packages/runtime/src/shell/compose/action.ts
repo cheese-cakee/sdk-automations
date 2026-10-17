@@ -70,6 +70,11 @@ export function deliveryIdOf(runId: string, attempt: string): DeliveryGuid {
     return asDeliveryGuid(guid) as DeliveryGuid;
 }
 
+/** The webhook GitHub would have sent: a `pull_request_target` run carries a `pull_request` payload. */
+function webhookEventOf(runnerEvent: string): string {
+    return runnerEvent === "pull_request_target" ? "pull_request" : runnerEvent;
+}
+
 function repositoryOf(spelled: string | undefined): RepositoryRef | null {
     const halves = /^([^/\s]+)\/([^/\s]+)$/.exec(spelled ?? "");
     return halves === null ? null : { owner: halves[1] as string, repo: halves[2] as string };
@@ -80,7 +85,7 @@ export function parseActionEnvironment(env: Environment): ParsedRun {
     const errors: string[] = [];
     const repository = repositoryOf(env["GITHUB_REPOSITORY"]);
     if (repository === null) errors.push(ACTION_REFUSAL.repository);
-    const eventName = env["GITHUB_EVENT_NAME"] ?? "";
+    const eventName = webhookEventOf(env["GITHUB_EVENT_NAME"] ?? "");
     const eventPath = env["GITHUB_EVENT_PATH"] ?? "";
     if (eventName === "" || eventPath === "") errors.push(ACTION_REFUSAL.event);
     const token = env["INPUT_TOKEN"] ?? env["GITHUB_TOKEN"] ?? "";
