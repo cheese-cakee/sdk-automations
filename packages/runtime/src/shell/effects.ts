@@ -36,6 +36,7 @@ export const EFFECT_CODES = [
     "writeUnknown",
     "writeUnsupported",
     "postconditionUnconfirmed",
+    "commentBudget",
 ] as const;
 
 export type EffectCode = (typeof EFFECT_CODES)[number];

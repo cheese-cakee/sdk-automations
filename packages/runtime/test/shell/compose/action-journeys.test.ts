@@ -15,7 +15,8 @@ import {
     WEBHOOK_CAPTURES,
     type Row,
 } from "@hiero-hackers/automation-testkit";
-import { parseActionEnvironment, runAction, runStore } from "../../../src/shell/compose/action.js";
+import { parseActionEnvironment } from "../../../src/shell/compose/action/inputs.js";
+import { runAction, runStore } from "../../../src/shell/compose/action/run.js";
 import { scriptedGitHub } from "./scripted-github.js";
 
 const START = new Date("2026-09-15T10:00:00.000Z");

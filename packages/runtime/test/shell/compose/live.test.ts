@@ -73,7 +73,12 @@ function scriptedGitHub(): {
 }
 
 /** The live fill over a real private key, with the sweep holding `share` of each pool. */
-function live(share: number, writes: LiveOptions["writes"] = null, given?: LiveAuth) {
+function live(
+    share: number,
+    writes: LiveOptions["writes"] = null,
+    given?: LiveAuth,
+    lanes?: LiveOptions["lanes"],
+) {
     const privateKeyPath = temp.file("app.pem");
     writeFileSync(
         privateKeyPath,
@@ -92,6 +97,7 @@ function live(share: number, writes: LiveOptions["writes"] = null, given?: LiveA
         killSwitchActive: false,
         clock: () => new Date("2026-09-15T10:00:00.000Z"),
         share,
+        ...(lanes === undefined ? {} : { lanes }),
         contentCreationHourly: null,
         knownCapabilities: [],
         ownWrites: () => () => [],
@@ -152,6 +158,23 @@ describe("the two allowances one process holds", () => {
         expect(built.sweepAllowance.spent()).toMatchObject({ core: 4 });
         expect(built.deliveryAllowance.spent()).toMatchObject({ core: 0 });
         expect(built.deliveryAllowance.exhausted()).toBeNull();
+    });
+});
+
+describe("one lane for the whole process", () => {
+    it("is one allowance, and a lane read is charged to the sweep's own", async () => {
+        const github = scriptedGitHub();
+        const built = live(0.05, null, undefined, "one");
+
+        await loadOver(built.seamsFor(REPOSITORY).configSource, 3);
+
+        expect(built.deliveryAllowance).toBe(built.sweepAllowance);
+        expect(github.reads()).toBe(3);
+        expect(built.sweepAllowance.spent()).toMatchObject({ core: 3 });
+        expect(built.sweepAllowance.standing()).toMatchObject([
+            { pool: "core", allowed: POOL_LIMIT },
+            { pool: "graphql", allowed: 5_000 },
+        ]);
     });
 });
 

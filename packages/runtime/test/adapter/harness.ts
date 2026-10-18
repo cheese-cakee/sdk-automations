@@ -177,6 +177,8 @@ export interface HttpHarnessOptions {
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
     /** Comments the client may create per hour; the default is the client's own (D192). */
     readonly contentCreationHourly?: number;
+    /** The API origin the client is pointed at; the default is GitHub's own. */
+    readonly apiOrigin?: string;
 }
 
 /** The real client over scripted GitHub, scripted tokens, and a fixed clock. */
@@ -200,6 +202,7 @@ export function httpHarness(steps: readonly ResponseStep[], options: HttpHarness
         ...(options.contentCreationHourly === undefined
             ? {}
             : { contentCreationHourly: options.contentCreationHourly }),
+        ...(options.apiOrigin === undefined ? {} : { apiOrigin: options.apiOrigin }),
         timeoutSignal:
             options.timeoutSignal ??
             ((milliseconds) => {

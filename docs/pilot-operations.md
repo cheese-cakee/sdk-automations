@@ -1,5 +1,10 @@
 # Observe pilot operations
 
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
+
+This checklist was written for the hosted pilot. The Action pilot's record is the sandbox
+protocols' evidence and the analytics run summaries.
+
 One installation, one approved repository, one process, in `observe`. This checklist prepares
 [#190](https://github.com/hiero-hackers/sdk-automations/issues/190) and
 [#191](https://github.com/hiero-hackers/sdk-automations/issues/191); it grants no installation,

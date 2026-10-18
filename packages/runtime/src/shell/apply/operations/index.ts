@@ -14,7 +14,13 @@ import type { Call, JournaledCall, Plan } from "../../effects.js";
 import { applyMappedLabel } from "./applyMappedLabel.js";
 import { assign } from "./assign.js";
 import { closePullRequest } from "./closePullRequest.js";
-import type { Confirmation, OperationHandler, OperationTraits, SendContext } from "./handler.js";
+import type {
+    Confirmation,
+    Hold,
+    OperationHandler,
+    OperationTraits,
+    SendContext,
+} from "./handler.js";
 import { lockIssue } from "./lockIssue.js";
 import { postManagedComment } from "./postManagedComment.js";
 import { releaseAssignment } from "./releaseAssignment.js";
@@ -99,6 +105,10 @@ export function planFor(effect: Effect, config: RepositoryConfig): Plan {
 }
 
 // ─── The dispatch ────────────────────────────────────────────────────
+
+/** Why a call is held back by its operation, or `null`; most operations hold nothing. */
+export const holdCall = async (call: Call, pass: SendContext): Promise<Hold | null> =>
+    (await handlerFor(operationOf(call)).hold?.(call, pass)) ?? null;
 
 /** One call, sent. */
 export const sendCall = async (call: Call, pass: SendContext): Promise<WriteResult> =>

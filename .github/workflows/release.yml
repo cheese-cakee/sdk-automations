@@ -100,3 +100,24 @@ jobs:
           gh api -X PATCH "${REPO}/git/refs/tags/${MAJOR}" -f sha="${HEAD}" -F force=true >/dev/null \
             || gh api -X POST "${REPO}/git/refs" -f ref="refs/tags/${MAJOR}" -f sha="${HEAD}" >/dev/null
           gh api -X DELETE "${REPO}/git/refs/heads/${STAGING}" >/dev/null
+          echo "RELEASE_SHA=${HEAD}" >> "${GITHUB_ENV}"
+      # The Release page is where a consumer finds the SHA to pin or roll back to: the one the
+      # publish step landed, not the branch head, which another tag's run may have moved since.
+      # Re-running a tag edits the notes instead of failing.
+      - name: create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FILE: packages/runtime/dist/action.js
+        run: |
+          set -euo pipefail
+          MAJOR="${GITHUB_REF_NAME%%.*}"
+          NOTES="$(printf 'Bundle built from commit %s.\nPin `%s`, or the release SHA %s on `releases/%s`.\nThe Action is pre-1.0: expect it to change, and start in `dry-run`.' "${GITHUB_SHA}" "${MAJOR}" "${RELEASE_SHA}" "${MAJOR}")"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "${NOTES}" --prerelease="$([ "${MAJOR}" = v0 ] && echo true || echo false)"
+            gh release upload "${GITHUB_REF_NAME}" "${FILE}" --clobber
+          else
+            PRE=()
+            [ "${MAJOR}" = v0 ] && PRE=(--prerelease)
+            gh release create "${GITHUB_REF_NAME}" "${FILE}" --verify-tag --generate-notes --title "${GITHUB_REF_NAME}" --notes "${NOTES}" "${PRE[@]}"
+          fi

@@ -74,10 +74,14 @@ export interface LiveOptions {
     readonly writes: { readonly appSlug: string } | null;
     readonly killSwitchActive: boolean;
     readonly clock: () => Date;
-    /** What share of each of GitHub's pools the sweep may spend; the rest is the lane's (D192). */
+    /** What share of each of GitHub's pools the sweep may spend; the rest is the lane's (D192). Ignored when `lanes` is `"one"`. */
     readonly share: number;
+    /** `"two"` is the hosted shell's sweep and lane; `"one"` makes `deliveryAllowance` the sweep's own object. */
+    readonly lanes?: "two" | "one";
     /** Comments both lanes may create per hour; `null` takes the client's own ceiling. */
     readonly contentCreationHourly: number | null;
+    /** The GitHub API origin; absent is api.github.com. */
+    readonly apiOrigin?: string;
     /** Handed down because the adapter may not import the capabilities package. */
     readonly knownCapabilities: readonly AdmittedCapability[];
     /** One repository's landed calls, as the adapter's ordering read asks for them (D159). */
@@ -89,6 +93,7 @@ export interface LiveOptions {
 function authenticate(
     auth: LiveAuth,
     clock: () => Date,
+    apiOrigin: string | undefined,
 ): {
     readonly tokenSource: TokenSource;
     readonly identityFor: (appSlug: string) => AppIdentity;
@@ -114,7 +119,7 @@ function authenticate(
     return {
         tokenSource: createTokenSource({
             credentials: { appId, installationId, privateKeyPem },
-            mint: githubMintInstallationToken(),
+            mint: githubMintInstallationToken(apiOrigin === undefined ? {} : { apiOrigin }),
             clock,
         }),
         identityFor: (appSlug) => ({ appId, botLogin: `${appSlug}[bot]` }),
@@ -128,19 +133,22 @@ export function liveGitHub({
     killSwitchActive,
     clock,
     share,
+    lanes = "two",
     contentCreationHourly,
+    apiOrigin,
     knownCapabilities,
     ownWrites,
     log,
 }: LiveOptions): LiveGitHub {
-    const { tokenSource, identityFor, identity } = authenticate(auth, clock);
+    const { tokenSource, identityFor, identity } = authenticate(auth, clock, apiOrigin);
     const http = createGitHubHttpClient({
         tokenSource,
         ...(contentCreationHourly === null ? {} : { contentCreationHourly }),
+        ...(apiOrigin === undefined ? {} : { apiOrigin }),
     });
     /** The sweep's share of GitHub's pools, for the process. The clock rolls a window nobody can report (D196). */
     const sweepAllowance = createAllowance({
-        share,
+        share: lanes === "one" ? 1 : share,
         clock: () => clock().getTime(),
         onWindow: ({ pool, limit, remaining, resetAt }) => {
             log({ event: "limits", pool, limit, remaining, resetAt });
@@ -150,10 +158,10 @@ export function liveGitHub({
      * The webhook lane's: what the sweep leaves of each pool, and no write cap.
      * GitHub's own numbers are one installation's, so only the sweep's says them.
      */
-    const deliveryAllowance = createAllowance({
-        share: 1 - share,
-        clock: () => clock().getTime(),
-    });
+    const deliveryAllowance =
+        lanes === "one"
+            ? sweepAllowance
+            : createAllowance({ share: 1 - share, clock: () => clock().getTime() });
 
     /** One repository's seams, each built exactly as a one-repository process built them. */
     const seamsIn = (repository: RepositoryRef, allowance: ClientAllowance): RepositorySeams => {

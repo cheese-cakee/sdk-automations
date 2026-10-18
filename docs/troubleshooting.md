@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
+
 Every decision the App makes carries a code, and so does every write that did not land; every code
 is in the first four tables below. The most common question — "why didn't it act here?" — is almost
 always answered by the first table: the App prefers doing nothing over doing something you didn't
@@ -7,6 +9,13 @@ ask for. The last table is for the records it writes when it never got as far as
 
 *The test suite locks the code membership and severity grouping on this page against the implementation
 on every commit. The plain-language explanations still require review.*
+
+## Reading a run
+
+An Action run writes a job summary that lists each item's decisions and effects with the codes
+below. A run that exits non-zero names the event that failed. The hourly sweep is a floor on
+latency, not a promise: GitHub's schedule can lag or skip an hour, so a deadline that depends on
+the sweep can arrive late.
 
 ## It did nothing on purpose
 
@@ -57,6 +66,7 @@ your file has to move.
 | `writeUnknown` | Whether the call landed could not be established; nothing is resent until a read of GitHub settles it |
 | `writeUnsupported` | The platform has no confirmed endpoint for this write yet; the intent stands and is re-tried each sweep |
 | `postconditionUnconfirmed` | GitHub accepted the call, but the read-back did not confirm the state it should have left behind |
+| `commentBudget` | The App had already created three comments on this item in the last day, so this one was held back until tomorrow; a comment it rewrites in place never counts |
 
 `pnpm shell:explain <effect-id>` prints one effect's whole history and where it stands, and
 `pnpm shell:explain --item issue#40 --repo owner/repo` prints an item's effects and its decisions; `pnpm shell:status`

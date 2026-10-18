@@ -87,6 +87,7 @@ export function createProvoker(options: ProvokerOptions): Provoker {
         subject: Subject,
         name: string,
         editsConfig: boolean,
+        draft: boolean,
     ): Promise<Answer> => {
         const branch = `rehearsal/${name}`;
         const base = await call("GET", `${repository}/git/ref/heads/${defaultBranch}`);
@@ -100,7 +101,7 @@ export function createProvoker(options: ProvokerOptions): Provoker {
         });
         await commitOn(branch, name, editsConfig);
         const created = await call("POST", `${repository}/pulls`, {
-            body: { title: name, head: branch, base: defaultBranch, body: BODY },
+            body: { title: name, head: branch, base: defaultBranch, body: BODY, draft },
             accept: [201],
         });
         subject.pull = numberOf(created, "the pull request");
@@ -148,7 +149,12 @@ export function createProvoker(options: ProvokerOptions): Provoker {
                     return stamped(answer, { kind: "issue", number: issue });
                 }
                 case "openPull": {
-                    const answer = await openPull(subject, name, action.editsConfig);
+                    const answer = await openPull(
+                        subject,
+                        name,
+                        action.editsConfig,
+                        action.draft === true,
+                    );
                     return stamped(answer, { kind: "pullRequest", number: pullOf(subject) });
                 }
                 case "closePull": {

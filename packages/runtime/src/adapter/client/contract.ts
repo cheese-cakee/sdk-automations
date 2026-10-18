@@ -122,6 +122,8 @@ export interface GitHubHttpClientOptions {
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
     /** Comments both lanes may create per hour; the default is `CONTENT_CREATION_HOURLY`. */
     readonly contentCreationHourly?: number;
+    /** An `http(s)://host[:port]` origin with no path; the default is `GITHUB_API_ORIGIN`. */
+    readonly apiOrigin?: string;
 }
 
 /** What every operation calls. */
@@ -140,6 +142,18 @@ export function repoPath(repository: { readonly owner: string; readonly repo: st
         `${GITHUB_API_ORIGIN}/repos/${encodeURIComponent(repository.owner)}` +
         `/${encodeURIComponent(repository.repo)}`
     );
+}
+
+/**
+ * The request as the client at `origin` sends it. Builders spell GitHub's own origin; a client
+ * pointed elsewhere sends those requests there, and anything spelled otherwise reaches the gate unchanged.
+ */
+export function onOrigin(request: GitHubRequest, origin: string): GitHubRequest {
+    if (origin === GITHUB_API_ORIGIN) return request;
+    if (typeof request.url !== "string" || !request.url.startsWith(`${GITHUB_API_ORIGIN}/`)) {
+        return request;
+    }
+    return { ...request, url: origin + request.url.slice(GITHUB_API_ORIGIN.length) };
 }
 
 /** Lower-cased header record, the shape core's classifier reads. */

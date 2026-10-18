@@ -4,20 +4,21 @@ One job: **facts about GitHub's behaviour that only contact with GitHub can veri
 our code; the lab verifies our beliefs about someone else's system. Conclusions never live here —
 they migrate to `design/` as register rows (D32) — and the protocols stay with the instrument that
 executes them: `src/scrub.ts` is the capture rules, `src/capture.ts` the receiver,
-[`src/rehearsal/`](src/rehearsal/README.md) protocol 8.6 as one command, `src/action/` protocol
-9.1 as one command, and `src/probes/` the conformance instrument whose stamped results
+[`src/rehearsal/`](src/rehearsal/README.md) protocol 8.6 as one command, `src/action/` 9.1 to 9.9
+(`pnpm lab:action --only 9.1,9.2 [--arm] [--long] [--engine <sha>]`: writes need `--arm`, 9.3 and 9.9's
+ladders `--long`; `GITHUB_TOKEN` or the App's `APP_ID`, `INSTALLATION_ID`, `PRIVATE_KEY_PATH`), and
+`src/probes/` the conformance instrument whose stamped results
 [`conformance.test.ts`](../checks/test/conformance.test.ts) holds to every confirmed read.
 
 Ground rules: a personal sandbox repository only, never a Hiero one (P8, D22); bounded hostility —
 we measure GitHub's behaviour, we do not hammer it; and fork code is never executed with App write
 credentials (6.6). Copy `.env.example` to `.env` to run anything here.
 
-Tracked: `protocols/`, `src/`, `test/`, `probe-results.json` (shapes only). Never tracked:
-`harness/`, `evidence/`, `.env` — enforced by
-[`never-tracked.test.ts`](../checks/test/never-tracked.test.ts), not by `.gitignore` alone. The raw
-evidence logs are held privately because they embed whole webhook payloads, so a protocol's citation
-id resolves into that archive and a dangling citation in a published document is expected, not an
-error; the protocols themselves carry no secrets, credentials, tunnel URLs or personal identifiers.
+Tracked: `protocols/`, `src/`, `test/`, `probe-results.json` (shapes only). Never tracked: `harness/`,
+`evidence/`, `.env`, enforced by [`never-tracked.test.ts`](../checks/test/never-tracked.test.ts), not by
+`.gitignore` alone. The raw evidence logs are held privately because they embed whole webhook payloads,
+so a protocol's citation id resolves into that archive and a dangling citation in a published document
+is expected, not an error; the protocols carry no secrets, credentials, tunnel URLs or personal identifiers.
 
 ## The protocols
 
@@ -48,7 +49,7 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [8.5](protocols/8.5-pr-dashboard-pilot.md) | the prDashboard dashboard on a real pull request |
 | [8.6](protocols/8.6-triage-queue-live.md) | the triage queue on real issues: open, lock, label, unlock, with real webhooks |
 | [8.7](protocols/8.7-backup-recovery.md) | restoring a backed-up store and resuming only the work it remembers |
-| [9.1](protocols/9.1-action-conformance.md) | each captured event, provoked for real, reaching the run the journeys table says: `SANDBOX_REPO=… GITHUB_TOKEN=… ENGINE_COMMIT=<full sha> pnpm lab:action [capability …]`, dry-run only, restored on every exit |
+| [9.1](protocols/9.1-action-conformance.md) | each captured event, provoked for real, reaching the run the journeys table says: `pnpm lab:action --only 9.1 [--capability triageQueue]`, dry-run only |
 | [9.2](protocols/9.2-first-effects-as-an-action.md) | 8.2's writes, idempotence and kill switch from an action run |
 | [9.3](protocols/9.3-grace-across-runs.md) | a warning honoured across three runs: refused inside the grace, acted on after it, cancelled by `/working` |
 | [9.4](protocols/9.4-same-second-events.md) | 8.6's same-second changes as two runs under the concurrency group |

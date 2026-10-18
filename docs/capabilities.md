@@ -1,6 +1,6 @@
 # Capabilities
 
-> The App is in development and not yet installable. These pages describe the configuration it ships with.
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
 
 A capability is one automation you switch on. Each one wakes on something GitHub tells the App —
 a webhook, or the App's own schedule — reads the item it was woken for, and asks to write at most

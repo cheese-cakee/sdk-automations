@@ -13,6 +13,7 @@
         "test:packages": "pnpm -r --filter='!@hiero-hackers/automation-checks' --filter='!{.}' test",
         "test:repo": "pnpm --filter @hiero-hackers/automation-checks test",
         "test:coverage": "pnpm -r test:coverage",
+        "smoke:action": "pnpm --filter @hiero-hackers/automation-runtime build:action && pnpm --filter @hiero-hackers/automation-checks exec tsx test/action-smoke.ts",
         "contracts": "pnpm --filter @hiero-hackers/automation-checks generate",
         "start": "pnpm --filter @hiero-hackers/automation-runtime start",
         "shell:explain": "pnpm --filter @hiero-hackers/automation-runtime explain --",

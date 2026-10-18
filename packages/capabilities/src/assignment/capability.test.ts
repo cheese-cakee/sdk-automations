@@ -382,7 +382,7 @@ describe("claims, refusals and releases", () => {
         const holder = await run(comment("unassign", "alice"), { holders: ["alice"] });
         expectRelease(holder.intents);
         expect(noticeOf(holder.intents).body).toContain(
-            "@alice has been unassigned from this issue at their request. The issue is open for anyone to pick up.",
+            "@alice claimed this issue and has since been unassigned at their request. The issue is open for anyone to pick up.",
         );
     });
 

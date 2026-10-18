@@ -114,6 +114,60 @@ export function parseLog(text: string): ParsedLog {
     return { rows, malformed, engineCommit };
 }
 
+/** One effect the run announced, from the notice or warning line it prints. */
+export interface EffectLine {
+    readonly level: string;
+    readonly capability: string;
+    readonly operation: string;
+    readonly item: string;
+    readonly outcome: string;
+    readonly code: string | null;
+}
+
+const EFFECT_LINE =
+    /^(?:##\[(notice|warning)\]|::(notice|warning)::)(\S+) (\S+) ((?:issue|pullRequest)#\d+) (\S+)(?: (\S+))?$/;
+
+/** The effects a job log announces, in order. */
+export function effectLinesIn(text: string): EffectLine[] {
+    return text.split(/\r?\n/).flatMap((line) => {
+        const found = EFFECT_LINE.exec(line.replace(PREFIX, ""));
+        if (found === null) return [];
+        const [, a, b, capability, operation, item, outcome, code] = found;
+        return [
+            {
+                level: a ?? b ?? "",
+                capability: capability ?? "",
+                operation: operation ?? "",
+                item: item ?? "",
+                outcome: outcome ?? "",
+                code: code ?? null,
+            },
+        ];
+    });
+}
+
+/** The structured events of one name a job log carries, one JSON object per line. */
+export function eventsIn(text: string, name: string): Record<string, unknown>[] {
+    return text.split(/\r?\n/).flatMap((line) => {
+        const body = line.replace(PREFIX, "");
+        if (!body.startsWith("{")) return [];
+        try {
+            const parsed: unknown = JSON.parse(body);
+            return field(parsed, "event") === name ? [parsed as Record<string, unknown>] : [];
+        } catch {
+            return [];
+        }
+    });
+}
+
+/** The lines of a log that read as GitHub turning a request away for volume. */
+export function limitAnswersIn(text: string): string[] {
+    return text
+        .split(/\r?\n/)
+        .map((line) => line.replace(PREFIX, ""))
+        .filter((line) => /secondary rate limit|retry-after|"status":\s*(?:403|429)/i.test(line));
+}
+
 // ─── Reading them from GitHub ────────────────────────────────────────
 
 const PAGE = 100;
@@ -123,6 +177,8 @@ export interface RunReader {
     listSince(since: string): Promise<WorkflowRun[]>;
     /** The text of every job's log in one run, joined. */
     jobLogs(runId: number): Promise<string>;
+    /** The run's latest attempt number, and whether it has finished. */
+    attemptOf(runId: number): Promise<{ readonly attempt: number; readonly completed: boolean }>;
 }
 
 export interface RunReaderOptions {
@@ -164,6 +220,13 @@ export function createRunReader({ call, token, owner, repo }: RunReaderOptions):
             return listed(await call("GET", path), "workflow_runs", "the runs list")
                 .map(runOf)
                 .filter((run): run is WorkflowRun => run !== null);
+        },
+
+        async attemptOf(runId) {
+            const body = (await call("GET", `${repository}/actions/runs/${String(runId)}`)).body;
+            const attempt = field(body, "run_attempt");
+            if (typeof attempt !== "number") throw new Halt(`run ${String(runId)} has no attempt`);
+            return { attempt, completed: field(body, "status") === "completed" };
         },
 
         async jobLogs(runId) {

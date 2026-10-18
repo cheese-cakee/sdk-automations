@@ -13,7 +13,7 @@ import type {
     WriteResult,
     WriteVerbs,
 } from "@hiero-hackers/automation-core";
-import { renderManagedBody, type Call, type Plan } from "../../effects.js";
+import { renderManagedBody, type Call, type EffectCode, type Plan } from "../../effects.js";
 
 /** Whether a read-back says a call's postcondition holds. */
 export type Confirmation = "held" | "notHeld" | "unknown";
@@ -41,6 +41,12 @@ interface OperationVerbs {
 export type CallOf<K extends IntentOperation> = Extract<Call, { verb: OperationVerbs[K] }>;
 
 /** What one send may know: the item, the two seams, and this effect's own identity. */
+/** A call held back by its own operation: the code the row carries, and the sentence beside it. */
+export interface Hold {
+    readonly code: EffectCode;
+    readonly detail: string;
+}
+
 export interface SendContext {
     readonly item: ItemRef;
     readonly writer: WriteVerbs;
@@ -48,6 +54,7 @@ export interface SendContext {
     readonly allowance: Allowance | undefined;
     /** Is a comment the one THIS CALL would be? Authorship and marker, both required (D125). */
     isMine(body: string): (comment: CommentFact) => boolean;
+    readonly clock: () => Date;
 }
 
 /**
@@ -94,6 +101,8 @@ export interface OperationHandler<K extends IntentOperation> {
     serialize(call: CallOf<K>): Record<string, unknown>;
     /** The call a row's bytes hold, or `null`; total over `unknown`. */
     parse(row: unknown): CallOf<K> | null;
+    /** Why this call must not be sent now, or `null`; an operation's own ceiling, judged before the send. */
+    hold?(call: CallOf<K>, pass: SendContext): Promise<Hold | null>;
     /** One call, sent; the read-before-write for a comment lives here. */
     send(call: CallOf<K>, pass: SendContext): Promise<WriteResult>;
     /** Does GitHub say this call's postcondition holds? */

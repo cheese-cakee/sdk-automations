@@ -508,8 +508,21 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
         ): Promise<RepositoryConfig | null> {
             try {
                 const loaded = await loadConfig(source ?? lane(repository).configSource);
-                return loaded.result.ok ? loaded.result.config : null;
-            } catch {
+                if (loaded.result.ok) return loaded.result.config;
+                log({
+                    event: "configurationUnavailable",
+                    reason: "rejected",
+                    detail: loaded.result.errors
+                        .map((error) => `${error.code}: ${error.message}`)
+                        .join("; "),
+                });
+                return null;
+            } catch (error) {
+                log({
+                    event: "configurationUnavailable",
+                    reason: "unreadable",
+                    detail: error instanceof Error ? error.message : String(error),
+                });
                 return null;
             }
         },

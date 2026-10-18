@@ -3,7 +3,8 @@
  * The client debits it from the response it just read, and refuses the
  * request that would pass it. Nothing here sends, waits or decides what a lane is for.
  * A window whose named end has passed rolls its own spend (D196): at its cap the
- * ledger refuses every request, so no response can ever name the next window.
+ * ledger refuses every request, so no response can ever name the next window. While a
+ * window's end has not passed, a response naming a later one never lowers its spend (D231).
  */
 
 import {
@@ -177,7 +178,11 @@ export function createAllowance({
             pools.graphql.spent += cost.graphql;
             mutationsSpent += cost.mutations;
         },
-        /** A reset past the slack is a new window: its spend starts again. Drift inside it only moves the end. */
+        /**
+         * A reset past the slack is a new window: its spend starts again. Drift inside it only moves
+         * the end. A later reset while this window's own end has not passed is another pool's
+         * answer, never this one's roll: the spend stands until the clock passes the end (D231).
+         */
         observed(pool: Pool, headers: Readonly<Record<string, string>>): void {
             const ledger = pools[pool];
             const limit = wholeNumber(headers["x-ratelimit-limit"]);
@@ -190,6 +195,13 @@ export function createAllowance({
             if (clock !== undefined && reset * 1_000 <= clock()) return;
             if (ledger.resetAt !== null && reset <= ledger.resetAt + WINDOW_SLACK_S) {
                 ledger.resetAt = reset;
+                return;
+            }
+            if (
+                clock !== undefined &&
+                ledger.resetAt !== null &&
+                clock() < ledger.resetAt * 1_000
+            ) {
                 return;
             }
             ledger.resetAt = reset;

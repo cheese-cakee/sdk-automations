@@ -16,7 +16,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeRequestFor, type Effect, type ItemRef } from "@hiero-hackers/automation-core";
+import {
+    writeRequestFor,
+    type CommentFact,
+    type Effect,
+    type ItemRef,
+} from "@hiero-hackers/automation-core";
 import {
     Store,
     type Fact,
@@ -2429,5 +2434,74 @@ describe("the three sequences of rehearsal 8.3", () => {
         });
         expect(logged.at(-1)).toMatchObject({ event: "effectRefused", code: "rowUnreadable" });
         expect(github.calls).toEqual([]);
+    });
+});
+
+describe("the comments one item may receive in a day", () => {
+    const dated = (id: number, hoursAgo: number): CommentFact => ({
+        ...appComment(
+            id,
+            `<!-- hiero-automation:{"schemaVersion":2,"capability":"other","kind":"notice","subject":"${String(id).padStart(16, "0")}"} -->\n\nearlier`,
+        ),
+        createdAt: new Date(BASE.getTime() - hoursAgo * 60 * 60_000).toISOString(),
+    });
+
+    it("refuses a fourth creation inside the day, and sends nothing", async () => {
+        const effect = commentEffect({ body: "one more" });
+        const github = fakeGitHub({ comments: [dated(1, 1), dated(2, 5), dated(3, 20)] });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "commentBudget" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("counts a marked comment under another name, so a misread identity cannot post without bound", async () => {
+        const effect = commentEffect({ body: "one more" });
+        const others = [dated(1, 1), dated(2, 5), dated(3, 20)].map((comment) => ({
+            ...comment,
+            authoredByApp: false,
+        }));
+        const github = fakeGitHub({ comments: others });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "commentBudget" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("creates once the oldest of the three has left the day", async () => {
+        const effect = commentEffect({ body: "one more" });
+        const github = fakeGitHub({ comments: [dated(1, 1), dated(2, 5), dated(3, 25)] });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "applied" });
+        expect(github.calls).toEqual([`createComment ${markerOf(effect)}\n\none more`]);
+    });
+
+    it("rewrites a standing comment whatever the day's count", async () => {
+        const effect = commentEffect({ body: "the new summary" });
+        const standing = appComment(9, `${markerOf(effect)}\n\nthe old summary`);
+        const github = fakeGitHub({
+            comments: [dated(1, 1), dated(2, 2), dated(3, 3), standing],
+        });
+
+        expect(one(await applierOver(github).applyAll([effect], configFor()))).toMatchObject({
+            outcome: "applied",
+        });
+        expect(github.calls).toEqual(["updateComment #9"]);
+    });
+
+    it("counts no comment GitHub did not date", async () => {
+        const github = fakeGitHub({
+            comments: [appComment(1, "a"), appComment(2, "b"), appComment(3, "c")],
+        });
+
+        const created = one(
+            await applierOver(github).applyAll([commentEffect({ body: "x" })], configFor()),
+        );
+
+        expect(created).toMatchObject({ outcome: "applied" });
     });
 });

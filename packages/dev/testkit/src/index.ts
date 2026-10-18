@@ -1,7 +1,7 @@
 /**
  * Test-only support shared by more than one package: the captured webhook
- * payloads, the journeys table they are decided against, and the temp-dir
- * helpers for tests that touch disk.
+ * payloads, the journeys table they are decided against, the fake GitHub,
+ * and the temp-dir helpers for tests that touch disk.
  *
  * Fixtures are module-mediated, never path-read from outside this package (D82).
  */
@@ -12,6 +12,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
+export { startFakeGitHub, type FakeGitHub, type FakeGitHubOptions } from "./fake-github.js";
+export {
+    githubScript,
+    HOUR,
+    POOL_LIMIT,
+    UPDATED,
+    type GitHubCall,
+    type GitHubReply,
+    type GitHubRequest,
+    type GitHubScript,
+} from "./github-routes.js";
 
 /**
  * One captured delivery, with the provenance that makes it evidence.

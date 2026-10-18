@@ -30,6 +30,8 @@ permissions:
   issues: write
   pull-requests: write
 
+# One run at a time per item; the sweep is its own group, so a sweep and an event on the same
+# item can overlap, and a comment created in that window may appear twice. The budget bounds it.
 concurrency:
   group: sdk-automations-${{ github.event.issue.number || github.event.pull_request.number || 'sweep' }}
   cancel-in-progress: false
@@ -38,7 +40,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      # Pin the release SHA rather than the moving v1 tag where you can.
-      - uses: hiero-hackers/sdk-automations@v1
+      # The major tag moves with each release (v0 while the Action is pre-1.0); pin the
+      # release SHA where you can.
+      - uses: hiero-hackers/sdk-automations@v0
         with:
           arm-writes: "false"

@@ -13,10 +13,9 @@ import {
     itemNamedBy,
     parseActionEnvironment,
     RUNNER_IDENTITY,
-    runAction,
-    runStore,
     type ActionRun,
-} from "../../../src/shell/compose/action.js";
+} from "../../../src/shell/compose/action/inputs.js";
+import { runAction, runStore } from "../../../src/shell/compose/action/run.js";
 import { explainItem } from "../../../src/shell/observe/explain.js";
 import type { ShellEvent } from "../../../src/shell/log.js";
 import { scriptedGitHub } from "./scripted-github.js";
@@ -61,7 +60,12 @@ const kinds = (events: readonly ShellEvent[]): string[] => events.map(({ event }
 describe("the runner's environment", () => {
     it("refuses an empty one, naming every missing piece", () => {
         const parsed = parseActionEnvironment({});
-        const { arm: _unasked, identity: _defaulted, ...required } = ACTION_REFUSAL;
+        const {
+            arm: _unasked,
+            identity: _defaulted,
+            apiUrl: _absent,
+            ...required
+        } = ACTION_REFUSAL;
         expect(parsed).toEqual({ ok: false, errors: Object.values(required) });
     });
 
@@ -84,6 +88,59 @@ describe("the runner's environment", () => {
     });
 });
 
+describe("the API origin", () => {
+    it("is the one GITHUB_API_URL names, and GitHub's own when it is absent", () => {
+        expect(runOf().apiOrigin).toBeNull();
+        const named = parseActionEnvironment({
+            ...ENVIRONMENT,
+            GITHUB_API_URL: "http://127.0.0.1:4010",
+        });
+        expect(named.ok && named.run.apiOrigin).toBe("http://127.0.0.1:4010");
+        const github = parseActionEnvironment({
+            ...ENVIRONMENT,
+            GITHUB_API_URL: "https://api.github.com/",
+        });
+        expect(github.ok && github.run.apiOrigin).toBe("https://api.github.com");
+    });
+
+    it.each([
+        "not a url",
+        "ftp://api.github.com",
+        "http://ghe.example",
+        "https://ghe.example/api/v3",
+        "https://api.github.com?x=1",
+        "https://api.github.com/#x",
+        "https://user:pass@api.github.com",
+        "",
+    ])("refuses %j", (spelled) => {
+        expect(parseActionEnvironment({ ...ENVIRONMENT, GITHUB_API_URL: spelled })).toEqual({
+            ok: false,
+            errors: [ACTION_REFUSAL.apiUrl],
+        });
+    });
+
+    it("is handed to the live seams: every call goes to it", async () => {
+        scriptedGitHub({ now: () => START, config: () => configFor("triageQueue") });
+        const scripted = globalThis.fetch;
+        const origins = new Set<string>();
+        vi.stubGlobal("fetch", (input: string | URL, init: RequestInit) => {
+            origins.add(new URL(String(input)).origin);
+            return scripted(input, init);
+        });
+        const store = runStore();
+        const outcome = await runAction(runOf({ apiOrigin: "http://127.0.0.1:4010" }), {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+            capabilities: CAPABILITIES,
+        });
+        store.close();
+        expect(outcome.exitCode).toBe(0);
+        expect([...origins]).toEqual(["http://127.0.0.1:4010"]);
+    });
+});
+
 describe("the identity the token writes as", () => {
     it("is the runner's unless the workflow names another App's", () => {
         const runner = parseActionEnvironment(ENVIRONMENT);
@@ -96,6 +153,7 @@ describe("the identity the token writes as", () => {
         expect(other.ok && other.run.identity).toEqual({
             appId: "4377258",
             botLogin: "hiero-automations[bot]",
+            slug: "hiero-automations",
         });
     });
 
@@ -185,6 +243,23 @@ describe("one run", () => {
         // Two dry-run effects, each explained, would apply, and recorded only.
         expect(rows.filter((row) => row.code === "modeRecordsOnly")).toHaveLength(2);
         expect(explainItem(store, REPOSITORY, { kind: "issue", number: 164 }).found).toBe(true);
+        store.close();
+    });
+
+    it("decides with nothing enabled when the repository has no configuration file, and says so", async () => {
+        scriptedGitHub({ now: () => START, config: () => "", noConfig: () => true });
+        const store = runStore();
+        const outcome = await runAction(runOf(), {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+        });
+        expect(outcome).toMatchObject({ kind: "delivery", exitCode: 0, configAbsent: true });
+        expect(outcome.events.find((event) => event.event === "deliveryCompleted")).toMatchObject({
+            kind: "decision",
+        });
+        expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 164 })).toEqual([]);
         store.close();
     });
 
@@ -325,6 +400,25 @@ mappings:
             log: () => undefined,
         });
         expect(outcome).toMatchObject({ kind: "idle", exitCode: 0, items: [] });
+        expect(outcome.events).toContainEqual(
+            expect.objectContaining({ event: "configurationUnavailable", reason: "rejected" }),
+        );
+        store.close();
+    });
+
+    it("exits non-zero on the schedule when the configuration could not be read at all", async () => {
+        scriptedGitHub({ now: () => START, config: () => "", secondaryLimited: () => true });
+        const store = runStore();
+        const outcome = await runAction(runOf({ eventName: "schedule" }), {
+            payload: Buffer.from("{}"),
+            store,
+            clock: () => START,
+            log: () => undefined,
+        });
+        expect(outcome).toMatchObject({ kind: "idle", exitCode: 1, items: [] });
+        expect(outcome.events).toContainEqual(
+            expect.objectContaining({ event: "configurationUnavailable", reason: "unreadable" }),
+        );
         store.close();
     });
 

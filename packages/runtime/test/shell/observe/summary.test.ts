@@ -17,16 +17,13 @@ import { capture, configFor } from "@hiero-hackers/automation-testkit";
 import { hydrateWarnings } from "../../../src/shell/decide/warnings.js";
 import {
     parseActionEnvironment,
-    runAction,
-    runStore,
     type ActionRun,
-    type RunOutcome,
-} from "../../../src/shell/compose/action.js";
+} from "../../../src/shell/compose/action/inputs.js";
+import { runAction, runStore, type RunOutcome } from "../../../src/shell/compose/action/run.js";
 import { explainItem } from "../../../src/shell/observe/explain.js";
 import {
     annotations,
     appendSummary,
-    cell,
     renderSummary,
     ROW_MARKER,
     rowLines,
@@ -157,8 +154,9 @@ describe("the job summary", () => {
         expect(
             outcome.effects.map(({ operation, outcome: fate, code }) => [operation, fate, code]),
         ).toEqual([
-            ["applyMappedLabel", "retryLater", "itemUnreadable"],
-            ["postManagedComment", "retryLater", "itemUnreadable"],
+            // The scripted GitHub keeps no state: the label cannot be read back, and the comment waits.
+            ["applyMappedLabel", "unknown", "postconditionUnconfirmed"],
+            ["postManagedComment", "retryLater", "writeRetryLater"],
         ]);
         expect(annotations(outcome)).toEqual([]);
         store.close();
@@ -241,6 +239,7 @@ describe("the machine-readable rows", () => {
             items: [],
             effects: [],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 0,
         };
         expect(rowLines(store, repository, idle)).toEqual([]);
@@ -321,6 +320,7 @@ describe("appendSummary", () => {
             items: [item, item],
             effects: [],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 1,
         };
         const text = renderSummary(
@@ -360,6 +360,7 @@ describe("appendSummary", () => {
             items: [{ kind: "issue", number: 6 }, decided, { kind: "pullRequest", number: 7 }],
             effects: [],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 0,
         };
         const text = renderSummary(
@@ -374,10 +375,41 @@ describe("appendSummary", () => {
     });
 
     it("escapes a cell so no value can close it, and spells an empty one as a dash", () => {
-        expect(cell(null)).toBe("-");
-        expect(cell("")).toBe("-");
-        expect(cell(3)).toBe("3");
-        expect(cell("a|b\\c\n d")).toBe("a\\|b\\\\c d");
+        const store = runStore();
+        const repository = { owner: "o", repo: "r" } as const;
+        const item = { kind: "issue", number: 5 } as const;
+        const decision = (capability: string, detail: string) => ({
+            passId: `pass-${capability}`,
+            source: "sweep" as const,
+            sourceId: `pass-${capability}`,
+            at: "2026-09-15T10:00:00.000Z",
+            repository,
+            item,
+            capability,
+            verdict: "info",
+            code: null,
+            detail,
+            effectId: null,
+        });
+        store.ledger.decide(decision("escaped", "a|b\\c\n d"));
+        store.ledger.decide(decision("empty", ""));
+        const outcome: RunOutcome = {
+            kind: "sweep",
+            events: [],
+            items: [item],
+            effects: [],
+            modeLowered: false,
+            configAbsent: false,
+            exitCode: 0,
+        };
+        const text = renderSummary(
+            store,
+            { repository, eventName: "schedule", runUrl: null },
+            outcome,
+        );
+        expect(text).toContain("| escaped | info | - | a\\|b\\\\c d |");
+        expect(text).toContain("| empty | info | - | - |");
+        store.close();
     });
 
     it("names a dead-lettered delivery without a detail, in the line and the warning", () => {
@@ -388,6 +420,7 @@ describe("appendSummary", () => {
             items: [],
             effects: [],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 1,
         };
         const repository = { owner: "o", repo: "r" } as const;
@@ -401,6 +434,136 @@ describe("appendSummary", () => {
         store.close();
     });
 
+    it("keeps the first line of a failure's detail, leaving the stack to the log", () => {
+        const store = runStore();
+        const outcome: RunOutcome = {
+            kind: "delivery",
+            events: [
+                {
+                    event: "deliveryAttemptFailed",
+                    deliveryId: "d",
+                    disposition: "retryScheduled",
+                    maxAttempts: 5,
+                    attempts: 1,
+                    retryNotBefore: "2026-09-15T10:00:30.000Z",
+                    detail: "Error: configuration unavailable\n    at loadConfig (action.js:1:1)",
+                },
+            ],
+            items: [],
+            effects: [],
+            modeLowered: false,
+            configAbsent: false,
+            exitCode: 1,
+        };
+        const repository = { owner: "o", repo: "r" } as const;
+        const text = renderSummary(
+            store,
+            { repository, eventName: "issues", runUrl: null },
+            outcome,
+        );
+        expect(text).toContain(
+            "The run exited non-zero: `deliveryAttemptFailed`, Error: configuration unavailable.",
+        );
+        expect(text).not.toContain("at loadConfig");
+        expect(annotations(outcome)).toEqual([
+            "::warning::deliveryAttemptFailed Error: configuration unavailable",
+        ]);
+        store.close();
+    });
+
+    it("says when no configuration file was found, in a line and a warning", () => {
+        const store = runStore();
+        const outcome: RunOutcome = {
+            kind: "delivery",
+            events: [{ event: "deliveryCompleted", deliveryId: "d", kind: "decision" }],
+            items: [{ kind: "issue", number: 7 }],
+            effects: [],
+            modeLowered: false,
+            configAbsent: true,
+            exitCode: 0,
+        };
+        const repository = { owner: "o", repo: "r" } as const;
+        const text = renderSummary(
+            store,
+            { repository, eventName: "issues", runUrl: null },
+            outcome,
+        );
+        expect(text).toContain("No `sdk-automations.yml` at the default branch");
+        expect(annotations(outcome)).toEqual([
+            "::warning::No `sdk-automations.yml` at the default branch: nothing is enabled, so nothing was decided.",
+        ]);
+        store.close();
+    });
+
+    it("says why a sweep found no configuration, as a line when rejected and a failure when unreadable", () => {
+        const store = runStore();
+        const repository = { owner: "o", repo: "r" } as const;
+        const run = { repository, eventName: "schedule", runUrl: null };
+        const rejected: RunOutcome = {
+            kind: "idle",
+            events: [
+                { event: "configurationUnavailable", reason: "rejected", detail: "unknownKey: x" },
+            ],
+            items: [],
+            effects: [],
+            modeLowered: false,
+            configAbsent: false,
+            exitCode: 0,
+        };
+        expect(renderSummary(store, run, rejected)).toContain(
+            "No decision: `configurationUnavailable (rejected)`, unknownKey: x.",
+        );
+        expect(annotations(rejected)).toEqual([
+            "::warning::configurationUnavailable (rejected) unknownKey: x",
+        ]);
+        const unreadable: RunOutcome = {
+            ...rejected,
+            events: [{ event: "configurationUnavailable", reason: "unreadable", detail: "502" }],
+            exitCode: 1,
+        };
+        expect(renderSummary(store, run, unreadable)).toContain(
+            "The run exited non-zero: `configurationUnavailable (unreadable)`, 502.",
+        );
+        expect(annotations(unreadable)).toEqual([
+            "::warning::configurationUnavailable (unreadable) 502",
+        ]);
+        store.close();
+    });
+
+    it("says why a delivery completed with no decision, in a line and a warning", () => {
+        const store = runStore();
+        const outcome: RunOutcome = {
+            kind: "delivery",
+            events: [
+                {
+                    event: "deliveryCompleted",
+                    deliveryId: "d",
+                    kind: "configRejected",
+                    detail: "documentUnparseable: unreadable before parsing: not found",
+                },
+            ],
+            items: [],
+            effects: [],
+            modeLowered: false,
+            configAbsent: false,
+            exitCode: 0,
+        };
+        const repository = { owner: "o", repo: "r" } as const;
+        const text = renderSummary(
+            store,
+            { repository, eventName: "issues", runUrl: null },
+            outcome,
+        );
+        expect(text).toContain(
+            "No decision: `deliveryCompleted (configRejected)`, documentUnparseable: unreadable before parsing: not found.",
+        );
+        expect(text).not.toContain("exited non-zero");
+        expect(annotations(outcome)).toEqual([
+            "::warning::deliveryCompleted (configRejected) documentUnparseable: unreadable before parsing: not found",
+        ]);
+        store.close();
+    });
+
     it("closes with no cause when a non-zero run logged none it recognises", () => {
         const store = runStore();
         const outcome: RunOutcome = {
@@ -409,6 +572,7 @@ describe("appendSummary", () => {
             items: [],
             effects: [],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 1,
         };
         const repository = { owner: "o", repo: "r" } as const;
@@ -451,6 +615,7 @@ describe("appendSummary", () => {
                 effect({ outcome: "unknown", code: "postconditionUnconfirmed" }),
             ],
             modeLowered: false,
+            configAbsent: false,
             exitCode: 0,
         };
         expect(annotations(outcome)).toEqual([
@@ -459,7 +624,7 @@ describe("appendSummary", () => {
         ]);
     });
 
-    it("escapes a message so a percent sign or a line break cannot end the command", () => {
+    it("escapes a message so a percent sign or a carriage return cannot end the command", () => {
         const outcome: RunOutcome = {
             kind: "delivery",
             events: [
@@ -470,17 +635,18 @@ describe("appendSummary", () => {
                     attempts: 1,
                     maxAttempts: 5,
                     retryNotBefore: null,
-                    detail: "GitHub answered 502\r\n100% of the time",
+                    detail: "GitHub answered 502\r100% of the time",
                 },
             ],
             items: [],
             effects: [],
             modeLowered: true,
+            configAbsent: false,
             exitCode: 1,
         };
         expect(annotations(outcome)).toEqual([
             `::notice::${"The configuration asked for `active`; it was decided as `dry-run` because the workflow did not arm writes."}`,
-            "::warning::deliveryAttemptFailed GitHub answered 502%0D%0A100%25 of the time",
+            "::warning::deliveryAttemptFailed GitHub answered 502%0D100%25 of the time",
         ]);
     });
 

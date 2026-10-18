@@ -44,8 +44,8 @@ export function atCap(login: string, held: number, limit: number, canRelease: bo
     return `Hi ${mentions([login])} — you already have ${assignments}, and this repository's limit is ${String(limit)}.${release}`;
 }
 
-/** Said only when the commenter's own claim was released; open to anyone once nobody else holds it. */
+/** Rewrites the claim notice in place, so it tells the whole story: claimed, then released. */
 export function released(login: string, othersRemain: boolean): string {
     const next = othersRemain ? "" : " The issue is open for anyone to pick up.";
-    return `${mentions([login])} has been unassigned from this issue at their request.${next}`;
+    return `${mentions([login])} claimed this issue and has since been unassigned at their request.${next}`;
 }

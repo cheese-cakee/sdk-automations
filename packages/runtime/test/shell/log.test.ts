@@ -181,6 +181,10 @@ const ROUTING: Record<
         problem: true,
     },
     sweepFailed: { event: { event: "sweepFailed", detail: "the store is closed" }, problem: true },
+    configurationUnavailable: {
+        event: { event: "configurationUnavailable", reason: "rejected", detail: "unknownKey: x" },
+        problem: true,
+    },
     scheduledCapabilityIdle: {
         event: {
             event: "scheduledCapabilityIdle",

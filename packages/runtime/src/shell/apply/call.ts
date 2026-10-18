@@ -22,6 +22,7 @@ import {
     sendCall as sendByHandler,
     serializeCall,
     traitsOf,
+    holdCall,
 } from "./operations/index.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -104,6 +105,7 @@ export function createCalls(options: CallOptions): Calls {
         reader,
         allowance: pass.allowance,
         isMine,
+        clock,
     });
 
     /** One call, sent by the handler that owns its verb. */
@@ -217,6 +219,11 @@ export function createCalls(options: CallOptions): Calls {
                     "sweepRequestCap",
                     `this window's ${spent} allowance is spent; resumed next sweep`,
                 );
+            }
+            const held = await holdCall(call, contextFor(pass));
+            if (held !== null) {
+                appendFact(pass, "unsent", seq, call, held);
+                return stop("refused", held.code, held.detail);
             }
             appendFact(pass, "sent", seq, call, {
                 payload: serializeCall({ capability: pass.capability, item: pass.item, call }),

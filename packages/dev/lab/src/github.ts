@@ -124,6 +124,16 @@ export async function sandboxOwner(call: Call, owner: string, repo: string): Pro
     return owner;
 }
 
+/** An installation token has no person: the sandbox is proved private and the named owner's. */
+export async function privateSandbox(call: Call, owner: string, repo: string): Promise<string> {
+    const sandbox = await call("GET", `/repos/${owner}/${repo}`);
+    if (field(field(sandbox.body, "owner"), "login") !== owner) {
+        throw new Halt(`the sandbox is not ${owner}'s`);
+    }
+    if (field(sandbox.body, "private") !== true) throw new Halt("the sandbox must be private");
+    return owner;
+}
+
 /** What a caught value says, for a person reading the run. */
 export function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error);

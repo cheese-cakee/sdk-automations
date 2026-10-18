@@ -111,6 +111,12 @@ export type ShellEvent =
       }
     | { readonly event: "sweepFailed"; readonly detail: string }
     | {
+          /** The sweep asked for the configuration and got none: a rejected file, or a failed read. */
+          readonly event: "configurationUnavailable";
+          readonly reason: "rejected" | "unreadable";
+          readonly detail: string;
+      }
+    | {
           /** The configuration enables a capability that only a sweep wakes, and no sweep is armed. */
           readonly event: "scheduledCapabilityIdle";
           readonly repository: string;
@@ -217,6 +223,7 @@ const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
     "effectAbandoned",
     "sweepRequeued",
     "sweepFailed",
+    "configurationUnavailable",
     "scheduledCapabilityIdle",
     "sweepUnreadable",
     "snapshotUnreadable",

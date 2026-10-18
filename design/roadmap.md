@@ -1,54 +1,47 @@
-# Pilot-ready v0
+# Roadmap
 
 ## Outcome
 
-One installation observes a real repository with bounded GitHub use. An operator can explain its
-decisions, restart it, and recover its store. Active writes require separate approval and proof.
+Hiero SDK repositories run this engine as a GitHub Action: a repository adds a workflow file and
+`sdk-automations.yml`, and nothing is hosted. The Action is the vehicle. The hosted shell stays
+until the Action has run in two repositories, then is retired. Done is two repositories in
+`active` for 30 days, every Python SDK bot migrated or declined in writing, and `v1.0.0` attested.
 
-[Milestone #2](https://github.com/hiero-hackers/sdk-automations/milestone/2) tracks the remaining
-pilot work. The adapter, write path, PR dashboard, initial triage queue, and assignment's first
-phase are built, and a version tag publishes the pilot image. A hosted pilot and complete triage
-outcomes are not.
+The plan, phases A to J, lives beside the repository rather than in it: the folder
+`sdk-automations-action-delivery-2026-10-16/`, file `sdk-automations-action-delivery-plan.md`.
 
-## Next gates
+## Where it stands
 
-1. Close the disposable-repository triage rehearsal in
-   [#189](https://github.com/hiero-hackers/sdk-automations/issues/189). Clean ready-label unlock,
-   template-labelled entry, and a same-second release passed live
-   ([protocol 8.6](../packages/dev/lab/protocols/8.6-triage-queue-live.md)). Keep
-   `lockUntilTriaged` off by default until the scripted rehearsal passes in full on current main.
-   Record the decisions and effects, not just the visible result.
-2. Choose the temporary App owner, pilot host, and operator in
-   [#191](https://github.com/hiero-hackers/sdk-automations/issues/191). Prove direct webhook
-   delivery, health, restart, backup, restore, and rollback with a durable store
-   ([protocol 8.7](../packages/dev/lab/protocols/8.7-backup-recovery.md) is the offline proof).
-   Tag the version the pilot runs, so the operator can name it and roll back by tag.
-3. Run [#190](https://github.com/hiero-hackers/sdk-automations/issues/190) in `observe` on one
-   approved repository. Sophie conditionally approved Analytics after the prior tests pass and
-   the App is installable. Its owner must install and configure it. Dry-run and active writes need
-   their own approval and evidence.
-4. Use pilot findings to finish triage outcomes. Assignment's first phase (claim and release) is
-   built; its [protocol 8.2](../packages/dev/lab/protocols/8.2-first-effects.md) pass on the
-   reviewed commit is owed before it ships, and a claim moving workflow state waits for the
-   `ready` ownership rule (D220). Keep one owner for each automatic state transition. Do not add automatic triage or
-   cross-capability state repair without a demonstrated need and a clear ownership rule.
+- **Phase B, the Action shell, is merged** ([#231](https://github.com/hiero-hackers/sdk-automations/pull/231),
+  [#232](https://github.com/hiero-hackers/sdk-automations/pull/232),
+  [#233](https://github.com/hiero-hackers/sdk-automations/pull/233)): a run maps one event to one
+  delivery or the hourly sweep, arms writes only when the mode is `active` and `arm-writes` is
+  `"true"`, and writes a job summary of every decision and effect.
+- **Phase C, the sandbox, has passed** protocols 9.1 (conformance for all five capabilities),
+  9.2 (first effects), 9.3 (grace across runs), 9.4 (same-second events), 9.6 (a re-run of an old
+  run) and 9.7 (the sweep's budget). 9.5 (a fork pull request) and the clocked rungs of 9.9
+  (the ladders) are still owed; 9.8 is a documentation protocol.
+- **Hardening** is in progress: the comment budget, the Action's inputs and checks, and a testkit
+  that serves GitHub as a process.
 
-## Independent work before wider rollout
+## Next
 
-[#192](https://github.com/hiero-hackers/sdk-automations/issues/192) measures per-capability costs
-and onboarding bursts. This can proceed while the live pilot awaits credentials and hosting.
-The credential-free [cost rehearsal](../packages/runtime/test/shell/compose/cost.test.ts) covers
-inactivity first enabled on an existing repository and 100 repositories sharing the sweep's pool
-across reset windows. It uses the composed client, fact reader, engine, and store. The
-[sweep guide](guides/sweep.md#3-cost) records its scope and costs, including the three webhook
-capabilities and two deliveries beside an exhausted sweep. Live write costs, large webhook bursts,
-variable GraphQL costs, and secondary-limit behavior at fleet scale remain open.
+1. **Tag the first release**, so a repository can name and pin the version it runs.
+2. **Observe on analytics** (Phase E): two files merged, `mode: observe`, `arm-writes: "false"`,
+   then dry-run, then each capability active by its own written approval.
+3. **Docs** (Phase D): the quickstart, installing and troubleshooting pages carry the Action.
+4. **Python SDK migration** (Phase G): each bot becomes a capability, dry-run beside the running
+   bot for seven days, then one pull request that removes the bot and sets the capability active.
+5. **Second repository and v1.0** (Phase H): the JavaScript SDK first, then the tag.
+6. **Retire the hosted shell** (Phase I): the receiver, the jobs, the store's delivery tables, the
+   Dockerfile and `running.md`, in one pull request after H.
 
-[#194](https://github.com/hiero-hackers/sdk-automations/issues/194) tracks the Vitest 5 update.
-Retry only after the upstream Stryker runner fix is released. Keep mutation thresholds unchanged.
+Phase F, finishing the shipped capabilities, goes by demand.
 
 ## Working rule
 
-Keep each change independently reviewable. Prefer one process, one durable store, and existing
+Keep each change independently reviewable. Prefer one process, one durable store and the existing
 capability seams until real use shows a missing abstraction. Unknown facts prevent unsafe writes;
-retries must not duplicate effects; every effect must be explainable from the store.
+retries must not duplicate effects; every effect must be explainable from GitHub. A decision
+register row records only a belief about GitHub or about safety. A lab protocol runs before any new
+endpoint is written to.

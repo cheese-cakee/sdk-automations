@@ -38,9 +38,15 @@ pnpm format
 pnpm contracts
 ```
 
+```bash
+pnpm smoke:action
+```
+
 `pnpm contracts` regenerates the tables in `design/contracts/catalogue.md`, `design/contracts/facts.md`,
 `design/contracts/safety.md` and `docs/capabilities.md` from the registries and folders that own them —
 run it when a drift check reports one of those blocks, rather than editing the markdown by hand.
+`pnpm smoke:action` builds the Action's bundle and runs it as a repository would, against a fake
+GitHub, once per captured event and once on the schedule; CI runs it on every push.
 
 CI runs `pnpm format:check` and fails the build on a formatting difference, so run `pnpm format`
 before pushing — or let your editor do it. Prettier is formatter-only here and markdown is excluded;

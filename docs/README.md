@@ -1,6 +1,6 @@
 # Hiero SDK automations
 
-> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
 
 - **[Quickstart](quickstart.md)** — set up in two minutes: one file, one merge
 - **[Installing](installing.md)** — add the GitHub Action: two files, the permissions it grants, the switch that arms writes

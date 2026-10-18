@@ -1,11 +1,12 @@
 /**
  * The Action's entry point: the runner's environment in, one decided run and an exit code out.
- * Run by the runner as `node dist/action.js`; locally, `pnpm --filter … action`.
+ * Bundled as `dist/action.js` and run by the runner as `node dist/action.js`; locally, `pnpm --filter … action`.
  */
 
 import { readFileSync } from "node:fs";
-import { annotations, appendSummary, renderSummary, rowLines } from "../observe/summary.js";
-import { parseActionEnvironment, runAction, runStore } from "./action.js";
+import { annotations, appendSummary, renderSummary, rowLines } from "../../observe/summary.js";
+import { parseActionEnvironment } from "./inputs.js";
+import { runAction, runStore } from "./run.js";
 
 const parsed = parseActionEnvironment(process.env);
 if (!parsed.ok) {

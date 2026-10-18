@@ -19,10 +19,12 @@ import {
     bodyOf,
     brokenSeamFailure,
     DEFAULT_REQUEST_TIMEOUT_MS,
+    GITHUB_API_ORIGIN,
     GITHUB_API_VERSION,
     headersToRecord,
     isWrite,
     notSentFailure,
+    onOrigin,
     transportFailure,
     USER_AGENT,
     type GitHubFailure,
@@ -335,6 +337,7 @@ export function createGitHubHttpClient({
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     timeoutSignal = AbortSignal.timeout,
     contentCreationHourly = CONTENT_CREATION_HOURLY,
+    apiOrigin = GITHUB_API_ORIGIN,
 }: GitHubHttpClientOptions): GitHubHttpClient {
     const cache = createRepresentationCache();
     /** One slot per `x-ratelimit-resource`: a GraphQL answer says nothing about core (F9). */
@@ -597,7 +600,7 @@ export function createGitHubHttpClient({
 
     return {
         async request(request, allowance): Promise<GitHubOutcome> {
-            const admitted = admit(request);
+            const admitted = admit(onOrigin(request, apiOrigin), apiOrigin);
             if (!admitted.ok) return admitted.refusal;
             const safeRequest = admitted.request;
             const write = admitted.write;

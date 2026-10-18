@@ -20,7 +20,7 @@ export type Action =
     | { readonly kind: "label"; readonly name: string }
     | { readonly kind: "comment"; readonly body: string }
     | { readonly kind: "close" }
-    | { readonly kind: "openPull"; readonly editsConfig: boolean }
+    | { readonly kind: "openPull"; readonly editsConfig: boolean; readonly draft?: boolean }
     | { readonly kind: "closePull" };
 
 export interface EventCase {

@@ -1,8 +1,8 @@
 # Installing
 
-> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
 
-The GitHub Action is experimental and pre-1.0: expect it to change, and start in `dry-run`.
+Expect it to change before 1.0, and start in `dry-run`.
 
 The Action runs the same engine inside your own repository's workflow, with no server to host.
 
@@ -25,8 +25,9 @@ run cannot write anywhere those three do not reach. Do not widen it.
 
 ## Pinning
 
-`@v1` moves on each release, so you get fixes without editing the file. To freeze the engine, pin
-the release's full commit SHA instead and update it yourself.
+The major tag, `@v0` while the Action is pre-1.0, moves on each release, so you get fixes without
+editing the file. To freeze the engine, pin the release's full commit SHA instead and update it
+yourself. By rule, a release is tagged only from a commit the sandbox conformance workflow passed on.
 
 ## Why there is no checkout step
 
@@ -42,12 +43,24 @@ configuration that says `active` is decided as `dry-run`, and the job summary sa
 request that changes it to `"true"` is the approval. Make it after you have read the dry-run
 records and are content with what they show.
 
+## Rolling back
+
+The major tag moves forward only. To go back, pin the previous release's SHA, which the
+[Releases page](https://github.com/hiero-hackers/sdk-automations/releases) lists, in place of the
+tag; it is a commit on the `releases/v<major>` branch.
+
 ## Another token
 
 The default token is the workflow's own, and the run recognises its earlier comments as the
 runner's. If you pass an App's installation token as `token`, set `bot-login` to that App's
 `<slug>[bot]` and `app-id` to its id, or the run will not know its own comments and will post a
 fresh one each time. A personal token is not supported: its comments read as a person's.
+
+## Another GitHub host
+
+The run reads and writes at the API origin the runner names in `GITHUB_API_URL`, so GitHub
+Enterprise Cloud needs nothing set. GitHub Enterprise Server serves its API under a path, which the
+run refuses before it reads anything.
 
 ## Turning it off
 
@@ -58,7 +71,8 @@ Either stops every run at once; nothing else needs undoing.
 
 Each run writes a job summary that lists every item it decided, the decisions and effects for each,
 and their codes. [Troubleshooting](troubleshooting.md) explains every code. A run that fails
-names the event that failed, and the job turns red.
+names the event that failed, and the job turns red. GitHub emails a scheduled run's failure to
+whoever last edited the workflow file, so that person should be someone who will read it.
 
 GitHub switches off `schedule` workflows in a repository with no commits for 60 days. The hourly
 sweep then stops without a failed run; re-enable the workflow from the Actions tab.

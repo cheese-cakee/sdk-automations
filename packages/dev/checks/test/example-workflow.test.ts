@@ -53,7 +53,7 @@ const pinsTheAction = (workflow: Workflow): boolean => {
     const uses = usesOf(workflow);
     return (
         uses.length === 1 &&
-        /^hiero-hackers\/sdk-automations@(v1|[0-9a-f]{40})$/.test(uses[0] ?? "")
+        /^hiero-hackers\/sdk-automations@(v[0-9]+|[0-9a-f]{40})$/.test(uses[0] ?? "")
     );
 };
 
@@ -79,7 +79,7 @@ describe("the example workflow stays safe to copy", () => {
         expect(queuesRuns(example)).toBe(true);
     });
 
-    it("uses the action at v1 or a full commit SHA, once", () => {
+    it("uses the action at a major tag or a full commit SHA, once", () => {
         expect(pinsTheAction(example)).toBe(true);
     });
 

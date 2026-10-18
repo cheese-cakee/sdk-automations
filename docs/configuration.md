@@ -1,5 +1,7 @@
 # Configuration reference
 
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
+
 The App is controlled by `sdk-automations.yml` in your repository root. With App credentials, the shell
 reads the file from the repository's default branch. Credential-free development and CI can use an
 operator-maintained local copy through `CONFIG_FILE`. This page defines every shared key the parser

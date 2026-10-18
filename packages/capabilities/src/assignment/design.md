@@ -44,12 +44,12 @@ Refused — at the cap, with the `unassign` block off:
 
 Released, nobody else assigned:
 
-> @alice has been unassigned from this issue at their request. The issue is open for anyone to pick
-> up.
+> @alice claimed this issue and has since been unassigned at their request. The issue is open for
+> anyone to pick up.
 
 Released, someone else still assigned:
 
-> @alice has been unassigned from this issue at their request.
+> @alice claimed this issue and has since been unassigned at their request.
 
 No sentence prints a command's spelling: the view carries mapped names only (contract.md §2), so a
 comment says "this repository's unassign command". A meaning is named, never its label.

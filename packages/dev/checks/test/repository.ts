@@ -155,3 +155,29 @@ export function sourceFiles(directories: readonly string[] = ["src", "test"]): s
         (path) => path.endsWith(".ts") && prefixes.some((prefix) => path.startsWith(prefix)),
     );
 }
+
+const composeDir = join(repoRoot, "packages", "runtime", "src", "shell", "compose");
+
+/** Every `.ts` file under the shell's composition directory, as text. */
+export function composeSources(): string[] {
+    const found: string[] = [];
+    const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const path = join(dir, entry.name);
+            if (entry.isDirectory()) walk(path);
+            else if (entry.name.endsWith(".ts")) found.push(readFileSync(path, "utf8"));
+        }
+    };
+    walk(composeDir);
+    return found;
+}
+
+/** The source of the file that defines the Action's environment parser, wherever it sits. */
+export function actionParserSource(): string {
+    const source = composeSources().find((text) =>
+        text.includes("function parseActionEnvironment"),
+    );
+    if (source === undefined)
+        throw new Error("no file under compose/ defines parseActionEnvironment");
+    return source;
+}

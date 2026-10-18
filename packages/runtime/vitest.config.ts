@@ -19,7 +19,7 @@ export default defineConfig({
                 "src/shell/index.ts",
                 "src/store/index.ts",
                 "src/shell/compose/main.ts",
-                "src/shell/compose/action-main.ts",
+                "src/shell/compose/action/main.ts",
                 "src/shell/compose/live.ts",
                 "src/shell/observe/explain-cli.ts",
                 "src/shell/observe/status-cli.ts",

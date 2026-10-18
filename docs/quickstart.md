@@ -1,6 +1,6 @@
 # Quickstart
 
-> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
 
 Once an operator installs and starts the App for your repository, configure it with one file and
 one merge.

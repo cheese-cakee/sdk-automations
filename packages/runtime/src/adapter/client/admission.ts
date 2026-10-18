@@ -7,7 +7,6 @@ import type { PermissionGrant } from "@hiero-hackers/automation-core";
 import {
     bodyOf,
     GITHUB_API_ORIGIN,
-    GITHUB_GRAPHQL_URL,
     isWrite,
     notSentFailure,
     type GitHubFailure,
@@ -24,16 +23,14 @@ type GitHubApiUrl =
     | { readonly ok: true; readonly url: URL }
     | { readonly ok: false; readonly refused: "malformedUrl" | "disallowedOrigin" };
 
-function githubApiUrl(rawUrl: string): GitHubApiUrl {
+function githubApiUrl(rawUrl: string, origin: string): GitHubApiUrl {
     let url: URL;
     try {
         url = new URL(rawUrl);
     } catch {
         return { ok: false, refused: "malformedUrl" };
     }
-    return url.origin === GITHUB_API_ORIGIN
-        ? { ok: true, url }
-        : { ok: false, refused: "disallowedOrigin" };
+    return url.origin === origin ? { ok: true, url } : { ok: false, refused: "disallowedOrigin" };
 }
 
 /** What admitting a write learned, for the client's retry policy, its grants and its cache. */
@@ -88,8 +85,8 @@ function operationOf(body: string): string | null {
         : null;
 }
 
-function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest {
-    if (url.href !== GITHUB_GRAPHQL_URL) return refused("disallowedMethod");
+function admitGraphql(request: GitHubGraphqlRequest, url: URL, origin: string): AdmittedRequest {
+    if (url.href !== `${origin}/graphql`) return refused("disallowedMethod");
     if (typeof request.body !== "string") return refused("invalidBody");
     const operation = operationOf(request.body);
     if (operation === null) return refused("invalidBody");
@@ -105,8 +102,8 @@ function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest 
  * A write against the per-endpoint allowlist.
  * The body rule is the shape's, not the method's: label removal and lock changes carry none, while assignment release is a DELETE that must.
  */
-function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
-    const write = writeEndpointOf(request.method, url);
+function admitWrite(request: GitHubWriteRequest, url: URL, origin: string): AdmittedRequest {
+    const write = writeEndpointOf(request.method, url, origin);
     if (write === null) return refused("disallowedMethod");
     // Unreachable through the type, and the retry policy reads this field.
 
@@ -123,18 +120,18 @@ function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
 }
 
 /**
- * The admitted methods, the pinned origin, the named GraphQL operations, the confirmed
- * write endpoints. It runs before a token is acquired, so a refusal costs no mint.
+ * The admitted methods, the pinned origin (GitHub's unless the client names another), the named
+ * GraphQL operations, the confirmed write endpoints. It runs before a token is acquired, so a refusal costs no mint.
  */
-export function admit(request: GitHubRequest): AdmittedRequest {
+export function admit(request: GitHubRequest, origin: string = GITHUB_API_ORIGIN): AdmittedRequest {
     const write = isWrite(request);
     if (!write && request.method !== "GET" && request.method !== "POST") {
         return refused("disallowedMethod");
     }
-    const parsed = githubApiUrl(request.url);
+    const parsed = githubApiUrl(request.url, origin);
     if (!parsed.ok) return refused(parsed.refused);
-    if (write) return admitWrite(request, parsed.url);
-    if (request.method === "POST") return admitGraphql(request, parsed.url);
+    if (write) return admitWrite(request, parsed.url, origin);
+    if (request.method === "POST") return admitGraphql(request, parsed.url, origin);
     return { ok: true, request: { ...request, url: parsed.url.href }, write: null, reads: [] };
 }
 

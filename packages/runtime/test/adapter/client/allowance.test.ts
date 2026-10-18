@@ -347,6 +347,27 @@ describe("a window nobody will report the end of", () => {
         expect(allowance.standing().find((pool) => pool.pool === "core")?.resetAt).toBeNull();
     });
 
+    it("keeps a live window's spend when a response names a later reset, and rolls once its own end passes", () => {
+        let now = (1_787_300_000 + 30) * 1_000;
+        const allowance = spentCorePool(() => now);
+
+        // A write's answer names another pool's window, an hour away: not this window's roll.
+        allowance.observed("core", headers(resetIn(3_600)));
+
+        expect(allowance.spent().core).toBe(5);
+        expect(allowance.refuses("core", false)).toBe("core");
+        expect(allowance.standing().find((pool) => pool.pool === "core")?.resetAt).toBe(
+            new Date((1_787_300_000 + 60) * 1_000).toISOString(),
+        );
+
+        now = (1_787_300_000 + 61) * 1_000;
+        expect(allowance.spent().core).toBe(0);
+        allowance.observed("core", headers(resetIn(3_600)));
+        expect(allowance.standing().find((pool) => pool.pool === "core")?.resetAt).toBe(
+            new Date((1_787_300_000 + 3_600) * 1_000).toISOString(),
+        );
+    });
+
     it("re-states its window's end from the first response after the roll", () => {
         const now = (1_787_300_000 + 61) * 1_000;
         const allowance = spentCorePool(() => now);

@@ -46,19 +46,19 @@ export interface EndpointShape {
     /** Structural match on method and the path's tail — never derived from the builder (D129). */
     matches(method: string, rest: readonly string[]): boolean;
     /** Cache keys a landed write makes untrustworthy. */
-    invalidates(url: URL): readonly string[];
+    invalidates(url: URL, origin: string): readonly string[];
 }
 
 /** Whole-href resource prefixes: the item, one of its two lists, its timeline. */
-function itemStaledBy(url: URL, list: "comments" | "labels"): readonly string[] {
-    const item = `${GITHUB_API_ORIGIN}${url.pathname.split("/").slice(0, 6).join("/")}`;
+function itemStaledBy(url: URL, origin: string, list: "comments" | "labels"): readonly string[] {
+    const item = `${origin}${url.pathname.split("/").slice(0, 6).join("/")}`;
     return [item, `${item}/${list}`, `${item}/timeline`];
 }
 
 /** The three hrefs one item's state is read from: both its views, and its timeline. */
-function itemViewsStaledBy(url: URL): readonly string[] {
+function itemViewsStaledBy(url: URL, origin: string): readonly string[] {
     const [, , owner, repo, , number] = url.pathname.split("/");
-    const repository = `${GITHUB_API_ORIGIN}/repos/${String(owner)}/${String(repo)}`;
+    const repository = `${origin}/repos/${String(owner)}/${String(repo)}`;
     const issue = `${repository}/issues/${String(number)}`;
     return [issue, `${issue}/timeline`, `${repository}/pulls/${String(number)}`];
 }
@@ -71,7 +71,7 @@ const CREATE_LABEL: EndpointShape = {
     body: "json",
     lane: "default",
     matches: (method, rest) => method === "POST" && rest.length === 0,
-    invalidates: (url) => [`${GITHUB_API_ORIGIN}${url.pathname}`],
+    invalidates: (url, origin) => [`${origin}${url.pathname}`],
 };
 
 /** `POST …/issues/{n}/labels` — the item's label list, added to. */
@@ -83,7 +83,7 @@ const ADD_LABEL: EndpointShape = {
     lane: "default",
     matches: (method, rest) =>
         method === "POST" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "labels",
-    invalidates: (url) => itemStaledBy(url, "labels"),
+    invalidates: (url, origin) => itemStaledBy(url, origin, "labels"),
 };
 
 /**
@@ -102,7 +102,7 @@ const REMOVE_LABEL: EndpointShape = {
         isNumberSegment(rest[0]) &&
         rest[1] === "labels" &&
         isEncodedSegment(rest[2]),
-    invalidates: (url) => itemStaledBy(url, "labels"),
+    invalidates: (url, origin) => itemStaledBy(url, origin, "labels"),
 };
 
 /** `POST …/issues/{n}/comments` — the item's comment list, appended to. */
@@ -117,7 +117,7 @@ const CREATE_COMMENT: EndpointShape = {
         rest.length === 2 &&
         isNumberSegment(rest[0]) &&
         rest[1] === "comments",
-    invalidates: (url) => itemStaledBy(url, "comments"),
+    invalidates: (url, origin) => itemStaledBy(url, origin, "comments"),
 };
 
 /**
@@ -135,7 +135,7 @@ const UPDATE_COMMENT: EndpointShape = {
         rest.length === 2 &&
         rest[0] === "comments" &&
         isNumberSegment(rest[1]),
-    invalidates: (url) => [`${GITHUB_API_ORIGIN}${url.pathname}`],
+    invalidates: (url, origin) => [`${origin}${url.pathname}`],
 };
 
 /**
@@ -237,7 +237,11 @@ export interface MatchedEndpoint {
  * The write endpoint this method and path ARE, or `null`.
  * The shared preamble is checked here once; each shape judges the surface it sits on, the method and the tail — an unknown surface matches no shape and so is refused.
  */
-export function writeEndpointOf(method: string, url: URL): MatchedEndpoint | null {
+export function writeEndpointOf(
+    method: string,
+    url: URL,
+    origin: string = GITHUB_API_ORIGIN,
+): MatchedEndpoint | null {
     if (url.search !== "" || url.hash !== "") return null;
     const [repos, owner, repo, resource, ...rest] = url.pathname.split("/").slice(1);
     if (repos !== "repos") return null;
@@ -250,7 +254,7 @@ export function writeEndpointOf(method: string, url: URL): MatchedEndpoint | nul
                 grant: shape.grant,
                 body: shape.body,
                 lane: shape.lane,
-                invalidates: shape.invalidates(url),
+                invalidates: shape.invalidates(url, origin),
             };
         }
     }

@@ -1,6 +1,9 @@
 # Running the shell
 
-> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
+> The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
+
+This page describes the hosted shell, kept for operators until its retirement. A repository adopting the
+Action reads [installing.md](installing.md) instead.
 
 For whoever runs the endpoint: what it reads from the environment, what arms each lane, the two
 switches, and the commands that ask it what happened.

@@ -482,7 +482,7 @@ describe("triageQueue", () => {
         ).toEqual(["unlockIssue", "postManagedComment"]);
     });
 
-    it("confirms a ready label that arrived before triageQueue could lock", async () => {
+    it("posts nothing for a ready label on an issue it never locked", async () => {
         const record = issue(
             { meaning: "ready" },
             {
@@ -493,15 +493,8 @@ describe("triageQueue", () => {
 
         const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
 
-        expect(intents.map((intent) => intent.operation)).toEqual(["postManagedComment"]);
-        // Nothing was locked, so the confirmation does not claim to have opened anything.
-        expect(intents.map((intent) => intent.desired)).toEqual([
-            {
-                kind: "notice",
-                topic: "unlock",
-                body: "✅ Hi @opener — this issue has been triaged and marked ready.",
-            },
-        ]);
+        // The confirmation announces an unlock; with nothing to unlock there is nothing to say.
+        expect(intents).toEqual([]);
     });
 
     /** A lock the repository never asked for is a human's, and stays. */

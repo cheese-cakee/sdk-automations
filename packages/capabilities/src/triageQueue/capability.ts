@@ -123,31 +123,22 @@ function onChecklistChanged(facts: Facts, config: View, platform: Platform): Int
     ];
 }
 
-/** The release: a person's `ready` unlocks whatever else the labels say, and may be announced. */
+/** The release: a person's `ready` unlocks whatever else the labels say, and the unlock may be announced. */
 function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
-    if (!config.settings.lockUntilTriaged) return [];
-    const intents: IntentFor<TriageQueueDeclaration>[] = [];
-    if (facts.locked) {
-        intents.push(
-            platform.intent({
-                operation: "unlockIssue",
-                desired: { reason: "a person marked the issue ready" },
-                explain: "Unlocked the conversation: the issue was marked ready.",
-            }),
-        );
-    }
+    if (!config.settings.lockUntilTriaged || !facts.locked) return [];
+    const intents: IntentFor<TriageQueueDeclaration>[] = [
+        platform.intent({
+            operation: "unlockIssue",
+            desired: { reason: "a person marked the issue ready" },
+            explain: "Unlocked the conversation: the issue was marked ready.",
+        }),
+    ];
     if (config.settings.confirmUnlock) {
         intents.push(
             platform.intent({
                 operation: "postManagedComment",
-                desired: {
-                    kind: "notice",
-                    topic: "unlock",
-                    body: unlocked(facts.author, facts.locked),
-                },
-                explain: facts.locked
-                    ? "Said the issue is ready and its conversation open."
-                    : "Said the issue is ready.",
+                desired: { kind: "notice", topic: "unlock", body: unlocked(facts.author) },
+                explain: "Said the issue is ready and its conversation open.",
             }),
         );
     }

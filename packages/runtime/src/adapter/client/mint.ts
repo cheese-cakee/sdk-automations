@@ -25,6 +25,8 @@ export interface GitHubMintOptions {
     readonly fetch?: FetchLike;
     readonly timeoutMs?: number;
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
+    /** The API origin the mint posts to; the default is `GITHUB_API_ORIGIN`. */
+    readonly apiOrigin?: string;
 }
 
 /** A response that promised a token but did not carry one readable. */
@@ -63,12 +65,12 @@ export function githubMintInstallationToken(
         fetch: send = fetch,
         timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
         timeoutSignal = AbortSignal.timeout,
+        apiOrigin = GITHUB_API_ORIGIN,
     } = options;
 
     return async (assertion, credentials) => {
         const url =
-            `${GITHUB_API_ORIGIN}/app/installations/` +
-            `${credentials.installationId}/access_tokens`;
+            `${apiOrigin}/app/installations/` + `${credentials.installationId}/access_tokens`;
         let response: Response;
         // Stryker disable BlockStatement: an emptied catch is absorbed downstream — the following stage answers the same refusal.
         try {

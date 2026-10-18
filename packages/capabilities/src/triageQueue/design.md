@@ -202,7 +202,7 @@ flowchart LR
 | `ready` added on a clean position | unlock and optional confirmation (8.6, 2026-10-01) |
 | `ready` added and triage removed by one person in the same second | unlocked ready, one confirmation, in either delivery order (8.6, 2026-10-05 on candidate `282255b`; 2026-10-15 twice on main) |
 | `ready` added to a locked issue that carries `blocked`, then `blocked` removed | refused `itemBlocked`, and nothing on the removal: a person unlocks (8.6, 2026-10-15) |
-| `ready` arrives before the lock landed | confirmation only; no unlock is asked for |
+| `ready` arrives before the lock landed | nothing: the confirmation announces an unlock, and there was none (9.9, 2026-10-17: a confirmation on a never-locked issue was noise) |
 | a skill label added or removed while awaiting triage, by anyone | the welcome is rewritten with the row's new state, in place (8.6, 2026-10-15) |
 | a skill label on a bot-opened issue, or off the gate, or without the requirement | nothing, and no question asked off the gate |
 | `ready` added to a locked issue where `lockUntilTriaged` is off | nothing — the lock is a human's |
