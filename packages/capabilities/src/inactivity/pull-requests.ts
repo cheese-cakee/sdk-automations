@@ -8,6 +8,7 @@
 
 import {
     CANCELLED_BY,
+    changesOutstanding,
     lasting,
     latestOf,
     meaningsOf,
@@ -52,7 +53,7 @@ type PullRequestLadder = Extract<InactivitySettings["pullRequests"], { readonly 
 function reapableFor(facts: PullLadderFacts, pullRequests: PullRequestLadder): Reapable | null {
     const holds: Readonly<Record<ReapReason, boolean>> = {
         needsRevision: meaningsOf(facts).includes("needsRevision"),
-        changesRequested: facts.review.changesRequested,
+        changesRequested: changesOutstanding(facts.review),
         draft: facts.readiness.draft,
     };
     for (const reason of REAP_REASONS) {
@@ -71,8 +72,8 @@ export async function onPullRequest(
     if (!pullRequests.enabled) return [];
 
     // A pull request awaiting review is the maintainers' wait, not the contributor's. One a reviewer
-    // sent back waits on its author whatever label it still carries: the fact decides (D240).
-    if (meaningsOf(facts).includes("needsReview") && !facts.review.changesRequested) return [];
+    // sent back waits on its author, until a newer commit answers, whatever its label (D240, D241).
+    if (meaningsOf(facts).includes("needsReview") && !changesOutstanding(facts.review)) return [];
 
     // In a reapable mode the repository opted into, or nothing to say.
     const reapable = reapableFor(facts, pullRequests);

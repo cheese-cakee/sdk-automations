@@ -6,14 +6,15 @@
  * and search reads were never measured, and search indexing is known to lag.
  */
 
-import type {
-    CommentFact,
-    ItemFacts,
-    ItemRef,
-    Presence,
-    ReadBack,
-    ReadBackOutcome,
-    RepositoryRef,
+import {
+    changesOutstanding,
+    type CommentFact,
+    type ItemFacts,
+    type ItemRef,
+    type Presence,
+    type ReadBack,
+    type ReadBackOutcome,
+    type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import type { Allowance } from "../client/allowance.js";
 import {
@@ -23,7 +24,11 @@ import {
     repoPath,
     type GitHubHttpClient,
 } from "../client/contract.js";
-import { readChangesRequested, readPullRequestActivity } from "../reads/facts.js";
+import {
+    readChangesRequestedAt,
+    readLastCommitAt,
+    readPullRequestActivity,
+} from "../reads/facts.js";
 import { readAssigneesOf } from "../reads/resolvers.js";
 import { field, jsonArrayOf, jsonRecordOf } from "../client/untrusted.js";
 
@@ -283,13 +288,23 @@ export function createReadBack({
     };
 
     /**
-     * The reviews list, folded by the SWEEP's reader rather than by a second one here.
+     * The SWEEP's two readers, judged by core's one rule rather than a second one here.
      * `false` for an issue is the fact, not a guess: it has no review decision to lift.
      */
-    const changesRequestedOn = async (item: ItemRef): Promise<ReadBackOutcome<boolean>> =>
-        item.kind === "pullRequest"
-            ? await readChangesRequested(reads, item.number)
-            : { ok: true, value: false };
+    const changesRequestedOn = async (item: ItemRef): Promise<ReadBackOutcome<boolean>> => {
+        if (item.kind !== "pullRequest") return { ok: true, value: false };
+        const requested = await readChangesRequestedAt(reads, item.number);
+        if (!requested.ok) return requested;
+        const commit = await readLastCommitAt(reads, item.number);
+        if (!commit.ok) return commit;
+        return {
+            ok: true,
+            value: changesOutstanding({
+                changesRequestedAt: requested.value,
+                lastCommitAt: commit.value,
+            }),
+        };
+    };
 
     /** The repository's own label list is read one name at a time: the answer is the status. */
     const labelDefined = async (label: string): Promise<Presence> => {

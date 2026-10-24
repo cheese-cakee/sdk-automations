@@ -588,7 +588,7 @@ describe("two capabilities on one item", () => {
             assignees: CONTRIBUTOR,
             readiness: { draft: false },
             review: {
-                changesRequested: true,
+                changesRequestedAt: new Date("2026-07-01T00:00:00.000Z"),
                 reapableSince: {
                     needsRevision: new Date("2026-07-01T00:00:00.000Z"),
                     changesRequested: new Date("2026-07-01T00:00:00.000Z"),

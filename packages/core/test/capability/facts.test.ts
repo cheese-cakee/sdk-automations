@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
     assigneeClock,
     CANCELLED_BY,
+    changesOutstanding,
     HOUR_MS,
     inert,
     isConflicted,
@@ -165,7 +166,7 @@ describe("what a record read of the native modes", () => {
     });
 
     const reviewRead = {
-        changesRequested: true,
+        changesRequestedAt: ago(10),
         reapableSince: {
             needsRevision: ago(10),
             changesRequested: ago(10),
@@ -183,10 +184,16 @@ describe("what a record read of the native modes", () => {
             modesOf(
                 pull({
                     readiness: { draft: false },
-                    review: { ...reviewRead, changesRequested: false },
+                    review: { ...reviewRead, changesRequestedAt: null },
                 }),
             ),
         ).toEqual({ draft: false, changesRequested: false });
+    });
+
+    it("reads a change request a newer commit answered as no mode", () => {
+        const answered = { ...reviewRead, lastCommitAt: ago(9) };
+
+        expect(modesOf(pull({ review: answered }))).toEqual({ changesRequested: false });
     });
 
     it("leaves an unread group's mode OUT rather than calling it false", () => {
@@ -197,6 +204,27 @@ describe("what a record read of the native modes", () => {
 
     it("reads neither mode on an issue, which has no group to carry one", () => {
         expect(modesOf(issue(position()))).toEqual({});
+    });
+});
+
+/** One rule for "the author owes the next move", shared by every capability and the apply gate. */
+describe("whether a change request is outstanding", () => {
+    const at = (requested: Date | null, committed: Date | null): boolean =>
+        changesOutstanding({ changesRequestedAt: requested, lastCommitAt: committed });
+
+    it("holds while no commit is newer than the request", () => {
+        expect(at(ago(5), null)).toBe(true);
+        expect(at(ago(5), ago(6))).toBe(true);
+        expect(at(ago(5), ago(5))).toBe(true);
+    });
+
+    it("lifts once a commit is newer than the request: the wait is the maintainers'", () => {
+        expect(at(ago(5), new Date(ago(5).getTime() + 1))).toBe(false);
+    });
+
+    it("never holds with no request standing", () => {
+        expect(at(null, null)).toBe(false);
+        expect(at(null, ago(1))).toBe(false);
     });
 });
 
@@ -277,7 +305,7 @@ describe("the clocks", () => {
     const review = (
         over: Partial<Exclude<PullRequestFacts["review"], "unread">> = {},
     ): Exclude<PullRequestFacts["review"], "unread"> => ({
-        changesRequested: false,
+        changesRequestedAt: null,
         reapableSince: {
             needsRevision: ago(70),
             changesRequested: ago(70),

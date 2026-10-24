@@ -536,7 +536,7 @@
                                                             }
                                                         }
                                                     ],
-                                                    "description": "Pull requests a reviewer has asked for changes on — no mapping needed."
+                                                    "description": "Pull requests a reviewer asked for changes on, with no commit since — no mapping needed."
                                                 },
                                                 "needsRevision": {
                                                     "oneOf": [

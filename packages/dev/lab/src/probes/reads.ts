@@ -195,7 +195,7 @@ export const SHAPE_RECORDS: readonly ShapeRecord[] = [
             headers: ["etag"],
             pagination: "none",
             conditional: "304-free",
-            fields: ["state", "user.login"],
+            fields: ["state", "user.login", "submitted_at"],
         },
     },
     {

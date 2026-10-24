@@ -125,7 +125,7 @@ const issueRecord = (over: NonNullable<Parameters<typeof sweptIssue>[0]> = {}): 
 
 /** A stale draft, seventy days idle — the pull-request ladder's starting point. */
 const REVIEW = {
-    changesRequested: false,
+    changesRequestedAt: null,
     reapableSince: {
         needsRevision: ago(70),
         changesRequested: ago(70),
@@ -207,10 +207,7 @@ describe("the clocks reset on development activity only", () => {
     });
 
     it("A commit to the PR after the reminder", async () => {
-        const record = pullRecord(
-            {},
-            { draft: false, changesRequested: true, lastCommitAt: ago(2) },
-        );
+        const record = pullRecord({}, { lastCommitAt: ago(2) });
 
         expect(await decide(record)).toEqual([]);
 
@@ -220,7 +217,7 @@ describe("the clocks reset on development activity only", () => {
                 assignees: [assignee("alice", 80, ago(20)), assignee("bob", 80, ago(40))],
                 position: position({ meaning: "needsRevision" }),
             },
-            { draft: false, changesRequested: false, lastCommitAt: ago(30) },
+            { draft: false, lastCommitAt: ago(30) },
         );
 
         expect(await decide(mixed)).toMatchObject([
@@ -238,7 +235,7 @@ describe("the clocks reset on development activity only", () => {
         // asked for, carrying the warning the platform posts first.
         const record = pullRecord(
             { position: position({ meaning: "needsRevision" }) },
-            { draft: false, changesRequested: false },
+            { draft: false },
         );
 
         expect(await decide(record)).toMatchObject([
@@ -250,7 +247,7 @@ describe("the clocks reset on development activity only", () => {
 describe("the pull-request ladder judges the contributor's wait", () => {
     /** Each reason claims the evidence it read; a native mode is not a label. */
     it("a stale changes-requested pull request closes, claiming the mode", async () => {
-        const mode = pullRecord({}, { draft: false, changesRequested: true });
+        const mode = pullRecord({}, { draft: false, changesRequestedAt: ago(70) });
 
         expect(await decide(mode)).toMatchObject([
             {
@@ -264,7 +261,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
 
     /** The reason a reminder names, in the phrase this reason renders as. */
     it("names changes-requested in the words the warning it carries uses", async () => {
-        const mode = pullRecord({}, { draft: false, changesRequested: true });
+        const mode = pullRecord({}, { draft: false, changesRequestedAt: ago(70) });
 
         expect(await decide(mode)).toMatchObject([
             {
@@ -292,7 +289,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
     it("the label reason still claims its meaning, and claims no mode", async () => {
         const labelled = pullRecord(
             { position: position({ meaning: "needsRevision" }) },
-            { draft: false, changesRequested: true },
+            { draft: false, changesRequestedAt: ago(70) },
         );
 
         const [intent] = await decide(labelled);
@@ -327,7 +324,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
             { position: position({ meaning: "needsReview" }) },
             {
                 draft: false,
-                changesRequested: true,
+                changesRequestedAt: ago(70),
                 reapableSince: {
                     needsRevision: ago(365),
                     changesRequested: ago(70),
@@ -342,6 +339,49 @@ describe("the pull-request ladder judges the contributor's wait", () => {
                 claims: { meaningsPresent: ["needsReview"], pullRequestMode: "changesRequested" },
             },
         ]);
+    });
+
+    /** A commit older than the request answers nothing: the request still stands (D241). */
+    it("a change request newer than the last commit keeps the ladder", async () => {
+        const sentBack = pullRecord(
+            {},
+            {
+                draft: false,
+                changesRequestedAt: ago(20),
+                lastCommitAt: ago(25),
+                reapableSince: {
+                    needsRevision: ago(365),
+                    changesRequested: ago(20),
+                    draft: ago(365),
+                },
+            },
+        );
+
+        expect(await decide(sentBack)).toMatchObject([
+            { operation: "closePullRequest", cause: { observedAt: ago(20) } },
+        ]);
+    });
+
+    /** analytics#578: the author pushed after the request, so the wait is the reviewer's (D241). */
+    it.each([
+        ["carrying `needsReview`", position({ meaning: "needsReview" })],
+        ["carrying no position", position()],
+    ])("a commit after the change request ends the ladder, %s", async (_shape, at) => {
+        const answered = pullRecord(
+            { position: at },
+            {
+                draft: false,
+                changesRequestedAt: ago(20),
+                lastCommitAt: ago(19),
+                reapableSince: {
+                    needsRevision: ago(365),
+                    changesRequested: ago(20),
+                    draft: ago(365),
+                },
+            },
+        );
+
+        expect(await decide(answered)).toEqual([]);
     });
 
     /** The first diamond is the meaning and the review fact, whatever the pull request's mode. */
@@ -388,7 +428,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
             { item: { kind: "pullRequest", number: 42 } },
             {
                 draft: false,
-                changesRequested: true,
+                changesRequestedAt: ago(3),
                 reapableSince: {
                     needsRevision: ago(3),
                     changesRequested: ago(3),

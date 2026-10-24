@@ -304,26 +304,43 @@ describe("reading the item itself", () => {
 
 describe("reading a pull request's review decision", () => {
     const PR = { kind: "pullRequest", number: 132 } as const;
-    const REVIEWS =
-        "https://api.github.com/repos/hiero-hackers/sdk-automations/pulls/132/reviews?per_page=100&page=1";
+    const PULL = "https://api.github.com/repos/hiero-hackers/sdk-automations/pulls/132";
+    const REVIEWS = `${PULL}/reviews?per_page=100&page=1`;
+    const COMMITS = `${PULL}/commits?per_page=100&page=1`;
 
     const review = (login: string, state: string): Record<string, unknown> => ({
         user: { login },
         state,
+        submitted_at: "2026-10-22T14:16:00Z",
     });
 
-    it("folds the reviews list the way the sweep folds it", async () => {
+    const commitAt = (date: string): string =>
+        JSON.stringify([{ commit: { committer: { date } } }]);
+
+    it("folds the reviews list the way the sweep folds it, then reads the commits", async () => {
         const { readBack, scripted } = harness([
             listed(JSON.stringify([review("ana", "CHANGES_REQUESTED")])),
+            listed(commitAt("2026-10-22T09:00:00Z")),
         ]);
 
         expect(await readBack.changesRequested(PR)).toEqual({ ok: true, value: true });
-        expect(scripted.calls[0]!.url).toBe(REVIEWS);
+        expect(scripted.calls.map((call) => call.url)).toEqual([REVIEWS, COMMITS]);
     });
 
     it("reads a request a later review lifted as lifted", async () => {
         const { readBack } = harness([
             listed(JSON.stringify([review("ana", "CHANGES_REQUESTED"), review("ana", "APPROVED")])),
+            listed("[]"),
+        ]);
+
+        expect(await readBack.changesRequested(PR)).toEqual({ ok: true, value: false });
+    });
+
+    /** analytics#578: the author answered with a commit, so a close claiming the request is refused (D241). */
+    it("reads a request a newer commit answered as answered", async () => {
+        const { readBack } = harness([
+            listed(JSON.stringify([review("ana", "CHANGES_REQUESTED")])),
+            listed(commitAt("2026-10-22T18:27:00Z")),
         ]);
 
         expect(await readBack.changesRequested(PR)).toEqual({ ok: true, value: false });
@@ -343,6 +360,18 @@ describe("reading a pull request's review decision", () => {
 
         expect(outcome.ok).toBe(false);
         expect(outcome.ok ? "" : outcome.detail).toContain("#132 reviews");
+    });
+
+    it("names a refused commits list rather than reporting the request answered", async () => {
+        const { readBack } = harness([
+            listed(JSON.stringify([review("ana", "CHANGES_REQUESTED")])),
+            failure(403, "Forbidden"),
+        ]);
+
+        const outcome = await readBack.changesRequested(PR);
+
+        expect(outcome.ok).toBe(false);
+        expect(outcome.ok ? "" : outcome.detail).toContain("#132 commits");
     });
 });
 

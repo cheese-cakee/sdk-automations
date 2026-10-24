@@ -33,7 +33,7 @@ const PULL_REQUEST: SnapshotFacts = {
     assignees: CLOCKS,
     links: { issues: [{ item: ISSUE, assignees: CLOCKS }] },
     review: {
-        changesRequested: true,
+        changesRequestedAt: new Date("2026-08-05T00:00:00.000Z"),
         reapableSince: {
             needsRevision: new Date("2026-08-04T00:00:00.000Z"),
             changesRequested: new Date("2026-08-05T00:00:00.000Z"),
@@ -149,7 +149,7 @@ describe("bytes no read wrote", () => {
             "a review missing a mode",
             {
                 review: {
-                    changesRequested: false,
+                    changesRequestedAt: null,
                     reapableSince: { needsRevision: "2026-08-04T00:00:00.000Z" },
                     lastCommitAt: null,
                 },
@@ -175,19 +175,19 @@ describe("bytes no read wrote", () => {
         ["links that are not a record", { links: 5 }],
         ["a review that is not a record", { review: 5 }],
         [
-            "a review whose verdict is not a flag",
-            { review: { changesRequested: "yes", reapableSince: MODES, lastCommitAt: null } },
+            "a review whose change request is not an instant",
+            { review: { changesRequestedAt: "yes", reapableSince: MODES, lastCommitAt: null } },
         ],
         [
             "a review whose modes are not a record",
-            { review: { changesRequested: false, reapableSince: 5, lastCommitAt: null } },
+            { review: { changesRequestedAt: null, reapableSince: 5, lastCommitAt: null } },
         ],
         ...(["needsRevision", "changesRequested", "draft"] as const).map(
             (mode): [string, Record<string, unknown>] => [
                 `a review whose ${mode} mode is undated`,
                 {
                     review: {
-                        changesRequested: false,
+                        changesRequestedAt: null,
                         reapableSince: { ...MODES, [mode]: "whenever" },
                         lastCommitAt: null,
                     },
@@ -196,7 +196,7 @@ describe("bytes no read wrote", () => {
         ),
         [
             "a review whose last commit is neither an instant nor absent",
-            { review: { changesRequested: false, reapableSince: MODES, lastCommitAt: "soon" } },
+            { review: { changesRequestedAt: null, reapableSince: MODES, lastCommitAt: "soon" } },
         ],
         ["a pull request whose clocks are not clocks", { assignees: [5] }],
     ])("answers nothing for %s", (_shape, broken) => {

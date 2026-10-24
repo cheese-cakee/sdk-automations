@@ -27,7 +27,7 @@ const MODES = {
 };
 
 const REVIEW = {
-    changesRequested: true,
+    changesRequestedAt: new Date("2026-08-05T00:00:00.000Z"),
     reapableSince: MODES,
     lastCommitAt: new Date("2026-08-07T00:00:00.000Z"),
 };
@@ -59,6 +59,7 @@ describe("a kept value read back", () => {
         ["pullRequest", "links", { issues: [{ item: ISSUE, assignees: CLOCKS }] }],
         ["pullRequest", "review", REVIEW],
         ["pullRequest", "review", { ...REVIEW, lastCommitAt: null }],
+        ["pullRequest", "review", { ...REVIEW, changesRequestedAt: null }],
         ["pullRequest", "readiness", { draft: false }],
     ] as const)("returns the %s's %s as written", (kind, group, value) => {
         expect(decodeKept(kind, group, stored(value))).toEqual(value);
@@ -116,9 +117,14 @@ describe("a kept value no read wrote", () => {
         ],
         ["a review that is not a record", "review", 5],
         [
-            "a review whose verdict is not a flag",
+            "a review whose change request is neither an instant nor absent",
             "review",
-            { ...stored(REVIEW), changesRequested: 1 },
+            { ...stored(REVIEW), changesRequestedAt: "soon" },
+        ],
+        [
+            "a review kept before the change request was dated",
+            "review",
+            { ...stored(REVIEW), changesRequestedAt: undefined, changesRequested: true },
         ],
         [
             "a review whose modes are not a record",

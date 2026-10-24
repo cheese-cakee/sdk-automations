@@ -187,7 +187,7 @@ export function createGates(options: GateOptions): Gates {
 
     /**
      * The live answer to the mode this intent claimed, and to no other.
-     * `draft` rides on the item read already made; the reviews list is a second call, spent only where a claim turns on it.
+     * `draft` rides on the item read already made; the reviews and commits lists are further calls, spent only where a claim turns on them.
      */
     const modesClaimed = async (
         intent: AnyIntent,
