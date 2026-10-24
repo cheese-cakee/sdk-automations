@@ -122,7 +122,10 @@ Never acts on maintainer staleness or paused work:
 - a pull request in `needsReview`, or in ready-for-review mode without the `needsRevision` label —
   that wait is the maintainers'. Not while a review's request for changes is outstanding: then the
   wait is the author's whatever the label still says, and the review fact decides (D240). A commit
-  newer than the request hands the wait back (D241)
+  newer than the request hands the wait back (D241). Any newer commit lifts the request until
+  someone reviews again, a maintainer's "Update branch" merge, a merge from main or a bot autofix
+  included, so such a pull request leaves the changes-requested ladder: it fails safe, as nothing
+  acts. Committer dates are set by the client
 - anything carrying the `blocked` meaning
 - a closed issue or a merged pull request, which never reaches this capability at all: the platform
   wakes it for open items only, because it declares no `closed: true` (D59)
