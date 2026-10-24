@@ -60,7 +60,7 @@ export interface PullRequestFacts {
     readonly assignees: readonly AssigneeClock[] | Unread;
     readonly links: { readonly issues: readonly LinkedIssue[] } | Unread;
     readonly review: {
-        readonly changesRequested: boolean;
+        readonly changesRequestedAt: Date | null;
         readonly reapableSince: Date;
         readonly lastCommitAt: Date | null;
     } | Unread;

@@ -2470,6 +2470,35 @@ describe("the comments one item may receive in a day", () => {
         expect(github.calls).toEqual([]);
     });
 
+    it("counts a marker it cannot read, so a defect in the marker cannot post without bound", async () => {
+        const effect = commentEffect({ body: "one more" });
+        const unreadable = [dated(1, 1), dated(2, 5), dated(3, 20)].map((comment) => ({
+            ...comment,
+            body: '<!-- hiero-automation:{"schemaVersion":3} -->\n\nearlier',
+            authoredByApp: false,
+        }));
+        const github = fakeGitHub({ comments: unreadable });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "commentBudget" });
+        expect(github.calls).toEqual([]);
+    });
+
+    it("counts no other workflow's comment under the login it shares", async () => {
+        const effect = commentEffect({ body: "one more" });
+        const foreign = [dated(1, 1), dated(2, 5), dated(3, 20)].map((comment) => ({
+            ...comment,
+            body: "<!-- dashboard-preview-comment -->\n\npreview",
+        }));
+        const github = fakeGitHub({ comments: foreign });
+
+        const outcome = one(await applierOver(github).applyAll([effect], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "applied" });
+        expect(github.calls).toEqual([`createComment ${markerOf(effect)}\n\none more`]);
+    });
+
     it("creates once the oldest of the three has left the day", async () => {
         const effect = commentEffect({ body: "one more" });
         const github = fakeGitHub({ comments: [dated(1, 1), dated(2, 5), dated(3, 25)] });
@@ -2495,7 +2524,7 @@ describe("the comments one item may receive in a day", () => {
 
     it("counts no comment GitHub did not date", async () => {
         const github = fakeGitHub({
-            comments: [appComment(1, "a"), appComment(2, "b"), appComment(3, "c")],
+            comments: [1, 2, 3].map((id) => appComment(id, dated(id, 1).body)),
         });
 
         const created = one(

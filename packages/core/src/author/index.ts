@@ -24,6 +24,7 @@ export type { DesiredSpec, IntentRequest } from "../capability/factory.js";
 export {
     assigneeClock,
     CANCELLED_BY,
+    changesOutstanding,
     HOUR_MS,
     inert,
     isConflicted,

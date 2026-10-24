@@ -118,7 +118,8 @@ export interface PullRequestFacts {
     readonly links: { readonly issues: readonly LinkedIssue[] } | Unread;
     readonly review:
         | {
-              readonly changesRequested: boolean;
+              /** The newest change request a reviewer still stands by, or `null` when none does. */
+              readonly changesRequestedAt: Date | null;
               readonly reapableSince: Readonly<
                   Record<"needsRevision" | "changesRequested" | "draft", Date>
               >;

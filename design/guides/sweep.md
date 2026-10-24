@@ -14,7 +14,7 @@
 | `assignedAt` per assignee | the item timeline's `assigned` events, newest per login | Issues R | confirmed (timeline) |
 | `lastWorkingAt` per assignee | the item's comments whose body's first token folds to the repository's `working` command spelling, by author, newest | Issues R | confirmed (list comments) |
 | a pull request's `draft` — the whole `readiness` group | `GET /repos/{o}/{r}/pulls/{n}` | Pull requests R | confirmed |
-| `changesRequested` | `GET /pulls/{n}/reviews` folded to the latest DECIDING state per reviewer — the reader implements this, not GraphQL `reviewDecision` | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
+| `changesRequested` | `GET /pulls/{n}/reviews` folded to the latest DECIDING state per reviewer, answered as the newest standing request's `submitted_at` — the reader implements this, not GraphQL `reviewDecision` | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
 | `reapableSince` | the timeline's `convert_to_draft` / `ready_for_review` / `review_requested` events and the newest `changes requested` review, whichever entered the current mode | Pull requests R, or Issues R — either alone answers the timeline on a pull-request number | confirmed 2026-09-12 (6.9), ETag |
 | `lastCommitAt` | `GET /repos/{o}/{r}/pulls/{n}/commits`, last page | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
 | a pull request's linked issues with their assignees | GraphQL `closingIssuesReferences` joined to the issues already listed, read for every LISTED pull request before the item walk — one aliased query per hundred (D194) | Issues R + Pull requests R | confirmed for same-repository links, batched shape confirmed 2026-09-15 |

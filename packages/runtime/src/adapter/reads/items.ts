@@ -6,6 +6,7 @@
 
 import {
     labelKey,
+    latestOf,
     type ClosureReason,
     type ItemRef,
     type PullRequestFacts,
@@ -391,13 +392,14 @@ const DECIDING_REVIEW_STATES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The reviews list folded to each reviewer's latest DECIDING state.
+ * The reviews list folded to each reviewer's latest DECIDING state: the newest change request
+ * still standing, or `null` when none stands.
  * THE ONE FOLD: `readback.ts` calls this rather than folding the list a second time.
  */
-export async function readChangesRequested(
+export async function readChangesRequestedAt(
     context: RepositoryReads,
     number: number,
-): Promise<Read<boolean>> {
+): Promise<Read<Date | null>> {
     const read = await allPages(
         context,
         (page) => paged(`${pullPath(context, number)}/reviews`, page),
@@ -405,16 +407,26 @@ export async function readChangesRequested(
     );
     if (!read.ok) return read;
 
-    const latest = new Map<string, string>();
+    // Each reviewer's standing request; `null` once their latest decision is not one.
+    const standing = new Map<string, Date | null>();
     for (const entry of read.value) {
         const state = field(entry, "state");
         const login = field(field(entry, "user"), "login");
         if (typeof state !== "string" || typeof login !== "string") {
             return unreadable(`#${String(number)} reviews: a review was unreadable`);
         }
-        if (DECIDING_REVIEW_STATES.has(state)) latest.set(login, state);
+        if (!DECIDING_REVIEW_STATES.has(state)) continue;
+        if (state !== "CHANGES_REQUESTED") {
+            standing.set(login, null);
+            continue;
+        }
+        const at = instant(field(entry, "submitted_at"));
+        if (at === null) {
+            return unreadable(`#${String(number)} reviews: a change request was undated`);
+        }
+        standing.set(login, at);
     }
-    return { ok: true, value: [...latest.values()].includes("CHANGES_REQUESTED") };
+    return { ok: true, value: latestOf([...standing.values()]) };
 }
 
 /**
@@ -519,8 +531,8 @@ export async function readReview(
     number: number,
     walk: ItemWalk = everyTime(context),
 ): Promise<Read<ReviewFacts>> {
-    const changesRequested = await readChangesRequested(context, number);
-    if (!changesRequested.ok) return changesRequested;
+    const changesRequestedAt = await readChangesRequestedAt(context, number);
+    if (!changesRequestedAt.ok) return changesRequestedAt;
     const reapableSince = await readReapableSince(context, number, walk);
     if (!reapableSince.ok) return reapableSince;
     const lastCommitAt = await readLastCommitAt(context, number);
@@ -528,7 +540,7 @@ export async function readReview(
     return {
         ok: true,
         value: {
-            changesRequested: changesRequested.value,
+            changesRequestedAt: changesRequestedAt.value,
             reapableSince: reapableSince.value,
             lastCommitAt: lastCommitAt.value,
         },

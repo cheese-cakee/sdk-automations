@@ -104,7 +104,7 @@ pullRequests: # off until enabled — Run the ladder on pull requests, linked to
       reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act
         enabled: true
         after: 21d # inherited from the level above — Silence before this level's release, taken from the level above when unset
-    changesRequested: # off until enabled — Pull requests a reviewer has asked for changes on — no mapping needed
+    changesRequested: # off until enabled — Pull requests a reviewer asked for changes on, with no commit since — no mapping needed
       enabled: true
       remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
       reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act

@@ -113,22 +113,26 @@ Reminds and acts on contributor staleness only:
 
 - assigned issues with no open pull request
 - pull requests where the ball is with the contributor — linked or not, assigned or not: in draft
-  mode, in changes-requested mode (a review asked for changes), or carrying the `needsRevision`
-  label — which, with pr-dashboard's label mode, may also indicate persistent DCO, GPG, linked-issue
-  and assignment failures
+  mode, in changes-requested mode (a review asked for changes and no commit has answered it since),
+  or carrying the `needsRevision` label — which, with pr-dashboard's label mode, may also indicate
+  persistent DCO, GPG, linked-issue and assignment failures
 
 Never acts on maintainer staleness or paused work:
 
 - a pull request in `needsReview`, or in ready-for-review mode without the `needsRevision` label —
-  that wait is the maintainers'. Not once a review has requested changes: then the wait is the
-  author's whatever the label still says, and the review fact decides (D240)
+  that wait is the maintainers'. Not while a review's request for changes is outstanding: then the
+  wait is the author's whatever the label still says, and the review fact decides (D240). A commit
+  newer than the request hands the wait back (D241). Any newer commit lifts the request until
+  someone reviews again, a maintainer's "Update branch" merge, a merge from main or a bot autofix
+  included, so such a pull request leaves the changes-requested ladder: it fails safe, as nothing
+  acts. Committer dates are set by the client
 - anything carrying the `blocked` meaning
 - a closed issue or a merged pull request, which never reaches this capability at all: the platform
   wakes it for open items only, because it declares no `closed: true` (D59)
 
 ```mermaid
 flowchart LR
-    S["schedule → issue and pull-request facts"] --> X{"blocked, or PR awaiting review: needsReview with no changes requested, or ready-for-review without needsRevision?"}
+    S["schedule → issue and pull-request facts"] --> X{"blocked, or PR awaiting review: needsReview with no change request outstanding, or ready-for-review without needsRevision?"}
     X -->|yes| N["nothing"]
     X -->|no| C{"whose staleness?"}
     C -->|"issue, no open linked PR — per assignee"| I1["remind → release the stale assignee"]
@@ -157,14 +161,15 @@ state change between sweep and write refuses the act.
 
 All three reasons act. Each one CLAIMS the evidence it read — the label reason its meaning, the
 two native reasons their mode — and the platform re-reads that evidence before it closes anything:
-a pull request marked ready for review, or a change request a later review lifted, refuses the
-close the same way a label somebody removed does. Protocol 8.3 ran the close path armed on
-2026-09-12: warning, grace, close on a draft claim, notice, and a human reopen left alone.
+a pull request marked ready for review, or a change request a later review lifted or a newer
+commit answered, refuses the close the same way a label somebody removed does. Protocol 8.3 ran the
+close path armed on 2026-09-12: warning, grace, close on a draft claim, notice, and a human reopen
+left alone.
 
 | Declaration | Value |
 |---|---|
 | `triggers` | `schedule` — no webhook resets a clock; the sweep reads the timeline instead |
-| `facts` / `needs` | `issue` needing `assignees` (each with `assignedAt` and last `/working`) and `links`; `pullRequest` needing `assignees`, `review` (changes requested, `reapableSince`, last commit) and `readiness` (draft) — the pull-request ladder never reads `links` (D214). A producer that reads less — a webhook — is a `factsUnread` skip |
+| `facts` / `needs` | `issue` needing `assignees` (each with `assignedAt` and last `/working`) and `links`; `pullRequest` needing `assignees`, `review` (the newest standing change request, `reapableSince`, last commit) and `readiness` (draft) — the pull-request ladder never reads `links` (D214). A producer that reads less — a webhook — is a `factsUnread` skip |
 | `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-dashboard's job, arriving as `needsRevision` |
 | `intents` | `postManagedComment` · `releaseAssignment` · `closePullRequest`. Every act claims what it saw: the assignee ladder and the label reason claim meanings and closure, and each mode reason claims its own `pullRequestMode` |
 | `requiredMappings` | none — the label reason demands `needsRevision` in a guard, only where it is switched on |
@@ -187,8 +192,11 @@ close the same way a label somebody removed does. Protocol 8.3 ran the close pat
 | Reminder posted, labels then change the workflow position | destructive gate refuses — cause drift |
 | Draft PR marked ready for review between the warning and the close | the close is refused `preconditionStale` — the claimed mode no longer holds |
 | A later review lifts the change request between the warning and the close | the same refusal, on the reviews list the sweep itself folds |
+| A commit answers the change request between the warning and the close | the same refusal: the apply gate reads the reviews and the commits by the sweep's rule (D241) |
 | PR stale for a year in `needsReview` | untouched — the wait is the maintainers' |
 | PR in `needsReview` after a review requested changes | the changes-requested ladder runs — the review fact outranks the label (D240) |
+| A commit after the change request, `needsReview` or no label (analytics#578) | no changes-requested ladder: the wait is the reviewer's (D241) |
+| A change request newer than the last commit | the ladder runs, its clock from the request |
 | Stale draft PR with `reapWhen.draft` not enabled | untouched — reaping is opt-in per reason |
 | Ladder enabled with no `reap` block | reminded on its own clock, never released; the reminder promises no date |
 | A parked `reap` block beside an enabled ladder | the same: `enabled: false` is a release kept for later, not one running |

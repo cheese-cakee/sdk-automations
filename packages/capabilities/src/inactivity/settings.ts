@@ -88,7 +88,7 @@ export const INACTIVITY_SETTINGS = spec({
                     changesRequested: block(
                         { ...ladder },
                         {
-                            doc: "Pull requests a reviewer has asked for changes on — no mapping needed",
+                            doc: "Pull requests a reviewer asked for changes on, with no commit since — no mapping needed",
                         },
                     ),
                     needsRevision: block(

@@ -68,7 +68,7 @@ export interface ReadBack {
     comments(item: ItemRef): Promise<ReadBackOutcome<readonly CommentFact[]>>;
     labels(item: ItemRef): Promise<ReadBackOutcome<readonly string[]>>;
     item(item: ItemRef): Promise<ReadBackOutcome<ItemFacts>>;
-    /** Its own read because it is its own call: the reviews list, not the item's body. */
+    /** Whether a change request is outstanding: the reviews and commits lists, not the item's body. */
     changesRequested(item: ItemRef): Promise<ReadBackOutcome<boolean>>;
     pullRequestActivity(
         item: ItemRef,

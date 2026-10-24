@@ -49,7 +49,7 @@ import { readLinkedIssuesBatch } from "./links.js";
 export { GROUP_READS } from "./groups/index.js";
 export {
     CONFIRMED_SWEEP_READS,
-    readChangesRequested,
+    readChangesRequestedAt,
     readDraft,
     readLastCommitAt,
     readPullRequestActivity,

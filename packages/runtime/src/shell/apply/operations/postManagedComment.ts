@@ -5,7 +5,7 @@
 
 import {
     MANAGED_COMMENT_KINDS,
-    parseManagedMarker,
+    MANAGED_MARKER_PREFIX,
     type CommentFact,
     type ManagedCommentKind,
     type ReadBackOutcome,
@@ -22,14 +22,15 @@ export const ITEM_COMMENT_BUDGET = 3;
 const BUDGET_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The comments created inside the window that are the App's own or carry its marker under any
- * name: a run whose identity is misconfigured must still meet the budget. An undated one is outside it.
+ * The comments created inside the window that open with the marker, readable or not, under any
+ * name. Every comment the App writes does; another workflow's under a shared login does not (D242).
+ * An undated one is outside it.
  */
 function createdRecently(comments: readonly CommentFact[], now: Date): number {
     const since = now.getTime() - BUDGET_WINDOW_MS;
     return comments.filter(
         (comment) =>
-            (comment.authoredByApp || "recognized" in parseManagedMarker(comment.body)) &&
+            comment.body.startsWith(MANAGED_MARKER_PREFIX) &&
             comment.createdAt !== undefined &&
             Date.parse(comment.createdAt) >= since,
     ).length;
