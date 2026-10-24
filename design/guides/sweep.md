@@ -16,7 +16,7 @@
 | a pull request's `draft` — the whole `readiness` group | `GET /repos/{o}/{r}/pulls/{n}` | Pull requests R | confirmed |
 | `changesRequested` | `GET /pulls/{n}/reviews` folded to the latest DECIDING state per reviewer — the reader implements this, not GraphQL `reviewDecision` | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
 | `reapableSince` | the timeline's `convert_to_draft` / `ready_for_review` / `review_requested` events and the newest `changes requested` review, whichever entered the current mode | Pull requests R, or Issues R — either alone answers the timeline on a pull-request number | confirmed 2026-09-12 (6.9), ETag |
-| `lastCommitAt` | `GET /repos/{o}/{r}/pulls/{n}/commits`, last page | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
+| `lastCommitAt` | `GET /repos/{o}/{r}/pulls/{n}/commits`, every page, the newest committer date; GitHub lists at most 250 commits, so a list that reaches 250 is unread | Pull requests R | confirmed 2026-09-12 (6.9), ETag, 1 page |
 | a pull request's linked issues with their assignees | GraphQL `closingIssuesReferences` joined to the issues already listed, read for every LISTED pull request before the item walk — one aliased query per hundred (D194) | Issues R + Pull requests R | confirmed for same-repository links, batched shape confirmed 2026-09-15 |
 | an issue's open linked pull requests | the inverse of the row above, built from that one read — no separate read, and no dependence on which items the walk reached | — | derived |
 
