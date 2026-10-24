@@ -466,6 +466,12 @@ export async function readReapableSince(
 }
 
 /**
+ * GitHub's own ceiling on the commits endpoint.
+ * A pull request with more commits than this cannot be answered at all.
+ */
+export const MAX_COMMITS = 250;
+
+/**
  * The newest commit on the pull request, or `null` when it carries none.
  * `null` is a real answer here, not an unread one.
  */
@@ -479,6 +485,12 @@ export async function readLastCommitAt(
         `#${String(number)} commits`,
     );
     if (!read.ok) return read;
+    // A list AT the ceiling is no answer, not a short one.
+    if (read.value.length >= MAX_COMMITS) {
+        return unreadable(
+            `#${String(number)} commits: GitHub lists at most ${String(MAX_COMMITS)}, and this pull request reached that limit`,
+        );
+    }
 
     let newest: Date | null = null;
     for (const entry of read.value) {

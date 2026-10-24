@@ -35,6 +35,7 @@ import {
 import { decodeContents } from "./config.js";
 import type { RepositoryReads } from "./facts.js";
 import { httpFailure, unavailable, type ResolverFailure } from "./failures.js";
+import { MAX_COMMITS } from "./items.js";
 import { readLinkedIssues } from "./links.js";
 import { field, jsonArrayOf, jsonRecordOf } from "../client/untrusted.js";
 
@@ -110,12 +111,6 @@ async function linkedIssues(
         ? unavailable("linkedIssues requires a valid pull request item")
         : readLinkedIssues(options, number);
 }
-
-/**
- * GitHub's own ceiling on the commits endpoint.
- * A pull request with more commits than this cannot be answered at all.
- */
-const MAX_COMMITS = 250;
 
 /** Enough pages to reach the ceiling, and not one more. */
 const MAX_COMMIT_PAGES = Math.ceil(MAX_COMMITS / PAGE_SIZE);

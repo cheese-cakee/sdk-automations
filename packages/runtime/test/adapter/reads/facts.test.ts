@@ -715,6 +715,37 @@ describe("the review group — the three reads protocol 6.9 confirmed", () => {
         });
     });
 
+    /** `count` commits a minute apart, paged as GitHub pages them; the last is the newest. */
+    const commitPages = (count: number): Record<string, ResponseStep> => {
+        const commits = Array.from({ length: count }, (_, minute) => ({
+            commit: {
+                committer: { date: new Date(Date.UTC(2026, 7, 1, 0, minute)).toISOString() },
+            },
+        }));
+        const pages = Math.ceil(count / 100);
+        const last = { link: `<https://api.github.com/x?page=${String(pages)}>; rel="last"` };
+        return Object.fromEntries(
+            Array.from({ length: pages }, (_, index) => [
+                `/pulls/34/commits?per_page=100&page=${String(index + 1)}`,
+                json(commits.slice(index * 100, (index + 1) * 100), index === 0 ? last : undefined),
+            ]),
+        );
+    };
+
+    it("reads the newest of 249 commits, one short of GitHub's ceiling", async () => {
+        await expect(readLastCommitAt(context(commitPages(249)), 34)).resolves.toEqual({
+            ok: true,
+            value: new Date(Date.UTC(2026, 7, 1, 0, 248)),
+        });
+    });
+
+    it("refuses a pull request whose commits reach GitHub's 250 ceiling", async () => {
+        await expect(readLastCommitAt(context(commitPages(250)), 34)).resolves.toEqual({
+            ok: false,
+            detail: "#34 commits: GitHub lists at most 250, and this pull request reached that limit",
+        });
+    });
+
     it("reads the newest commit or `/working` as current pull-request activity", async () => {
         const routes = {
             "/pulls/34/commits": json([
