@@ -384,6 +384,16 @@ describe("the pull-request ladder judges the contributor's wait", () => {
         expect(await decide(answered)).toEqual([]);
     });
 
+    /** An answered request leaves `needsReview` the reviewers' wait, though the draft ladder is on (D240). */
+    it("a draft in `needsReview` with an answered change request steps aside", async () => {
+        const answered = pullRecord(
+            { position: position({ meaning: "needsReview" }) },
+            { changesRequestedAt: ago(20), lastCommitAt: ago(19) },
+        );
+
+        expect(await decide(answered)).toEqual([]);
+    });
+
     /** The first diamond is the meaning and the review fact, whatever the pull request's mode. */
     it("leaves a draft carrying `needsReview` alone, mode or no mode", async () => {
         const awaited = pullRecord({ position: position({ meaning: "needsReview" }) });
