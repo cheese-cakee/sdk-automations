@@ -66,7 +66,7 @@ your file has to move.
 | `writeUnknown` | Whether the call landed could not be established; nothing is resent until a read of GitHub settles it |
 | `writeUnsupported` | The platform has no confirmed endpoint for this write yet; the intent stands and is re-tried each sweep |
 | `postconditionUnconfirmed` | GitHub accepted the call, but the read-back did not confirm the state it should have left behind |
-| `commentBudget` | The App had already created three comments on this item in the last day, so this one was held back until tomorrow; a comment it rewrites in place never counts |
+| `commentBudget` | Three comments that count as the App's had already been created on this item in the last day, so this one was held back until tomorrow; a comment it rewrites in place never counts. Its own comments count, and so does any comment carrying its marker; under the Action's default token, so does every other workflow's `github-actions[bot]` comment ([Installing](installing.md#another-token)) |
 
 `pnpm shell:explain <effect-id>` prints one effect's whole history and where it stands, and
 `pnpm shell:explain --item issue#40 --repo owner/repo` prints an item's effects and its decisions; `pnpm shell:status`
@@ -90,7 +90,7 @@ or the delivery, not the work.
 |---|---|
 | `configRejected` | Your `sdk-automations.yml` did not parse or did not validate; the errors are named in [Every way the file can be wrong](configuration.md#every-way-the-file-can-be-wrong), and redelivering the same event cannot repair a file |
 | `installationSuspended` | The endpoint serving you was started with `SUSPENDED=1`, so it verified and accepted your delivery and then finished it without deciding: no configuration was read, no capability ran, and nothing was sent. The delivery is complete and will not be reconsidered when the suspension lifts, so ask your operator to restart the endpoint without `SUSPENDED=1` — the next event on the item is decided normally |
-| `modeUnsupported` | Your file says `mode: active`, and the endpoint serving it was started as a composition that wires no write path — so it is rejected before a decision rather than acted on. That is still the shipped default: writes are armed only when the endpoint is given the App's identity as well as its credentials (`APP_SLUG`, see [Running the shell](running.md)). Until then, choose `observe` or `dry-run` |
+| `modeUnsupported` | Your file says `mode: active`, and the endpoint serving it was started as a composition that wires no write path — so it is rejected before a decision rather than acted on. That is the hosted shell's default: writes are armed only when the endpoint is given the App's identity as well as its credentials (`APP_SLUG`, see [Running the shell](running.md)). Until then, choose `observe` or `dry-run`. The Action never records this: unarmed, it decides `active` as `dry-run` ([Installing](installing.md#arming-writes)) |
 | `repositoryMismatch` | The delivery came from a different repository than the one this endpoint was started for, so nothing about it was read — point the webhook at the right endpoint, or start the endpoint for the right repository (`REPO_OWNER`/`REPO_NAME`) |
 
 ## After the store was rebuilt

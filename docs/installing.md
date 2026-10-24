@@ -54,7 +54,9 @@ release after it reads it.
 
 The major tag moves forward only. To go back, pin the previous release's SHA, which the
 [Releases page](https://github.com/hiero-hackers/sdk-automations/releases) lists, in place of the
-tag; it is a commit on the `releases/v<major>` branch.
+tag. From v0.1.2 on it is the head of that release's own `release/<tag>` branch, which stays after
+the major moves on. Re-running a release's workflow commits a fresh bundle there, and the Releases
+page then names the new SHA.
 
 ## Another token
 
@@ -62,6 +64,12 @@ The default token is the workflow's own, and the run recognises its earlier comm
 runner's. If you pass an App's installation token as `token`, set `bot-login` to that App's
 `<slug>[bot]` and `app-id` to its id, or the run will not know its own comments and will post a
 fresh one each time. A personal token is not supported: its comments read as a person's.
+
+The default identity is shared. Every workflow in the repository that comments with `GITHUB_TOKEN`
+comments as `github-actions[bot]`, and the run counts those comments as its own. They spend the
+item's budget of three new comments a day, so another workflow's comments can hold this run's back
+as `commentBudget`, and one that carries this run's marker is taken for the run's own. A dedicated
+App's token, with `app-id` and `bot-login` set as above, gives the run an identity of its own.
 
 ## Another GitHub host
 

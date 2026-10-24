@@ -38,6 +38,11 @@ const GLOBAL_INVALIDATION_FILES = new Set([
     "tsconfig.json",
 ]);
 
+/** Repository directories a package's tests read from outside the package. */
+const TEST_INPUTS: Readonly<Record<string, readonly string[]>> = {
+    capabilities: ["docs/examples/"],
+};
+
 export function discoverWorkspaceDependencies(
     workspaceDirs: readonly string[] = workspacePackages(),
     rootDir: string = repoRoot,
@@ -138,7 +143,15 @@ export function shouldForceMutation(
             };
         }
 
-        // 5. Documentation, lab, checks, or unrelated workspace packages
+        // 5. Repository files the package's tests read
+        if (TEST_INPUTS[packageName]?.some((dir) => file.startsWith(dir))) {
+            return {
+                force: true,
+                reason: `test input outside the package changed: ${file}`,
+            };
+        }
+
+        // 6. Documentation, lab, checks, or unrelated workspace packages
         // do not force a full mutation run on this package.
     }
 
@@ -146,9 +159,11 @@ export function shouldForceMutation(
 }
 
 export function gitChangedFiles(baseRef?: string): string[] {
+    const ref = baseRef && baseRef.trim().length > 0 ? baseRef : "origin/main";
     try {
-        const ref = baseRef && baseRef.trim().length > 0 ? baseRef : "origin/main";
-        const output = execFileSync("git", ["diff", "--name-only", `${ref}...HEAD`], {
+        // Tree against tree: a seed newer than HEAD's base is no ancestor of it, and a
+        // merge-base diff would skip what changed between the two.
+        const output = execFileSync("git", ["diff", "--name-only", ref, "HEAD"], {
             cwd: repoRoot,
             encoding: "utf8",
         });
@@ -157,7 +172,8 @@ export function gitChangedFiles(baseRef?: string): string[] {
             .map((l) => l.trim())
             .filter((l) => l.length > 0);
     } catch {
-        // Fall back safely to empty list if git diff fails
+        // git has already written its own reason to the inherited stderr.
+        console.error(`[mutation-invalidation] git diff against ${ref} failed`);
         return [];
     }
 }
@@ -174,6 +190,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const changed = gitChangedFiles(baseRef);
     // If git changed files is empty (e.g. unknown diff base), fail-safe to force
     if (changed.length === 0) {
+        console.error(`[mutation-invalidation] ${pkg}: forcing full run (no changed files found)`);
         console.log(" --force");
         process.exit(0);
     }
