@@ -21,8 +21,8 @@ The plan, phases A to J, lives beside the repository rather than in it: the fold
   effects) and 9.4 (same-second events) passed on 2026-10-17, and `action-conformance.yml` runs them
   with 9.6 (a re-run of an old run) every night, passing since 2026-10-18 (D234). 9.3 (grace across
   runs) passed on 2026-10-17 and surfaced D231; 9.7 (the sweep's budget) and 9.9 (the pilot shape)
-  passed on 2026-10-18, 9.9 with the adoption finding. 9.5 (a fork pull request) and 9.10 (a mode
-  per capability) are not yet run; 9.8 is a documentation protocol.
+  passed on 2026-10-18, 9.9 with the adoption finding. 9.5 (a fork pull request) passed on
+  2026-10-24; 9.10 (a mode per capability) is not yet run; 9.8 is a documentation protocol.
 - **Hardening is merged** ([#234](https://github.com/hiero-hackers/sdk-automations/pull/234)): the
   comment budget, the Action's inputs and checks, and a testkit that serves GitHub as a process.
   A capability's block may state its own `mode`
